@@ -1,0 +1,55 @@
+{
+  "name": "@ljoukov/llm",
+  "version": "0.1.0",
+  "description": "Unified wrapper over OpenAI Responses API and Google Gemini (@google/genai), with streaming + usage/cost metrics.",
+  "license": "MIT",
+  "author": "Liudmila Joukovskaya",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "format": "biome format --write src test biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "format:check": "biome format src test biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "lint": "biome lint src test tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "lint:fix": "biome lint --write src test tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build"
+  },
+  "dependencies": {
+    "@alcyone-labs/zod-to-json-schema": "^4.0.10",
+    "@google/genai": "^1.40.0",
+    "google-auth-library": "^10.5.0",
+    "openai": "^6.18.0",
+    "undici": "^7.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.14",
+    "@types/node": "^24.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
