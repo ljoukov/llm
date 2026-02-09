@@ -4,7 +4,8 @@ export type OpenAiPricing = {
   readonly outputRate: number;
 };
 
-// Pricing from the Spark repo (best-effort snapshot).
+// Pricing snapshot (best-effort). For current official pricing, see:
+// https://platform.openai.com/docs/pricing
 // Keep this conservative: unknown models -> cost 0.
 const OPENAI_GPT_52_PRICING: OpenAiPricing = {
   inputRate: 1.75 / 1_000_000,

@@ -16,7 +16,8 @@ export type GeminiImagePricing = {
   readonly imagePrices: Record<string, number>;
 };
 
-// Gemini pricing from Spark comments (USD per token).
+// Gemini pricing snapshot (best-effort). For current official pricing, see:
+// https://cloud.google.com/vertex-ai/generative-ai/pricing
 const GEMINI_3_PRO_PREVIEW_PRICING: GeminiProPricing = {
   threshold: 200_000,
   inputRateLow: 2 / 1_000_000,
