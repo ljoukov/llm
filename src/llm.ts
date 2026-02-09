@@ -641,6 +641,21 @@ function isInlineImageMime(mimeType: string | undefined): boolean {
   return mimeType.startsWith("image/");
 }
 
+function guessInlineDataFilename(mimeType: string | undefined): string {
+  switch (mimeType) {
+    case "application/pdf":
+      return "document.pdf";
+    case "application/json":
+      return "data.json";
+    case "text/markdown":
+      return "document.md";
+    case "text/plain":
+      return "document.txt";
+    default:
+      return "attachment.bin";
+  }
+}
+
 function mergeConsecutiveTextParts(parts: readonly LlmContentPart[]): LlmContentPart[] {
   if (parts.length === 0) {
     return [];
@@ -795,9 +810,18 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
         parts.push({ type: "input_text", text: part.text });
         continue;
       }
-      const mimeType = part.mimeType ?? "application/octet-stream";
-      const dataUrl = `data:${mimeType};base64,${part.data}`;
-      parts.push({ type: "input_image", image_url: dataUrl, detail: "auto" });
+      const mimeType = part.mimeType;
+      if (isInlineImageMime(mimeType)) {
+        const dataUrl = `data:${mimeType};base64,${part.data}`;
+        parts.push({ type: "input_image", image_url: dataUrl, detail: "auto" });
+        continue;
+      }
+      const fileData = decodeInlineDataBuffer(part.data).toString("base64");
+      parts.push({
+        type: "input_file",
+        filename: guessInlineDataFilename(mimeType),
+        file_data: fileData,
+      });
     }
     if (
       parts.length === 1 &&
@@ -841,19 +865,29 @@ function toChatGptInput(contents: readonly LlmContent[]): {
         });
         continue;
       }
-      const mimeType = part.mimeType ?? "application/octet-stream";
-      const dataUrl = `data:${mimeType};base64,${part.data}`;
       if (isAssistant) {
+        const mimeType = part.mimeType ?? "application/octet-stream";
         parts.push({
           type: "output_text",
-          text: `[image:${mimeType}]`,
+          text: isInlineImageMime(part.mimeType) ? `[image:${mimeType}]` : `[file:${mimeType}]`,
         });
       } else {
-        parts.push({
-          type: "input_image",
-          image_url: dataUrl,
-          detail: "auto",
-        });
+        if (isInlineImageMime(part.mimeType)) {
+          const mimeType = part.mimeType ?? "application/octet-stream";
+          const dataUrl = `data:${mimeType};base64,${part.data}`;
+          parts.push({
+            type: "input_image",
+            image_url: dataUrl,
+            detail: "auto",
+          });
+        } else {
+          const fileData = decodeInlineDataBuffer(part.data).toString("base64");
+          parts.push({
+            type: "input_file",
+            filename: guessInlineDataFilename(part.mimeType),
+            file_data: fileData,
+          });
+        }
       }
     }
     if (parts.length === 0) {

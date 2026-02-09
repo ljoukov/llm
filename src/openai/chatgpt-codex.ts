@@ -21,10 +21,19 @@ export type ChatGptInputImagePart = {
   detail?: "auto";
 };
 
+export type ChatGptInputFilePart = {
+  type: "input_file";
+  file_data?: string | null;
+  file_id?: string | null;
+  file_url?: string | null;
+  filename?: string | null;
+};
+
 export type ChatGptInputMessagePart =
   | ChatGptInputTextPart
   | ChatGptOutputTextPart
-  | ChatGptInputImagePart;
+  | ChatGptInputImagePart
+  | ChatGptInputFilePart;
 
 export type ChatGptInputMessage = {
   role: "user" | "assistant";
