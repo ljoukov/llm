@@ -25,8 +25,10 @@ npm i @ljoukov/llm
 
 ## Environment variables
 
-This package reads a `.env.local` file in `process.cwd()` (Node.js) using the same rules as Spark, and falls back to
-plain environment variables.
+This package optionally loads a `.env.local` file from `process.cwd()` (Node.js) on first use (dotenv-style `KEY=value`
+syntax) and does not override already-set `process.env` values. It always falls back to plain environment variables.
+
+See Node.js docs on environment variables and dotenv files: https://nodejs.org/api/environment_variables.html#dotenv
 
 ### OpenAI
 
@@ -36,17 +38,37 @@ plain environment variables.
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON` (the contents of a service account JSON key file, not a file path)
 
-For local dev it is usually easiest to store the JSON on one line:
+How to get a service account JSON key (downloads a `.json` file):
+
+- Firebase Console: Project settings -> Service accounts -> Generate new private key
+- Google Cloud Console: IAM & Admin -> Service Accounts -> (select service account) -> Keys -> Add key -> Create new key -> JSON
+
+Official docs: https://docs.cloud.google.com/iam/docs/keys-create-delete
+
+Store the JSON on one line (recommended):
 
 ```bash
 jq -c . < path/to/service-account.json
+```
+
+Set it for local dev:
+
+```bash
+export GOOGLE_SERVICE_ACCOUNT_JSON="$(jq -c . < path/to/service-account.json)"
+```
+
+If deploying to Cloudflare Workers/Pages:
+
+```bash
+jq -c . < path/to/service-account.json | wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON
 ```
 
 ### ChatGPT subscription models
 
 - `CHATGPT_AUTH_JSON_B64`
 
-This is a base64url-encoded JSON blob containing the ChatGPT OAuth tokens + account id (Spark-compatible).
+This is a base64url-encoded JSON blob containing the ChatGPT OAuth tokens + account id (RFC 4648):
+https://www.rfc-editor.org/rfc/rfc4648
 
 ## Usage
 
