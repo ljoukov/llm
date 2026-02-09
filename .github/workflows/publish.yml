@@ -4,32 +4,51 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to publish (e.g. v1.2.3)"
+        required: true
+        type: string
 
-concurrency:
-  group: publish-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
+  id-token: write # Required for npm trusted publishing (OIDC)
 
 jobs:
   publish:
-    name: npm publish
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    env:
+      TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          ref: ${{ env.TAG_NAME }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Tool versions
+        run: |
+          node --version
+          npm --version
 
       - run: npm ci
-      - run: npm run verify
 
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Validate tag matches package.json version
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "${TAG_NAME}" != v* ]]; then
+            echo "Tag '${TAG_NAME}' must start with 'v' (example: v${PACKAGE_VERSION})."
+            exit 1
+          fi
+          TAG_VERSION="${TAG_NAME#v}"
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag '${TAG_NAME}' does not match package.json version '${PACKAGE_VERSION}'."
+            exit 1
+          fi
 
+      - run: npm publish
