@@ -38,10 +38,14 @@ See Node.js docs on environment variables and dotenv files: https://nodejs.org/a
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON` (the contents of a service account JSON key file, not a file path)
 
-How to get a service account JSON key (downloads a `.json` file):
+#### Get a service account key JSON
 
-- Firebase Console: Project settings -> Service accounts -> Generate new private key
-- Google Cloud Console: IAM & Admin -> Service Accounts -> (select service account) -> Keys -> Add key -> Create new key -> JSON
+You need a **Google service account key JSON** for your Firebase / GCP project (this is what you put into
+`GOOGLE_SERVICE_ACCOUNT_JSON`).
+
+- **Firebase Console:** your project -> Project settings -> **Service accounts** -> **Generate new private key**
+- **Google Cloud Console:** IAM & Admin -> **Service Accounts** -> select/create an account -> **Keys** -> **Add key** ->
+  **Create new key** -> JSON
 
 Official docs: https://docs.cloud.google.com/iam/docs/keys-create-delete
 
@@ -110,6 +114,91 @@ for await (const event of call.events) {
 
 const result = await call.result;
 console.log("\nmodelVersion:", result.modelVersion);
+```
+
+### Full conversation (multi-turn)
+
+If you want to pass the full conversation (multiple user/assistant turns), use `contents` instead of `prompt`.
+
+Note: assistant messages use `role: "model"`.
+
+```ts
+import { generateText, type LlmContent } from "@ljoukov/llm";
+
+const contents: LlmContent[] = [
+  {
+    role: "system",
+    parts: [{ type: "text", text: "You are a concise assistant." }],
+  },
+  {
+    role: "user",
+    parts: [{ type: "text", text: "Summarize: Rust is a systems programming language." }],
+  },
+  {
+    role: "model",
+    parts: [{ type: "text", text: "Rust is a fast, memory-safe systems language." }],
+  },
+  {
+    role: "user",
+    parts: [{ type: "text", text: "Now rewrite it in 1 sentence." }],
+  },
+];
+
+const result = await generateText({ model: "gpt-5.2", contents });
+console.log(result.text);
+```
+
+### Attachments (files / images)
+
+Use `inlineData` parts to attach base64-encoded bytes (intermixed with text). `inlineData.data` is base64 (not a data
+URL).
+
+Note: for OpenAI / ChatGPT providers, `inlineData` parts are currently sent as images, so use `mimeType: "image/*"`.
+
+```ts
+import fs from "node:fs";
+import { generateText, type LlmContent } from "@ljoukov/llm";
+
+const imageB64 = fs.readFileSync("image.png").toString("base64");
+
+const contents: LlmContent[] = [
+  {
+    role: "user",
+    parts: [
+      { type: "text", text: "Describe this image in 1 paragraph." },
+      { type: "inlineData", mimeType: "image/png", data: imageB64 },
+    ],
+  },
+];
+
+const result = await generateText({ model: "gpt-5.2", contents });
+console.log(result.text);
+```
+
+Intermixed text + multiple images (e.g. compare two images):
+
+```ts
+import fs from "node:fs";
+import { generateText, type LlmContent } from "@ljoukov/llm";
+
+const a = fs.readFileSync("a.png").toString("base64");
+const b = fs.readFileSync("b.png").toString("base64");
+
+const contents: LlmContent[] = [
+  {
+    role: "user",
+    parts: [
+      { type: "text", text: "Compare the two images. List the important differences." },
+      { type: "text", text: "Image A:" },
+      { type: "inlineData", mimeType: "image/png", data: a },
+      { type: "text", text: "Image B:" },
+      { type: "inlineData", mimeType: "image/png", data: b },
+    ],
+  },
+];
+
+const result = await generateText({ model: "gpt-5.2", contents });
+console.log(result.text);
 ```
 
 ### Gemini
