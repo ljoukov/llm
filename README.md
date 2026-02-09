@@ -47,6 +47,8 @@ You need a **Google service account key JSON** for your Firebase / GCP project (
 - **Google Cloud Console:** IAM & Admin -> **Service Accounts** -> select/create an account -> **Keys** -> **Add key** ->
   **Create new key** -> JSON
 
+Either path is enough. Both produce the same kind of service account key `.json` file.
+
 Official docs: https://docs.cloud.google.com/iam/docs/keys-create-delete
 
 Store the JSON on one line (recommended):
@@ -153,7 +155,10 @@ console.log(result.text);
 Use `inlineData` parts to attach base64-encoded bytes (intermixed with text). `inlineData.data` is base64 (not a data
 URL).
 
-Note: for OpenAI / ChatGPT providers, `inlineData` parts are currently sent as images, so use `mimeType: "image/*"`.
+Note: `inlineData` is mapped based on `mimeType`.
+
+- `image/*` -> image input (`input_image`)
+- otherwise -> file input (`input_file`, e.g. `application/pdf`)
 
 ```ts
 import fs from "node:fs";
@@ -167,6 +172,28 @@ const contents: LlmContent[] = [
     parts: [
       { type: "text", text: "Describe this image in 1 paragraph." },
       { type: "inlineData", mimeType: "image/png", data: imageB64 },
+    ],
+  },
+];
+
+const result = await generateText({ model: "gpt-5.2", contents });
+console.log(result.text);
+```
+
+PDF attachment example:
+
+```ts
+import fs from "node:fs";
+import { generateText, type LlmContent } from "@ljoukov/llm";
+
+const pdfB64 = fs.readFileSync("doc.pdf").toString("base64");
+
+const contents: LlmContent[] = [
+  {
+    role: "user",
+    parts: [
+      { type: "text", text: "Summarize this PDF in 5 bullet points." },
+      { type: "inlineData", mimeType: "application/pdf", data: pdfB64 },
     ],
   },
 ];
