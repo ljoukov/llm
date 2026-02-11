@@ -42,7 +42,7 @@ describe("streamText (OpenAI)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.2", prompt: "hi" });
+    const call = streamText({ model: "gpt-5.2", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -68,10 +68,10 @@ describe("streamText (OpenAI)", () => {
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
       model: "gpt-5.2",
-      contents: [
+      input: [
         {
           role: "user",
-          parts: [
+          content: [
             { type: "text", text: "Summarize the PDF." },
             { type: "inlineData", mimeType: "application/pdf", data: pdfB64 },
           ],

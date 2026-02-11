@@ -43,7 +43,7 @@ export function getCurrentToolCallContext(): LlmToolCallContext | null {
 
 export type JsonSchema = Record<string, unknown>;
 
-export type LlmRole = "user" | "model" | "system" | "tool";
+export type LlmRole = "user" | "assistant" | "system" | "developer" | "tool";
 
 type LlmInlineDataPart = {
   type: "inlineData";
@@ -109,9 +109,57 @@ export type LlmTextStream = {
   readonly abort: () => void;
 };
 
-export type LlmInput =
-  | { readonly prompt: string; readonly systemPrompt?: string }
-  | { readonly contents: readonly LlmContent[] };
+export type DeepPartial<T> =
+  T extends ReadonlyArray<infer Item>
+    ? ReadonlyArray<DeepPartial<Item>>
+    : T extends Array<infer Item>
+      ? Array<DeepPartial<Item>>
+      : T extends object
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : T;
+
+export type LlmJsonPartialEvent<T> = {
+  readonly type: "json";
+  readonly stage: "partial";
+  readonly value: DeepPartial<T>;
+};
+
+export type LlmJsonFinalEvent<T> = {
+  readonly type: "json";
+  readonly stage: "final";
+  readonly value: T;
+};
+
+export type LlmJsonStreamEvent<T> = LlmStreamEvent | LlmJsonPartialEvent<T> | LlmJsonFinalEvent<T>;
+
+export type LlmJsonStream<T> = {
+  readonly events: AsyncIterable<LlmJsonStreamEvent<T>>;
+  readonly result: Promise<{
+    readonly value: T;
+    readonly rawText: string;
+    readonly result: LlmTextResult;
+  }>;
+  readonly abort: () => void;
+};
+
+export type LlmInputMessage = {
+  readonly role: "user" | "assistant" | "system" | "developer";
+  readonly content: string | readonly LlmContentPart[];
+};
+
+export type LlmInput = {
+  /**
+   * OpenAI-style input:
+   * - a plain string becomes one user message
+   * - message arrays allow multi-turn + role-specific content
+   */
+  readonly input: string | readonly LlmInputMessage[];
+  /**
+   * OpenAI-style top-level instructions.
+   * Applied as a system message before input.
+   */
+  readonly instructions?: string;
+};
 
 export type LlmBaseRequest = {
   readonly model: string;
@@ -134,7 +182,20 @@ export type LlmJsonRequest<T> = LlmInput &
     readonly openAiSchemaName?: string;
     readonly maxAttempts?: number;
     readonly normalizeJson?: (value: unknown) => unknown;
+    /**
+     * Optional streaming callback. Useful to surface thought deltas while still
+     * returning a single validated JSON result.
+     */
+    readonly onEvent?: (event: LlmStreamEvent) => void;
   };
+
+export type LlmJsonStreamRequest<T> = LlmJsonRequest<T> & {
+  /**
+   * - "partial" (default): emit best-effort partial JSON snapshots while streaming.
+   * - "final": stream thought deltas but only emit the final validated JSON value.
+   */
+  readonly streamMode?: "partial" | "final";
+};
 
 export class LlmJsonCallError extends Error {
   constructor(
@@ -546,10 +607,13 @@ export function convertGooglePartsToLlmParts(parts: readonly GeminiPart[]): LlmC
 function assertLlmRole(value: string | undefined): LlmRole {
   switch (value) {
     case "user":
-    case "model":
+    case "assistant":
     case "system":
+    case "developer":
     case "tool":
       return value;
+    case "model":
+      return "assistant";
     default:
       throw new Error(`Unsupported LLM role: ${String(value)}`);
   }
@@ -582,8 +646,9 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
 }
 
 function convertLlmContentToGeminiContent(content: LlmContent): GeminiContent {
+  const role = content.role === "assistant" ? "model" : "user";
   return {
-    role: content.role,
+    role,
     parts: content.parts.map(toGeminiPart),
   };
 }
@@ -776,21 +841,398 @@ export function parseJsonFromLlmText(rawText: string): unknown {
   return JSON.parse(repairedText);
 }
 
-function resolveTextContents(input: LlmInput): readonly LlmContent[] {
-  if ("contents" in input) {
-    return input.contents;
+function parsePartialJsonFromLlmText(rawText: string): unknown | null {
+  const jsonStart = extractJsonStartText(rawText);
+  if (!jsonStart) {
+    return null;
   }
+  try {
+    return parsePartialJson(jsonStart);
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonStartText(rawText: string): string | null {
+  let text = rawText.trimStart();
+  if (text.startsWith("```")) {
+    text = text.replace(/^```[a-zA-Z0-9_-]*\s*\n?/, "");
+  }
+  const objIndex = text.indexOf("{");
+  const arrIndex = text.indexOf("[");
+  let start = -1;
+  if (objIndex !== -1 && arrIndex !== -1) {
+    start = Math.min(objIndex, arrIndex);
+  } else {
+    start = objIndex !== -1 ? objIndex : arrIndex;
+  }
+  if (start === -1) {
+    return null;
+  }
+  return text.slice(start);
+}
+
+type PartialJsonObjectContext = {
+  type: "object";
+  value: Record<string, unknown>;
+  state: "keyOrEnd" | "colon" | "value" | "commaOrEnd";
+  key?: string;
+};
+
+type PartialJsonArrayContext = {
+  type: "array";
+  value: unknown[];
+  state: "valueOrEnd" | "commaOrEnd";
+};
+
+type PartialJsonContext = PartialJsonObjectContext | PartialJsonArrayContext;
+
+function parsePartialJson(text: string): unknown | null {
+  let i = 0;
+  const len = text.length;
+
+  const isWhitespace = (char: string): boolean =>
+    char === " " || char === "\n" || char === "\r" || char === "\t";
+  const skipWhitespace = (): void => {
+    while (i < len && isWhitespace(text[i] ?? "")) {
+      i += 1;
+    }
+  };
+
+  const parseString = (): { value: string; complete: boolean } | null => {
+    if (text[i] !== '"') {
+      return null;
+    }
+    i += 1;
+    let value = "";
+    while (i < len) {
+      const ch = text[i] ?? "";
+      if (ch === '"') {
+        i += 1;
+        return { value, complete: true };
+      }
+      if (ch === "\\") {
+        if (i + 1 >= len) {
+          return { value, complete: false };
+        }
+        const esc = text[i + 1] ?? "";
+        switch (esc) {
+          case '"':
+          case "\\":
+          case "/":
+            value += esc;
+            i += 2;
+            continue;
+          case "b":
+            value += "\b";
+            i += 2;
+            continue;
+          case "f":
+            value += "\f";
+            i += 2;
+            continue;
+          case "n":
+            value += "\n";
+            i += 2;
+            continue;
+          case "r":
+            value += "\r";
+            i += 2;
+            continue;
+          case "t":
+            value += "\t";
+            i += 2;
+            continue;
+          case "u": {
+            // \uXXXX
+            if (i + 5 >= len) {
+              return { value, complete: false };
+            }
+            const hex = text.slice(i + 2, i + 6);
+            if (!/^[0-9a-fA-F]{4}$/u.test(hex)) {
+              value += "u";
+              i += 2;
+              continue;
+            }
+            value += String.fromCharCode(Number.parseInt(hex, 16));
+            i += 6;
+            continue;
+          }
+          default:
+            value += esc;
+            i += 2;
+            continue;
+        }
+      }
+      value += ch;
+      i += 1;
+    }
+    return { value, complete: false };
+  };
+
+  const parseNumber = (): { value: number; complete: boolean } | null => {
+    const start = i;
+    while (i < len) {
+      const ch = text[i] ?? "";
+      if (isWhitespace(ch) || ch === "," || ch === "}" || ch === "]") {
+        break;
+      }
+      i += 1;
+    }
+    const raw = text.slice(start, i);
+    if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(raw)) {
+      i = start;
+      return null;
+    }
+    return { value: Number(raw), complete: true };
+  };
+
+  const parseLiteral = (): { value: unknown; complete: boolean } | null => {
+    if (text.startsWith("true", i)) {
+      i += 4;
+      return { value: true, complete: true };
+    }
+    if (text.startsWith("false", i)) {
+      i += 5;
+      return { value: false, complete: true };
+    }
+    if (text.startsWith("null", i)) {
+      i += 4;
+      return { value: null, complete: true };
+    }
+    return null;
+  };
+
+  skipWhitespace();
+  const first = text[i];
+  if (first !== "{" && first !== "[") {
+    return null;
+  }
+
+  const root: unknown = first === "{" ? {} : [];
+  const stack: PartialJsonContext[] =
+    first === "{"
+      ? [{ type: "object", value: root as Record<string, unknown>, state: "keyOrEnd" }]
+      : [{ type: "array", value: root as unknown[], state: "valueOrEnd" }];
+  i += 1;
+
+  while (stack.length > 0) {
+    skipWhitespace();
+    if (i >= len) {
+      break;
+    }
+
+    const ctx = stack[stack.length - 1];
+    if (!ctx) {
+      break;
+    }
+
+    const ch = text[i] ?? "";
+
+    if (ctx.type === "object") {
+      if (ctx.state === "keyOrEnd") {
+        if (ch === "}") {
+          i += 1;
+          stack.pop();
+          continue;
+        }
+        if (ch === ",") {
+          i += 1;
+          continue;
+        }
+        if (ch !== '"') {
+          break;
+        }
+        const key = parseString();
+        if (!key) {
+          break;
+        }
+        if (!key.complete) {
+          break;
+        }
+        ctx.key = key.value;
+        ctx.state = "colon";
+        continue;
+      }
+
+      if (ctx.state === "colon") {
+        if (ch === ":") {
+          i += 1;
+          ctx.state = "value";
+          continue;
+        }
+        break;
+      }
+
+      if (ctx.state === "value") {
+        if (ch === "}") {
+          i += 1;
+          ctx.key = undefined;
+          stack.pop();
+          continue;
+        }
+        if (ch === ",") {
+          i += 1;
+          ctx.key = undefined;
+          ctx.state = "keyOrEnd";
+          continue;
+        }
+
+        const key = ctx.key;
+        if (!key) {
+          break;
+        }
+
+        if (ch === "{" || ch === "[") {
+          const container: unknown = ch === "{" ? {} : [];
+          ctx.value[key] = container;
+          ctx.key = undefined;
+          ctx.state = "commaOrEnd";
+          stack.push(
+            ch === "{"
+              ? { type: "object", value: container as Record<string, unknown>, state: "keyOrEnd" }
+              : { type: "array", value: container as unknown[], state: "valueOrEnd" },
+          );
+          i += 1;
+          continue;
+        }
+
+        let primitive: { value: unknown; complete: boolean } | null = null;
+        if (ch === '"') {
+          primitive = parseString();
+        } else if (ch === "-" || (ch >= "0" && ch <= "9")) {
+          primitive = parseNumber();
+        } else {
+          primitive = parseLiteral();
+        }
+        if (!primitive) {
+          break;
+        }
+        ctx.value[key] = primitive.value;
+        ctx.key = undefined;
+        ctx.state = "commaOrEnd";
+        if (!primitive.complete) {
+          break;
+        }
+        continue;
+      }
+
+      if (ctx.state === "commaOrEnd") {
+        if (ch === ",") {
+          i += 1;
+          ctx.state = "keyOrEnd";
+          continue;
+        }
+        if (ch === "}") {
+          i += 1;
+          stack.pop();
+          continue;
+        }
+        break;
+      }
+    } else {
+      if (ctx.state === "valueOrEnd") {
+        if (ch === "]") {
+          i += 1;
+          stack.pop();
+          continue;
+        }
+        if (ch === ",") {
+          i += 1;
+          continue;
+        }
+
+        if (ch === "{" || ch === "[") {
+          const container: unknown = ch === "{" ? {} : [];
+          ctx.value.push(container);
+          ctx.state = "commaOrEnd";
+          stack.push(
+            ch === "{"
+              ? { type: "object", value: container as Record<string, unknown>, state: "keyOrEnd" }
+              : { type: "array", value: container as unknown[], state: "valueOrEnd" },
+          );
+          i += 1;
+          continue;
+        }
+
+        let primitive: { value: unknown; complete: boolean } | null = null;
+        if (ch === '"') {
+          primitive = parseString();
+        } else if (ch === "-" || (ch >= "0" && ch <= "9")) {
+          primitive = parseNumber();
+        } else {
+          primitive = parseLiteral();
+        }
+        if (!primitive) {
+          break;
+        }
+        ctx.value.push(primitive.value);
+        ctx.state = "commaOrEnd";
+        if (!primitive.complete) {
+          break;
+        }
+        continue;
+      }
+
+      if (ctx.state === "commaOrEnd") {
+        if (ch === ",") {
+          i += 1;
+          ctx.state = "valueOrEnd";
+          continue;
+        }
+        if (ch === "]") {
+          i += 1;
+          stack.pop();
+          continue;
+        }
+        break;
+      }
+    }
+  }
+
+  return root;
+}
+
+function resolveTextContents(input: LlmInput): readonly LlmContent[] {
   const contents: LlmContent[] = [];
-  if (input.systemPrompt) {
+
+  if (input.instructions) {
+    const instructions = input.instructions.trim();
+    if (instructions.length > 0) {
+      contents.push({
+        role: "system",
+        parts: [{ type: "text", text: instructions }],
+      });
+    }
+  }
+
+  if (typeof input.input === "string") {
     contents.push({
-      role: "system",
-      parts: [{ type: "text", text: input.systemPrompt }],
+      role: "user",
+      parts: [{ type: "text", text: input.input }],
+    });
+    return contents;
+  }
+
+  for (const message of input.input) {
+    const parts =
+      typeof message.content === "string"
+        ? ([{ type: "text", text: message.content }] as const)
+        : message.content;
+    contents.push({
+      role: message.role,
+      parts: parts.map((part) =>
+        part.type === "text"
+          ? {
+              type: "text",
+              text: part.text,
+              thought: "thought" in part && part.thought === true ? true : undefined,
+            }
+          : { type: "inlineData", data: part.data, mimeType: part.mimeType },
+      ),
     });
   }
-  contents.push({
-    role: "user",
-    parts: [{ type: "text", text: input.prompt }],
-  });
+
   return contents;
 }
 
@@ -798,8 +1240,9 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
   // Keep the shape compatible with OpenAI Responses API input.
   const OPENAI_ROLE_FROM_LLM: Record<LlmRole, string> = {
     user: "user",
-    model: "assistant",
+    assistant: "assistant",
     system: "system",
+    developer: "developer",
     tool: "assistant",
   };
 
@@ -847,7 +1290,7 @@ function toChatGptInput(contents: readonly LlmContent[]): {
   const instructionsParts: string[] = [];
   const input: ChatGptInputItem[] = [];
   for (const content of contents) {
-    if (content.role === "system") {
+    if (content.role === "system" || content.role === "developer") {
       for (const part of content.parts) {
         if (part.type === "text") {
           instructionsParts.push(part.text);
@@ -855,7 +1298,7 @@ function toChatGptInput(contents: readonly LlmContent[]): {
       }
       continue;
     }
-    const isAssistant = content.role === "model";
+    const isAssistant = content.role === "assistant" || content.role === "tool";
     const parts: Array<Record<string, unknown>> = [];
     for (const part of content.parts) {
       if (part.type === "text") {
@@ -1708,7 +2151,7 @@ async function runTextCall(params: {
 
   const mergedParts = mergeConsecutiveTextParts(responseParts);
   const content =
-    mergedParts.length > 0 ? { role: responseRole ?? "model", parts: mergedParts } : undefined;
+    mergedParts.length > 0 ? { role: responseRole ?? "assistant", parts: mergedParts } : undefined;
   const { text, thoughts } = extractTextByChannel(content);
 
   const costUsd = estimateCallCostUsd({
@@ -1768,12 +2211,11 @@ export async function generateText(request: LlmTextRequest): Promise<LlmTextResu
   return await call.result;
 }
 
-export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
-  readonly value: T;
-  readonly rawText: string;
-  readonly result: LlmTextResult;
-}> {
-  const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 2));
+function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
+  providerInfo: { provider: LlmProvider; model: string };
+  responseJsonSchema: JsonSchema;
+  openAiTextFormat?: ResponseTextConfig["format"];
+} {
   const schemaName = (request.openAiSchemaName ?? "llm-response").trim() || "llm-response";
   const providerInfo = resolveProvider(request.model);
   const isOpenAiVariant = providerInfo.provider === "openai" || providerInfo.provider === "chatgpt";
@@ -1790,38 +2232,169 @@ export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
     throw new Error("OpenAI structured outputs require a JSON object schema at the root.");
   }
 
-  const openAiTextFormat =
-    providerInfo.provider === "openai"
-      ? {
-          type: "json_schema" as const,
-          name: schemaName,
-          strict: true,
-          schema: normalizeOpenAiSchema(responseJsonSchema),
+  const openAiTextFormat = isOpenAiVariant
+    ? {
+        type: "json_schema" as const,
+        name: schemaName,
+        strict: true,
+        schema: normalizeOpenAiSchema(responseJsonSchema),
+      }
+    : undefined;
+
+  return { providerInfo, responseJsonSchema, openAiTextFormat };
+}
+
+export function streamJson<T>(request: LlmJsonStreamRequest<T>): LlmJsonStream<T> {
+  const queue = createAsyncQueue<LlmJsonStreamEvent<T>>();
+  const abortController = new AbortController();
+
+  const resolveAbortSignal = (): AbortSignal => {
+    if (!request.signal) {
+      return abortController.signal;
+    }
+    // Fan-in cancellation: abort if either signal aborts.
+    if (request.signal.aborted) {
+      abortController.abort(request.signal.reason);
+    } else {
+      request.signal.addEventListener(
+        "abort",
+        () => abortController.abort(request.signal?.reason),
+        {
+          once: true,
+        },
+      );
+    }
+    return abortController.signal;
+  };
+
+  const result = (async () => {
+    const signal = resolveAbortSignal();
+    const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 2));
+    const { providerInfo, responseJsonSchema, openAiTextFormat } = buildJsonSchemaConfig(request);
+    const streamMode = request.streamMode ?? "partial";
+
+    const failures: Array<{ attempt: number; rawText: string; error: unknown }> = [];
+    let openAiTextFormatForAttempt: ResponseTextConfig["format"] | undefined = openAiTextFormat;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      let rawText = "";
+      let lastPartial = "";
+      try {
+        const call = streamText({
+          model: request.model,
+          input: request.input,
+          instructions: request.instructions,
+          tools: request.tools,
+          responseMimeType: request.responseMimeType ?? "application/json",
+          responseJsonSchema,
+          openAiReasoningEffort: request.openAiReasoningEffort,
+          ...(openAiTextFormatForAttempt ? { openAiTextFormat: openAiTextFormatForAttempt } : {}),
+          signal,
+        });
+
+        try {
+          for await (const event of call.events) {
+            queue.push(event);
+            if (event.type === "delta" && event.channel === "response") {
+              rawText += event.text;
+              if (streamMode === "partial") {
+                const partial = parsePartialJsonFromLlmText(rawText);
+                if (partial !== null) {
+                  const serialized = JSON.stringify(partial);
+                  if (serialized !== lastPartial) {
+                    lastPartial = serialized;
+                    queue.push({
+                      type: "json",
+                      stage: "partial",
+                      value: partial as DeepPartial<T>,
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (streamError) {
+          // Ensure the rejected result promise is observed before we retry.
+          await call.result.catch(() => undefined);
+          throw streamError;
         }
-      : undefined;
+        const result = await call.result;
+        rawText = rawText || result.text;
+
+        const cleanedText = normalizeJsonText(rawText);
+        const repairedText = escapeNewlinesInStrings(cleanedText);
+        const payload: unknown = JSON.parse(repairedText);
+        const normalized =
+          typeof request.normalizeJson === "function" ? request.normalizeJson(payload) : payload;
+        const parsed = request.schema.parse(normalized);
+        queue.push({ type: "json", stage: "final", value: parsed });
+        queue.close();
+        return { value: parsed, rawText, result };
+      } catch (error) {
+        const handled = error instanceof Error ? error : new Error(String(error));
+        failures.push({ attempt, rawText, error: handled });
+        if (providerInfo.provider === "chatgpt" && openAiTextFormatForAttempt) {
+          // Best-effort fallback: some ChatGPT accounts/models may not support json_schema.
+          openAiTextFormatForAttempt = undefined;
+        }
+        if (attempt >= maxAttempts) {
+          throw new LlmJsonCallError(`LLM JSON call failed after ${attempt} attempt(s)`, failures);
+        }
+      }
+    }
+
+    throw new LlmJsonCallError("LLM JSON call failed", failures);
+  })().catch((error) => {
+    const err = error instanceof Error ? error : new Error(String(error));
+    queue.fail(err);
+    throw err;
+  });
+
+  return {
+    events: queue.iterable,
+    result,
+    abort: () => abortController.abort(),
+  };
+}
+
+export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
+  readonly value: T;
+  readonly rawText: string;
+  readonly result: LlmTextResult;
+}> {
+  const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 2));
+  const { providerInfo, responseJsonSchema, openAiTextFormat } = buildJsonSchemaConfig(request);
+  let openAiTextFormatForAttempt: ResponseTextConfig["format"] | undefined = openAiTextFormat;
 
   const failures: Array<{ attempt: number; rawText: string; error: unknown }> = [];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let rawText = "";
     try {
-      const contents = resolveTextContents(request);
       const call = streamText({
         model: request.model,
-        contents,
+        input: request.input,
+        instructions: request.instructions,
         tools: request.tools,
         responseMimeType: request.responseMimeType ?? "application/json",
         responseJsonSchema,
         openAiReasoningEffort: request.openAiReasoningEffort,
-        ...(openAiTextFormat ? { openAiTextFormat } : {}),
+        ...(openAiTextFormatForAttempt ? { openAiTextFormat: openAiTextFormatForAttempt } : {}),
         signal: request.signal,
       });
 
       // Collect the raw text output (response channel only).
-      for await (const event of call.events) {
-        if (event.type === "delta" && event.channel === "response") {
-          rawText += event.text;
+      try {
+        for await (const event of call.events) {
+          request.onEvent?.(event);
+          if (event.type === "delta" && event.channel === "response") {
+            rawText += event.text;
+          }
         }
+      } catch (streamError) {
+        // Ensure the rejected result promise is observed before we retry.
+        await call.result.catch(() => undefined);
+        throw streamError;
       }
       const result = await call.result;
       rawText = rawText || result.text;
@@ -1836,6 +2409,10 @@ export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
     } catch (error) {
       const handled = error instanceof Error ? error : new Error(String(error));
       failures.push({ attempt, rawText, error: handled });
+      if (providerInfo.provider === "chatgpt" && openAiTextFormatForAttempt) {
+        // Best-effort fallback: some ChatGPT accounts/models may not support json_schema.
+        openAiTextFormatForAttempt = undefined;
+      }
       if (attempt >= maxAttempts) {
         throw new LlmJsonCallError(`LLM JSON call failed after ${attempt} attempt(s)`, failures);
       }
@@ -2520,7 +3097,7 @@ async function gradeGeneratedImage(params: {
   ];
   const { value } = await generateJson({
     model: params.model,
-    contents: [{ role: "user", parts }],
+    input: [{ role: "user", content: parts }],
     schema: IMAGE_GRADE_SCHEMA,
   });
   return value;
@@ -2605,7 +3182,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
     return [{ type: "text", text: lines.join("\\n") }];
   };
 
-  const contents: LlmContent[] = [{ role: "user", parts: buildInitialPromptParts() }];
+  const inputMessages: LlmInputMessage[] = [{ role: "user", content: buildInitialPromptParts() }];
 
   const orderedEntries = [...promptEntries];
   const resolvedImages = new Map<number, LlmImageData>();
@@ -2628,7 +3205,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = await generateText({
       model: request.model,
-      contents,
+      input: inputMessages,
       responseModalities: ["IMAGE", "TEXT"],
       imageAspectRatio: request.imageAspectRatio,
       imageSize: request.imageSize ?? "2K",
@@ -2675,8 +3252,11 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
     if (promptEntries.length === 0) {
       break;
     }
-    contents.push(result.content);
-    contents.push({ role: "user", parts: buildContinuationPromptParts(promptEntries) });
+    inputMessages.push({
+      role: "assistant",
+      content: result.content.parts,
+    });
+    inputMessages.push({ role: "user", content: buildContinuationPromptParts(promptEntries) });
   }
 
   const orderedImages: LlmImageData[] = [];

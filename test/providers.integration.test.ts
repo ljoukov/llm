@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
-import { loadLocalEnv, streamText } from "../src/index.js";
+import { generateJson, loadLocalEnv, streamText } from "../src/index.js";
 
 loadLocalEnv();
 
@@ -38,7 +39,7 @@ describe("integration: providers", () => {
   openAiIt("OpenAI: streams and returns result", async () => {
     const call = streamText({
       model: "gpt-5.1-codex-mini",
-      prompt: "Return exactly: OK",
+      input: "Return exactly: OK",
       openAiReasoningEffort: "low",
     });
     const streamed = await streamToStrings(call);
@@ -55,7 +56,7 @@ describe("integration: providers", () => {
   geminiIt("Gemini: streams and returns result", async () => {
     const call = streamText({
       model: "gemini-2.5-pro",
-      prompt: "Return exactly: OK",
+      input: "Return exactly: OK",
     });
     const streamed = await streamToStrings(call);
     const result = await call.result;
@@ -71,7 +72,7 @@ describe("integration: providers", () => {
   chatGptIt("ChatGPT: streams and returns result", async () => {
     const call = streamText({
       model: "chatgpt-gpt-5.1-codex-mini",
-      prompt: "Return exactly: OK",
+      input: "Return exactly: OK",
       openAiReasoningEffort: "low",
     });
     const streamed = await streamToStrings(call);
@@ -83,5 +84,18 @@ describe("integration: providers", () => {
     expect(streamed.sawUsage).toBe(true);
     expect(result.usage?.totalTokens).toBeTypeOf("number");
     expect(result.costUsd).toBeGreaterThan(0);
+  });
+
+  chatGptIt("ChatGPT: generateJson returns validated JSON", async () => {
+    const schema = z.object({ ok: z.boolean(), message: z.string() });
+    const { value } = await generateJson({
+      model: "chatgpt-gpt-5.1-codex-mini",
+      input: 'Return exactly this JSON object: {"ok":true,"message":"hello"}. Return only JSON.',
+      schema,
+      openAiReasoningEffort: "low",
+    });
+
+    expect(value.ok).toBe(true);
+    expect(value.message).toContain("hello");
   });
 });

@@ -36,7 +36,7 @@ describe("streamText (Gemini)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gemini-2.5-pro", prompt: "hi" });
+    const call = streamText({ model: "gemini-2.5-pro", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
