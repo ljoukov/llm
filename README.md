@@ -78,6 +78,12 @@ https://www.rfc-editor.org/rfc/rfc4648
 
 ## Usage
 
+`v2` uses OpenAI-style request fields:
+
+- `input`: string or message array
+- `instructions`: optional top-level system instructions
+- message roles: `developer`, `system`, `user`, `assistant`
+
 ### Basic (non-streaming)
 
 ```ts
@@ -85,7 +91,7 @@ import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
   model: "gpt-5.2",
-  prompt: "Write one sentence about TypeScript.",
+  input: "Write one sentence about TypeScript.",
 });
 
 console.log(result.text);
@@ -99,7 +105,7 @@ import { streamText } from "@ljoukov/llm";
 
 const call = streamText({
   model: "gpt-5.2",
-  prompt: "Explain what a hash function is in one paragraph.",
+  input: "Explain what a hash function is in one paragraph.",
 });
 
 for await (const event of call.events) {
@@ -120,33 +126,31 @@ console.log("\nmodelVersion:", result.modelVersion);
 
 ### Full conversation (multi-turn)
 
-If you want to pass the full conversation (multiple user/assistant turns), use `contents` instead of `prompt`.
-
-Note: assistant messages use `role: "model"`.
+Pass a full message array via `input`.
 
 ```ts
-import { generateText, type LlmContent } from "@ljoukov/llm";
+import { generateText, type LlmInputMessage } from "@ljoukov/llm";
 
-const contents: LlmContent[] = [
+const input: LlmInputMessage[] = [
   {
     role: "system",
-    parts: [{ type: "text", text: "You are a concise assistant." }],
+    content: "You are a concise assistant.",
   },
   {
     role: "user",
-    parts: [{ type: "text", text: "Summarize: Rust is a systems programming language." }],
+    content: "Summarize: Rust is a systems programming language.",
   },
   {
-    role: "model",
-    parts: [{ type: "text", text: "Rust is a fast, memory-safe systems language." }],
+    role: "assistant",
+    content: "Rust is a fast, memory-safe systems language.",
   },
   {
     role: "user",
-    parts: [{ type: "text", text: "Now rewrite it in 1 sentence." }],
+    content: "Now rewrite it in 1 sentence.",
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", contents });
+const result = await generateText({ model: "gpt-5.2", input });
 console.log(result.text);
 ```
 
@@ -162,21 +166,21 @@ Note: `inlineData` is mapped based on `mimeType`.
 
 ```ts
 import fs from "node:fs";
-import { generateText, type LlmContent } from "@ljoukov/llm";
+import { generateText, type LlmInputMessage } from "@ljoukov/llm";
 
 const imageB64 = fs.readFileSync("image.png").toString("base64");
 
-const contents: LlmContent[] = [
+const input: LlmInputMessage[] = [
   {
     role: "user",
-    parts: [
+    content: [
       { type: "text", text: "Describe this image in 1 paragraph." },
       { type: "inlineData", mimeType: "image/png", data: imageB64 },
     ],
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", contents });
+const result = await generateText({ model: "gpt-5.2", input });
 console.log(result.text);
 ```
 
@@ -184,21 +188,21 @@ PDF attachment example:
 
 ```ts
 import fs from "node:fs";
-import { generateText, type LlmContent } from "@ljoukov/llm";
+import { generateText, type LlmInputMessage } from "@ljoukov/llm";
 
 const pdfB64 = fs.readFileSync("doc.pdf").toString("base64");
 
-const contents: LlmContent[] = [
+const input: LlmInputMessage[] = [
   {
     role: "user",
-    parts: [
+    content: [
       { type: "text", text: "Summarize this PDF in 5 bullet points." },
       { type: "inlineData", mimeType: "application/pdf", data: pdfB64 },
     ],
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", contents });
+const result = await generateText({ model: "gpt-5.2", input });
 console.log(result.text);
 ```
 
@@ -206,15 +210,15 @@ Intermixed text + multiple images (e.g. compare two images):
 
 ```ts
 import fs from "node:fs";
-import { generateText, type LlmContent } from "@ljoukov/llm";
+import { generateText, type LlmInputMessage } from "@ljoukov/llm";
 
 const a = fs.readFileSync("a.png").toString("base64");
 const b = fs.readFileSync("b.png").toString("base64");
 
-const contents: LlmContent[] = [
+const input: LlmInputMessage[] = [
   {
     role: "user",
-    parts: [
+    content: [
       { type: "text", text: "Compare the two images. List the important differences." },
       { type: "text", text: "Image A:" },
       { type: "inlineData", mimeType: "image/png", data: a },
@@ -224,7 +228,7 @@ const contents: LlmContent[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", contents });
+const result = await generateText({ model: "gpt-5.2", input });
 console.log(result.text);
 ```
 
@@ -235,7 +239,7 @@ import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
   model: "gemini-2.5-pro",
-  prompt: "Return exactly: OK",
+  input: "Return exactly: OK",
 });
 
 console.log(result.text);
@@ -250,7 +254,7 @@ import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
   model: "chatgpt-gpt-5.1-codex-mini",
-  prompt: "Return exactly: OK",
+  input: "Return exactly: OK",
 });
 
 console.log(result.text);
@@ -262,7 +266,8 @@ console.log(result.text);
 
 - OpenAI API models use structured outputs (`json_schema`) when possible.
 - Gemini uses `responseJsonSchema`.
-- `chatgpt-*` models fall back to best-effort JSON parsing (no strict schema mode).
+- `chatgpt-*` models try to use structured outputs too; if rejected by the endpoint/model, it falls back to best-effort
+  JSON parsing.
 
 ```ts
 import { generateJson } from "@ljoukov/llm";
@@ -275,11 +280,70 @@ const schema = z.object({
 
 const { value } = await generateJson({
   model: "gpt-5.2",
-  prompt: "Return a JSON object with ok=true and message='hello'.",
+  input: "Return a JSON object with ok=true and message='hello'.",
   schema,
 });
 
 console.log(value.ok, value.message);
+```
+
+### Streaming JSON outputs
+
+Use `streamJson()` to stream thought deltas and get best-effort partial JSON snapshots while the model is still
+generating.
+
+```ts
+import { streamJson } from "@ljoukov/llm";
+import { z } from "zod";
+
+const schema = z.object({
+  ok: z.boolean(),
+  message: z.string(),
+});
+
+const call = streamJson({
+  model: "gpt-5.2",
+  input: "Return a JSON object with ok=true and message='hello'.",
+  schema,
+});
+
+for await (const event of call.events) {
+  if (event.type === "delta" && event.channel === "thought") {
+    process.stdout.write(event.text);
+  }
+  if (event.type === "json" && event.stage === "partial") {
+    console.log("partial:", event.value);
+  }
+}
+
+const { value } = await call.result;
+console.log("final:", value);
+```
+
+If you only want thought deltas (no partial JSON), set `streamMode: "final"`.
+
+```ts
+const call = streamJson({
+  model: "gpt-5.2",
+  input: "Return a JSON object with ok=true and message='hello'.",
+  schema,
+  streamMode: "final",
+});
+```
+
+If you want to keep `generateJson()` but still stream thoughts, pass an `onEvent` callback.
+
+```ts
+const { value } = await generateJson({
+  model: "gpt-5.2",
+  input: "Return a JSON object with ok=true and message='hello'.",
+  schema,
+  onEvent: (event) => {
+    if (event.type === "delta" && event.channel === "thought") {
+      process.stdout.write(event.text);
+    }
+  },
+});
 ```
 
 ## Tools
@@ -298,7 +362,7 @@ import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
   model: "gpt-5.2",
-  prompt: "Find 3 relevant sources about X and summarize them.",
+  input: "Find 3 relevant sources about X and summarize them.",
   tools: [{ type: "web-search", mode: "live" }, { type: "code-execution" }],
 });
 
@@ -315,7 +379,7 @@ import { z } from "zod";
 
 const result = await runToolLoop({
   model: "gpt-5.2",
-  prompt: "What is 12 * 9? Use the tool.",
+  input: "What is 12 * 9? Use the tool.",
   tools: {
     multiply: tool({
       description: "Multiply two integers.",

@@ -32,7 +32,7 @@ describe("streamText (ChatGPT)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "chatgpt-gpt-5.1-codex-mini", prompt: "hi" });
+    const call = streamText({ model: "chatgpt-gpt-5.1-codex-mini", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -58,10 +58,10 @@ describe("streamText (ChatGPT)", () => {
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
       model: "chatgpt-gpt-5.1-codex-mini",
-      contents: [
+      input: [
         {
           role: "user",
-          parts: [
+          content: [
             { type: "text", text: "Summarize the PDF." },
             { type: "inlineData", mimeType: "application/pdf", data: pdfB64 },
           ],
