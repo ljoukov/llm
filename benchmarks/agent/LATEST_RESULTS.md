@@ -1,38 +1,31 @@
 # Latest Agent Benchmark Results
 
-This is a committed summary of the most recent benchmark run.
+This file is auto-generated from the latest benchmark run.
 
-- Run id: `agent-fs-2026-02-12T13-24-32-749Z`
-- Task: `tumor-vaccine-ici`
-- Models: `chatgpt-gpt-5.3-codex`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`
+- Run id: `agent-fs-2026-02-12T14-05-19-492Z`
+- Generated at: `2026-02-12T14:06:40.713Z`
+- Tasks: `tumor-vaccine-ici`
+- Models: `chatgpt-gpt-5.3-codex`
 - Grader: `gpt-5.2`
+
+## Aggregate
+
+- Cases: 1/1 pass (1/1 schema, 1/1 tool trace, 1/1 grader)
+- Total latency: 81.20s
+- Avg latency per case: 81.20s
+- Total cost: $0.110413
+- Tokens (in/cached/out): 40,809/0/4,525
+- Thinking tokens: 1,091
+- Total tokens: 46,425
 
 ## Outcome
 
-| Model | Overall | Schema | Tool Trace | Grader | Tool Calls |
-|---|---|---|---|---|---:|
-| `chatgpt-gpt-5.3-codex` | PASS | pass | pass | pass | 26 |
-| `gemini-2.5-pro` | FAIL | fail | pass | fail | 22 |
-| `gemini-flash-latest` | FAIL | pass | pass | fail | 20 |
-| `gemini-3-pro-preview` | FAIL | pass | pass | fail | 22 |
-| `gemini-3-flash-preview` | FAIL | pass | pass | fail | 22 |
+| Model | Overall | Schema | Tool Trace | Grader | Tool Calls | Avg latency (s) | Total latency (s) | Cost (USD) | In tokens | Cached tokens | Out tokens |
+|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `chatgpt-gpt-5.3-codex` | PASS | 1/1 | 1/1 | 1/1 | 28 | 81.20 | 81.20 | 0.110413 | 40,809 | 0 | 4,525 |
 
-## Interpretation
+## Artifact Paths
 
-- Codex 5.3: passed end-to-end on a non-trivial filesystem extraction/summarization task.
-- Gemini 2.5 Pro: used tools correctly but failed strict output quality checks in this run (schema + grader).
-- Gemini Flash: used tools and satisfied schema in this run, but failed grader on faithfulness/calibration.
-- Gemini 3 Pro preview: used tools and satisfied schema in this run, but failed grader on faithfulness/calibration.
-- Gemini 3 Flash preview: used tools and satisfied schema in this run, but failed grader on faithfulness/calibration.
+- Committed traces/workspaces: `benchmarks/agent/traces/latest/`
+- Raw run outputs (gitignored): `benchmarks/agent/results/`
 
-## Tool Usage Confirmation
-
-All five models called filesystem tools (read + write) and produced trace artifacts. Path policy checks passed:
-
-- no absolute paths
-- no `..` traversal
-
-## Note on Artifacts
-
-Committed per-model traces and workspace snapshots are available at `benchmarks/agent/traces/latest/`.
-Raw per-run artifacts are generated under `benchmarks/agent/results/` at runtime (gitignored).

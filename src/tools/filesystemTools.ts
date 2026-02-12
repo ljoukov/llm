@@ -161,8 +161,8 @@ const applyPatchInputSchema = z.object({
 
 const geminiReadFileInputSchema = z.object({
   file_path: z.string().min(1),
-  offset: z.number().int().min(0).optional(),
-  limit: z.number().int().min(1).optional(),
+  offset: z.number().int().min(0).nullish(),
+  limit: z.number().int().min(1).nullish(),
 });
 
 const geminiReadFilesInputSchema = z
@@ -203,8 +203,8 @@ const geminiListDirectoryInputSchema = z.object({
   ignore: z.array(z.string()).nullish(),
   file_filtering_options: z
     .object({
-      respect_git_ignore: z.boolean().optional(),
-      respect_gemini_ignore: z.boolean().optional(),
+      respect_git_ignore: z.boolean().nullish(),
+      respect_gemini_ignore: z.boolean().nullish(),
     })
     .nullish(),
 });

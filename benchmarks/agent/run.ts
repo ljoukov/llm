@@ -70,6 +70,14 @@ type ToolTraceEvaluation = {
 
 type GraderVerdict = z.infer<typeof GraderSchema>;
 
+type UsageSummary = {
+  readonly promptTokens: number;
+  readonly cachedTokens: number;
+  readonly responseTokens: number;
+  readonly thinkingTokens: number;
+  readonly totalTokens: number;
+};
+
 type CaseResult = {
   readonly model: string;
   readonly taskId: string;
@@ -83,6 +91,9 @@ type CaseResult = {
   readonly agentCostUsd: number;
   readonly graderCostUsd: number;
   readonly totalCostUsd: number;
+  readonly agentUsage: UsageSummary;
+  readonly graderUsage: UsageSummary;
+  readonly totalUsage: UsageSummary;
   readonly modelVersions: readonly string[];
   readonly agentFinalText: string;
   readonly agentError?: string;
@@ -307,6 +318,66 @@ async function loadPromptTemplates(benchmarkRoot: string): Promise<PromptTemplat
 
 function formatUsd(value: number): string {
   return value.toFixed(6);
+}
+
+function formatInt(value: number): string {
+  return value.toLocaleString("en-US");
+}
+
+function toNonNegativeInt(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  const floored = Math.floor(value);
+  return floored > 0 ? floored : 0;
+}
+
+function emptyUsageSummary(): UsageSummary {
+  return {
+    promptTokens: 0,
+    cachedTokens: 0,
+    responseTokens: 0,
+    thinkingTokens: 0,
+    totalTokens: 0,
+  };
+}
+
+function sumUsageSummaries(values: readonly UsageSummary[]): UsageSummary {
+  const total = {
+    promptTokens: 0,
+    cachedTokens: 0,
+    responseTokens: 0,
+    thinkingTokens: 0,
+    totalTokens: 0,
+  };
+  for (const value of values) {
+    total.promptTokens += value.promptTokens;
+    total.cachedTokens += value.cachedTokens;
+    total.responseTokens += value.responseTokens;
+    total.thinkingTokens += value.thinkingTokens;
+    total.totalTokens += value.totalTokens;
+  }
+  return total;
+}
+
+function summarizeUsage(value: unknown): UsageSummary {
+  if (typeof value !== "object" || value === null) {
+    return emptyUsageSummary();
+  }
+  const usage = value as {
+    promptTokens?: unknown;
+    cachedTokens?: unknown;
+    responseTokens?: unknown;
+    thinkingTokens?: unknown;
+    totalTokens?: unknown;
+  };
+  return {
+    promptTokens: toNonNegativeInt(usage.promptTokens),
+    cachedTokens: toNonNegativeInt(usage.cachedTokens),
+    responseTokens: toNonNegativeInt(usage.responseTokens),
+    thinkingTokens: toNonNegativeInt(usage.thinkingTokens),
+    totalTokens: toNonNegativeInt(usage.totalTokens),
+  };
 }
 
 function asJsonRecord(value: unknown): JsonRecord | undefined {
@@ -797,6 +868,7 @@ async function gradeOutputs(params: {
   readonly value?: GraderVerdict;
   readonly error?: string;
   readonly costUsd: number;
+  readonly usage: UsageSummary;
 }> {
   try {
     const response = await generateJson({
@@ -817,10 +889,11 @@ async function gradeOutputs(params: {
     return {
       value: response.value,
       costUsd: response.result.costUsd,
+      usage: summarizeUsage(response.result.usage),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { error: message, costUsd: 0 };
+    return { error: message, costUsd: 0, usage: emptyUsageSummary() };
   }
 }
 
@@ -851,6 +924,7 @@ async function runCase(params: {
   let agentError: string | undefined;
   let agentFinalText = "";
   let agentCostUsd = 0;
+  let agentUsage: UsageSummary = emptyUsageSummary();
   let modelVersions: readonly string[] = [];
   let agentSteps: readonly LlmToolLoopStep[] = [];
   const fsActions: FilesystemActionTrace[] = [];
@@ -884,6 +958,7 @@ async function runCase(params: {
     agentFinalText = sanitizePathLikeText(result.text, layout.rootAbs);
     agentCostUsd = result.totalCostUsd;
     agentSteps = result.steps;
+    agentUsage = sumUsageSummaries(result.steps.map((step) => summarizeUsage(step.usage)));
     modelVersions = [...new Set(result.steps.map((step) => step.modelVersion))];
 
     const redactedResult = redactSensitivePaths(result, layout.rootAbs);
@@ -928,6 +1003,7 @@ async function runCase(params: {
   const graderPass = grader.value?.verdict === "pass";
   const durationMs = Date.now() - startedAt;
   const totalCostUsd = agentCostUsd + grader.costUsd;
+  const totalUsage = sumUsageSummaries([agentUsage, grader.usage]);
 
   const success = !agentError && schemaPass && toolTrace.pass && graderPass;
 
@@ -944,6 +1020,9 @@ async function runCase(params: {
     agentCostUsd,
     graderCostUsd: grader.costUsd,
     totalCostUsd,
+    agentUsage,
+    graderUsage: grader.usage,
+    totalUsage,
     modelVersions,
     agentFinalText,
     agentError,
@@ -1028,7 +1107,10 @@ function summarizeByModel(
   readonly toolPass: number;
   readonly graderPass: number;
   readonly avgDurationMs: number;
+  readonly totalDurationMs: number;
+  readonly totalToolCalls: number;
   readonly totalCostUsd: number;
+  readonly totalUsage: UsageSummary;
 } {
   const modelCases = cases.filter((entry) => entry.model === model);
   const count = modelCases.length;
@@ -1036,9 +1118,11 @@ function summarizeByModel(
   const schemaPass = modelCases.filter((entry) => entry.schemaPass).length;
   const toolPass = modelCases.filter((entry) => entry.toolTracePass).length;
   const graderPass = modelCases.filter((entry) => entry.graderPass).length;
-  const avgDurationMs =
-    count === 0 ? 0 : modelCases.reduce((acc, entry) => acc + entry.durationMs, 0) / count;
+  const totalDurationMs = modelCases.reduce((acc, entry) => acc + entry.durationMs, 0);
+  const avgDurationMs = count === 0 ? 0 : totalDurationMs / count;
+  const totalToolCalls = modelCases.reduce((acc, entry) => acc + entry.toolTrace.totalCalls, 0);
   const totalCostUsd = modelCases.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+  const totalUsage = sumUsageSummaries(modelCases.map((entry) => entry.totalUsage));
 
   return {
     model,
@@ -1048,12 +1132,16 @@ function summarizeByModel(
     toolPass,
     graderPass,
     avgDurationMs,
+    totalDurationMs,
+    totalToolCalls,
     totalCostUsd,
+    totalUsage,
   };
 }
 
 function buildMarkdownReport(params: {
   runId: string;
+  generatedAt: string;
   models: readonly string[];
   tasks: readonly ScienceBenchmarkTask[];
   runs: number;
@@ -1068,12 +1156,15 @@ function buildMarkdownReport(params: {
   const toolPass = params.caseResults.filter((entry) => entry.toolTracePass).length;
   const graderPass = params.caseResults.filter((entry) => entry.graderPass).length;
   const totalCostUsd = params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+  const totalDurationMs = params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0);
+  const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
+  const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
 
   const lines: string[] = [];
   lines.push("# Filesystem Agent Benchmark Report");
   lines.push("");
   lines.push(`- Run id: ${params.runId}`);
-  lines.push(`- Generated at: ${new Date().toISOString()}`);
+  lines.push(`- Generated at: ${params.generatedAt}`);
   lines.push(`- Models: ${params.models.join(", ")}`);
   lines.push(`- Grader model: ${params.graderModel}`);
   lines.push(`- Reasoning effort: ${params.reasoning}`);
@@ -1084,7 +1175,14 @@ function buildMarkdownReport(params: {
   lines.push(`- Schema pass: ${schemaPass}/${totalCases}`);
   lines.push(`- Tool trace pass: ${toolPass}/${totalCases}`);
   lines.push(`- Grader pass: ${graderPass}/${totalCases}`);
+  lines.push(`- Observed total latency: ${(totalDurationMs / 1000).toFixed(2)}s`);
+  lines.push(`- Observed avg latency/case: ${(avgDurationMs / 1000).toFixed(2)}s`);
   lines.push(`- Observed total cost: $${formatUsd(totalCostUsd)}`);
+  lines.push(
+    `- Observed tokens (in/cached/out): ${formatInt(totalUsage.promptTokens)}/${formatInt(totalUsage.cachedTokens)}/${formatInt(totalUsage.responseTokens)}`,
+  );
+  lines.push(`- Observed thinking tokens: ${formatInt(totalUsage.thinkingTokens)}`);
+  lines.push(`- Observed total tokens: ${formatInt(totalUsage.totalTokens)}`);
   lines.push("");
 
   lines.push("## Source Papers");
@@ -1112,13 +1210,13 @@ function buildMarkdownReport(params: {
   lines.push("## Per-Model Summary");
   lines.push("");
   lines.push(
-    "| Model | Success | Schema pass | Tool pass | Grader pass | Avg latency (s) | Total cost (USD) |",
+    "| Model | Success | Schema pass | Tool pass | Grader pass | Avg latency (s) | Total latency (s) | Tool calls | Total cost (USD) | In tokens | Cached tokens | Out tokens |",
   );
-  lines.push("|---|---:|---:|---:|---:|---:|---:|");
+  lines.push("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const model of params.models) {
     const summary = summarizeByModel(model, params.caseResults);
     lines.push(
-      `| ${summary.model} | ${summary.success}/${summary.cases} | ${summary.schemaPass}/${summary.cases} | ${summary.toolPass}/${summary.cases} | ${summary.graderPass}/${summary.cases} | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.totalCostUsd)} |`,
+      `| ${summary.model} | ${summary.success}/${summary.cases} | ${summary.schemaPass}/${summary.cases} | ${summary.toolPass}/${summary.cases} | ${summary.graderPass}/${summary.cases} | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.totalDurationMs / 1000).toFixed(2)} | ${summary.totalToolCalls} | ${formatUsd(summary.totalCostUsd)} | ${formatInt(summary.totalUsage.promptTokens)} | ${formatInt(summary.totalUsage.cachedTokens)} | ${formatInt(summary.totalUsage.responseTokens)} |`,
     );
   }
   lines.push("");
@@ -1126,12 +1224,12 @@ function buildMarkdownReport(params: {
   lines.push("## Case Matrix");
   lines.push("");
   lines.push(
-    "| Model | Task | Run | Status | Schema | Tool trace | Grader | Tool calls | Cost (USD) |",
+    "| Model | Task | Run | Status | Schema | Tool trace | Grader | Latency (s) | Tool calls | Cost (USD) | In tokens | Cached tokens | Out tokens |",
   );
-  lines.push("|---|---|---:|---|---|---|---|---:|---:|");
+  lines.push("|---|---|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|");
   for (const result of params.caseResults) {
     lines.push(
-      `| ${result.model} | ${result.taskId} | ${result.runIndex} | ${result.success ? "PASS" : "FAIL"} | ${result.schemaPass ? "pass" : "fail"} | ${result.toolTracePass ? "pass" : "fail"} | ${result.graderPass ? "pass" : "fail"} | ${result.toolTrace.totalCalls} | ${formatUsd(result.totalCostUsd)} |`,
+      `| ${result.model} | ${result.taskId} | ${result.runIndex} | ${result.success ? "PASS" : "FAIL"} | ${result.schemaPass ? "pass" : "fail"} | ${result.toolTracePass ? "pass" : "fail"} | ${result.graderPass ? "pass" : "fail"} | ${(result.durationMs / 1000).toFixed(2)} | ${result.toolTrace.totalCalls} | ${formatUsd(result.totalCostUsd)} | ${formatInt(result.totalUsage.promptTokens)} | ${formatInt(result.totalUsage.cachedTokens)} | ${formatInt(result.totalUsage.responseTokens)} |`,
     );
   }
   lines.push("");
@@ -1165,6 +1263,75 @@ function buildMarkdownReport(params: {
       );
     }
   }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function buildLatestResultsMarkdown(params: {
+  runId: string;
+  generatedAt: string;
+  models: readonly string[];
+  tasks: readonly ScienceBenchmarkTask[];
+  graderModel: string;
+  caseResults: readonly CaseResult[];
+}): string {
+  const totalCases = params.caseResults.length;
+  const success = params.caseResults.filter((entry) => entry.success).length;
+  const schemaPass = params.caseResults.filter((entry) => entry.schemaPass).length;
+  const toolPass = params.caseResults.filter((entry) => entry.toolTracePass).length;
+  const graderPass = params.caseResults.filter((entry) => entry.graderPass).length;
+  const totalCostUsd = params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+  const totalDurationMs = params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0);
+  const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
+  const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
+
+  const lines: string[] = [];
+  lines.push("# Latest Agent Benchmark Results");
+  lines.push("");
+  lines.push("This file is auto-generated from the latest benchmark run.");
+  lines.push("");
+  lines.push(`- Run id: \`${params.runId}\``);
+  lines.push(`- Generated at: \`${params.generatedAt}\``);
+  lines.push(`- Tasks: ${params.tasks.map((task) => `\`${task.id}\``).join(", ")}`);
+  lines.push(`- Models: ${params.models.map((model) => `\`${model}\``).join(", ")}`);
+  lines.push(`- Grader: \`${params.graderModel}\``);
+  lines.push("");
+
+  lines.push("## Aggregate");
+  lines.push("");
+  lines.push(
+    `- Cases: ${success}/${totalCases} pass (${schemaPass}/${totalCases} schema, ${toolPass}/${totalCases} tool trace, ${graderPass}/${totalCases} grader)`,
+  );
+  lines.push(`- Total latency: ${(totalDurationMs / 1000).toFixed(2)}s`);
+  lines.push(`- Avg latency per case: ${(avgDurationMs / 1000).toFixed(2)}s`);
+  lines.push(`- Total cost: $${formatUsd(totalCostUsd)}`);
+  lines.push(
+    `- Tokens (in/cached/out): ${formatInt(totalUsage.promptTokens)}/${formatInt(totalUsage.cachedTokens)}/${formatInt(totalUsage.responseTokens)}`,
+  );
+  lines.push(`- Thinking tokens: ${formatInt(totalUsage.thinkingTokens)}`);
+  lines.push(`- Total tokens: ${formatInt(totalUsage.totalTokens)}`);
+  lines.push("");
+
+  lines.push("## Outcome");
+  lines.push("");
+  lines.push(
+    "| Model | Overall | Schema | Tool Trace | Grader | Tool Calls | Avg latency (s) | Total latency (s) | Cost (USD) | In tokens | Cached tokens | Out tokens |",
+  );
+  lines.push("|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|");
+  for (const model of params.models) {
+    const summary = summarizeByModel(model, params.caseResults);
+    const overall = summary.success === summary.cases ? "PASS" : "FAIL";
+    lines.push(
+      `| \`${summary.model}\` | ${overall} | ${summary.schemaPass}/${summary.cases} | ${summary.toolPass}/${summary.cases} | ${summary.graderPass}/${summary.cases} | ${summary.totalToolCalls} | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.totalDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.totalCostUsd)} | ${formatInt(summary.totalUsage.promptTokens)} | ${formatInt(summary.totalUsage.cachedTokens)} | ${formatInt(summary.totalUsage.responseTokens)} |`,
+    );
+  }
+  lines.push("");
+
+  lines.push("## Artifact Paths");
+  lines.push("");
+  lines.push("- Committed traces/workspaces: `benchmarks/agent/traces/latest/`");
+  lines.push("- Raw run outputs (gitignored): `benchmarks/agent/results/`");
+  lines.push("");
 
   return `${lines.join("\n")}\n`;
 }
@@ -1292,8 +1459,11 @@ async function main(): Promise<void> {
     }
   }
 
+  const generatedAt = new Date().toISOString();
+
   const markdown = buildMarkdownReport({
     runId,
+    generatedAt,
     models,
     tasks,
     runs,
@@ -1303,9 +1473,18 @@ async function main(): Promise<void> {
     caseResults,
   });
 
+  const latestResultsMarkdown = buildLatestResultsMarkdown({
+    runId,
+    generatedAt,
+    models,
+    tasks,
+    graderModel,
+    caseResults,
+  });
+
   const summary = {
     runId,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     models,
     graderModel,
     reasoning,
@@ -1323,20 +1502,30 @@ async function main(): Promise<void> {
       schemaPass: caseResults.filter((entry) => entry.schemaPass).length,
       toolTracePass: caseResults.filter((entry) => entry.toolTracePass).length,
       graderPass: caseResults.filter((entry) => entry.graderPass).length,
+      totalDurationMs: caseResults.reduce((acc, entry) => acc + entry.durationMs, 0),
+      avgDurationMs:
+        caseResults.length === 0
+          ? 0
+          : caseResults.reduce((acc, entry) => acc + entry.durationMs, 0) / caseResults.length,
       totalCostUsd: caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0),
+      usage: sumUsageSummaries(caseResults.map((entry) => entry.totalUsage)),
     },
     results: caseResults,
   };
 
   const summaryJsonPath = join(runRoot, "summary.json");
   const summaryMarkdownPath = join(runRoot, "report.md");
+  const latestResultsPath = join(benchmarkRoot, "LATEST_RESULTS.md");
   await writeFile(summaryJsonPath, `${JSON.stringify(summary, null, 2)}\n`);
   await writeFile(summaryMarkdownPath, markdown);
+  await writeFile(latestResultsPath, latestResultsMarkdown);
 
   const displaySummaryJsonPath = normalizeSlashes(relative(process.cwd(), summaryJsonPath));
   const displaySummaryMarkdownPath = normalizeSlashes(relative(process.cwd(), summaryMarkdownPath));
+  const displayLatestResultsPath = normalizeSlashes(relative(process.cwd(), latestResultsPath));
   console.log(`\nWrote: ${displaySummaryJsonPath}`);
   console.log(`Wrote: ${displaySummaryMarkdownPath}`);
+  console.log(`Wrote: ${displayLatestResultsPath}`);
 }
 
 void main().catch((error) => {
