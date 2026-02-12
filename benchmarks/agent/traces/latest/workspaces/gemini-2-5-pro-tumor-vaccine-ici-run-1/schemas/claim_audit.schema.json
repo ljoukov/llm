@@ -18,7 +18,11 @@
           },
           "strength": {
             "type": "string",
-            "enum": ["strong", "moderate", "tentative"]
+            "enum": [
+              "strong",
+              "moderate",
+              "tentative"
+            ]
           },
           "evidence": {
             "type": "array",
@@ -34,7 +38,10 @@
                   "pattern": "^L[1-9]\\d*$"
                 }
               },
-              "required": ["quote", "line_ref"],
+              "required": [
+                "quote",
+                "line_ref"
+              ],
               "additionalProperties": false
             },
             "minItems": 2,
@@ -45,13 +52,21 @@
             "minLength": 20
           }
         },
-        "required": ["claim_id", "claim", "strength", "evidence", "caveat"],
+        "required": [
+          "claim_id",
+          "claim",
+          "strength",
+          "evidence",
+          "caveat"
+        ],
         "additionalProperties": false
       },
       "minItems": 4,
       "maxItems": 10
     }
   },
-  "required": ["claims"],
+  "required": [
+    "claims"
+  ],
   "additionalProperties": false
 }

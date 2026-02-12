@@ -2874,6 +2874,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       request.openAiReasoningEffort,
     );
     const toolLoopInput = toChatGptInput(contents);
+    const promptCacheKey = `tool-loop-${randomBytes(8).toString("hex")}`;
     let input: ChatGptInputItem[] = [...toolLoopInput.input];
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
@@ -2885,6 +2886,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stream: true,
           instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
           input,
+          prompt_cache_key: promptCacheKey,
           include: ["reasoning.encrypted_content"],
           tools: openAiTools,
           tool_choice: "auto" as const,

@@ -8,14 +8,16 @@ This benchmark evaluates a filesystem-based agent that must:
 - ground claims in report evidence (line refs and quotes), and
 - pass an LLM grader (`gpt-5.2`) for fidelity and coverage.
 
-It runs the agent with:
+It runs the agent with (default model set):
 
 - ChatGPT Codex: `chatgpt-gpt-5.3-codex`
-- Gemini Pro: `gemini-2.5-pro`
-- Gemini Flash: `gemini-flash-latest`
+- OpenAI Responses: `gpt-5.2`
+- Gemini Pro: `gemini-2.5-pro`, `gemini-3-pro-preview`
+- Gemini Flash: `gemini-flash-latest`, `gemini-3-flash-preview`
 
 The tasks are adapted from real science papers and stored under `benchmarks/agent/input/`.
 Default run uses one shared task (`tumor-vaccine-ici`) across all models so Codex vs Gemini is directly comparable.
+Runs execute models in parallel and tasks/runs sequentially per model.
 
 ## Run
 
@@ -33,7 +35,7 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-5.3-codex,gemini-2.5-pro,gemini-flash-latest \
+  --models chatgpt-gpt-5.3-codex,gpt-5.2,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3-flash-preview \
   --tasks tumor-vaccine-ici \
   --runs 1 \
   --reasoning medium \

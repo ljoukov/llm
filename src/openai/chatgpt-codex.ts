@@ -146,6 +146,7 @@ export type ChatGptCodexCollectedResponse = {
   toolCalls: ChatGptCodexToolCall[];
   webSearchCalls: ChatGptCodexWebSearchCall[];
   usage?: ChatGptCodexUsage;
+  id?: string;
   model?: string;
   status?: string;
   blocked: boolean;
@@ -206,6 +207,7 @@ export async function collectChatGptCodexResponse(options: {
   const reasoningText = "";
   let reasoningSummaryText = "";
   let usage: ChatGptCodexUsage | undefined;
+  let responseId: string | undefined;
   let model: string | undefined;
   let status: string | undefined;
   let blocked = false;
@@ -283,6 +285,7 @@ export async function collectChatGptCodexResponse(options: {
       const response = event.response as Record<string, unknown> | undefined;
       if (response) {
         usage = response.usage as ChatGptCodexUsage | undefined;
+        responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
         status = typeof response.status === "string" ? response.status : undefined;
       }
@@ -292,6 +295,7 @@ export async function collectChatGptCodexResponse(options: {
       const response = event.response as Record<string, unknown> | undefined;
       if (response) {
         usage = response.usage as ChatGptCodexUsage | undefined;
+        responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
         status = typeof response.status === "string" ? response.status : undefined;
       }
@@ -301,6 +305,7 @@ export async function collectChatGptCodexResponse(options: {
       const response = event.response as Record<string, unknown> | undefined;
       if (response) {
         usage = response.usage as ChatGptCodexUsage | undefined;
+        responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
         status = typeof response.status === "string" ? response.status : undefined;
       }
@@ -326,6 +331,7 @@ export async function collectChatGptCodexResponse(options: {
     toolCalls: orderedToolCalls,
     webSearchCalls: orderedWebSearchCalls,
     usage,
+    id: responseId,
     model,
     status,
     blocked,
