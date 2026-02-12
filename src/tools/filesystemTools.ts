@@ -200,13 +200,13 @@ const geminiReplaceInputSchema = z.object({
 
 const geminiListDirectoryInputSchema = z.object({
   dir_path: z.string().min(1),
-  ignore: z.array(z.string()).optional(),
+  ignore: z.array(z.string()).nullish(),
   file_filtering_options: z
     .object({
       respect_git_ignore: z.boolean().optional(),
       respect_gemini_ignore: z.boolean().optional(),
     })
-    .optional(),
+    .nullish(),
 });
 
 const geminiRgSearchInputSchema = z.object({

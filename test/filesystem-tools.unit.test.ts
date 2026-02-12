@@ -76,6 +76,17 @@ describe("filesystemTools behavior", () => {
       }),
     ).toBe("example.ts");
 
+    expect(listDirectory.inputSchema.safeParse({ dir_path: "src", ignore: null }).success).toBe(
+      true,
+    );
+    expect(
+      await listDirectory.execute({
+        dir_path: "src",
+        ignore: null,
+        file_filtering_options: null,
+      }),
+    ).toBe("example.ts");
+
     const rgSearch = createRgSearchTool({ cwd, fs });
     expect(
       await rgSearch.execute({
