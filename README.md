@@ -348,14 +348,23 @@ const { value } = await generateJson({
 
 ## Tools
 
-This library supports two kinds of tools:
+Use this decision flow:
 
-- Model tools (server-side): `web-search` and `code-execution`
-- Your tools (JS/TS code): use `runToolLoop()` with `tool()` (JSON) or `customTool()` (freeform)
+1. Provider-native tools (`web-search`, `code-execution`) with `generateText()`.
+2. Your own JS/TS tools with `runToolLoop()`.
+3. Filesystem agent tasks with `runAgentLoop()` (model-aware filesystem tool auto-selection).
 
-### Model tools (web search / code execution)
+`runAgentLoop()` is a thin wrapper over `runToolLoop()`:
 
-These tools run on the provider side.
+- it builds a filesystem toolset based on the model id,
+- merges it with any custom tools you provide,
+- then runs the same tool loop engine.
+
+This means filesystem tooling is not a separate architecture; it's preconfigured tool wiring for tool-loop calls.
+
+### Provider-Native Tools (Server-Side)
+
+These run on the model provider side and are available in one-shot text generation calls.
 
 ```ts
 import { generateText } from "@ljoukov/llm";
@@ -369,9 +378,9 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-### Your tools (function + custom tool calling)
+### Custom Tools With `runToolLoop()`
 
-`runToolLoop()` runs a simple function-calling loop until the model returns a final answer or the step limit is hit.
+Use this when you want the model to call your own runtime code (functions or custom/freeform tools).
 
 ```ts
 import { runToolLoop, tool } from "@ljoukov/llm";
@@ -392,52 +401,26 @@ const result = await runToolLoop({
 console.log(result.text);
 ```
 
-For freeform/custom tools (for example Codex-style grammars), use `customTool()`.
+Use `customTool()` for freeform tool inputs (for example grammar-driven tools).
 
-### Built-in `apply_patch` tool
+### Filesystem Agents With `runAgentLoop()`
 
-The library includes:
+Use this for coding/file tasks where the model should inspect and edit files.
 
-- `createApplyPatchTool(...)`: JSON function-tool wrapper (`{ input: string }`)
-- `createCodexApplyPatchTool(...)`: Codex freeform/grammar style (used by codex filesystem profile)
+`filesystemTool.profile: "auto"` chooses tools by model:
 
-```ts
-import {
-  createApplyPatchTool,
-  createInMemoryAgentFilesystem,
-  runToolLoop,
-} from "@ljoukov/llm";
+- Codex-like models: Codex-style filesystem tools (`apply_patch`, `read_file`, `list_dir`, `grep_files`)
+- Gemini models: Gemini-style filesystem tools (`read_file`, `write_file`, `replace`, `list_directory`, `grep_search`, `glob`)
+- Other models: model-agnostic profile (currently Gemini-style)
 
-const fs = createInMemoryAgentFilesystem({
-  "/repo/index.ts": "export const value = 1;\n",
-});
+This is an adapter choice for compatibility, not a capability split. The high-level job is the same: read/search/list/write files inside your workspace policy.
 
-const result = await runToolLoop({
-  model: "chatgpt-gpt-5.3-codex",
-  input: "Use apply_patch to change value from 1 to 2.",
-  tools: {
-    apply_patch: createApplyPatchTool({
-      cwd: "/repo",
-      fs,
-      checkAccess: ({ path }) => {
-        if (!path.startsWith("/repo/")) {
-          throw new Error("Writes are allowed only inside /repo");
-        }
-      },
-    }),
-  },
-});
+Safety and confinement are controlled via `filesystemTool.options`:
 
-console.log(result.text);
-```
-
-### `runAgentLoop()` with model-aware filesystem tools
-
-Use `runAgentLoop()` when you want a default filesystem toolset chosen by model:
-
-- Codex-like models -> `apply_patch`, `read_file`, `list_dir`, `grep_files`
-- Gemini models -> `read_file`, `write_file`, `replace`, `list_directory`, `grep_search`, `glob`
-- Other models -> model-agnostic (Gemini-style) set by default
+- `cwd`: workspace root for path resolution
+- `fs`: backend (`createNodeAgentFilesystem()` or `createInMemoryAgentFilesystem()`)
+- `checkAccess`: hook for allow/deny policy
+- `allowOutsideCwd`: opt-out confinement (disabled by default)
 
 Detailed reference: `docs/agent-filesystem-tools.md`.
 
@@ -463,9 +446,31 @@ const result = await runAgentLoop({
 console.log(result.text);
 ```
 
-## Agent benchmark (micro)
+If you need explicit control over the exact filesystem toolset, build it manually and call `runToolLoop()` directly.
 
-For small edit-harness experiments with `chatgpt-gpt-5.3-codex`:
+```ts
+import {
+  createFilesystemToolSetForModel,
+  createInMemoryAgentFilesystem,
+  runToolLoop,
+} from "@ljoukov/llm";
+
+const fs = createInMemoryAgentFilesystem({ "/repo/a.ts": "export const n = 1;\n" });
+const tools = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex", {
+  cwd: "/repo",
+  fs,
+});
+
+const result = await runToolLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Update n to 2.",
+  tools,
+});
+```
+
+## Agent benchmark (filesystem extraction)
+
+For filesystem extraction/summarization evaluation across Codex and Gemini models:
 
 ```bash
 npm run bench:agent
