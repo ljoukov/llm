@@ -18,6 +18,8 @@ import type { ResponseTextConfig } from "openai/resources/responses/responses";
 import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
 import { estimateCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
 import { collectChatGptCodexResponse, type ChatGptInputItem } from "./openai/chatgpt-codex.js";
+import { runFireworksCall } from "./fireworks/calls.js";
+import { resolveFireworksModelId } from "./fireworks/models.js";
 import { runGeminiCall } from "./google/calls.js";
 import {
   runOpenAiCall,
@@ -88,7 +90,7 @@ export type LlmBlockedEvent = {
 
 export type LlmStreamEvent = LlmTextDeltaEvent | LlmUsageEvent | LlmModelEvent | LlmBlockedEvent;
 
-export type LlmProvider = "openai" | "chatgpt" | "gemini";
+export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks";
 
 export type LlmTextResult = {
   readonly provider: LlmProvider;
@@ -694,6 +696,12 @@ function resolveProvider(model: string): { provider: LlmProvider; model: string 
   if (model.startsWith("gemini-")) {
     return { provider: "gemini", model };
   }
+
+  const fireworksModel = resolveFireworksModelId(model);
+  if (fireworksModel) {
+    return { provider: "fireworks", model: fireworksModel };
+  }
+
   return { provider: "openai", model };
 }
 
@@ -1397,6 +1405,67 @@ function toChatGptInput(contents: readonly LlmContent[]): {
   };
 }
 
+function toFireworksMessages(
+  contents: readonly LlmContent[],
+  options?: { readonly responseMimeType?: string; readonly responseJsonSchema?: JsonSchema },
+): Array<Record<string, unknown>> {
+  const systemMessages: string[] = [];
+  const messages: Array<Record<string, unknown>> = [];
+
+  if (options?.responseMimeType === "application/json") {
+    systemMessages.push("Return valid JSON only. Do not include markdown or prose outside JSON.");
+  }
+  if (options?.responseJsonSchema) {
+    systemMessages.push(`Target JSON schema:
+${JSON.stringify(options.responseJsonSchema)}`);
+  }
+
+  for (const content of contents) {
+    const text = content.parts
+      .map((part) => {
+        if (part.type === "text") {
+          return part.text;
+        }
+        const mimeType = part.mimeType ?? "application/octet-stream";
+        if (isInlineImageMime(mimeType)) {
+          return `[image:${mimeType}]`;
+        }
+        return `[file:${mimeType}]`;
+      })
+      .join("\n")
+      .trim();
+
+    if (content.role === "system" || content.role === "developer") {
+      if (text.length > 0) {
+        systemMessages.push(text);
+      }
+      continue;
+    }
+
+    if (content.role === "tool" || content.role === "assistant") {
+      messages.push({
+        role: "assistant",
+        content: text.length > 0 ? text : "(empty content)",
+      });
+      continue;
+    }
+
+    messages.push({
+      role: "user",
+      content: text.length > 0 ? text : "(empty content)",
+    });
+  }
+
+  if (systemMessages.length > 0) {
+    messages.unshift({
+      role: "system",
+      content: systemMessages.join("\n\n"),
+    });
+  }
+
+  return messages;
+}
+
 function toGeminiTools(tools: readonly LlmToolConfig[] | undefined): GeminiTool[] | undefined {
   if (!tools || tools.length === 0) {
     return undefined;
@@ -1585,6 +1654,58 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
       ?.reasoning_tokens,
   );
   const totalTokens = toMaybeNumber((usage as { total_tokens?: unknown }).total_tokens);
+  let responseTokens: number | undefined;
+  if (outputTokensRaw !== undefined) {
+    const adjusted = outputTokensRaw - (reasoningTokens ?? 0);
+    responseTokens = adjusted >= 0 ? adjusted : 0;
+  }
+  if (
+    promptTokens === undefined &&
+    cachedTokens === undefined &&
+    responseTokens === undefined &&
+    reasoningTokens === undefined &&
+    totalTokens === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    promptTokens,
+    cachedTokens,
+    responseTokens,
+    thinkingTokens: reasoningTokens,
+    totalTokens,
+  };
+}
+
+
+function extractFireworksUsageTokens(usage: unknown): LlmUsageTokens | undefined {
+  if (!usage || typeof usage !== "object") {
+    return undefined;
+  }
+  const promptTokens = toMaybeNumber(
+    (usage as { prompt_tokens?: unknown }).prompt_tokens ??
+      (usage as { input_tokens?: unknown }).input_tokens,
+  );
+  const cachedTokens = toMaybeNumber(
+    (usage as { prompt_tokens_details?: { cached_tokens?: unknown } }).prompt_tokens_details
+      ?.cached_tokens ??
+      (usage as { input_tokens_details?: { cached_tokens?: unknown } }).input_tokens_details
+        ?.cached_tokens,
+  );
+  const outputTokensRaw = toMaybeNumber(
+    (usage as { completion_tokens?: unknown }).completion_tokens ??
+      (usage as { output_tokens?: unknown }).output_tokens,
+  );
+  const reasoningTokens = toMaybeNumber(
+    (usage as { completion_tokens_details?: { reasoning_tokens?: unknown } })
+      .completion_tokens_details?.reasoning_tokens ??
+      (usage as { output_tokens_details?: { reasoning_tokens?: unknown } }).output_tokens_details
+        ?.reasoning_tokens,
+  );
+  const totalTokens = toMaybeNumber(
+    (usage as { total_tokens?: unknown }).total_tokens ??
+      (usage as { totalTokenCount?: unknown }).totalTokenCount,
+  );
   let responseTokens: number | undefined;
   if (outputTokensRaw !== undefined) {
     const adjusted = outputTokensRaw - (reasoningTokens ?? 0);
@@ -1930,6 +2051,62 @@ function extractOpenAiToolCalls(output: unknown): OpenAiToolCall[] {
   return calls;
 }
 
+type FireworksFunctionToolCall = {
+  readonly id: string;
+  readonly name: string;
+  readonly arguments: string;
+};
+
+function extractFireworksMessageText(message: unknown): string {
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  let text = "";
+  for (const part of content) {
+    const textPart = (part as { text?: unknown }).text;
+    if (typeof textPart === "string") {
+      text += textPart;
+    }
+  }
+  return text;
+}
+
+function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[] {
+  if (!message || typeof message !== "object") {
+    return [];
+  }
+  const toolCalls = (message as { tool_calls?: unknown }).tool_calls;
+  if (!Array.isArray(toolCalls)) {
+    return [];
+  }
+  const calls: FireworksFunctionToolCall[] = [];
+  for (const call of toolCalls) {
+    if (!call || typeof call !== "object") {
+      continue;
+    }
+    const id = typeof (call as { id?: unknown }).id === "string" ? (call as { id?: string }).id : "";
+    const fn = (call as { function?: unknown }).function;
+    const name =
+      fn && typeof fn === "object" && typeof (fn as { name?: unknown }).name === "string"
+        ? ((fn as { name?: string }).name ?? "")
+        : "";
+    const args =
+      fn && typeof fn === "object" && typeof (fn as { arguments?: unknown }).arguments === "string"
+        ? ((fn as { arguments?: string }).arguments ?? "")
+        : "";
+    if (id && name) {
+      calls.push({ id, name, arguments: args });
+    }
+  }
+  return calls;
+}
 function resolveGeminiThinkingConfig(modelId: string): GenerateContentConfig["thinkingConfig"] {
   switch (modelId) {
     case "gemini-3-pro-preview":
@@ -2177,6 +2354,58 @@ async function runTextCall(params: {
     if (!sawResponseDelta && fallbackText.length > 0) {
       pushDelta("response", fallbackText);
     }
+  } else if (provider === "fireworks") {
+    if (request.tools && request.tools.length > 0) {
+      throw new Error(
+        "Fireworks provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
+      );
+    }
+
+    const fireworksMessages = toFireworksMessages(contents, {
+      responseMimeType: request.responseMimeType,
+      responseJsonSchema: request.responseJsonSchema,
+    });
+
+    await runFireworksCall(async (client) => {
+      const responseFormat = request.responseJsonSchema
+        ? {
+            type: "json_schema" as const,
+            json_schema: {
+              name: "llm-response",
+              schema: request.responseJsonSchema,
+            },
+          }
+        : request.responseMimeType === "application/json"
+          ? { type: "json_object" as const }
+          : undefined;
+
+      const response = await client.chat.completions.create(
+        {
+          model: modelForProvider,
+          messages: fireworksMessages as any,
+          ...(responseFormat ? { response_format: responseFormat } : {}),
+        } as any,
+        { signal } as any,
+      );
+
+      modelVersion = typeof response.model === "string" ? response.model : request.model;
+      queue.push({ type: "model", modelVersion });
+
+      const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+      if (choice?.finish_reason === "content_filter") {
+        blocked = true;
+        queue.push({ type: "blocked" });
+      }
+
+      const textOutput = extractFireworksMessageText(
+        (choice as { message?: unknown } | undefined)?.message,
+      );
+      if (textOutput.length > 0) {
+        pushDelta("response", textOutput);
+      }
+
+      latestUsage = extractFireworksUsageTokens(response.usage);
+    });
   } else {
     const geminiContents = contents.map(convertLlmContentToGeminiContent);
     const config: GenerateContentConfig = {
@@ -2322,6 +2551,7 @@ function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
   const schemaName = (request.openAiSchemaName ?? "llm-response").trim() || "llm-response";
   const providerInfo = resolveProvider(request.model);
   const isOpenAiVariant = providerInfo.provider === "openai" || providerInfo.provider === "chatgpt";
+  const isGeminiVariant = providerInfo.provider === "gemini";
   const baseJsonSchema = zodToJsonSchema(request.schema, {
     name: schemaName,
     target: isOpenAiVariant ? "openAi" : "jsonSchema7",
@@ -2329,7 +2559,9 @@ function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
 
   const responseJsonSchema = isOpenAiVariant
     ? resolveOpenAiSchemaRoot(baseJsonSchema)
-    : addGeminiPropertyOrdering(baseJsonSchema);
+    : isGeminiVariant
+      ? addGeminiPropertyOrdering(baseJsonSchema)
+      : resolveOpenAiSchemaRoot(baseJsonSchema);
 
   if (isOpenAiVariant && !isJsonSchemaObject(responseJsonSchema)) {
     throw new Error("OpenAI structured outputs require a JSON object schema at the root.");
@@ -2560,6 +2792,24 @@ function buildOpenAiToolsFromToolSet(tools: LlmToolSet): unknown[] {
   });
 }
 
+function buildFireworksToolsFromToolSet(tools: LlmToolSet): unknown[] {
+  const toolEntries = Object.entries(tools);
+  return toolEntries.map(([name, toolDef]) => {
+    if (isCustomTool(toolDef)) {
+      throw new Error(
+        `Fireworks provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
+      );
+    }
+    return {
+      type: "function",
+      function: {
+        name,
+        description: toolDef.description ?? undefined,
+        parameters: buildOpenAiToolSchema(toolDef.inputSchema, name),
+      },
+    };
+  });
+}
 function buildOpenAiToolSchema(schema: z.ZodType, name: string): JsonSchema {
   const rawSchema = zodToJsonSchema(schema, { name, target: "openAi" }) as JsonSchema;
   const normalized = normalizeOpenAiSchema(resolveOpenAiSchemaRoot(rawSchema));
@@ -2874,12 +3124,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       request.openAiReasoningEffort,
     );
     const toolLoopInput = toChatGptInput(contents);
-    const promptCacheKey = `tool-loop-${randomBytes(8).toString("hex")}`;
+    // ChatGPT Codex prompt caching is keyed by both prompt_cache_key and session_id.
+    const conversationId = `tool-loop-${randomBytes(8).toString("hex")}`;
+    const promptCacheKey = conversationId;
     let input: ChatGptInputItem[] = [...toolLoopInput.input];
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
       const response = await collectChatGptCodexResponse({
+        sessionId: conversationId,
         request: {
           model: providerInfo.model,
           store: false,
@@ -3021,6 +3274,143 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       });
 
       input = input.concat(toolOutputs);
+    }
+
+    throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+  }
+
+  if (providerInfo.provider === "fireworks") {
+    if (request.modelTools && request.modelTools.length > 0) {
+      throw new Error(
+        "Fireworks provider does not support provider-native modelTools in runToolLoop.",
+      );
+    }
+
+    const fireworksTools = buildFireworksToolsFromToolSet(request.tools);
+    const messages: Array<Record<string, unknown>> = toFireworksMessages(contents);
+
+    for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+      const turn = stepIndex + 1;
+      const response = await runFireworksCall(async (client) => {
+        return await client.chat.completions.create(
+          {
+            model: providerInfo.model,
+            messages: messages as any,
+            tools: fireworksTools as any,
+            tool_choice: "auto" as const,
+            parallel_tool_calls: true,
+          } as any,
+          { signal: request.signal } as any,
+        );
+      });
+
+      const modelVersion = typeof response.model === "string" ? response.model : request.model;
+      request.onEvent?.({ type: "model", modelVersion });
+
+      const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+      if (choice?.finish_reason === "content_filter") {
+        request.onEvent?.({ type: "blocked" });
+      }
+      const message = (choice as { message?: unknown } | undefined)?.message;
+      const responseText = extractFireworksMessageText(message).trim();
+      if (responseText.length > 0) {
+        request.onEvent?.({ type: "delta", channel: "response", text: responseText });
+      }
+
+      const usageTokens = extractFireworksUsageTokens(response.usage);
+      const stepCostUsd = estimateCallCostUsd({
+        modelId: modelVersion,
+        tokens: usageTokens,
+        responseImages: 0,
+      });
+      totalCostUsd += stepCostUsd;
+
+      if (usageTokens) {
+        request.onEvent?.({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
+      }
+
+      const responseToolCalls = extractFireworksToolCalls(message);
+      if (responseToolCalls.length === 0) {
+        finalText = responseText;
+        finalThoughts = "";
+        steps.push({
+          step: steps.length + 1,
+          modelVersion,
+          text: responseText || undefined,
+          thoughts: undefined,
+          toolCalls: [],
+          usage: usageTokens,
+          costUsd: stepCostUsd,
+        });
+        return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+      }
+
+      const stepToolCalls: LlmToolCallResult[] = [];
+      const callInputs = responseToolCalls.map((call, index) => {
+        const toolIndex = index + 1;
+        const toolId = buildToolLogId(turn, toolIndex);
+        const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
+        return { call, toolName: call.name, value, parseError, toolId, turn, toolIndex };
+      });
+
+      const callResults = await Promise.all(
+        callInputs.map(async (entry) => {
+          return await toolCallContextStorage.run(
+            {
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+            },
+            async () => {
+              const { result, outputPayload } = await executeToolCall({
+                callKind: "function",
+                toolName: entry.toolName,
+                tool: request.tools[entry.toolName],
+                rawInput: entry.value,
+                parseError: entry.parseError,
+              });
+              return { entry, result, outputPayload };
+            },
+          );
+        }),
+      );
+
+      const assistantToolCalls: Array<Record<string, unknown>> = [];
+      const toolMessages: Array<Record<string, unknown>> = [];
+      for (const { entry, result, outputPayload } of callResults) {
+        stepToolCalls.push({ ...result, callId: entry.call.id });
+        assistantToolCalls.push({
+          id: entry.call.id,
+          type: "function",
+          function: {
+            name: entry.toolName,
+            arguments: entry.call.arguments,
+          },
+        });
+        toolMessages.push({
+          role: "tool",
+          tool_call_id: entry.call.id,
+          content: mergeToolOutput(outputPayload),
+        });
+      }
+
+      steps.push({
+        step: steps.length + 1,
+        modelVersion,
+        text: responseText || undefined,
+        thoughts: undefined,
+        toolCalls: stepToolCalls,
+        usage: usageTokens,
+        costUsd: stepCostUsd,
+      });
+
+      messages.push({
+        role: "assistant",
+        ...(responseText.length > 0 ? { content: responseText } : {}),
+        tool_calls: assistantToolCalls,
+      });
+      messages.push(...toolMessages);
     }
 
     throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);

@@ -1,0 +1,23 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "The result is an integer value as all input bond energies are integers. The precision is determined by the given bond energy values."
+  },
+  "method": "The enthalpy change of reaction is calculated using the formula: deltaH = sum(energy of bonds broken) - sum(energy of bonds formed). First, identify the bonds broken in the reactants (CH4 and 2O2): four C-H bonds and two O=O bonds. The energy input to break these is (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ/mol. Next, identify the bonds formed in the products (CO2 and 2H2O): two C=O bonds and four O-H bonds. The energy released in forming these is (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ/mol. Finally, deltaH = 2648 - 3462 = -814 kJ/mol.",
+  "key_equations": [
+    "deltaH = sum(bonds broken) - sum(bonds formed)",
+    "CH4 + 2O2 -> CO2 + 2H2O"
+  ],
+  "line_refs": [
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "The calculation correctly identifies all bonds broken and formed in the balanced equation.",
+    "The final answer is negative, which is expected for a combustion reaction (exothermic).",
+    "The stoichiometric coefficients from the balanced equation are correctly applied to the number of molecules and thus bonds."
+  ]
+}

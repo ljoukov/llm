@@ -1,0 +1,27 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "The current (1.50 A) and time (30.0 min) both have three significant figures, which dictates the precision of the final answer."
+  },
+  "method": "First, the time is converted to seconds: 30.0 min * 60 s/min = 1800 s. The total charge (Q) passed is calculated using Faraday's first law, Q = I * t: Q = 1.50 A * 1800 s = 2700 C. The moles of electrons ($n_{e-}$) are calculated using the Faraday constant (F): $n_{e-} = Q / F = 2700 C / 96500 C mol^{-1} = 0.027979 mol$. From the half-equation ($Cu^{2+} + 2e^- -> Cu$), the mole ratio is $2 \text{ mol } e^- : 1 \text{ mol } Cu$, so $n_{Cu} = n_{e-} / 2 = 0.0139895 mol$. Finally, the mass is calculated: $m = n \times Mr = 0.0139895 mol \times 63.55 g mol^{-1} = 0.88914 g$. Rounded to three significant figures, the mass is 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "Cu2+ + 2e- -> Cu",
+    "n = m / Mr"
+  ],
+  "line_refs": [
+    "L17",
+    "L19",
+    "L24",
+    "L51"
+  ],
+  "checks": [
+    "Total charge Q = 2700 C.",
+    "Moles of electrons = 2700 / 96500 \u2248 0.02798 mol.",
+    "Moles of Cu = 0.02798 / 2 \u2248 0.01399 mol.",
+    "Mass of Cu = 0.01399 * 63.55 \u2248 0.889 g. Confirmed."
+  ]
+}

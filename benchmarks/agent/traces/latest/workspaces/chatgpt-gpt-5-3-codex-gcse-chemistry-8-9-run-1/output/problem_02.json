@@ -1,0 +1,18 @@
+{
+  "problem_id": "P02",
+  "final_answer": {
+    "value": 1.85,
+    "units": "g",
+    "precision_note": "3 significant figures are appropriate from 5.00 g, 84.0%, and 44.0 Mr data, giving 1.85 g CO2."
+  },
+  "method": "First find pure calcium carbonate mass: 5.00 g x 0.840 = 4.20 g CaCO3. From CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio CaCO3:CO2 is 1:1, so mass scales by molar mass ratio. Therefore mass(CO2) = 4.20 x (44.0/100.1) = 1.846 g, which rounds to 1.85 g as the maximum CO2 mass.",
+  "key_equations": [
+    "mass(CO2) = mass(CaCO3 in sample) x Mr(CO2)/Mr(CaCO3)",
+    "mass(CaCO3 in sample) = total mass x purity fraction"
+  ],
+  "line_refs": ["L33", "L34", "L25", "L26"],
+  "checks": [
+    "CO2 mass must be less than the pure CaCO3 mass because only part of CaCO3 mass becomes CO2.",
+    "Acid is stated in excess, so CaCO3 amount limits the maximum product."
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "Current and time given to 3 s.f., Faraday constant to 3 s.f., atomic mass to 4 s.f. Result reported to 3 significant figures."
+  },
+  "method": "First, convert time to seconds: 30.0 min * 60 = 1800 s. Calculate charge Q = I * t = 1.50 * 1800 = 2700 C. Calculate moles of electrons n(e-) = Q / F = 2700 / 96,500 = 0.027979 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of copper. So n(Cu) = 0.027979 / 2 = 0.013990 mol. Calculate mass m = n * Ar = 0.013990 * 63.55 = 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "Cu2+ + 2e- -> Cu"
+  ],
+  "line_refs": [
+    "L19",
+    "L24",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "1 Ampere is 1 Coulomb per second. 1.5 A for 1800s is 2700 C.",
+    "96500 C is 1 mol e-. 2700 is small fraction (~3%). Result 0.89g is reasonable for small current/time."
+  ]
+}

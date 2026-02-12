@@ -2,9 +2,12 @@
 
 This folder contains committed, sanitized benchmark artifacts so model behavior is inspectable on GitHub.
 
-- `latest/summary.json`: run-level structured summary
-- `latest/report.md`: human-readable report
-- `latest/workspaces/<model-task-run>/...`: per-model workspace snapshots and traces
+- `latest/summary.json`: latest full benchmark summary
+- `latest/report.md`: latest full benchmark report
+- `latest/workspaces/<model-task-run>/...`: latest full benchmark workspaces/traces
+- `gcse-calibrated/summary.json`: calibrated GCSE-focused run where Codex + Gemini 3 Pro pass and Flash fails
+- `gcse-calibrated/report.md`: calibrated GCSE-focused report
+- `gcse-calibrated/workspaces/<model-task-run>/...`: calibrated GCSE workspaces/traces
 
 Sanitization and safety:
 - absolute host paths are redacted or converted to relative workspace paths

@@ -1,0 +1,29 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.890,
+    "units": "g",
+    "precision_note": "Reported to 3 significant figures, dictated by the lowest precision in the input values (1.50 A, 30.0 min)."
+  },
+  "method": "The mass of copper deposited is calculated in a three-step process. First, the total charge (Q) passed is calculated by multiplying the current (I) and the time (t) in seconds. Second, the moles of electrons (n(e-)) are determined by dividing the charge (Q) by the Faraday constant (F = 96,500 C mol-1). Third, the moles of copper (n(Cu)) are found using the half-equation, which shows that 2 moles of electrons are required to deposit 1 mole of copper. Finally, the mass of copper is calculated by multiplying the moles of copper by its atomic mass (Ar(Cu) = 63.55).",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "n(Cu) = n(e-) / 2",
+    "m = n * Mr"
+  ],
+  "line_refs": [
+    "L17",
+    "L18",
+    "L19",
+    "L24",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "Time in seconds: 30.0 * 60 = 1800 s.",
+    "Charge (Q): 1.50 A * 1800 s = 2700 C.",
+    "Moles of electrons: 2700 / 96500 = 0.02798 mol.",
+    "Mass of Cu: (0.02798 / 2) * 63.55 = 0.8899 g. The calculation is consistent."
+  ]
+}

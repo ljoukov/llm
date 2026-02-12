@@ -9,6 +9,7 @@ Unified TypeScript wrapper over:
 
 - **OpenAI Responses API** (`openai`)
 - **Google Gemini via Vertex AI** (`@google/genai`)
+- **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (requires `CHATGPT_AUTH_JSON_B64`)
 
 Designed around a single streaming API that yields:
@@ -68,6 +69,10 @@ If deploying to Cloudflare Workers/Pages:
 ```bash
 jq -c . < path/to/service-account.json | wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON
 ```
+
+### Fireworks
+
+- `FIREWORKS_TOKEN` (or `FIREWORKS_API_KEY`)
 
 ### ChatGPT subscription models
 
@@ -245,6 +250,21 @@ const result = await generateText({
 console.log(result.text);
 ```
 
+### Fireworks
+
+Use Fireworks model ids directly:
+
+```ts
+import { generateText } from "@ljoukov/llm";
+
+const result = await generateText({
+  model: "kimi-k2.5",
+  input: "Return exactly: OK",
+});
+
+console.log(result.text);
+```
+
 ### ChatGPT subscription models
 
 Use a `chatgpt-` prefix:
@@ -348,23 +368,21 @@ const { value } = await generateJson({
 
 ## Tools
 
-Use this decision flow:
+There are three tool-enabled call patterns:
 
-1. Provider-native tools (`web-search`, `code-execution`) with `generateText()`.
-2. Your own JS/TS tools with `runToolLoop()`.
-3. Filesystem agent tasks with `runAgentLoop()` (model-aware filesystem tool auto-selection).
+1. `generateText()` for provider-native/server-side tools (for example web search).
+2. `runToolLoop()` for your runtime JS/TS tools (function tools executed in your process).
+3. `runAgentLoop()` for filesystem tasks (a convenience wrapper around `runToolLoop()`).
 
-`runAgentLoop()` is a thin wrapper over `runToolLoop()`:
+Architecture note:
 
-- it builds a filesystem toolset based on the model id,
-- merges it with any custom tools you provide,
-- then runs the same tool loop engine.
+- Filesystem tools are not a separate execution system.
+- `runAgentLoop()` constructs a filesystem toolset, merges your optional custom tools, then calls the same `runToolLoop()` engine.
+- This behavior is model-agnostic at API level; profile selection only adapts tool shape for model compatibility.
 
-This means filesystem tooling is not a separate architecture; it's preconfigured tool wiring for tool-loop calls.
+### Provider-Native Tools (`generateText()`)
 
-### Provider-Native Tools (Server-Side)
-
-These run on the model provider side and are available in one-shot text generation calls.
+Use this when the model provider executes the tool remotely (for example search/code-exec style tools).
 
 ```ts
 import { generateText } from "@ljoukov/llm";
@@ -378,9 +396,9 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-### Custom Tools With `runToolLoop()`
+### Runtime Tools (`runToolLoop()`)
 
-Use this when you want the model to call your own runtime code (functions or custom/freeform tools).
+Use this when the model should call your local runtime functions.
 
 ```ts
 import { runToolLoop, tool } from "@ljoukov/llm";
@@ -401,26 +419,22 @@ const result = await runToolLoop({
 console.log(result.text);
 ```
 
-Use `customTool()` for freeform tool inputs (for example grammar-driven tools).
+Use `customTool()` only when you need freeform/non-JSON tool input grammar.
 
-### Filesystem Agents With `runAgentLoop()`
+### Filesystem Tasks (`runAgentLoop()`)
 
-Use this for coding/file tasks where the model should inspect and edit files.
+Use this for read/search/write tasks in a workspace. The library auto-selects filesystem tool profile by model when `profile: "auto"`:
 
-`filesystemTool.profile: "auto"` chooses tools by model:
+- Codex-like models: Codex-compatible filesystem tool shape.
+- Gemini models: Gemini-compatible filesystem tool shape.
+- Other models: model-agnostic profile (currently Gemini-style).
 
-- Codex-like models: Codex-style filesystem tools (`apply_patch`, `read_file`, `list_dir`, `grep_files`)
-- Gemini models: Gemini-style filesystem tools (`read_file`, `write_file`, `replace`, `list_directory`, `grep_search`, `glob`)
-- Other models: model-agnostic profile (currently Gemini-style)
+Confinement/policy is set through `filesystemTool.options`:
 
-This is an adapter choice for compatibility, not a capability split. The high-level job is the same: read/search/list/write files inside your workspace policy.
-
-Safety and confinement are controlled via `filesystemTool.options`:
-
-- `cwd`: workspace root for path resolution
-- `fs`: backend (`createNodeAgentFilesystem()` or `createInMemoryAgentFilesystem()`)
-- `checkAccess`: hook for allow/deny policy
-- `allowOutsideCwd`: opt-out confinement (disabled by default)
+- `cwd`: workspace root for path resolution.
+- `fs`: backend (`createNodeAgentFilesystem()` or `createInMemoryAgentFilesystem()`).
+- `checkAccess`: hook for allow/deny policy + audit.
+- `allowOutsideCwd`: opt-out confinement (default is false).
 
 Detailed reference: `docs/agent-filesystem-tools.md`.
 
@@ -446,7 +460,7 @@ const result = await runAgentLoop({
 console.log(result.text);
 ```
 
-If you need explicit control over the exact filesystem toolset, build it manually and call `runToolLoop()` directly.
+If you need exact control over tool definitions, build the filesystem toolset yourself and call `runToolLoop()` directly.
 
 ```ts
 import {
@@ -470,7 +484,7 @@ const result = await runToolLoop({
 
 ## Agent benchmark (filesystem extraction)
 
-For filesystem extraction/summarization evaluation across Codex and Gemini models:
+For filesystem extraction/summarization evaluation across Codex, Fireworks, and Gemini models:
 
 ```bash
 npm run bench:agent

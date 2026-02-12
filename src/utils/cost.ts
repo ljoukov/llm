@@ -1,3 +1,4 @@
+import { getFireworksPricing } from "../fireworks/pricing.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
 import { getOpenAiPricing } from "../openai/pricing.js";
 
@@ -75,6 +76,15 @@ export function estimateCallCostUsd({
     const cachedCost = cachedTokens * cachedRate;
     const outputTokens = responseTokens + thinkingTokens;
     const outputCost = outputTokens * outputRate;
+    return inputCost + cachedCost + outputCost;
+  }
+
+  const fireworksPricing = getFireworksPricing(modelId);
+  if (fireworksPricing) {
+    const inputCost = nonCachedPrompt * fireworksPricing.inputRate;
+    const cachedCost = cachedTokens * fireworksPricing.cachedRate;
+    const outputTokens = responseTokens + thinkingTokens;
+    const outputCost = outputTokens * fireworksPricing.outputRate;
     return inputCost + cachedCost + outputCost;
   }
 

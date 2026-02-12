@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -14,14 +14,12 @@ import {
   type LlmToolLoopStep,
 } from "../../src/index.js";
 import {
-  ClaimAuditSchema,
   DEFAULT_BENCHMARK_MODELS,
-  OUTPUT_FILE_SPECS,
   type OutputFileSpec,
   type ClaimAudit,
   type QuantitativeFindings,
-  type ScienceBenchmarkTask,
-  SCIENCE_BENCHMARK_TASKS,
+  type AgentBenchmarkTask,
+  AGENT_BENCHMARK_TASKS,
 } from "./tasks.js";
 
 type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
@@ -122,8 +120,7 @@ type WorkspaceLayout = {
   readonly rootRel: string;
   readonly reportPath: string;
   readonly reportText: string;
-  readonly schemaPaths: readonly string[];
-  readonly outputPaths: readonly string[];
+  readonly outputFileSpecs: readonly OutputFileSpec[];
   readonly taskFilePath: string;
 };
 
@@ -133,8 +130,10 @@ type PromptTemplates = {
   readonly graderPrompt: string;
 };
 
-const DEFAULT_GRADER_MODEL = "gpt-5.2";
+const DEFAULT_GRADER_MODEL = "chatgpt-gpt-5.2";
 const DEFAULT_MAX_STEPS = 20;
+const DEFAULT_AGENT_TIMEOUT_MS = 12 * 60_000;
+const DEFAULT_GRADER_TIMEOUT_MS = 4 * 60_000;
 const MIN_TOOL_CALLS = 3;
 const REASONING_EFFORTS: readonly ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
 
@@ -220,15 +219,15 @@ function parseCsvList(raw: string): readonly string[] {
   return deduped;
 }
 
-function selectTasks(taskArg: string | undefined): readonly ScienceBenchmarkTask[] {
+function selectTasks(taskArg: string | undefined): readonly AgentBenchmarkTask[] {
   if (!taskArg) {
-    return [SCIENCE_BENCHMARK_TASKS[0]].filter(
-      (task): task is ScienceBenchmarkTask => task !== undefined,
+    return [AGENT_BENCHMARK_TASKS[0]].filter(
+      (task): task is AgentBenchmarkTask => task !== undefined,
     );
   }
   const requested = parseCsvList(taskArg);
-  const taskById = new Map(SCIENCE_BENCHMARK_TASKS.map((task) => [task.id, task]));
-  const selected: ScienceBenchmarkTask[] = [];
+  const taskById = new Map(AGENT_BENCHMARK_TASKS.map((task) => [task.id, task]));
+  const selected: AgentBenchmarkTask[] = [];
   for (const id of requested) {
     const task = taskById.get(id);
     if (!task) {
@@ -429,15 +428,13 @@ function toSchemaDocument(spec: OutputFileSpec): JsonRecord {
 }
 
 function buildTaskFile(params: {
-  task: ScienceBenchmarkTask;
+  task: AgentBenchmarkTask;
   layout: WorkspaceLayout;
   taskTemplate: string;
 }): string {
-  const outputMappingList = OUTPUT_FILE_SPECS.map((spec, index) => {
-    const schemaPath = params.layout.schemaPaths[index] ?? spec.schemaFile;
-    const outputPath = params.layout.outputPaths[index] ?? spec.outputFile;
-    return `- \`${outputPath}\` (schema: \`${schemaPath}\`)`;
-  }).join("\n");
+  const outputMappingList = params.layout.outputFileSpecs
+    .map((spec) => `- \`${spec.outputFile}\` (schema: \`${spec.schemaFile}\`)`)
+    .join("\n");
 
   return renderTemplate(params.taskTemplate, {
     TASK_ID: params.task.id,
@@ -451,7 +448,7 @@ function buildTaskFile(params: {
 }
 
 async function createWorkspace(params: {
-  task: ScienceBenchmarkTask;
+  task: AgentBenchmarkTask;
   workspaceRootAbs: string;
   workspaceRootRel: string;
   benchmarkRoot: string;
@@ -466,10 +463,7 @@ async function createWorkspace(params: {
   await mkdir(dirname(join(params.workspaceRootAbs, reportPath)), { recursive: true });
   await writeFile(join(params.workspaceRootAbs, reportPath), reportText);
 
-  const schemaPaths: string[] = [];
-  const outputPaths: string[] = [];
-
-  for (const spec of OUTPUT_FILE_SPECS) {
+  for (const spec of params.task.outputFileSpecs) {
     const schemaPath = spec.schemaFile;
     const outputPath = spec.outputFile;
 
@@ -482,11 +476,8 @@ async function createWorkspace(params: {
       `${JSON.stringify(schemaDocument, null, 2)}\n`,
     );
 
-    // Codex profile tends to patch existing files; pre-create placeholders for deterministic edits.
+    // Pre-create placeholders to keep tool behavior deterministic across models.
     await writeFile(join(params.workspaceRootAbs, outputPath), "{}\n");
-
-    schemaPaths.push(schemaPath);
-    outputPaths.push(outputPath);
   }
 
   const layout: WorkspaceLayout = {
@@ -494,8 +485,7 @@ async function createWorkspace(params: {
     rootRel: params.workspaceRootRel,
     reportPath,
     reportText,
-    schemaPaths,
-    outputPaths,
+    outputFileSpecs: params.task.outputFileSpecs,
     taskFilePath: "TASK.md",
   };
 
@@ -505,7 +495,6 @@ async function createWorkspace(params: {
   );
   return layout;
 }
-
 function buildAgentPrompt(layout: WorkspaceLayout, template: string): string {
   return renderTemplate(template, {
     TASK_FILE: layout.taskFilePath,
@@ -727,11 +716,93 @@ function evaluateToolTrace(params: {
   };
 }
 
+function collectLineRefsFromValue(value: unknown): string[] {
+  const refs: string[] = [];
+  if (typeof value !== "object" || value === null) {
+    return refs;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      refs.push(...collectLineRefsFromValue(entry));
+    }
+    return refs;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "line_ref" && typeof entry === "string") {
+      refs.push(entry);
+      continue;
+    }
+    if (key === "line_refs" && Array.isArray(entry)) {
+      for (const item of entry) {
+        if (typeof item === "string") {
+          refs.push(item);
+        }
+      }
+      continue;
+    }
+    refs.push(...collectLineRefsFromValue(entry));
+  }
+  return refs;
+}
+
+function normalizeUnit(value: string): string {
+  const compact = value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  if (compact === "g") {
+    return "g";
+  }
+  if (compact === "unitless" || compact === "dimensionless" || compact === "1") {
+    return "dimensionless";
+  }
+  if (compact.includes("kj") && compact.includes("mol")) {
+    return "kj/mol";
+  }
+  if (compact.includes("mol") && compact.includes("dm")) {
+    return "mol/dm3";
+  }
+  return compact;
+}
+
+function validateExpectedAnswerValue(
+  value: unknown,
+  expected: NonNullable<OutputFileSpec["expectedAnswer"]>,
+): readonly string[] {
+  const errors: string[] = [];
+  if (typeof value !== "object" || value === null) {
+    return ["Parsed output is not an object."];
+  }
+  const finalAnswer = (value as { final_answer?: unknown }).final_answer;
+  if (typeof finalAnswer !== "object" || finalAnswer === null) {
+    return ["Missing final_answer object."];
+  }
+  const actualValue = (finalAnswer as { value?: unknown }).value;
+  const actualUnits = (finalAnswer as { units?: unknown }).units;
+  if (typeof actualValue !== "number" || !Number.isFinite(actualValue)) {
+    errors.push("final_answer.value must be a finite number.");
+  } else {
+    const delta = Math.abs(actualValue - expected.value);
+    if (delta > expected.tolerance) {
+      errors.push(
+        `final_answer.value ${actualValue} differs from expected ${expected.value} by ${delta}, beyond tolerance ${expected.tolerance}.`,
+      );
+    }
+  }
+  if (typeof actualUnits !== "string" || actualUnits.trim().length === 0) {
+    errors.push("final_answer.units must be a non-empty string.");
+  } else if (normalizeUnit(actualUnits) !== normalizeUnit(expected.units)) {
+    errors.push(`final_answer.units ${JSON.stringify(actualUnits)} != expected ${JSON.stringify(expected.units)}.`);
+  }
+  return errors;
+}
+
 async function validateOutputs(layout: WorkspaceLayout): Promise<readonly OutputValidation[]> {
   const validations: OutputValidation[] = [];
   const reportLineCount = layout.reportText.split("\n").length;
 
-  for (const spec of OUTPUT_FILE_SPECS) {
+  for (const spec of layout.outputFileSpecs) {
     const outputPath = join(layout.rootAbs, spec.outputFile);
     let content: string | undefined;
     try {
@@ -785,18 +856,35 @@ async function validateOutputs(layout: WorkspaceLayout): Promise<readonly Output
     }
 
     let groundingErrors: readonly string[] = [];
-    if (spec.schema === ClaimAuditSchema) {
-      groundingErrors = validateClaimGrounding(
-        schemaResult.data as ClaimAudit,
-        reportLineCount,
-        layout.reportText,
-      );
-    } else if (spec.outputFile.endsWith("quantitative_findings.json")) {
-      groundingErrors = validateQuantitativeGrounding(
-        schemaResult.data as QuantitativeFindings,
-        reportLineCount,
-      );
+    switch (spec.groundingMode) {
+      case "claim-audit":
+        groundingErrors = validateClaimGrounding(
+          schemaResult.data as ClaimAudit,
+          reportLineCount,
+          layout.reportText,
+        );
+        break;
+      case "quantitative-findings":
+        groundingErrors = validateQuantitativeGrounding(
+          schemaResult.data as QuantitativeFindings,
+          reportLineCount,
+        );
+        break;
+      case "line-refs":
+        groundingErrors = validateLineRefSet(
+          collectLineRefsFromValue(schemaResult.data),
+          reportLineCount,
+        );
+        break;
+      default:
+        groundingErrors = [];
+        break;
     }
+
+    const expectedAnswerErrors = spec.expectedAnswer
+      ? validateExpectedAnswerValue(schemaResult.data, spec.expectedAnswer)
+      : [];
+    const allErrors = [...groundingErrors, ...expectedAnswerErrors];
 
     validations.push({
       outputFile: spec.outputFile,
@@ -804,15 +892,14 @@ async function validateOutputs(layout: WorkspaceLayout): Promise<readonly Output
       exists: true,
       jsonValid: true,
       schemaValid: true,
-      groundingValid: groundingErrors.length === 0,
-      errors: groundingErrors,
+      groundingValid: allErrors.length === 0,
+      errors: allErrors,
       content,
     });
   }
 
   return validations;
 }
-
 function renderOutputBundle(validations: readonly OutputValidation[]): string {
   const sections: string[] = [];
   for (const validation of validations) {
@@ -843,7 +930,7 @@ function renderNumberedReport(reportText: string): string {
 }
 
 function buildGraderPrompt(params: {
-  task: ScienceBenchmarkTask;
+  task: AgentBenchmarkTask;
   reportText: string;
   validations: readonly OutputValidation[];
   graderTemplate: string;
@@ -859,7 +946,7 @@ function buildGraderPrompt(params: {
 
 async function gradeOutputs(params: {
   graderModel: string;
-  task: ScienceBenchmarkTask;
+  task: AgentBenchmarkTask;
   layout: WorkspaceLayout;
   validations: readonly OutputValidation[];
   reasoning: ReasoningEffort;
@@ -870,6 +957,11 @@ async function gradeOutputs(params: {
   readonly costUsd: number;
   readonly usage: UsageSummary;
 }> {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => {
+    abortController.abort(new Error("Grader timeout exceeded."));
+  }, DEFAULT_GRADER_TIMEOUT_MS);
+
   try {
     const response = await generateJson({
       model: params.graderModel,
@@ -884,6 +976,7 @@ async function gradeOutputs(params: {
         "Be conservative. If uncertain about fidelity or coverage, choose fail and explain concrete issues.",
       openAiReasoningEffort: params.reasoning,
       maxAttempts: 2,
+      signal: abortController.signal,
     });
 
     return {
@@ -894,12 +987,14 @@ async function gradeOutputs(params: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { error: message, costUsd: 0, usage: emptyUsageSummary() };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 async function runCase(params: {
   model: string;
-  task: ScienceBenchmarkTask;
+  task: AgentBenchmarkTask;
   runIndex: number;
   outRoot: string;
   benchmarkRoot: string;
@@ -929,6 +1024,11 @@ async function runCase(params: {
   let agentSteps: readonly LlmToolLoopStep[] = [];
   const fsActions: FilesystemActionTrace[] = [];
 
+  const agentAbortController = new AbortController();
+  const agentTimeout = setTimeout(() => {
+    agentAbortController.abort(new Error("Agent timeout exceeded."));
+  }, DEFAULT_AGENT_TIMEOUT_MS);
+
   try {
     const result = await runAgentLoop({
       model: params.model,
@@ -953,6 +1053,7 @@ async function runCase(params: {
       },
       openAiReasoningEffort: params.reasoning,
       maxSteps: params.maxSteps,
+      signal: agentAbortController.signal,
     });
 
     agentFinalText = sanitizePathLikeText(result.text, layout.rootAbs);
@@ -978,6 +1079,26 @@ async function runCase(params: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     agentError = sanitizePathLikeText(message, layout.rootAbs);
+    await writeFile(
+      join(layout.rootAbs, "agent-run.json"),
+      `${JSON.stringify(
+        {
+          model: params.model,
+          taskId: params.task.id,
+          runIndex: params.runIndex,
+          error: agentError,
+          partialResult: {
+            text: agentFinalText,
+            totalCostUsd: agentCostUsd,
+            steps: redactSensitivePaths(agentSteps, layout.rootAbs),
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } finally {
+    clearTimeout(agentTimeout);
   }
 
   await writeFile(
@@ -1143,7 +1264,7 @@ function buildMarkdownReport(params: {
   runId: string;
   generatedAt: string;
   models: readonly string[];
-  tasks: readonly ScienceBenchmarkTask[];
+  tasks: readonly AgentBenchmarkTask[];
   runs: number;
   reasoning: ReasoningEffort;
   graderModel: string;
@@ -1271,7 +1392,7 @@ function buildLatestResultsMarkdown(params: {
   runId: string;
   generatedAt: string;
   models: readonly string[];
-  tasks: readonly ScienceBenchmarkTask[];
+  tasks: readonly AgentBenchmarkTask[];
   graderModel: string;
   caseResults: readonly CaseResult[];
 }): string {
@@ -1519,16 +1640,28 @@ async function main(): Promise<void> {
   const summaryJsonPath = join(runRoot, "summary.json");
   const summaryMarkdownPath = join(runRoot, "report.md");
   const latestResultsPath = join(benchmarkRoot, "LATEST_RESULTS.md");
+  const tracesLatestRoot = join(benchmarkRoot, "traces", "latest");
+
   await writeFile(summaryJsonPath, `${JSON.stringify(summary, null, 2)}\n`);
   await writeFile(summaryMarkdownPath, markdown);
   await writeFile(latestResultsPath, latestResultsMarkdown);
 
+  await rm(tracesLatestRoot, { recursive: true, force: true });
+  await mkdir(tracesLatestRoot, { recursive: true });
+  await cp(summaryJsonPath, join(tracesLatestRoot, "summary.json"));
+  await cp(summaryMarkdownPath, join(tracesLatestRoot, "report.md"));
+  await cp(join(runRoot, "workspaces"), join(tracesLatestRoot, "workspaces"), {
+    recursive: true,
+  });
+
   const displaySummaryJsonPath = normalizeSlashes(relative(process.cwd(), summaryJsonPath));
   const displaySummaryMarkdownPath = normalizeSlashes(relative(process.cwd(), summaryMarkdownPath));
   const displayLatestResultsPath = normalizeSlashes(relative(process.cwd(), latestResultsPath));
+  const displayLatestTraceRoot = normalizeSlashes(relative(process.cwd(), tracesLatestRoot));
   console.log(`\nWrote: ${displaySummaryJsonPath}`);
   console.log(`Wrote: ${displaySummaryMarkdownPath}`);
   console.log(`Wrote: ${displayLatestResultsPath}`);
+  console.log(`Wrote: ${displayLatestTraceRoot}`);
 }
 
 void main().catch((error) => {

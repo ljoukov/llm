@@ -38,6 +38,42 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.0071375, 8);
   });
 
+  it("estimates Fireworks kimi-k2.5 costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "kimi-k2.5",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (0.60/1M) = 0.00054
+    // cached: 100 * (0.10/1M) = 0.00001
+    // output: 600 * (3.00/1M) = 0.0018
+    expect(cost).toBeCloseTo(0.00235, 8);
+  });
+
+  it("estimates Fireworks glm-5 costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "glm-5",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (1.00/1M) = 0.0009
+    // cached: 100 * (0.20/1M) = 0.00002
+    // output: 600 * (3.20/1M) = 0.00192
+    expect(cost).toBeCloseTo(0.00284, 8);
+  });
+
   it("estimates Gemini Pro costs (known model, low tier)", () => {
     const cost = estimateCallCostUsd({
       modelId: "gemini-2.5-pro",
