@@ -74,3 +74,5 @@ Workspace folders include:
 - `agent-run.json` (full step/tool trace)
 - `filesystem-access-trace.json` (filesystem-level action trace)
 - `validation.json` (schema/grounding/tool/grader verdicts)
+
+A committed high-level snapshot is kept in `benchmarks/agent/LATEST_RESULTS.md`.
