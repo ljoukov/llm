@@ -2,32 +2,34 @@
 
 This file is auto-generated from the latest benchmark run.
 
-- Run id: `agent-fs-2026-02-12T14-34-19-197Z`
-- Generated at: `2026-02-12T14:42:10.925Z`
-- Tasks: `tumor-vaccine-ici`
-- Models: `chatgpt-gpt-5.3-codex`, `gpt-5.2`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`
-- Grader: `gpt-5.2`
+- Run id: `agent-fs-2026-02-12T17-08-10-524Z`
+- Generated at: `2026-02-12T17:23:15.828Z`
+- Tasks: `tumor-vaccine-ici`, `gcse-chemistry-8-9`
+- Models: `chatgpt-gpt-5.3-codex`, `gpt-5.2`, `kimi-k2.5`, `glm-5`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`
+- Grader: `chatgpt-gpt-5.2`
 
 ## Aggregate
 
-- Cases: 1/6 pass (4/6 schema, 6/6 tool trace, 1/6 grader)
-- Total latency: 1536.04s
-- Avg latency per case: 256.01s
-- Total cost: $0.571183
-- Tokens (in/cached/out): 305,062/122,289/22,192
-- Thinking tokens: 27,032
-- Total tokens: 354,286
+- Cases: 9/16 pass (10/16 schema, 14/16 tool trace, 9/16 grader)
+- Total latency: 3022.59s
+- Avg latency per case: 188.91s
+- Total cost: $1.429731
+- Tokens (in/cached/out): 756,249/402,729/58,963
+- Thinking tokens: 57,710
+- Total tokens: 872,922
 
 ## Outcome
 
 | Model | Overall | Schema | Tool Trace | Grader | Tool Calls | Avg latency (s) | Total latency (s) | Cost (USD) | In tokens | Cached tokens | Out tokens |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| `chatgpt-gpt-5.3-codex` | PASS | 1/1 | 1/1 | 1/1 | 24 | 74.71 | 74.71 | 0.078713 | 21,422 | 0 | 3,695 |
-| `gpt-5.2` | FAIL | 0/1 | 1/1 | 0/1 | 32 | 110.61 | 110.61 | 0.139197 | 39,559 | 15,744 | 4,761 |
-| `gemini-2.5-pro` | FAIL | 0/1 | 1/1 | 0/1 | 26 | 226.46 | 226.46 | 0.095224 | 60,336 | 28,341 | 3,364 |
-| `gemini-flash-latest` | FAIL | 1/1 | 1/1 | 0/1 | 20 | 277.75 | 277.75 | 0.022332 | 51,339 | 25,574 | 3,650 |
-| `gemini-3-pro-preview` | FAIL | 1/1 | 1/1 | 0/1 | 28 | 471.69 | 471.69 | 0.217559 | 70,675 | 34,906 | 3,209 |
-| `gemini-3-flash-preview` | FAIL | 1/1 | 1/1 | 0/1 | 24 | 374.82 | 374.82 | 0.018156 | 61,731 | 17,724 | 3,513 |
+| `chatgpt-gpt-5.3-codex` | PASS | 2/2 | 2/2 | 2/2 | 56 | 100.59 | 201.19 | 0.172799 | 50,626 | 19,456 | 6,653 |
+| `gpt-5.2` | FAIL | 2/2 | 2/2 | 1/2 | 74 | 267.14 | 534.29 | 0.324877 | 115,484 | 65,920 | 7,379 |
+| `kimi-k2.5` | FAIL | 1/2 | 2/2 | 1/2 | 62 | 50.19 | 100.38 | 0.079534 | 68,589 | 34,319 | 10,121 |
+| `glm-5` | PASS | 2/2 | 2/2 | 2/2 | 80 | 83.16 | 166.32 | 0.138937 | 103,029 | 37,648 | 13,835 |
+| `gemini-2.5-pro` | FAIL | 1/2 | 2/2 | 1/2 | 54 | 211.97 | 423.93 | 0.265816 | 142,823 | 77,942 | 6,648 |
+| `gemini-flash-latest` | FAIL | 0/2 | 2/2 | 0/2 | 50 | 162.08 | 324.15 | 0.032884 | 134,784 | 82,490 | 7,671 |
+| `gemini-3-pro-preview` | PASS | 2/2 | 2/2 | 2/2 | 54 | 452.60 | 905.19 | 0.396626 | 137,241 | 84,954 | 5,876 |
+| `gemini-3-flash-preview` | FAIL | 0/2 | 0/2 | 0/2 | 4 | 183.57 | 367.13 | 0.018258 | 3,673 | 0 | 780 |
 
 ## Artifact Paths
 

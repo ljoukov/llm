@@ -140,3 +140,12 @@ export type { ChatGptAuthProfile } from "./openai/chatgpt-auth.js";
 
 export { configureGemini, isGeminiModelId } from "./google/gemini.js";
 export type { GeminiModelId } from "./google/gemini.js";
+
+export {
+  FIREWORKS_DEFAULT_GLM_MODEL,
+  FIREWORKS_DEFAULT_KIMI_MODEL,
+  FIREWORKS_MODEL_IDS,
+  isFireworksModelId,
+  resolveFireworksModelId,
+} from "./fireworks/fireworks.js";
+export type { FireworksModelId } from "./fireworks/fireworks.js";

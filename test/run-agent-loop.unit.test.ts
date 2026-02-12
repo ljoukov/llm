@@ -76,6 +76,29 @@ describe("runAgentLoop", () => {
     ]);
   });
 
+  it("uses model-agnostic filesystem profile for fireworks models", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "kimi-k2.5",
+      input: "test",
+      filesystemTool: true,
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+    };
+    expect(Object.keys(call.tools).sort()).toEqual([
+      "glob",
+      "grep_search",
+      "list_directory",
+      "read_file",
+      "replace",
+      "write_file",
+    ]);
+  });
+
   it("rejects duplicate tool names", async () => {
     runToolLoopMock.mockClear();
     const { runAgentLoop } = await import("../src/agent.js");

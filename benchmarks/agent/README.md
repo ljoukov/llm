@@ -6,12 +6,13 @@ This benchmark evaluates a filesystem-based agent that must:
 - read JSON schema files from disk,
 - write a required set of JSON outputs that satisfy those schemas,
 - ground claims in report evidence (line refs and quotes), and
-- pass an LLM grader (`gpt-5.2`) for fidelity and coverage.
+- pass an LLM grader (`chatgpt-gpt-5.2`) for fidelity and coverage.
 
 It runs the agent with (default model set):
 
 - ChatGPT Codex: `chatgpt-gpt-5.3-codex`
 - OpenAI Responses: `gpt-5.2`
+- Fireworks: `kimi-k2.5`, `glm-5`
 - Gemini Pro: `gemini-2.5-pro`, `gemini-3-pro-preview`
 - Gemini Flash: `gemini-flash-latest`, `gemini-3-flash-preview`
 
@@ -35,11 +36,11 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-5.3-codex,gpt-5.2,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3-flash-preview \
+  --models chatgpt-gpt-5.3-codex,gpt-5.2,kimi-k2.5,glm-5,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3-flash-preview \
   --tasks tumor-vaccine-ici \
   --runs 1 \
   --reasoning medium \
-  --grader-model gpt-5.2 \
+  --grader-model chatgpt-gpt-5.2 \
   --max-steps 20
 ```
 
@@ -55,7 +56,7 @@ npx tsx benchmarks/agent/run.ts \
    - at least one successful write call.
    - path policy checks: no absolute paths and no `..` traversal in tool arguments.
    - trace artifacts are written to `filesystem-access-trace.json` and `agent-run.json`.
-4. LLM grading with `gpt-5.2`:
+4. LLM grading with `chatgpt-gpt-5.2`:
    - faithfulness,
    - coverage,
    - practical usefulness.
@@ -71,7 +72,7 @@ Each benchmark run writes a dedicated folder:
 Workspace folders include:
 
 - `input/report.md`
-- `prompts/*.md` (template prompts loaded by the benchmark runner)
+- `TASK.md` (resolved task instructions consumed by the agent)
 - `schemas/*.schema.json`
 - `output/*.json` (agent outputs)
 - `agent-run.json` (full step/tool trace)
@@ -80,3 +81,4 @@ Workspace folders include:
 
 A committed high-level snapshot is kept in `benchmarks/agent/LATEST_RESULTS.md`.
 Committed per-model traces/workspaces are kept in `benchmarks/agent/traces/latest/`.
+A calibrated GCSE comparison run (Codex + Gemini 3 Pro pass, Flash fails) is kept in `benchmarks/agent/traces/gcse-calibrated/`.

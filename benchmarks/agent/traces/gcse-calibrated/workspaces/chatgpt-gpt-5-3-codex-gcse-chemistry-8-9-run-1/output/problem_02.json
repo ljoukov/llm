@@ -1,0 +1,19 @@
+{
+  "problem_id": "P02",
+  "final_answer": {
+    "value": 1.85,
+    "units": "g",
+    "precision_note": "Using 3 s.f. input data (5.00 g and 84.0%), the maximum CO2 mass is 1.85 g to 3 s.f."
+  },
+  "method": "First find pure CaCO3 in the sample: 5.00 g x 0.840 = 4.20 g. From atomic data, Mr(CaCO3) = 40.1 + 12.0 + 3(16.0) = 100.1, so n(CaCO3) = 4.20/100.1 = 0.04196 mol. The reaction shows a 1:1 mole ratio CaCO3:CO2, so n(CO2) = 0.04196 mol. Also from atomic data, Mr(CO2) = 12.0 + 2(16.0) = 44.0. Therefore m(CO2) = 0.04196 x 44.0 = 1.85 g (maximum, since acid is excess).",
+  "key_equations": [
+    "n = m / Mr",
+    "m(pure CaCO3) = sample mass x purity fraction",
+    "m = n x Mr"
+  ],
+  "line_refs": ["L14", "L24", "L33", "L34"],
+  "checks": [
+    "Stoichiometry is 1:1 from CaCO3 to CO2, so moles transfer directly.",
+    "Result is below the CaCO3 mass, which is reasonable for CO2 release."
+  ]
+}

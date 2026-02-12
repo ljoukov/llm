@@ -168,11 +168,11 @@ const geminiReadFileInputSchema = z.object({
 const geminiReadFilesInputSchema = z
   .object({
     paths: z.array(z.string().min(1)).min(1),
-    line_offset: z.number().int().min(0).optional(),
-    line_limit: z.number().int().min(1).optional(),
-    char_offset: z.number().int().min(0).optional(),
-    char_limit: z.number().int().min(1).optional(),
-    include_line_numbers: z.boolean().optional(),
+    line_offset: z.number().int().min(0).nullish(),
+    line_limit: z.number().int().min(1).nullish(),
+    char_offset: z.number().int().min(0).nullish(),
+    char_limit: z.number().int().min(1).nullish(),
+    include_line_numbers: z.boolean().nullish(),
   })
   .superRefine((value, context) => {
     const hasLineWindow = value.line_offset !== undefined || value.line_limit !== undefined;
@@ -195,7 +195,7 @@ const geminiReplaceInputSchema = z.object({
   instruction: z.string().min(1),
   old_string: z.string(),
   new_string: z.string(),
-  expected_replacements: z.number().int().min(1).optional(),
+  expected_replacements: z.number().int().min(1).nullish(),
 });
 
 const geminiListDirectoryInputSchema = z.object({
@@ -211,31 +211,31 @@ const geminiListDirectoryInputSchema = z.object({
 
 const geminiRgSearchInputSchema = z.object({
   pattern: z.string().min(1),
-  path: z.string().optional(),
-  glob: z.string().optional(),
-  case_sensitive: z.boolean().optional(),
-  exclude_pattern: z.string().optional(),
-  names_only: z.boolean().optional(),
-  max_matches_per_file: z.number().int().min(1).optional(),
-  max_results: z.number().int().min(1).optional(),
+  path: z.string().nullish(),
+  glob: z.string().nullish(),
+  case_sensitive: z.boolean().nullish(),
+  exclude_pattern: z.string().nullish(),
+  names_only: z.boolean().nullish(),
+  max_matches_per_file: z.number().int().min(1).nullish(),
+  max_results: z.number().int().min(1).nullish(),
 });
 
 const geminiGrepSearchInputSchema = z.object({
   pattern: z.string().min(1),
-  dir_path: z.string().optional(),
-  include: z.string().optional(),
-  exclude_pattern: z.string().optional(),
-  names_only: z.boolean().optional(),
-  max_matches_per_file: z.number().int().min(1).optional(),
-  total_max_matches: z.number().int().min(1).optional(),
+  dir_path: z.string().nullish(),
+  include: z.string().nullish(),
+  exclude_pattern: z.string().nullish(),
+  names_only: z.boolean().nullish(),
+  max_matches_per_file: z.number().int().min(1).nullish(),
+  total_max_matches: z.number().int().min(1).nullish(),
 });
 
 const geminiGlobInputSchema = z.object({
   pattern: z.string().min(1),
-  dir_path: z.string().optional(),
-  case_sensitive: z.boolean().optional(),
-  respect_git_ignore: z.boolean().optional(),
-  respect_gemini_ignore: z.boolean().optional(),
+  dir_path: z.string().nullish(),
+  case_sensitive: z.boolean().nullish(),
+  respect_git_ignore: z.boolean().nullish(),
+  respect_gemini_ignore: z.boolean().nullish(),
 });
 
 export type CodexReadFileToolInput = z.output<typeof codexReadFileInputSchema>;
@@ -1007,7 +1007,7 @@ async function globFilesGemini(
   }
 
   matched.sort((left, right) => right.mtimeMs - left.mtimeMs);
-  return matched.map((entry) => normalizeSlashes(path.resolve(entry.filePath))).join("\n");
+  return matched.map((entry) => normalizeSlashes(toDisplayPath(entry.filePath, runtime.cwd))).join("\n");
 }
 
 type RuntimeContext = {

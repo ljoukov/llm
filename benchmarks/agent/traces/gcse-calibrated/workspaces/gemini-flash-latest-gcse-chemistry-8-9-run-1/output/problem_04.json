@@ -1,0 +1,22 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Reported to 3 significant figures, consistent with the precision of the input mean bond energy values."
+  },
+  "method": "The enthalpy change of reaction (deltaH) is estimated using the provided mean bond energies and the formula deltaH = sum(bonds broken) - sum(bonds formed). The bonds broken are four C-H bonds and two O=O bonds. The bonds formed are two C=O bonds (in CO2) and four O-H bonds (in two H2O molecules). The total energy required to break the bonds is calculated and subtracted from the total energy released when the new bonds are formed.",
+  "key_equations": [
+    "deltaH = sum(bonds broken) - sum(bonds formed)"
+  ],
+  "line_refs": [
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "Bonds broken energy: (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ mol-1.",
+    "Bonds formed energy: (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ mol-1.",
+    "deltaH = 2648 - 3462 = -814 kJ mol-1. The negative value indicates an exothermic reaction, which is expected for combustion."
+  ]
+}

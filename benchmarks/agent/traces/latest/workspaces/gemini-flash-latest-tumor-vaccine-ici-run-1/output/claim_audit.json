@@ -2,67 +2,75 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination can sensitize tumors that are otherwise non-responsive to immune checkpoint blockade (ICI) therapy.",
+      "claim": "Intratumoral mRNA vaccination significantly broadens the repertoire of tumor antigens presented by MHC-I molecules.",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "SARS-CoV-2 mRNA vaccines sensitize tumours to immune checkpoint blockade",
-          "line_ref": "L4"
+          "quote": "Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3% | Broader antigen display after intratumoral mRNA vaccination",
+          "line_ref": "L28"
         },
         {
-          "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
-          "line_ref": "L46"
+          "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape",
+          "line_ref": "L29"
         }
       ],
-      "caveat": "The human data supporting this claim is from a retrospective, non-randomized cohort, meaning the correlation is highly susceptible to residual confounding factors."
+      "caveat": "The increased antigen presentation is linked to type I interferon signaling, which can be experimentally blocked, eliminating the benefit."
     },
     {
       "claim_id": "C02",
-      "claim": "The sensitization mechanism is dependent on the induction of local type I interferon signaling within the tumor microenvironment.",
+      "claim": "Intratumoral mRNA vaccination sensitizes previously non-responsive tumors to the therapeutic effects of immune checkpoint blockade (ICI).",
+      "strength": "moderate",
+      "evidence": [
+        {
+          "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
+          "line_ref": "L46"
+        },
+        {
+          "quote": "Vaccinated subgroup had improved survival under ICI treatment",
+          "line_ref": "L30"
+        },
+        {
+          "quote": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models.",
+          "line_ref": "L36"
+        }
+      ],
+      "caveat": "The observed human benefit comes from a retrospective, non-randomized cohort analysis, meaning residual confounding cannot be ruled out and direct causal interpretation is limited."
+    },
+    {
+      "claim_id": "C03",
+      "claim": "The sensitization effect is mechanistically dependent on the induction of Type I interferon signaling within the tumor microenvironment.",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-          "line_ref": "L42"
+          "quote": "Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors",
+          "line_ref": "L31"
         },
         {
           "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
           "line_ref": "L39"
-        }
-      ],
-      "caveat": "While confirmed by blockade in mice, the relative strength and duration of the interferon response in human tumors is still unknown."
-    },
-    {
-      "claim_id": "C03",
-      "claim": "mRNA vaccination significantly broadens the tumor's antigen presentation profile by increasing the fraction of proteins represented in the MHC-I peptidome.",
-      "strength": "moderate",
-      "evidence": [
-        {
-          "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape",
-          "line_ref": "L29"
         },
         {
-          "quote": "A broader peptide repertoire appears on MHC-I, improving tumor visibility to T cells.",
-          "line_ref": "L44"
+          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
+          "line_ref": "L42"
         }
       ],
-      "caveat": "This claim is based on immunopeptidomics data from preclinical models; equivalent effects in human tumors require further validation."
+      "caveat": "The study noted that lipid particle controls lacking the mRNA sequence failed to reproduce the sensitization, indicating the payload is essential for this pathway activation."
     },
     {
       "claim_id": "C04",
-      "claim": "The study provides sufficient biological rationale to move to prospective clinical trials, but no immediate changes to standard clinical protocols are justified.",
-      "strength": "tentative",
+      "claim": "The combined therapy increases tumor targetability by upregulating PD-L1 expression and enhancing CD8+ T-cell infiltration in the tumor.",
+      "strength": "strong",
       "evidence": [
         {
-          "quote": "The study supports a biologically coherent hypothesis that intratumoral mRNA vaccination can prime tumors for stronger ICI responses",
-          "line_ref": "L56"
+          "quote": "PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x | Checkpoint axis became more targetable",
+          "line_ref": "L32"
         },
         {
-          "quote": "but prospective randomized studies are required before clinical protocol changes are justified.",
-          "line_ref": "L56"
+          "quote": "Intratumoral CD8+ T-cell density fold-change | 1.8x | 1.0x | Increased immune infiltration with combination therapy",
+          "line_ref": "L33"
         }
       ],
-      "caveat": "The retrospective human data, despite the statistically significant p-value, cannot rule out the influence of unmeasured confounding variables."
+      "caveat": "Despite these favorable changes, ICI-only treatment still showed limited activity in low-immunogenic settings, suggesting the combination effect is synergistic rather than purely additive."
     }
   ]
 }

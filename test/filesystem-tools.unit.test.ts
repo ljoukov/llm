@@ -124,7 +124,7 @@ describe("filesystemTools behavior", () => {
         pattern: "**/*.ts",
         dir_path: cwd,
       }),
-    ).toContain("/repo/src/example.ts");
+    ).toContain("src/example.ts");
   });
 
   it("applies Codex-style apply_patch through filesystem tool wrapper", async () => {
