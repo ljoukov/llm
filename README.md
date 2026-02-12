@@ -392,6 +392,86 @@ const result = await runToolLoop({
 console.log(result.text);
 ```
 
+### Built-in `apply_patch` tool
+
+The library includes a Codex-style `apply_patch` tool with a pluggable filesystem adapter.
+
+```ts
+import {
+  createApplyPatchTool,
+  createInMemoryAgentFilesystem,
+  runToolLoop,
+} from "@ljoukov/llm";
+
+const fs = createInMemoryAgentFilesystem({
+  "/repo/index.ts": "export const value = 1;\n",
+});
+
+const result = await runToolLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Use apply_patch to change value from 1 to 2.",
+  tools: {
+    apply_patch: createApplyPatchTool({
+      cwd: "/repo",
+      fs,
+      checkAccess: ({ path }) => {
+        if (!path.startsWith("/repo/")) {
+          throw new Error("Writes are allowed only inside /repo");
+        }
+      },
+    }),
+  },
+});
+
+console.log(result.text);
+```
+
+### `runAgentLoop()` with model-aware filesystem tools
+
+Use `runAgentLoop()` when you want a default filesystem toolset chosen by model:
+
+- Codex-like models -> `apply_patch`, `read_file`, `list_dir`, `grep_files`
+- Gemini models -> `read_file`, `write_file`, `replace`, `list_directory`, `grep_search`, `glob`
+- Other models -> model-agnostic (Gemini-style) set by default
+
+```ts
+import { createInMemoryAgentFilesystem, runAgentLoop } from "@ljoukov/llm";
+
+const fs = createInMemoryAgentFilesystem({
+  "/repo/src/a.ts": "export const value = 1;\n",
+});
+
+const result = await runAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Change value from 1 to 2 using filesystem tools.",
+  filesystemTool: {
+    profile: "auto",
+    options: {
+      cwd: "/repo",
+      fs,
+    },
+  },
+});
+
+console.log(result.text);
+```
+
+## Agent benchmark (micro)
+
+For small edit-harness experiments with `chatgpt-gpt-5.3-codex`:
+
+```bash
+npm run bench:agent
+```
+
+Estimate-only:
+
+```bash
+npm run bench:agent:estimate
+```
+
+See `benchmarks/agent/README.md` for options and output format.
+
 ## License
 
 MIT

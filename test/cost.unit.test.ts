@@ -20,6 +20,24 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.01015, 8);
   });
 
+  it("estimates ChatGPT codex costs (gpt-5.3-codex)", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "chatgpt-gpt-5.3-codex",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (1.25/1M) = 0.001125
+    // cached: 100 * (0.125/1M) = 0.0000125
+    // output: 600 * (10/1M) = 0.006
+    expect(cost).toBeCloseTo(0.0071375, 8);
+  });
+
   it("estimates Gemini Pro costs (known model, low tier)", () => {
     const cost = estimateCallCostUsd({
       modelId: "gemini-2.5-pro",

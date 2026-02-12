@@ -1,6 +1,6 @@
 {
   "name": "@ljoukov/llm",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Unified wrapper over OpenAI Responses API and Google Gemini (@google/genai), with streaming + usage/cost metrics.",
   "license": "MIT",
   "repository": {
@@ -39,10 +39,12 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
-    "format": "biome format --write src test biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
-    "format:check": "biome format src test biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
-    "lint": "biome lint src test tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
-    "lint:fix": "biome lint --write src test tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "format": "biome format --write src test benchmarks biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "format:check": "biome format src test benchmarks biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "lint": "biome lint src test benchmarks tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "lint:fix": "biome lint --write src test benchmarks tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "bench:agent": "tsx benchmarks/agent/run.ts",
+    "bench:agent:estimate": "tsx benchmarks/agent/run.ts --estimate-only",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
@@ -61,6 +63,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.14",
     "@types/node": "^24.0.0",
+    "tsx": "^4.20.6",
     "tsup": "^8.0.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
