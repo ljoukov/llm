@@ -3,7 +3,11 @@ import path from "node:path";
 import { z } from "zod";
 
 import { type LlmExecutableTool, type LlmToolSet, tool } from "../llm.js";
-import { applyPatch } from "./applyPatch.js";
+import {
+  applyPatch,
+  CODEX_APPLY_PATCH_INPUT_DESCRIPTION,
+  CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION,
+} from "./applyPatch.js";
 import {
   createNodeAgentFilesystem,
   type AgentDirectoryEntry,
@@ -141,7 +145,7 @@ const codexGrepFilesInputSchema = z.object({
 });
 
 const applyPatchInputSchema = z.object({
-  input: z.string().min(1),
+  input: z.string().min(1).describe(CODEX_APPLY_PATCH_INPUT_DESCRIPTION),
 });
 
 const geminiReadFileInputSchema = z.object({
@@ -279,8 +283,7 @@ export function createCodexApplyPatchTool(
   options: AgentFilesystemToolsOptions = {},
 ): LlmExecutableTool<typeof applyPatchInputSchema, string> {
   return tool({
-    description:
-      "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.",
+    description: CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION,
     inputSchema: applyPatchInputSchema,
     execute: async ({ input }) => {
       const runtime = resolveRuntime(options);
