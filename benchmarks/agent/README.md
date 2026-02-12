@@ -1,18 +1,21 @@
-# Agent Benchmark (Micro)
+# Agent Benchmark (Filesystem Extraction + Summarization)
 
-Small, budget-friendly benchmark for code-edit style tasks across three edit formats:
+This benchmark evaluates a filesystem-based agent that must:
 
-- `replace`
-- `patch` (line-range patches)
-- `hashline` (line anchors with short hashes)
-- `apply_patch` (Codex-style patch envelope)
+- read a science-report markdown file from disk,
+- read JSON schema files from disk,
+- write a required set of JSON outputs that satisfy those schemas,
+- ground claims in report evidence (line refs and quotes), and
+- pass an LLM grader (`gpt-5.2`) for fidelity and coverage.
 
-The default model is `chatgpt-gpt-5.3-codex`.
+It runs the agent with:
 
-This is a **single configurable experiment harness**. You control scope with `--tasks`, `--variants`, and `--runs`.
+- ChatGPT Codex: `chatgpt-gpt-5.3-codex`
+- Gemini Pro: `gemini-2.5-pro`
+- Gemini Flash: `gemini-flash-latest`
 
-Note: these are synthetic micro-edit tasks for cost/format sensitivity checks. They are not a direct replica of the
-`react-edit-benchmark` tasks from the blog post.
+The tasks are adapted from real science papers and stored under `benchmarks/agent/reports/`.
+Default run uses one shared task (`tumor-vaccine-ici`) across all models so Codex vs Gemini is directly comparable.
 
 ## Run
 
@@ -20,7 +23,7 @@ Note: these are synthetic micro-edit tasks for cost/format sensitivity checks. T
 npx tsx benchmarks/agent/run.ts
 ```
 
-## Estimate-only mode
+## Estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts --estimate-only
@@ -30,41 +33,44 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --model chatgpt-gpt-5.3-codex \
-  --variants replace,patch,hashline,apply_patch \
-  --max-tasks 4 \
+  --models chatgpt-gpt-5.3-codex,gemini-2.5-pro,gemini-flash-latest \
+  --tasks tumor-vaccine-ici \
   --runs 1 \
-  --reasoning low \
-  --estimate-prompt-tokens 1200 \
-  --estimate-response-tokens 300
+  --reasoning medium \
+  --grader-model gpt-5.2 \
+  --max-steps 20
 ```
 
-## Typical runs
+## What is validated
 
-Smoke (cheap):
-
-```bash
-npx tsx benchmarks/agent/run.ts --tasks off-by-one-loop --variants apply_patch --runs 1
-```
-
-Small matrix:
-
-```bash
-npx tsx benchmarks/agent/run.ts --max-tasks 2 --variants replace,patch,hashline,apply_patch --runs 1
-```
-
-## Expected starter costs
-
-With defaults (`4 tasks * 4 variants * 1 run = 16 calls`) and `1200/300` estimated prompt/response tokens per call:
-
-- Estimated per call: about `$0.004500`
-- Estimated total: about `$0.072000`
-
-These are projections. Actual cost depends on usage tokens returned by the model and is reported in the output.
+1. Schema compliance for each required output file.
+2. Grounding checks:
+   - line refs must match `L<number>` and be in-range,
+   - claim evidence quotes must appear in the report text.
+3. Tool usage traces from `runAgentLoop`:
+   - at least 3 tool calls,
+   - at least one successful read/list/search call,
+   - at least one successful write call.
+   - path policy checks: no absolute paths and no `..` traversal in tool arguments.
+   - trace artifacts are written to `filesystem-access-trace.json` and `agent-run.json`.
+4. LLM grading with `gpt-5.2`:
+   - faithfulness,
+   - coverage,
+   - practical usefulness.
 
 ## Output
 
-Results are written to `benchmarks/agent/results/`:
+Each benchmark run writes a dedicated folder:
 
-- `agent-micro-<timestamp>.json`
-- `agent-micro-<timestamp>.md`
+- `benchmarks/agent/results/agent-fs-<timestamp>/summary.json`
+- `benchmarks/agent/results/agent-fs-<timestamp>/report.md`
+- `benchmarks/agent/results/agent-fs-<timestamp>/workspaces/<model-task-run>/...`
+
+Workspace folders include:
+
+- `input/report.md`
+- `schemas/*.schema.json`
+- `output/*.json` (agent outputs)
+- `agent-run.json` (full step/tool trace)
+- `filesystem-access-trace.json` (filesystem-level action trace)
+- `validation.json` (schema/grounding/tool/grader verdicts)
