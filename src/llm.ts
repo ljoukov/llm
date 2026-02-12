@@ -1934,6 +1934,8 @@ function resolveGeminiThinkingConfig(modelId: string): GenerateContentConfig["th
   switch (modelId) {
     case "gemini-3-pro-preview":
       return { includeThoughts: true } as const;
+    case "gemini-3-flash-preview":
+      return { includeThoughts: true, thinkingBudget: 16_384 } as const;
     case "gemini-2.5-pro":
       return { includeThoughts: true, thinkingBudget: 32_768 } as const;
     case "gemini-flash-latest":

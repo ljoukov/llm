@@ -116,6 +116,12 @@ type WorkspaceLayout = {
   readonly taskFilePath: string;
 };
 
+type PromptTemplates = {
+  readonly agentPrompt: string;
+  readonly taskTemplate: string;
+  readonly graderPrompt: string;
+};
+
 const DEFAULT_GRADER_MODEL = "gpt-5.2";
 const DEFAULT_MAX_STEPS = 20;
 const MIN_TOOL_CALLS = 3;
@@ -285,6 +291,20 @@ function redactSensitivePaths(value: unknown, workspaceRootAbs: string): unknown
   return value;
 }
 
+function renderTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/{{([A-Z0-9_]+)}}/g, (_match, key: string) => values[key] ?? "");
+}
+
+async function loadPromptTemplates(benchmarkRoot: string): Promise<PromptTemplates> {
+  const promptsRoot = join(benchmarkRoot, "prompts");
+  const [agentPrompt, taskTemplate, graderPrompt] = await Promise.all([
+    readFile(join(promptsRoot, "agent_prompt.md"), "utf8"),
+    readFile(join(promptsRoot, "task_template.md"), "utf8"),
+    readFile(join(promptsRoot, "grader_prompt.md"), "utf8"),
+  ]);
+  return { agentPrompt, taskTemplate, graderPrompt };
+}
+
 function formatUsd(value: number): string {
   return value.toFixed(6);
 }
@@ -337,49 +357,26 @@ function toSchemaDocument(spec: OutputFileSpec): JsonRecord {
   };
 }
 
-function buildTaskFile(params: { task: ScienceBenchmarkTask; layout: WorkspaceLayout }): string {
-  const schemaLines = OUTPUT_FILE_SPECS.map((spec, index) => {
-    const schemaPath = params.layout.schemaPaths[index] ?? "";
-    const outputPath = params.layout.outputPaths[index] ?? "";
-    return [
-      `${index + 1}.`,
-      `Schema path: ${schemaPath}`,
-      `Output path: ${outputPath}`,
-      `Purpose: ${spec.description}`,
-    ].join(" ");
+function buildTaskFile(params: {
+  task: ScienceBenchmarkTask;
+  layout: WorkspaceLayout;
+  taskTemplate: string;
+}): string {
+  const outputMappingList = OUTPUT_FILE_SPECS.map((spec, index) => {
+    const schemaPath = params.layout.schemaPaths[index] ?? spec.schemaFile;
+    const outputPath = params.layout.outputPaths[index] ?? spec.outputFile;
+    return `- \`${outputPath}\` (schema: \`${schemaPath}\`)`;
   }).join("\n");
 
-  return [
-    "# Agent Task",
-    "",
-    `Task id: ${params.task.id}`,
-    `Task title: ${params.task.title}`,
-    `Reference paper: ${params.task.sourceTitle}`,
-    `Reference URL: ${params.task.sourceUrl}`,
-    "",
-    "## Objective",
-    "Read the science report and produce all required JSON outputs. Each output must satisfy its schema exactly.",
-    "",
-    "## Input",
-    `Report markdown path: ${params.layout.reportPath}`,
-    "",
-    "## Required Outputs",
-    schemaLines,
-    "",
-    "## Constraints",
-    "- Do not invent facts or numbers that are absent from the report.",
-    "- Use line references as L<number> (for example L12) when the schema requires line refs.",
-    "- For claim evidence quotes, copy exact report text snippets.",
-    "- Use relative paths only. Never use absolute paths.",
-    "- Never use '..' in any path.",
-    "- Write valid JSON only to output files (no comments, no trailing commas).",
-    "- Before finishing, verify every schema min/max length constraint is satisfied.",
-    "- Keep claim wording precise and avoid overstatement.",
-    "",
-    "## Completion",
-    "After writing all files, respond with a short checklist mentioning each output path.",
-    "",
-  ].join("\n");
+  return renderTemplate(params.taskTemplate, {
+    TASK_ID: params.task.id,
+    TASK_TITLE: params.task.title,
+    SOURCE_TITLE: params.task.sourceTitle,
+    SOURCE_URL: params.task.sourceUrl,
+    TASK_FILE: params.layout.taskFilePath,
+    REPORT_PATH: params.layout.reportPath,
+    OUTPUT_SCHEMA_MAPPING_LIST: outputMappingList,
+  });
 }
 
 async function createWorkspace(params: {
@@ -387,6 +384,7 @@ async function createWorkspace(params: {
   workspaceRootAbs: string;
   workspaceRootRel: string;
   benchmarkRoot: string;
+  taskTemplate: string;
 }): Promise<WorkspaceLayout> {
   await mkdir(params.workspaceRootAbs, { recursive: true });
 
@@ -432,26 +430,15 @@ async function createWorkspace(params: {
 
   await writeFile(
     join(params.workspaceRootAbs, layout.taskFilePath),
-    buildTaskFile({ task: params.task, layout }),
+    buildTaskFile({ task: params.task, layout, taskTemplate: params.taskTemplate }),
   );
   return layout;
 }
 
-function buildAgentPrompt(layout: WorkspaceLayout): string {
-  return [
-    "You are a filesystem extraction/summarization agent.",
-    "Use filesystem tools to complete the task from TASK.md.",
-    "Use only workspace-relative paths.",
-    "Do not use absolute paths.",
-    "Do not use '..' in paths.",
-    `Start by reading: ${layout.taskFilePath}`,
-    "",
-    "Hard requirements:",
-    "1. Read the report and each schema from disk before writing outputs.",
-    "2. Write all required output JSON files to the exact paths in TASK.md.",
-    "3. Keep outputs fully faithful to the report.",
-    "4. Respond only after all files are written.",
-  ].join("\n");
+function buildAgentPrompt(layout: WorkspaceLayout, template: string): string {
+  return renderTemplate(template, {
+    TASK_FILE: layout.taskFilePath,
+  });
 }
 
 function parseLineRef(ref: string): number | undefined {
@@ -788,34 +775,15 @@ function buildGraderPrompt(params: {
   task: ScienceBenchmarkTask;
   reportText: string;
   validations: readonly OutputValidation[];
+  graderTemplate: string;
 }): string {
-  return [
-    "You are a strict scientific-output grader.",
-    "Judge whether generated JSON outputs are faithful to the report and practically useful.",
-    "",
-    "Pass criteria:",
-    "- No fabricated quantitative claims.",
-    "- Main findings and caveats are covered.",
-    "- Claims are appropriately calibrated (no overstatement).",
-    "- Outputs are internally coherent and useful for downstream review.",
-    "- Line references are valid and map to the numbered report lines below.",
-    "",
-    "Fail criteria:",
-    "- Hallucinated numbers or contradictions.",
-    "- Missing core outcomes or limitations.",
-    "- Serious misinterpretation of study design or evidence strength.",
-    "",
-    `Task: ${params.task.id} (${params.task.title})`,
-    `Source paper URL: ${params.task.sourceUrl}`,
-    "",
-    "## REPORT WITH LINE NUMBERS",
-    renderNumberedReport(params.reportText),
-    "",
-    "## OUTPUT FILES",
-    renderOutputBundle(params.validations),
-    "",
-    "Return JSON only following schema.",
-  ].join("\n");
+  return renderTemplate(params.graderTemplate, {
+    TASK_ID: params.task.id,
+    TASK_TITLE: params.task.title,
+    SOURCE_URL: params.task.sourceUrl,
+    NUMBERED_REPORT: renderNumberedReport(params.reportText),
+    OUTPUT_BUNDLE: renderOutputBundle(params.validations),
+  });
 }
 
 async function gradeOutputs(params: {
@@ -824,6 +792,7 @@ async function gradeOutputs(params: {
   layout: WorkspaceLayout;
   validations: readonly OutputValidation[];
   reasoning: ReasoningEffort;
+  graderTemplate: string;
 }): Promise<{
   readonly value?: GraderVerdict;
   readonly error?: string;
@@ -836,6 +805,7 @@ async function gradeOutputs(params: {
         task: params.task,
         reportText: params.layout.reportText,
         validations: params.validations,
+        graderTemplate: params.graderTemplate,
       }),
       schema: GraderSchema,
       instructions:
@@ -863,6 +833,7 @@ async function runCase(params: {
   reasoning: ReasoningEffort;
   graderModel: string;
   maxSteps: number;
+  promptTemplates: PromptTemplates;
 }): Promise<CaseResult> {
   const caseName = `${sanitizeForPath(params.model)}-${params.task.id}-run-${params.runIndex}`;
   const workspacePath = normalizeSlashes(join("workspaces", caseName));
@@ -872,6 +843,7 @@ async function runCase(params: {
     workspaceRootAbs,
     workspaceRootRel: workspacePath,
     benchmarkRoot: params.benchmarkRoot,
+    taskTemplate: params.promptTemplates.taskTemplate,
   });
 
   const startedAt = Date.now();
@@ -886,7 +858,7 @@ async function runCase(params: {
   try {
     const result = await runAgentLoop({
       model: params.model,
-      input: buildAgentPrompt(layout),
+      input: buildAgentPrompt(layout, params.promptTemplates.agentPrompt),
       filesystemTool: {
         profile: "model-agnostic",
         options: {
@@ -950,6 +922,7 @@ async function runCase(params: {
     layout,
     validations,
     reasoning: params.reasoning,
+    graderTemplate: params.promptTemplates.graderPrompt,
   });
 
   const graderPass = grader.value?.verdict === "pass";
@@ -1271,6 +1244,7 @@ async function main(): Promise<void> {
   }
 
   const benchmarkRoot = dirname(fileURLToPath(import.meta.url));
+  const promptTemplates = await loadPromptTemplates(benchmarkRoot);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const runId = `agent-fs-${timestamp}`;
   const outDir = resolve(values["out-dir"] ?? "benchmarks/agent/results");
@@ -1291,6 +1265,7 @@ async function main(): Promise<void> {
           reasoning,
           graderModel,
           maxSteps,
+          promptTemplates,
         });
         caseResults.push(result);
 

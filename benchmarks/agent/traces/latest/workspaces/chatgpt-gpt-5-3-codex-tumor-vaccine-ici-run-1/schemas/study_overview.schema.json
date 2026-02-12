@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "schemas-study_overview",
+  "type": "object",
+  "properties": {
+    "paper": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 10
+        },
+        "doi": {
+          "type": "string",
+          "pattern": "^10\\."
+        },
+        "publication_year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2100
+        },
+        "domain": {
+          "type": "string",
+          "enum": [
+            "oncology-immunology",
+            "exoplanet-atmospheres",
+            "climate-science",
+            "neuroscience",
+            "other"
+          ]
+        },
+        "study_type": {
+          "type": "string",
+          "enum": [
+            "preclinical+retrospective",
+            "observational-astronomy",
+            "randomized-trial",
+            "simulation",
+            "mixed"
+          ]
+        }
+      },
+      "required": ["title", "doi", "publication_year", "domain", "study_type"],
+      "additionalProperties": false
+    },
+    "core_question": {
+      "type": "string",
+      "minLength": 20
+    },
+    "datasets_or_cohorts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 3
+          },
+          "sample_size_or_observations": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 20
+          }
+        },
+        "required": ["id", "label", "sample_size_or_observations", "description"],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 8
+    },
+    "major_limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 12
+      },
+      "minItems": 3,
+      "maxItems": 8
+    }
+  },
+  "required": ["paper", "core_question", "datasets_or_cohorts", "major_limitations"],
+  "additionalProperties": false
+}
