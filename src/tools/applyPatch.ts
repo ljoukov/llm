@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { type LlmExecutableTool, tool } from "../llm.js";
+import { type LlmFunctionTool, tool } from "../llm.js";
 import { createNodeAgentFilesystem, type AgentFilesystem } from "./filesystem.js";
 
 const BEGIN_PATCH_LINE = "*** Begin Patch";
@@ -15,6 +15,29 @@ const END_OF_FILE_LINE = "*** End of File";
 const DEFAULT_MAX_PATCH_BYTES = 1024 * 1024;
 
 export const CODEX_APPLY_PATCH_INPUT_DESCRIPTION = "The entire contents of the apply_patch command";
+export const CODEX_APPLY_PATCH_FREEFORM_TOOL_DESCRIPTION =
+  "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.";
+export const CODEX_APPLY_PATCH_LARK_GRAMMAR = [
+  "start: begin_patch hunk+ end_patch",
+  'begin_patch: "*** Begin Patch" LF',
+  'end_patch: "*** End Patch" LF?',
+  "",
+  "hunk: add_hunk | delete_hunk | update_hunk",
+  'add_hunk: "*** Add File: " filename LF add_line+',
+  'delete_hunk: "*** Delete File: " filename LF',
+  'update_hunk: "*** Update File: " filename LF change_move? change?',
+  "",
+  "filename: /(.+)/",
+  'add_line: "+" /(.*)/ LF -> line',
+  "",
+  'change_move: "*** Move to: " filename LF',
+  "change: (change_context | change_line)+ eof_line?",
+  'change_context: ("@@" | "@@ " /(.+)/) LF',
+  'change_line: ("+" | "-" | " ") /(.*)/ LF',
+  'eof_line: "*** End of File" LF',
+  "",
+  "%import common.LF",
+].join("\n");
 
 export const CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION = [
   "Use the `apply_patch` tool to edit files.",
@@ -159,7 +182,7 @@ export type ApplyPatchToolInput = z.output<typeof applyPatchToolInputSchema>;
 
 export function createApplyPatchTool(
   options: CreateApplyPatchToolOptions = {},
-): LlmExecutableTool<typeof applyPatchToolInputSchema, ApplyPatchResult> {
+): LlmFunctionTool<typeof applyPatchToolInputSchema, ApplyPatchResult> {
   return tool({
     description: options.description ?? CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION,
     inputSchema: applyPatchToolInputSchema,

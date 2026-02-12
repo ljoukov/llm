@@ -228,11 +228,31 @@ export type LlmGenerateImagesRequest = {
   readonly signal?: AbortSignal;
 };
 
-export type LlmExecutableTool<Schema extends z.ZodType, Output> = {
+export type LlmFunctionTool<Schema extends z.ZodType, Output> = {
+  readonly type?: "function";
   readonly description?: string;
   readonly inputSchema: Schema;
   readonly execute: (input: z.output<Schema>) => Promise<Output> | Output;
 };
+
+export type LlmCustomToolInputFormat =
+  | { readonly type: "text" }
+  | {
+      readonly type: "grammar";
+      readonly syntax: "lark" | "regex";
+      readonly definition: string;
+    };
+
+export type LlmCustomTool<Output> = {
+  readonly type: "custom";
+  readonly description?: string;
+  readonly format?: LlmCustomToolInputFormat;
+  readonly execute: (input: string) => Promise<Output> | Output;
+};
+
+export type LlmExecutableTool<Schema extends z.ZodType, Output> =
+  | LlmFunctionTool<Schema, Output>
+  | LlmCustomTool<Output>;
 
 export type LlmToolSet = Record<string, LlmExecutableTool<z.ZodType, unknown>>;
 
@@ -240,8 +260,22 @@ export function tool<Schema extends z.ZodType, Output>(options: {
   readonly description?: string;
   readonly inputSchema: Schema;
   readonly execute: (input: z.output<Schema>) => Promise<Output> | Output;
-}): LlmExecutableTool<Schema, Output> {
-  return options;
+}): LlmFunctionTool<Schema, Output> {
+  return {
+    type: "function",
+    ...options,
+  };
+}
+
+export function customTool<Output>(options: {
+  readonly description?: string;
+  readonly format?: LlmCustomToolInputFormat;
+  readonly execute: (input: string) => Promise<Output> | Output;
+}): LlmCustomTool<Output> {
+  return {
+    type: "custom",
+    ...options,
+  };
 }
 
 export type LlmToolCallResult = {
@@ -1638,17 +1672,51 @@ function buildToolErrorOutput(
 }
 
 async function executeToolCall(params: {
+  callKind: "function" | "custom";
   toolName: string;
   tool: LlmExecutableTool<z.ZodType, unknown> | undefined;
   rawInput: unknown;
   parseError?: string;
 }): Promise<{ result: LlmToolCallResult; outputPayload: unknown }> {
-  const { toolName, tool, rawInput, parseError } = params;
+  const { callKind, toolName, tool, rawInput, parseError } = params;
   if (!tool) {
     const message = `Unknown tool: ${toolName}`;
     return {
       result: { toolName, input: rawInput, output: { error: message }, error: message },
       outputPayload: buildToolErrorOutput(message),
+    };
+  }
+  if (callKind === "custom") {
+    if (!isCustomTool(tool)) {
+      const message = `Tool ${toolName} was called as custom_tool_call but is declared as function.`;
+      const outputPayload = buildToolErrorOutput(message);
+      return {
+        result: { toolName, input: rawInput, output: outputPayload, error: message },
+        outputPayload,
+      };
+    }
+    const input = typeof rawInput === "string" ? rawInput : String(rawInput ?? "");
+    try {
+      const output = await tool.execute(input);
+      return {
+        result: { toolName, input, output },
+        outputPayload: output,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const outputPayload = buildToolErrorOutput(`Tool ${toolName} failed: ${message}`);
+      return {
+        result: { toolName, input, output: outputPayload, error: message },
+        outputPayload,
+      };
+    }
+  }
+  if (isCustomTool(tool)) {
+    const message = `Tool ${toolName} was called as function_call but is declared as custom.`;
+    const outputPayload = buildToolErrorOutput(message);
+    return {
+      result: { toolName, input: rawInput, output: outputPayload, error: message },
+      outputPayload,
     };
   }
   if (parseError) {
@@ -1793,10 +1861,12 @@ function extractOpenAiResponseParts(response: { output?: unknown; output_text?: 
   return { parts, blocked };
 }
 
-function extractOpenAiFunctionCalls(
-  output: unknown,
-): Array<{ name: string; arguments: string; call_id: string; id?: string }> {
-  const calls: Array<{ name: string; arguments: string; call_id: string; id?: string }> = [];
+type OpenAiToolCall =
+  | { kind: "function"; name: string; arguments: string; call_id: string; id?: string }
+  | { kind: "custom"; name: string; input: string; call_id: string; id?: string };
+
+function extractOpenAiToolCalls(output: unknown): OpenAiToolCall[] {
+  const calls: OpenAiToolCall[] = [];
   if (!Array.isArray(output)) {
     return calls;
   }
@@ -1804,7 +1874,8 @@ function extractOpenAiFunctionCalls(
     if (!item || typeof item !== "object") {
       continue;
     }
-    if ((item as { type?: unknown }).type === "function_call") {
+    const itemType = (item as { type?: unknown }).type;
+    if (itemType === "function_call") {
       const name =
         typeof (item as { name?: unknown }).name === "string"
           ? ((item as { name?: unknown }).name as string)
@@ -1822,7 +1893,29 @@ function extractOpenAiFunctionCalls(
           ? ((item as { id?: unknown }).id as string)
           : undefined;
       if (name && call_id) {
-        calls.push({ name, arguments: args, call_id, id });
+        calls.push({ kind: "function", name, arguments: args, call_id, id });
+      }
+      continue;
+    }
+    if (itemType === "custom_tool_call") {
+      const name =
+        typeof (item as { name?: unknown }).name === "string"
+          ? ((item as { name?: unknown }).name as string)
+          : "";
+      const input =
+        typeof (item as { input?: unknown }).input === "string"
+          ? ((item as { input?: unknown }).input as string)
+          : "";
+      const call_id =
+        typeof (item as { call_id?: unknown }).call_id === "string"
+          ? ((item as { call_id?: unknown }).call_id as string)
+          : "";
+      const id =
+        typeof (item as { id?: unknown }).id === "string"
+          ? ((item as { id?: unknown }).id as string)
+          : undefined;
+      if (name && call_id) {
+        calls.push({ kind: "custom", name, input, call_id, id });
       }
     }
   }
@@ -2430,15 +2523,31 @@ function resolveToolLoopContents(input: LlmInput): readonly LlmContent[] {
   return resolveTextContents(input);
 }
 
-function buildOpenAiFunctionTools(tools: LlmToolSet): unknown[] {
+function isCustomTool(
+  toolDef: LlmExecutableTool<z.ZodType, unknown>,
+): toolDef is LlmCustomTool<unknown> {
+  return (toolDef as { type?: unknown }).type === "custom";
+}
+
+function buildOpenAiToolsFromToolSet(tools: LlmToolSet): unknown[] {
   const toolEntries = Object.entries(tools);
-  return toolEntries.map(([name, toolDef]) => ({
-    type: "function",
-    name,
-    description: toolDef.description ?? undefined,
-    parameters: buildOpenAiToolSchema(toolDef.inputSchema, name),
-    strict: true,
-  }));
+  return toolEntries.map(([name, toolDef]) => {
+    if (isCustomTool(toolDef)) {
+      return {
+        type: "custom",
+        name,
+        description: toolDef.description ?? undefined,
+        ...(toolDef.format ? { format: toolDef.format } : {}),
+      };
+    }
+    return {
+      type: "function",
+      name,
+      description: toolDef.description ?? undefined,
+      parameters: buildOpenAiToolSchema(toolDef.inputSchema, name),
+      strict: true,
+    };
+  });
 }
 
 function buildOpenAiToolSchema(schema: z.ZodType, name: string): JsonSchema {
@@ -2452,11 +2561,18 @@ function buildOpenAiToolSchema(schema: z.ZodType, name: string): JsonSchema {
 
 function buildGeminiFunctionDeclarations(tools: LlmToolSet): GeminiTool[] {
   const toolEntries = Object.entries(tools);
-  const functionDeclarations = toolEntries.map(([name, toolDef]) => ({
-    name,
-    description: toolDef.description ?? "",
-    parametersJsonSchema: buildGeminiToolSchema(toolDef.inputSchema, name),
-  }));
+  const functionDeclarations = toolEntries.map(([name, toolDef]) => {
+    if (isCustomTool(toolDef)) {
+      throw new Error(
+        `Gemini provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
+      );
+    }
+    return {
+      name,
+      description: toolDef.description ?? "",
+      parametersJsonSchema: buildGeminiToolSchema(toolDef.inputSchema, name),
+    };
+  });
   return [{ functionDeclarations }];
 }
 
@@ -2524,11 +2640,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   let finalThoughts = "";
 
   if (providerInfo.provider === "openai") {
-    const openAiFunctionTools = buildOpenAiFunctionTools(request.tools);
+    const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
     const openAiNativeTools = toOpenAiTools(request.modelTools);
     const openAiTools = openAiNativeTools
-      ? [...openAiNativeTools, ...openAiFunctionTools]
-      : [...openAiFunctionTools];
+      ? [...openAiNativeTools, ...openAiAgentTools]
+      : [...openAiAgentTools];
     const reasoningEffort = resolveOpenAiReasoningEffort(
       providerInfo.model,
       request.openAiReasoningEffort,
@@ -2641,10 +2757,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         emitEvent({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
       }
 
-      const functionCalls = extractOpenAiFunctionCalls((finalResponse as any).output);
+      const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
 
       const stepToolCalls: LlmToolCallResult[] = [];
-      if (functionCalls.length === 0) {
+      if (responseToolCalls.length === 0) {
         finalText = responseText;
         finalThoughts = reasoningSummary;
         steps.push({
@@ -2659,10 +2775,21 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
       }
 
-      const callInputs = functionCalls.map((call, index) => {
+      const callInputs = responseToolCalls.map((call, index) => {
         const toolIndex = index + 1;
         const toolId = buildToolLogId(turn, toolIndex);
         const toolName = call.name;
+        if (call.kind === "custom") {
+          return {
+            call,
+            toolName,
+            value: call.input,
+            parseError: undefined,
+            toolId,
+            turn,
+            toolIndex,
+          };
+        }
         const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
         return { call, toolName, value, parseError, toolId, turn, toolIndex };
       });
@@ -2678,6 +2805,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             },
             async () => {
               const { result, outputPayload } = await executeToolCall({
+                callKind: entry.call.kind,
                 toolName: entry.toolName,
                 tool: request.tools[entry.toolName],
                 rawInput: entry.value,
@@ -2692,11 +2820,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const toolOutputs: any[] = [];
       for (const { entry, result, outputPayload } of callResults) {
         stepToolCalls.push({ ...result, callId: entry.call.call_id });
-        toolOutputs.push({
-          type: "function_call_output",
-          call_id: entry.call.call_id,
-          output: mergeToolOutput(outputPayload),
-        });
+        if (entry.call.kind === "custom") {
+          toolOutputs.push({
+            type: "custom_tool_call_output",
+            call_id: entry.call.call_id,
+            output: mergeToolOutput(outputPayload),
+          });
+        } else {
+          toolOutputs.push({
+            type: "function_call_output",
+            call_id: entry.call.call_id,
+            output: mergeToolOutput(outputPayload),
+          });
+        }
       }
 
       steps.push({
@@ -2717,11 +2853,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   }
 
   if (providerInfo.provider === "chatgpt") {
-    const openAiFunctionTools = buildOpenAiFunctionTools(request.tools);
+    const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
     const openAiNativeTools = toOpenAiTools(request.modelTools);
     const openAiTools = openAiNativeTools
-      ? [...openAiNativeTools, ...openAiFunctionTools]
-      : [...openAiFunctionTools];
+      ? [...openAiNativeTools, ...openAiAgentTools]
+      : [...openAiAgentTools];
 
     const reasoningEffort = resolveOpenAiReasoningEffort(
       request.model,
@@ -2772,8 +2908,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const responseText = (response.text ?? "").trim();
       const reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
 
-      const functionCalls = response.toolCalls ?? [];
-      if (functionCalls.length === 0) {
+      const responseToolCalls = response.toolCalls ?? [];
+      if (responseToolCalls.length === 0) {
         finalText = responseText;
         finalThoughts = reasoningSummaryText;
         steps.push({
@@ -2790,11 +2926,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
       const toolCalls: LlmToolCallResult[] = [];
       const toolOutputs: ChatGptInputItem[] = [];
-      const callInputs = functionCalls.map((call, index) => {
+      const callInputs = responseToolCalls.map((call, index) => {
         const toolIndex = index + 1;
         const toolId = buildToolLogId(turn, toolIndex);
         const toolName = call.name;
-        const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
+        const { value, error: parseError } =
+          call.kind === "custom"
+            ? { value: call.input, error: undefined }
+            : parseOpenAiToolArguments(call.arguments);
         const ids = normalizeChatGptToolIds({ callId: call.callId, itemId: call.id });
         return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
       });
@@ -2810,6 +2949,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             },
             async () => {
               const { result, outputPayload } = await executeToolCall({
+                callKind: entry.call.kind,
                 toolName: entry.toolName,
                 tool: request.tools[entry.toolName],
                 rawInput: entry.value,
@@ -2823,19 +2963,35 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
       for (const { entry, result, outputPayload } of callResults) {
         toolCalls.push({ ...result, callId: entry.ids.callId });
-        toolOutputs.push({
-          type: "function_call",
-          id: entry.ids.itemId,
-          call_id: entry.ids.callId,
-          name: entry.toolName,
-          arguments: entry.call.arguments,
-          status: "completed",
-        } as ChatGptInputItem);
-        toolOutputs.push({
-          type: "function_call_output",
-          call_id: entry.ids.callId,
-          output: mergeToolOutput(outputPayload),
-        } as ChatGptInputItem);
+        if (entry.call.kind === "custom") {
+          toolOutputs.push({
+            type: "custom_tool_call",
+            id: entry.ids.itemId,
+            call_id: entry.ids.callId,
+            name: entry.toolName,
+            input: entry.call.input,
+            status: "completed",
+          } as ChatGptInputItem);
+          toolOutputs.push({
+            type: "custom_tool_call_output",
+            call_id: entry.ids.callId,
+            output: mergeToolOutput(outputPayload),
+          } as ChatGptInputItem);
+        } else {
+          toolOutputs.push({
+            type: "function_call",
+            id: entry.ids.itemId,
+            call_id: entry.ids.callId,
+            name: entry.toolName,
+            arguments: entry.call.arguments,
+            status: "completed",
+          } as ChatGptInputItem);
+          toolOutputs.push({
+            type: "function_call_output",
+            call_id: entry.ids.callId,
+            output: mergeToolOutput(outputPayload),
+          } as ChatGptInputItem);
+        }
       }
 
       steps.push({
@@ -3027,6 +3183,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           },
           async () => {
             const { result, outputPayload } = await executeToolCall({
+              callKind: "function",
               toolName: entry.toolName,
               tool: request.tools[entry.toolName],
               rawInput: entry.rawInput,

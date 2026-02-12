@@ -351,7 +351,7 @@ const { value } = await generateJson({
 This library supports two kinds of tools:
 
 - Model tools (server-side): `web-search` and `code-execution`
-- Your tools (JS/TS code): use `runToolLoop()` and `tool()`
+- Your tools (JS/TS code): use `runToolLoop()` with `tool()` (JSON) or `customTool()` (freeform)
 
 ### Model tools (web search / code execution)
 
@@ -369,7 +369,7 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-### Your tools (function calling)
+### Your tools (function + custom tool calling)
 
 `runToolLoop()` runs a simple function-calling loop until the model returns a final answer or the step limit is hit.
 
@@ -392,9 +392,14 @@ const result = await runToolLoop({
 console.log(result.text);
 ```
 
+For freeform/custom tools (for example Codex-style grammars), use `customTool()`.
+
 ### Built-in `apply_patch` tool
 
-The library includes a Codex-style `apply_patch` tool with a pluggable filesystem adapter.
+The library includes:
+
+- `createApplyPatchTool(...)`: JSON function-tool wrapper (`{ input: string }`)
+- `createCodexApplyPatchTool(...)`: Codex freeform/grammar style (used by codex filesystem profile)
 
 ```ts
 import {
@@ -433,6 +438,8 @@ Use `runAgentLoop()` when you want a default filesystem toolset chosen by model:
 - Codex-like models -> `apply_patch`, `read_file`, `list_dir`, `grep_files`
 - Gemini models -> `read_file`, `write_file`, `replace`, `list_directory`, `grep_search`, `glob`
 - Other models -> model-agnostic (Gemini-style) set by default
+
+Detailed reference: `docs/agent-filesystem-tools.md`.
 
 ```ts
 import { createInMemoryAgentFilesystem, runAgentLoop } from "@ljoukov/llm";
