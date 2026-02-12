@@ -2,11 +2,18 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { type LlmExecutableTool, type LlmToolSet, tool } from "../llm.js";
+import {
+  customTool,
+  type LlmCustomTool,
+  type LlmFunctionTool,
+  type LlmToolSet,
+  tool,
+} from "../llm.js";
 import {
   applyPatch,
+  CODEX_APPLY_PATCH_FREEFORM_TOOL_DESCRIPTION,
+  CODEX_APPLY_PATCH_LARK_GRAMMAR,
   CODEX_APPLY_PATCH_INPUT_DESCRIPTION,
-  CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION,
 } from "./applyPatch.js";
 import {
   createNodeAgentFilesystem,
@@ -15,6 +22,8 @@ import {
 } from "./filesystem.js";
 
 const DEFAULT_READ_FILE_LINE_LIMIT = 2000;
+const DEFAULT_READ_FILES_LINE_LIMIT = 200;
+const DEFAULT_READ_FILES_CHAR_LIMIT = 4000;
 const DEFAULT_LIST_DIR_LIMIT = 25;
 const DEFAULT_LIST_DIR_DEPTH = 2;
 const DEFAULT_GREP_LIMIT = 100;
@@ -51,11 +60,13 @@ export type AgentFilesystemToolProfile = "auto" | "model-agnostic" | "codex" | "
 export type AgentFilesystemToolName =
   | "apply_patch"
   | "read_file"
+  | "read_files"
   | "write_file"
   | "replace"
   | "list_dir"
   | "list_directory"
   | "grep_files"
+  | "rg_search"
   | "grep_search"
   | "glob";
 
@@ -154,6 +165,26 @@ const geminiReadFileInputSchema = z.object({
   limit: z.number().int().min(1).optional(),
 });
 
+const geminiReadFilesInputSchema = z
+  .object({
+    paths: z.array(z.string().min(1)).min(1),
+    line_offset: z.number().int().min(0).optional(),
+    line_limit: z.number().int().min(1).optional(),
+    char_offset: z.number().int().min(0).optional(),
+    char_limit: z.number().int().min(1).optional(),
+    include_line_numbers: z.boolean().optional(),
+  })
+  .superRefine((value, context) => {
+    const hasLineWindow = value.line_offset !== undefined || value.line_limit !== undefined;
+    const hasCharWindow = value.char_offset !== undefined || value.char_limit !== undefined;
+    if (hasLineWindow && hasCharWindow) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Use either line_* or char_* window arguments, not both.",
+      });
+    }
+  });
+
 const geminiWriteFileInputSchema = z.object({
   file_path: z.string().min(1),
   content: z.string(),
@@ -176,6 +207,17 @@ const geminiListDirectoryInputSchema = z.object({
       respect_gemini_ignore: z.boolean().optional(),
     })
     .optional(),
+});
+
+const geminiRgSearchInputSchema = z.object({
+  pattern: z.string().min(1),
+  path: z.string().optional(),
+  glob: z.string().optional(),
+  case_sensitive: z.boolean().optional(),
+  exclude_pattern: z.string().optional(),
+  names_only: z.boolean().optional(),
+  max_matches_per_file: z.number().int().min(1).optional(),
+  max_results: z.number().int().min(1).optional(),
 });
 
 const geminiGrepSearchInputSchema = z.object({
@@ -201,10 +243,12 @@ export type CodexListDirToolInput = z.output<typeof codexListDirInputSchema>;
 export type CodexGrepFilesToolInput = z.output<typeof codexGrepFilesInputSchema>;
 export type CodexApplyPatchToolInput = z.output<typeof applyPatchInputSchema>;
 export type GeminiReadFileToolInput = z.output<typeof geminiReadFileInputSchema>;
+export type GeminiReadFilesToolInput = z.output<typeof geminiReadFilesInputSchema>;
 export type GeminiWriteFileToolInput = z.output<typeof geminiWriteFileInputSchema>;
 export type GeminiReplaceToolInput = z.output<typeof geminiReplaceInputSchema>;
 export type GeminiListDirectoryToolInput = z.output<typeof geminiListDirectoryInputSchema>;
 export type GeminiGrepSearchToolInput = z.output<typeof geminiGrepSearchInputSchema>;
+export type GeminiRgSearchToolInput = z.output<typeof geminiRgSearchInputSchema>;
 export type GeminiGlobToolInput = z.output<typeof geminiGlobInputSchema>;
 
 export function resolveFilesystemToolProfile(
@@ -264,7 +308,7 @@ export function createGeminiFilesystemToolSet(
   options: AgentFilesystemToolsOptions = {},
 ): LlmToolSet {
   return {
-    read_file: createReadFileTool(options),
+    read_file: createGeminiReadFileTool(options),
     write_file: createWriteFileTool(options),
     replace: createReplaceTool(options),
     list_directory: createListDirectoryTool(options),
@@ -281,11 +325,15 @@ export function createModelAgnosticFilesystemToolSet(
 
 export function createCodexApplyPatchTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof applyPatchInputSchema, string> {
-  return tool({
-    description: CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION,
-    inputSchema: applyPatchInputSchema,
-    execute: async ({ input }) => {
+): LlmCustomTool<string> {
+  return customTool({
+    description: CODEX_APPLY_PATCH_FREEFORM_TOOL_DESCRIPTION,
+    format: {
+      type: "grammar",
+      syntax: "lark",
+      definition: CODEX_APPLY_PATCH_LARK_GRAMMAR,
+    },
+    execute: async (input) => {
       const runtime = resolveRuntime(options);
       const result = await applyPatch({
         patch: input,
@@ -313,7 +361,7 @@ export function createCodexApplyPatchTool(
 
 export function createCodexReadFileTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof codexReadFileInputSchema, string> {
+): LlmFunctionTool<typeof codexReadFileInputSchema, string> {
   return tool({
     description:
       "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware block modes.",
@@ -324,7 +372,7 @@ export function createCodexReadFileTool(
 
 export function createListDirTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof codexListDirInputSchema, string> {
+): LlmFunctionTool<typeof codexListDirInputSchema, string> {
   return tool({
     description:
       "Lists entries in a local directory with 1-indexed entry numbers and simple type labels.",
@@ -335,7 +383,7 @@ export function createListDirTool(
 
 export function createGrepFilesTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof codexGrepFilesInputSchema, string> {
+): LlmFunctionTool<typeof codexGrepFilesInputSchema, string> {
   return tool({
     description:
       "Finds files whose contents match the pattern and lists them by modification time.",
@@ -344,19 +392,31 @@ export function createGrepFilesTool(
   });
 }
 
-export function createReadFileTool(
+export function createGeminiReadFileTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof geminiReadFileInputSchema, string> {
+): LlmFunctionTool<typeof geminiReadFileInputSchema, string> {
   return tool({
-    description: "Reads and returns content of a specified file.",
+    description:
+      "Reads and returns the content of a specified file. Supports optional 0-based line offset and line limit.",
     inputSchema: geminiReadFileInputSchema,
     execute: async (input) => readFileGemini(input, options),
   });
 }
 
+export function createReadFilesTool(
+  options: AgentFilesystemToolsOptions = {},
+): LlmFunctionTool<typeof geminiReadFilesInputSchema, string> {
+  return tool({
+    description:
+      "Reads one or more files with optional line-based or character-based slicing, similar to a controlled head/tail view.",
+    inputSchema: geminiReadFilesInputSchema,
+    execute: async (input) => readFilesGemini(input, options),
+  });
+}
+
 export function createWriteFileTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof geminiWriteFileInputSchema, string> {
+): LlmFunctionTool<typeof geminiWriteFileInputSchema, string> {
   return tool({
     description: "Writes content to a specified file in the local filesystem.",
     inputSchema: geminiWriteFileInputSchema,
@@ -366,7 +426,7 @@ export function createWriteFileTool(
 
 export function createReplaceTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof geminiReplaceInputSchema, string> {
+): LlmFunctionTool<typeof geminiReplaceInputSchema, string> {
   return tool({
     description: "Replaces exact literal text within a file.",
     inputSchema: geminiReplaceInputSchema,
@@ -376,7 +436,7 @@ export function createReplaceTool(
 
 export function createListDirectoryTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof geminiListDirectoryInputSchema, string> {
+): LlmFunctionTool<typeof geminiListDirectoryInputSchema, string> {
   return tool({
     description: "Lists files and subdirectories directly within a specified directory path.",
     inputSchema: geminiListDirectoryInputSchema,
@@ -386,7 +446,7 @@ export function createListDirectoryTool(
 
 export function createGrepSearchTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof geminiGrepSearchInputSchema, string> {
+): LlmFunctionTool<typeof geminiGrepSearchInputSchema, string> {
   return tool({
     description: "Searches for a regex pattern within file contents.",
     inputSchema: geminiGrepSearchInputSchema,
@@ -394,9 +454,19 @@ export function createGrepSearchTool(
   });
 }
 
+export function createRgSearchTool(
+  options: AgentFilesystemToolsOptions = {},
+): LlmFunctionTool<typeof geminiRgSearchInputSchema, string> {
+  return tool({
+    description: "Searches for a regex pattern within file contents.",
+    inputSchema: geminiRgSearchInputSchema,
+    execute: async (input) => rgSearchGemini(input, options),
+  });
+}
+
 export function createGlobTool(
   options: AgentFilesystemToolsOptions = {},
-): LlmExecutableTool<typeof geminiGlobInputSchema, string> {
+): LlmFunctionTool<typeof geminiGlobInputSchema, string> {
   return tool({
     description: "Finds files matching glob patterns, sorted by modification time (newest first).",
     inputSchema: geminiGlobInputSchema,
@@ -585,20 +655,81 @@ async function readFileGemini(
     action: "read",
     path: filePath,
   });
+
   const content = await runtime.filesystem.readTextFile(filePath);
-
-  if (input.offset === undefined && input.limit === undefined) {
-    return content;
-  }
-
   const lines = splitLines(content);
   const offset = Math.max(0, input.offset ?? 0);
   const limit = input.limit ?? DEFAULT_READ_FILE_LINE_LIMIT;
   if (offset >= lines.length) {
     return "";
   }
+
   const end = Math.min(lines.length, offset + limit);
-  return lines.slice(offset, end).join("\n");
+  return lines
+    .slice(offset, end)
+    .map(
+      (line, index) =>
+        `L${offset + index + 1}: ${truncateAtCodePointBoundary(line ?? "", runtime.maxLineLength)}`,
+    )
+    .join("\n");
+}
+
+async function readFilesGemini(
+  input: GeminiReadFilesToolInput,
+  options: AgentFilesystemToolsOptions,
+): Promise<string> {
+  const runtime = resolveRuntime(options);
+  const useCharWindow = input.char_offset !== undefined || input.char_limit !== undefined;
+  const lineOffset = Math.max(0, input.line_offset ?? 0);
+  const lineLimit = input.line_limit ?? DEFAULT_READ_FILES_LINE_LIMIT;
+  const charOffset = Math.max(0, input.char_offset ?? 0);
+  const charLimit = input.char_limit ?? DEFAULT_READ_FILES_CHAR_LIMIT;
+  const includeLineNumbers = input.include_line_numbers !== false;
+
+  const sections: string[] = [];
+  for (const rawPath of input.paths) {
+    const filePath = resolvePathWithPolicy(rawPath, runtime.cwd, runtime.allowOutsideCwd);
+    await runAccessHook(runtime, {
+      cwd: runtime.cwd,
+      tool: "read_files",
+      action: "read",
+      path: filePath,
+    });
+    const content = await runtime.filesystem.readTextFile(filePath);
+    const displayPath = normalizeSlashes(toDisplayPath(filePath, runtime.cwd));
+    sections.push(`==> ${displayPath} <==`);
+
+    if (useCharWindow) {
+      if (charOffset >= content.length) {
+        sections.push("");
+        continue;
+      }
+      const end = Math.min(content.length, charOffset + charLimit);
+      sections.push(content.slice(charOffset, end));
+      continue;
+    }
+
+    const lines = splitLines(content);
+    if (lineOffset >= lines.length) {
+      sections.push("");
+      continue;
+    }
+    const end = Math.min(lines.length, lineOffset + lineLimit);
+    const selected = lines.slice(lineOffset, end);
+    if (includeLineNumbers) {
+      for (let index = 0; index < selected.length; index += 1) {
+        const lineNumber = lineOffset + index + 1;
+        const line = selected[index] ?? "";
+        sections.push(
+          `L${lineNumber}: ${truncateAtCodePointBoundary(line, runtime.maxLineLength)}`,
+        );
+      }
+      continue;
+    }
+    sections.push(selected.join("\n"));
+  }
+
+  return sections.join("\n");
 }
 
 async function writeFileGemini(
@@ -706,9 +837,10 @@ async function listDirectoryGemini(
     .join("\n");
 }
 
-async function grepSearchGemini(
-  input: GeminiGrepSearchToolInput,
+async function rgSearchGemini(
+  input: GeminiRgSearchToolInput,
   options: AgentFilesystemToolsOptions,
+  toolName: "rg_search" | "grep_search" = "rg_search",
 ): Promise<string> {
   const runtime = resolveRuntime(options);
   const pattern = input.pattern.trim();
@@ -716,19 +848,19 @@ async function grepSearchGemini(
     throw new Error("pattern must not be empty");
   }
 
-  const include = input.include?.trim();
+  const glob = input.glob?.trim();
   const searchPath = resolvePathWithPolicy(
-    input.dir_path ?? runtime.cwd,
+    input.path ?? runtime.cwd,
     runtime.cwd,
     runtime.allowOutsideCwd,
   );
   await runAccessHook(runtime, {
     cwd: runtime.cwd,
-    tool: "grep_search",
+    tool: toolName,
     action: "search",
     path: searchPath,
     pattern,
-    include,
+    include: glob,
   });
 
   const searchPathInfo = await runtime.filesystem.stat(searchPath);
@@ -739,10 +871,10 @@ async function grepSearchGemini(
     maxScannedFiles: runtime.grepMaxScannedFiles,
   });
 
-  const matcher = include ? createGlobMatcher(include) : null;
-  const patternRegex = compileRegex(pattern);
+  const matcher = glob ? createGlobMatcher(glob) : null;
+  const patternRegex = compileRegex(pattern, input.case_sensitive === true ? "m" : "im");
   const excludeRegex = input.exclude_pattern ? compileRegex(input.exclude_pattern) : null;
-  const totalMaxMatches = input.total_max_matches ?? DEFAULT_GREP_LIMIT;
+  const totalMaxMatches = input.max_results ?? DEFAULT_GREP_LIMIT;
   const perFileMaxMatches = input.max_matches_per_file ?? Number.POSITIVE_INFINITY;
 
   const matches: GrepMatchRecord[] = [];
@@ -805,6 +937,25 @@ async function grepSearchGemini(
     .slice(0, totalMaxMatches)
     .map((match) => `${match.filePath}:${match.lineNumber}:${match.line ?? ""}`)
     .join("\n");
+}
+
+async function grepSearchGemini(
+  input: GeminiGrepSearchToolInput,
+  options: AgentFilesystemToolsOptions,
+): Promise<string> {
+  return rgSearchGemini(
+    {
+      pattern: input.pattern,
+      path: input.dir_path,
+      glob: input.include,
+      exclude_pattern: input.exclude_pattern,
+      names_only: input.names_only,
+      max_matches_per_file: input.max_matches_per_file,
+      max_results: input.total_max_matches,
+    },
+    options,
+    "grep_search",
+  );
 }
 
 async function globFilesGemini(
@@ -1184,9 +1335,9 @@ async function collectSearchFiles(params: {
   return files;
 }
 
-function compileRegex(pattern: string): RegExp {
+function compileRegex(pattern: string, flags = "m"): RegExp {
   try {
-    return new RegExp(pattern, "m");
+    return new RegExp(pattern, flags);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`invalid regex pattern: ${message}`);

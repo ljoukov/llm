@@ -5,9 +5,9 @@ import {
   createCodexApplyPatchTool,
   createFilesystemToolSetForModel,
   createGlobTool,
-  createGrepSearchTool,
+  createRgSearchTool,
   createListDirectoryTool,
-  createReadFileTool,
+  createReadFilesTool,
   createReplaceTool,
   createWriteFileTool,
   resolveFilesystemToolProfile,
@@ -54,12 +54,12 @@ describe("filesystemTools behavior", () => {
       content: "export const value = 1;\n",
     });
 
-    const readFile = createReadFileTool({ cwd, fs });
+    const readFiles = createReadFilesTool({ cwd, fs });
     expect(
-      await readFile.execute({
-        file_path: "src/example.ts",
+      await readFiles.execute({
+        paths: ["src/example.ts"],
       }),
-    ).toBe("export const value = 1;\n");
+    ).toContain("L1: export const value = 1;");
 
     const replace = createReplaceTool({ cwd, fs });
     await replace.execute({
@@ -76,11 +76,11 @@ describe("filesystemTools behavior", () => {
       }),
     ).toBe("example.ts");
 
-    const grepSearch = createGrepSearchTool({ cwd, fs });
+    const rgSearch = createRgSearchTool({ cwd, fs });
     expect(
-      await grepSearch.execute({
+      await rgSearch.execute({
         pattern: "value\\s*=\\s*2",
-        dir_path: "src",
+        path: "src",
       }),
     ).toContain("src/example.ts:1:export const value = 2;");
 
@@ -99,8 +99,10 @@ describe("filesystemTools behavior", () => {
     });
 
     const applyPatchTool = createCodexApplyPatchTool({ cwd: "/repo", fs });
-    const summary = await applyPatchTool.execute({
-      input: [
+    expect((applyPatchTool as any).type).toBe("custom");
+    expect((applyPatchTool as any).format?.type).toBe("grammar");
+    const summary = await applyPatchTool.execute(
+      [
         "*** Begin Patch",
         "*** Update File: example.ts",
         "@@",
@@ -108,7 +110,7 @@ describe("filesystemTools behavior", () => {
         "+export const value = 2;",
         "*** End Patch",
       ].join("\n"),
-    });
+    );
 
     expect(summary).toContain("M example.ts");
     expect(fs.snapshot()).toEqual({

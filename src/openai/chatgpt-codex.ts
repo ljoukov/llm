@@ -51,8 +51,23 @@ export type ChatGptFunctionCall = {
   status?: "completed";
 };
 
+export type ChatGptCustomToolCall = {
+  type: "custom_tool_call";
+  id: string;
+  call_id: string;
+  name: string;
+  input: string;
+  status?: "completed";
+};
+
 export type ChatGptFunctionCallOutput = {
   type: "function_call_output";
+  call_id: string;
+  output: string;
+};
+
+export type ChatGptCustomToolCallOutput = {
+  type: "custom_tool_call_output";
   call_id: string;
   output: string;
 };
@@ -60,7 +75,9 @@ export type ChatGptFunctionCallOutput = {
 export type ChatGptInputItem =
   | ChatGptInputMessage
   | ChatGptFunctionCall
-  | ChatGptFunctionCallOutput;
+  | ChatGptCustomToolCall
+  | ChatGptFunctionCallOutput
+  | ChatGptCustomToolCallOutput;
 
 export type ChatGptCodexRequest = {
   model: string;
@@ -91,12 +108,21 @@ export type ChatGptCodexUsage = {
   total_tokens?: number;
 };
 
-export type ChatGptCodexToolCall = {
-  id: string;
-  callId: string;
-  name: string;
-  arguments: string;
-};
+export type ChatGptCodexToolCall =
+  | {
+      kind: "function";
+      id: string;
+      callId: string;
+      name: string;
+      arguments: string;
+    }
+  | {
+      kind: "custom";
+      id: string;
+      callId: string;
+      name: string;
+      input: string;
+    };
 
 export type ChatGptCodexWebSearchAction = {
   type: string;
@@ -221,7 +247,18 @@ export async function collectChatGptCodexResponse(options: {
             if (!toolCalls.has(callId)) {
               toolCallOrder.push(callId);
             }
-            toolCalls.set(callId, { id, callId, name, arguments: args });
+            toolCalls.set(callId, { kind: "function", id, callId, name, arguments: args });
+          }
+        } else if (item.type === "custom_tool_call") {
+          const id = typeof item.id === "string" ? item.id : "";
+          const callId = typeof item.call_id === "string" ? item.call_id : id;
+          const name = typeof item.name === "string" ? item.name : "";
+          const input = typeof item.input === "string" ? item.input : "";
+          if (callId) {
+            if (!toolCalls.has(callId)) {
+              toolCallOrder.push(callId);
+            }
+            toolCalls.set(callId, { kind: "custom", id, callId, name, input });
           }
         } else if (item.type === "web_search_call") {
           const id = typeof item.id === "string" ? item.id : "";

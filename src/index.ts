@@ -1,6 +1,7 @@
 export {
   appendMarkdownSourcesSection,
   convertGooglePartsToLlmParts,
+  customTool,
   estimateCallCostUsd,
   generateImageInBatches,
   generateImages,
@@ -24,7 +25,10 @@ export type {
   LlmBlockedEvent,
   LlmContent,
   LlmContentPart,
+  LlmCustomTool,
+  LlmCustomToolInputFormat,
   LlmExecutableTool,
+  LlmFunctionTool,
   LlmImageData,
   LlmImageSize,
   LlmInput,
@@ -61,6 +65,9 @@ export type {
 } from "./agent.js";
 export {
   applyPatch,
+  CODEX_APPLY_PATCH_FREEFORM_TOOL_DESCRIPTION,
+  CODEX_APPLY_PATCH_LARK_GRAMMAR,
+  CODEX_APPLY_PATCH_JSON_TOOL_DESCRIPTION,
   createApplyPatchTool,
 } from "./tools/applyPatch.js";
 export type {
@@ -88,14 +95,16 @@ export {
   createCodexReadFileTool,
   createFilesystemToolSetForModel,
   createGeminiFilesystemToolSet,
+  createGeminiReadFileTool,
   createGlobTool,
-  createGrepFilesTool,
   createGrepSearchTool,
+  createGrepFilesTool,
   createListDirTool,
   createListDirectoryTool,
   createModelAgnosticFilesystemToolSet,
-  createReadFileTool,
+  createReadFilesTool,
   createReplaceTool,
+  createRgSearchTool,
   createWriteFileTool,
   resolveFilesystemToolProfile,
 } from "./tools/filesystemTools.js";
@@ -114,6 +123,8 @@ export type {
   GeminiGrepSearchToolInput,
   GeminiListDirectoryToolInput,
   GeminiReadFileToolInput,
+  GeminiReadFilesToolInput,
+  GeminiRgSearchToolInput,
   GeminiReplaceToolInput,
   GeminiWriteFileToolInput,
 } from "./tools/filesystemTools.js";
