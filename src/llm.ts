@@ -1763,7 +1763,11 @@ function sanitizeChatGptToolId(value: string): string {
   return cleaned.slice(0, 64);
 }
 
-function normalizeChatGptToolIds(params: { callId?: string; itemId?: string }): {
+function normalizeChatGptToolIds(params: {
+  callKind: "function" | "custom";
+  callId?: string;
+  itemId?: string;
+}): {
   callId: string;
   itemId: string;
 } {
@@ -1781,8 +1785,12 @@ function normalizeChatGptToolIds(params: { callId?: string; itemId?: string }): 
     rawItemId = nextItemId ?? rawItemId;
   }
   const callValue = sanitizeChatGptToolId(rawCallId || rawItemId || randomBytes(8).toString("hex"));
-  let itemValue = sanitizeChatGptToolId(rawItemId || `fc-${callValue}`);
-  if (!itemValue.startsWith("fc")) {
+  let itemValue = sanitizeChatGptToolId(rawItemId || callValue);
+  if (params.callKind === "custom") {
+    if (!itemValue.startsWith("ctc")) {
+      itemValue = `ctc_${itemValue}`;
+    }
+  } else if (!itemValue.startsWith("fc")) {
     itemValue = `fc-${itemValue}`;
   }
   return { callId: callValue, itemId: itemValue };
@@ -2934,7 +2942,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           call.kind === "custom"
             ? { value: call.input, error: undefined }
             : parseOpenAiToolArguments(call.arguments);
-        const ids = normalizeChatGptToolIds({ callId: call.callId, itemId: call.id });
+        const ids = normalizeChatGptToolIds({
+          callKind: call.kind,
+          callId: call.callId,
+          itemId: call.id,
+        });
         return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
       });
 

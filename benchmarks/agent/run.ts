@@ -1,133 +1,176 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { zodToJsonSchema } from "@alcyone-labs/zod-to-json-schema";
 import { z } from "zod";
 
-import { estimateCallCostUsd, generateJson } from "../../src/index.js";
-import { MICRO_TASKS, type MicroTask } from "./tasks.js";
+import {
+  type AgentFilesystemToolAccessContext,
+  estimateCallCostUsd,
+  generateJson,
+  runAgentLoop,
+  type LlmToolLoopStep,
+} from "../../src/index.js";
+import {
+  ClaimAuditSchema,
+  DEFAULT_BENCHMARK_MODELS,
+  OUTPUT_FILE_SPECS,
+  type OutputFileSpec,
+  type ClaimAudit,
+  type QuantitativeFindings,
+  type ScienceBenchmarkTask,
+  SCIENCE_BENCHMARK_TASKS,
+} from "./tasks.js";
 
-type BenchmarkVariant = "replace" | "patch" | "hashline" | "apply_patch";
 type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
-const BENCHMARK_VARIANTS: readonly BenchmarkVariant[] = [
-  "replace",
-  "patch",
-  "hashline",
-  "apply_patch",
-];
-const REASONING_EFFORTS: readonly ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
-const DEFAULT_MODEL = "chatgpt-gpt-5.3-codex";
+type JsonRecord = Record<string, unknown>;
 
-const ReplaceSchema = z.object({
-  replacements: z
-    .array(
-      z.object({
-        oldText: z.string().min(1),
-        newText: z.string(),
-      }),
-    )
-    .min(1)
-    .max(8),
-});
+type OutputValidation = {
+  readonly outputFile: string;
+  readonly schemaFile: string;
+  readonly exists: boolean;
+  readonly jsonValid: boolean;
+  readonly schemaValid: boolean;
+  readonly groundingValid: boolean;
+  readonly errors: readonly string[];
+  readonly content?: string;
+};
 
-const PatchSchema = z.object({
-  patches: z
-    .array(
-      z.object({
-        startLine: z.number().int().positive(),
-        endLine: z.number().int().positive(),
-        replacement: z.string(),
-      }),
-    )
-    .min(1)
-    .max(8),
-});
-
-const HashlineSchema = z.object({
-  edits: z
-    .array(
-      z.object({
-        anchor: z.string().regex(/^\d+:[0-9a-f]{2}$/),
-        newText: z.string(),
-      }),
-    )
-    .min(1)
-    .max(8),
-});
-
-const ApplyPatchSchema = z.object({
-  patch: z.string().min(1),
-});
-
-type ReplacePlan = z.infer<typeof ReplaceSchema>;
-type PatchPlan = z.infer<typeof PatchSchema>;
-type HashlinePlan = z.infer<typeof HashlineSchema>;
-type ApplyPatchPlan = z.infer<typeof ApplyPatchSchema>;
-
-type CaseResult = {
-  readonly taskId: string;
-  readonly variant: BenchmarkVariant;
-  readonly runIndex: number;
-  readonly success: boolean;
-  readonly durationMs: number;
-  readonly promptTokens?: number;
-  readonly responseTokens?: number;
-  readonly thinkingTokens?: number;
-  readonly totalTokens?: number;
-  readonly costUsd: number;
-  readonly modelVersion?: string;
+type ToolCallTrace = {
+  readonly source: "llm" | "fs";
+  readonly toolName: string;
+  readonly step?: number;
+  readonly action?: string;
+  readonly path?: string;
+  readonly timestamp?: string;
   readonly error?: string;
 };
 
-type Projection = {
-  readonly cases: number;
-  readonly perCallUsd: number;
-  readonly totalUsd: number;
-  readonly promptTokensPerCall: number;
-  readonly responseTokensPerCall: number;
+type FilesystemActionTrace = {
+  readonly toolName: string;
+  readonly action: AgentFilesystemToolAccessContext["action"];
+  readonly path: string;
+  readonly timestamp: string;
 };
 
-type VariantSummary = {
-  readonly variant: BenchmarkVariant;
-  readonly cases: number;
-  readonly successCount: number;
-  readonly successRate: number;
-  readonly avgDurationMs: number;
-  readonly avgCostUsd: number;
-  readonly promptTokens: number;
-  readonly responseTokens: number;
-  readonly thinkingTokens: number;
-  readonly totalTokens: number;
+type ToolTraceEvaluation = {
+  readonly pass: boolean;
+  readonly totalCalls: number;
+  readonly failedCalls: number;
+  readonly toolsUsed: readonly string[];
+  readonly hasSuccessfulRead: boolean;
+  readonly hasSuccessfulWrite: boolean;
+  readonly pathPolicyViolations: readonly string[];
+  readonly notes: readonly string[];
+  readonly calls: readonly ToolCallTrace[];
 };
+
+type GraderVerdict = z.infer<typeof GraderSchema>;
+
+type CaseResult = {
+  readonly model: string;
+  readonly taskId: string;
+  readonly runIndex: number;
+  readonly workspacePath: string;
+  readonly success: boolean;
+  readonly schemaPass: boolean;
+  readonly toolTracePass: boolean;
+  readonly graderPass: boolean;
+  readonly durationMs: number;
+  readonly agentCostUsd: number;
+  readonly graderCostUsd: number;
+  readonly totalCostUsd: number;
+  readonly modelVersions: readonly string[];
+  readonly agentFinalText: string;
+  readonly agentError?: string;
+  readonly outputValidation: readonly OutputValidation[];
+  readonly toolTrace: ToolTraceEvaluation;
+  readonly grader: {
+    readonly model: string;
+    readonly value?: GraderVerdict;
+    readonly error?: string;
+  };
+};
+
+type Projection = {
+  readonly totalCases: number;
+  readonly estimatedAgentCostUsd: number;
+  readonly estimatedGraderCostUsd: number;
+  readonly estimatedTotalCostUsd: number;
+  readonly agentPromptTokens: number;
+  readonly agentResponseTokens: number;
+  readonly graderPromptTokens: number;
+  readonly graderResponseTokens: number;
+};
+
+type WorkspaceLayout = {
+  readonly rootAbs: string;
+  readonly rootRel: string;
+  readonly reportPath: string;
+  readonly reportText: string;
+  readonly schemaPaths: readonly string[];
+  readonly outputPaths: readonly string[];
+  readonly taskFilePath: string;
+};
+
+const DEFAULT_GRADER_MODEL = "gpt-5.2";
+const DEFAULT_MAX_STEPS = 20;
+const MIN_TOOL_CALLS = 3;
+const REASONING_EFFORTS: readonly ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+
+const READ_TOOL_NAMES = new Set([
+  "read_file",
+  "read_files",
+  "list_dir",
+  "list_directory",
+  "grep_files",
+  "grep_search",
+  "rg_search",
+  "glob",
+]);
+
+const WRITE_TOOL_NAMES = new Set(["write_file", "replace", "apply_patch"]);
+
+const GraderSchema = z
+  .object({
+    verdict: z.enum(["pass", "fail"]),
+    scores: z
+      .object({
+        faithfulness: z.number().int().min(1).max(5),
+        coverage: z.number().int().min(1).max(5),
+        usefulness: z.number().int().min(1).max(5),
+      })
+      .strict(),
+    critical_issues: z.array(z.string().min(8)).max(8),
+    summary: z.string().min(20).max(500),
+  })
+  .strict();
 
 function printUsage(): void {
   console.log(`
-Micro edit benchmark for coding-agent style tasks.
+Filesystem Agent Benchmark for extraction/summarization from scientific reports.
 
 Usage:
   npx tsx benchmarks/agent/run.ts [options]
 
 Options:
-  --model <id>                      Model ID (default: ${DEFAULT_MODEL})
-  --variants <list>                 Comma-separated: replace,patch,hashline,apply_patch
-  --tasks <list>                    Comma-separated task ids (default: first max-tasks)
-  --max-tasks <n>                   Max tasks when --tasks is omitted (default: 4)
-  --runs <n>                        Runs per task/variant (default: 1)
-  --reasoning <level>               low, medium, high, xhigh (default: low)
-  --estimate-prompt-tokens <n>      Cost projection prompt tokens/call (default: 1200)
-  --estimate-response-tokens <n>    Cost projection response tokens/call (default: 300)
-  --estimate-only                   Print expected cost and exit
-  --out-dir <path>                  Output directory (default: benchmarks/agent/results)
-  --help                            Show this help
+  --models <list>                    Comma-separated model ids (default: ${DEFAULT_BENCHMARK_MODELS.join(",")})
+  --tasks <list>                     Comma-separated task ids (default: tumor-vaccine-ici)
+  --runs <n>                         Runs per model/task (default: 1)
+  --reasoning <level>                low, medium, high, xhigh (default: medium)
+  --grader-model <id>                LLM grader model (default: ${DEFAULT_GRADER_MODEL})
+  --max-steps <n>                    Max agent tool-loop steps (default: ${DEFAULT_MAX_STEPS})
+  --estimate-agent-prompt-tokens <n> Estimated prompt tokens per agent call (default: 4200)
+  --estimate-agent-response-tokens <n> Estimated response tokens per agent call (default: 900)
+  --estimate-grader-prompt-tokens <n> Estimated prompt tokens per grader call (default: 5200)
+  --estimate-grader-response-tokens <n> Estimated response tokens per grader call (default: 350)
+  --estimate-only                    Print cost projection and exit
+  --out-dir <path>                   Output directory (default: benchmarks/agent/results)
+  --help                             Show this help
 `);
-}
-
-function asNonNegative(value: number | undefined): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, value);
 }
 
 function parsePositiveInt(raw: string, optionName: string): number {
@@ -145,596 +188,1007 @@ function parseReasoningEffort(raw: string): ReasoningEffort {
   throw new Error(`Invalid --reasoning value: ${raw}`);
 }
 
-function parseVariants(raw: string): readonly BenchmarkVariant[] {
-  const selected = raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value): value is BenchmarkVariant =>
-      (BENCHMARK_VARIANTS as readonly string[]).includes(value),
-    );
-
-  const deduped = [...new Set(selected)];
+function parseCsvList(raw: string): readonly string[] {
+  const deduped = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
   if (deduped.length === 0) {
-    throw new Error(`No valid variants in --variants=${raw}`);
+    throw new Error("Expected a non-empty comma-separated list.");
   }
   return deduped;
 }
 
-function selectTasks(taskArg: string | undefined, maxTasks: number): readonly MicroTask[] {
-  if (taskArg) {
-    const ids = taskArg
-      .split(",")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-    if (ids.length === 0) {
-      throw new Error("--tasks was provided but no task ids were found.");
+function selectTasks(taskArg: string | undefined): readonly ScienceBenchmarkTask[] {
+  if (!taskArg) {
+    return [SCIENCE_BENCHMARK_TASKS[0]].filter(
+      (task): task is ScienceBenchmarkTask => task !== undefined,
+    );
+  }
+  const requested = parseCsvList(taskArg);
+  const taskById = new Map(SCIENCE_BENCHMARK_TASKS.map((task) => [task.id, task]));
+  const selected: ScienceBenchmarkTask[] = [];
+  for (const id of requested) {
+    const task = taskById.get(id);
+    if (!task) {
+      throw new Error(`Unknown task id: ${id}`);
     }
-    const byId = new Map(MICRO_TASKS.map((task) => [task.id, task]));
-    const selected: MicroTask[] = [];
-    for (const id of ids) {
-      const task = byId.get(id);
-      if (!task) {
-        throw new Error(`Unknown task id: ${id}`);
+    selected.push(task);
+  }
+  return selected;
+}
+
+function sanitizeForPath(value: string): string {
+  return value
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function normalizeSlashes(value: string): string {
+  return value.split(sep).join("/");
+}
+
+function toSafeRelativePath(params: { cwd: string; absolutePath: string }): string {
+  const rel = normalizeSlashes(relative(params.cwd, params.absolutePath));
+  if (rel === "") {
+    return ".";
+  }
+  if (rel === ".." || rel.startsWith("../") || isAbsolute(rel)) {
+    throw new Error("Path escapes workspace root.");
+  }
+  if (rel.includes("/../") || rel.endsWith("/..")) {
+    throw new Error("Path traversal is not allowed.");
+  }
+  return rel;
+}
+
+function sanitizePathLikeText(value: string, workspaceRootAbs: string): string {
+  let output = value;
+  const escapedWorkspace = workspaceRootAbs.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  output = output.replace(new RegExp(escapedWorkspace, "g"), "<workspace>");
+  output = output.replace(/\/home\/[^/\s]+\/projects\//g, "<redacted>/projects/");
+  return output;
+}
+
+function redactSensitivePaths(value: unknown, workspaceRootAbs: string): unknown {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (
+      trimmed.length > 0 &&
+      !trimmed.startsWith("http://") &&
+      !trimmed.startsWith("https://") &&
+      isAbsolute(trimmed)
+    ) {
+      try {
+        return toSafeRelativePath({ cwd: workspaceRootAbs, absolutePath: trimmed });
+      } catch {
+        return "<redacted-absolute-path>";
       }
-      selected.push(task);
     }
-    return selected;
+    return sanitizePathLikeText(value, workspaceRootAbs);
   }
-  return MICRO_TASKS.slice(0, maxTasks);
-}
-
-function estimateProjection(params: {
-  model: string;
-  taskCount: number;
-  variantCount: number;
-  runs: number;
-  promptTokensPerCall: number;
-  responseTokensPerCall: number;
-}): Projection {
-  const cases = params.taskCount * params.variantCount * params.runs;
-  const perCallUsd = estimateCallCostUsd({
-    modelId: params.model,
-    tokens: {
-      promptTokens: params.promptTokensPerCall,
-      cachedTokens: 0,
-      responseTokens: params.responseTokensPerCall,
-      thinkingTokens: 0,
-    },
-    responseImages: 0,
-  });
-  return {
-    cases,
-    perCallUsd,
-    totalUsd: perCallUsd * cases,
-    promptTokensPerCall: params.promptTokensPerCall,
-    responseTokensPerCall: params.responseTokensPerCall,
-  };
-}
-
-function countOccurrences(source: string, needle: string): number {
-  if (needle.length === 0) {
-    return 0;
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactSensitivePaths(entry, workspaceRootAbs));
   }
-  let count = 0;
-  let index = 0;
-  while (index < source.length) {
-    const next = source.indexOf(needle, index);
-    if (next === -1) {
-      break;
+  if (typeof value === "object" && value !== null) {
+    const output: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      output[key] = redactSensitivePaths(entry, workspaceRootAbs);
     }
-    count += 1;
-    index = next + needle.length;
+    return output;
   }
-  return count;
-}
-
-function applyReplacePlan(source: string, plan: ReplacePlan): string {
-  let output = source;
-  for (const edit of plan.replacements) {
-    const matches = countOccurrences(output, edit.oldText);
-    if (matches !== 1) {
-      throw new Error(
-        `replace failed: oldText match count for ${JSON.stringify(edit.oldText)} was ${matches}, expected 1`,
-      );
-    }
-    output = output.replace(edit.oldText, edit.newText);
-  }
-  if (output === source) {
-    throw new Error("replace failed: no effective changes were applied");
-  }
-  return output;
-}
-
-function applyPatchPlan(source: string, plan: PatchPlan): string {
-  const lines = source.split("\n");
-  const sortedPatches = [...plan.patches].sort((a, b) => b.startLine - a.startLine);
-  for (const patch of sortedPatches) {
-    if (patch.endLine < patch.startLine) {
-      throw new Error(
-        `patch failed: endLine ${patch.endLine} is before startLine ${patch.startLine}`,
-      );
-    }
-    if (patch.startLine < 1 || patch.endLine > lines.length) {
-      throw new Error(
-        `patch failed: patch range ${patch.startLine}-${patch.endLine} is outside file line range 1-${lines.length}`,
-      );
-    }
-    const replacementLines = patch.replacement.length === 0 ? [] : patch.replacement.split("\n");
-    lines.splice(patch.startLine - 1, patch.endLine - patch.startLine + 1, ...replacementLines);
-  }
-  const output = lines.join("\n");
-  if (output === source) {
-    throw new Error("patch failed: no effective changes were applied");
-  }
-  return output;
-}
-
-function computeLineHash(line: string): string {
-  const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
-  const compact = normalized.replace(/\s+/g, "");
-  let hash = 2166136261;
-  for (let i = 0; i < compact.length; i += 1) {
-    hash ^= compact.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  const short = (hash >>> 0) % 256;
-  return short.toString(16).padStart(2, "0");
-}
-
-function renderHashlineSource(source: string): string {
-  const lines = source.split("\n");
-  return lines.map((line, index) => `${index + 1}:${computeLineHash(line)}|${line}`).join("\n");
-}
-
-function parseAnchor(anchor: string): { line: number; hash: string } {
-  const match = /^(\d+):([0-9a-f]{2})$/.exec(anchor);
-  if (!match) {
-    throw new Error(`Invalid hashline anchor: ${anchor}`);
-  }
-  const rawLine = match[1];
-  const rawHash = match[2];
-  if (rawLine === undefined || rawHash === undefined) {
-    throw new Error(`Invalid hashline anchor: ${anchor}`);
-  }
-  const line = Number.parseInt(rawLine, 10);
-  if (!Number.isFinite(line) || line < 1) {
-    throw new Error(`Invalid hashline line number in anchor: ${anchor}`);
-  }
-  return { line, hash: rawHash };
-}
-
-function applyHashlinePlan(source: string, plan: HashlinePlan): string {
-  const originalLines = source.split("\n");
-  const nextLines = [...originalLines];
-  for (const edit of plan.edits) {
-    const { line, hash } = parseAnchor(edit.anchor);
-    if (line > originalLines.length) {
-      throw new Error(
-        `hashline failed: anchor line ${line} exceeds file length ${originalLines.length}`,
-      );
-    }
-    const currentLine = originalLines[line - 1] ?? "";
-    const actualHash = computeLineHash(currentLine);
-    if (actualHash !== hash) {
-      throw new Error(
-        `hashline failed: stale anchor ${edit.anchor}, expected hash ${actualHash} for line ${line}`,
-      );
-    }
-    nextLines[line - 1] = edit.newText;
-  }
-  const output = nextLines.join("\n");
-  if (output === source) {
-    throw new Error("hashline failed: no effective changes were applied");
-  }
-  return output;
-}
-
-function applyApplyPatchPlan(source: string, plan: ApplyPatchPlan): string {
-  const normalized = plan.patch.replace(/\r\n/g, "\n");
-  const rawLines = normalized.split("\n");
-  while (rawLines.length > 0 && rawLines[rawLines.length - 1] === "") {
-    rawLines.pop();
-  }
-
-  if (rawLines.length < 5) {
-    throw new Error("apply_patch failed: patch is too short");
-  }
-  if (rawLines[0] !== "*** Begin Patch") {
-    throw new Error('apply_patch failed: missing "*** Begin Patch" header');
-  }
-  if (rawLines[rawLines.length - 1] !== "*** End Patch") {
-    throw new Error('apply_patch failed: missing "*** End Patch" footer');
-  }
-
-  const body = rawLines.slice(1, -1);
-  const updateFileLines = body.filter((line) => line.startsWith("*** Update File: "));
-  if (updateFileLines.length !== 1) {
-    throw new Error(
-      `apply_patch failed: expected exactly one "*** Update File:" section, got ${updateFileLines.length}`,
-    );
-  }
-  const hunkStart = body.findIndex((line) => line.startsWith("@@"));
-  if (hunkStart === -1) {
-    throw new Error('apply_patch failed: missing "@@" hunk marker');
-  }
-
-  const hunkLines = body.slice(hunkStart + 1);
-  const removed: string[] = [];
-  const added: string[] = [];
-  for (const line of hunkLines) {
-    if (line === "*** End of File") {
-      continue;
-    }
-    if (line.startsWith("@@")) {
-      continue;
-    }
-    if (line.startsWith("***")) {
-      throw new Error(`apply_patch failed: unsupported line in hunk: ${line}`);
-    }
-    if (line.startsWith("-")) {
-      removed.push(line.slice(1));
-      continue;
-    }
-    if (line.startsWith("+")) {
-      added.push(line.slice(1));
-      continue;
-    }
-    if (line.startsWith(" ")) {
-      throw new Error(
-        "apply_patch failed: context lines are not supported in this benchmark; use full-file replacement hunk",
-      );
-    }
-    throw new Error(`apply_patch failed: unknown hunk line prefix: ${line}`);
-  }
-
-  if (removed.length === 0 || added.length === 0) {
-    throw new Error("apply_patch failed: hunk must contain removed and added content");
-  }
-
-  const oldText = removed.join("\n");
-  if (oldText !== source) {
-    throw new Error(
-      "apply_patch failed: removed block does not match the original source (use full-file replacement hunk)",
-    );
-  }
-
-  const output = added.join("\n");
-  if (output === source) {
-    throw new Error("apply_patch failed: no effective changes were applied");
-  }
-  return output;
-}
-
-function shortLinePreview(value: string): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  return compact.length > 120 ? `${compact.slice(0, 117)}...` : compact;
-}
-
-function describeMismatch(expected: string, actual: string): string {
-  const expectedLines = expected.split("\n");
-  const actualLines = actual.split("\n");
-  const maxLines = Math.max(expectedLines.length, actualLines.length);
-  for (let i = 0; i < maxLines; i += 1) {
-    const expectedLine = expectedLines[i] ?? "";
-    const actualLine = actualLines[i] ?? "";
-    if (expectedLine !== actualLine) {
-      return `line ${i + 1} mismatch (expected="${shortLinePreview(expectedLine)}", actual="${shortLinePreview(actualLine)}")`;
-    }
-  }
-  return "output mismatch";
-}
-
-function buildReplacePrompt(task: MicroTask): string {
-  return [
-    `Task: ${task.title}`,
-    task.description,
-    "",
-    "Apply the minimal fix using exact string replacements.",
-    "Return JSON: { replacements: [{ oldText: string, newText: string }] }.",
-    "Rules:",
-    "- Copy oldText exactly from SOURCE.",
-    "- Keep edits minimal and deterministic.",
-    "- Do not add extra replacements.",
-    "",
-    "SOURCE:",
-    `\`\`\`${task.language}`,
-    task.source,
-    "```",
-  ].join("\n");
-}
-
-function buildPatchPrompt(task: MicroTask): string {
-  return [
-    `Task: ${task.title}`,
-    task.description,
-    "",
-    "Apply the minimal fix using line-range patches against the original source.",
-    "Return JSON: { patches: [{ startLine: number, endLine: number, replacement: string }] }.",
-    "Rules:",
-    "- Lines are 1-indexed and inclusive.",
-    "- replacement may contain newlines.",
-    "- Keep edits minimal and deterministic.",
-    "",
-    "SOURCE:",
-    `\`\`\`${task.language}`,
-    task.source,
-    "```",
-  ].join("\n");
-}
-
-function buildHashlinePrompt(task: MicroTask): string {
-  const hashline = renderHashlineSource(task.source);
-  return [
-    `Task: ${task.title}`,
-    task.description,
-    "",
-    "Apply the minimal fix with hashline anchors.",
-    'Return JSON: { edits: [{ anchor: "LINE:HASH", newText: string }] }.',
-    "Rules:",
-    "- Anchor format is LINE:HASH.",
-    "- The anchor must be copied from HASHLINE_SOURCE.",
-    "- newText replaces the full line content for that anchor.",
-    "- Keep edits minimal and deterministic.",
-    "",
-    "HASHLINE_SOURCE:",
-    `\`\`\`${task.language}`,
-    hashline,
-    "```",
-  ].join("\n");
-}
-
-function buildApplyPatchPrompt(task: MicroTask): string {
-  return [
-    `Task: ${task.title}`,
-    task.description,
-    "",
-    "Apply the minimal fix and return a Codex-style apply_patch payload.",
-    "Return JSON: { patch: string }.",
-    "Rules:",
-    "- patch must start with *** Begin Patch and end with *** End Patch.",
-    "- include exactly one *** Update File: target.ts section.",
-    "- use one @@ hunk with full-file replacement only:",
-    "  first every original line prefixed with '-', then every final line prefixed with '+'.",
-    "- do not use context (' ') lines.",
-    "- output valid JSON only.",
-    "",
-    "SOURCE:",
-    `\`\`\`${task.language}`,
-    task.source,
-    "```",
-  ].join("\n");
-}
-
-function buildPrompt(task: MicroTask, variant: BenchmarkVariant): string {
-  switch (variant) {
-    case "replace":
-      return buildReplacePrompt(task);
-    case "patch":
-      return buildPatchPrompt(task);
-    case "hashline":
-      return buildHashlinePrompt(task);
-    case "apply_patch":
-      return buildApplyPatchPrompt(task);
-  }
-}
-
-async function runCase(params: {
-  model: string;
-  variant: BenchmarkVariant;
-  task: MicroTask;
-  runIndex: number;
-  reasoning: ReasoningEffort;
-}): Promise<CaseResult> {
-  const startedAt = Date.now();
-  const base = {
-    model: params.model,
-    input: buildPrompt(params.task, params.variant),
-    instructions:
-      "Return valid JSON only. Do not include prose, markdown, or code fences. Apply only the requested mechanical fix.",
-    openAiReasoningEffort: params.reasoning,
-    maxAttempts: 2,
-  } as const;
-
-  try {
-    if (params.variant === "replace") {
-      const response = await generateJson({
-        ...base,
-        schema: ReplaceSchema,
-      });
-      const patched = applyReplacePlan(params.task.source, response.value);
-      const success = patched === params.task.expected;
-      return {
-        taskId: params.task.id,
-        variant: params.variant,
-        runIndex: params.runIndex,
-        success,
-        durationMs: Date.now() - startedAt,
-        promptTokens: response.result.usage?.promptTokens,
-        responseTokens: response.result.usage?.responseTokens,
-        thinkingTokens: response.result.usage?.thinkingTokens,
-        totalTokens: response.result.usage?.totalTokens,
-        costUsd: response.result.costUsd,
-        modelVersion: response.result.modelVersion,
-        error: success ? undefined : describeMismatch(params.task.expected, patched),
-      };
-    }
-
-    if (params.variant === "patch") {
-      const response = await generateJson({
-        ...base,
-        schema: PatchSchema,
-      });
-      const patched = applyPatchPlan(params.task.source, response.value);
-      const success = patched === params.task.expected;
-      return {
-        taskId: params.task.id,
-        variant: params.variant,
-        runIndex: params.runIndex,
-        success,
-        durationMs: Date.now() - startedAt,
-        promptTokens: response.result.usage?.promptTokens,
-        responseTokens: response.result.usage?.responseTokens,
-        thinkingTokens: response.result.usage?.thinkingTokens,
-        totalTokens: response.result.usage?.totalTokens,
-        costUsd: response.result.costUsd,
-        modelVersion: response.result.modelVersion,
-        error: success ? undefined : describeMismatch(params.task.expected, patched),
-      };
-    }
-
-    if (params.variant === "apply_patch") {
-      const response = await generateJson({
-        ...base,
-        schema: ApplyPatchSchema,
-      });
-      const patched = applyApplyPatchPlan(params.task.source, response.value);
-      const success = patched === params.task.expected;
-      return {
-        taskId: params.task.id,
-        variant: params.variant,
-        runIndex: params.runIndex,
-        success,
-        durationMs: Date.now() - startedAt,
-        promptTokens: response.result.usage?.promptTokens,
-        responseTokens: response.result.usage?.responseTokens,
-        thinkingTokens: response.result.usage?.thinkingTokens,
-        totalTokens: response.result.usage?.totalTokens,
-        costUsd: response.result.costUsd,
-        modelVersion: response.result.modelVersion,
-        error: success ? undefined : describeMismatch(params.task.expected, patched),
-      };
-    }
-
-    const response = await generateJson({
-      ...base,
-      schema: HashlineSchema,
-    });
-    const patched = applyHashlinePlan(params.task.source, response.value);
-    const success = patched === params.task.expected;
-    return {
-      taskId: params.task.id,
-      variant: params.variant,
-      runIndex: params.runIndex,
-      success,
-      durationMs: Date.now() - startedAt,
-      promptTokens: response.result.usage?.promptTokens,
-      responseTokens: response.result.usage?.responseTokens,
-      thinkingTokens: response.result.usage?.thinkingTokens,
-      totalTokens: response.result.usage?.totalTokens,
-      costUsd: response.result.costUsd,
-      modelVersion: response.result.modelVersion,
-      error: success ? undefined : describeMismatch(params.task.expected, patched),
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      taskId: params.task.id,
-      variant: params.variant,
-      runIndex: params.runIndex,
-      success: false,
-      durationMs: Date.now() - startedAt,
-      costUsd: 0,
-      error: message,
-    };
-  }
-}
-
-function summarizeVariant(
-  variant: BenchmarkVariant,
-  caseResults: readonly CaseResult[],
-): VariantSummary {
-  const results = caseResults.filter((result) => result.variant === variant);
-  const cases = results.length;
-  const successCount = results.filter((result) => result.success).length;
-  const durationTotal = results.reduce((acc, result) => acc + result.durationMs, 0);
-  const costTotal = results.reduce((acc, result) => acc + result.costUsd, 0);
-  const promptTokens = results.reduce((acc, result) => acc + asNonNegative(result.promptTokens), 0);
-  const responseTokens = results.reduce(
-    (acc, result) => acc + asNonNegative(result.responseTokens),
-    0,
-  );
-  const thinkingTokens = results.reduce(
-    (acc, result) => acc + asNonNegative(result.thinkingTokens),
-    0,
-  );
-  const totalTokens = results.reduce((acc, result) => acc + asNonNegative(result.totalTokens), 0);
-
-  return {
-    variant,
-    cases,
-    successCount,
-    successRate: cases > 0 ? successCount / cases : 0,
-    avgDurationMs: cases > 0 ? durationTotal / cases : 0,
-    avgCostUsd: cases > 0 ? costTotal / cases : 0,
-    promptTokens,
-    responseTokens,
-    thinkingTokens,
-    totalTokens,
-  };
+  return value;
 }
 
 function formatUsd(value: number): string {
   return value.toFixed(6);
 }
 
-function buildMarkdownReport(params: {
-  model: string;
-  reasoning: ReasoningEffort;
-  variants: readonly BenchmarkVariant[];
-  tasks: readonly MicroTask[];
-  runs: number;
-  projection: Projection;
-  caseResults: readonly CaseResult[];
-  summaries: readonly VariantSummary[];
-}): string {
-  const successful = params.caseResults.filter((result) => result.success).length;
-  const failed = params.caseResults.filter((result) => !result.success);
-  const totalCost = params.caseResults.reduce((acc, result) => acc + result.costUsd, 0);
-  const totalCases = params.caseResults.length;
-  const successRate = totalCases > 0 ? successful / totalCases : 0;
+function asJsonRecord(value: unknown): JsonRecord | undefined {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as JsonRecord;
+  }
+  return undefined;
+}
 
-  const lines: string[] = [];
-  lines.push("# Agent Benchmark Report");
-  lines.push("");
-  lines.push(`- Date: ${new Date().toISOString()}`);
-  lines.push(`- Model: ${params.model}`);
-  lines.push(`- Reasoning: ${params.reasoning}`);
-  lines.push(`- Variants: ${params.variants.join(", ")}`);
-  lines.push(`- Tasks: ${params.tasks.map((task) => task.id).join(", ")}`);
-  lines.push(`- Runs per task/variant: ${params.runs}`);
-  lines.push(`- Total cases: ${totalCases}`);
-  lines.push(`- Success: ${successful}/${totalCases} (${(successRate * 100).toFixed(1)}%)`);
-  lines.push(`- Total observed cost: $${formatUsd(totalCost)}`);
-  lines.push("");
-  lines.push("## Cost Projection");
-  lines.push("");
-  lines.push(
-    `Projection inputs: prompt=${params.projection.promptTokensPerCall} tokens, response=${params.projection.responseTokensPerCall} tokens.`,
-  );
-  lines.push(`Projected cost per call: $${formatUsd(params.projection.perCallUsd)}`);
-  lines.push(`Projected cost for this run: $${formatUsd(params.projection.totalUsd)}`);
-  lines.push("");
-  lines.push("## Variant Summary");
-  lines.push("");
-  lines.push(
-    "| Variant | Success | Avg latency (s) | Avg cost (USD) | Prompt tokens | Response tokens | Thinking tokens | Total tokens |",
-  );
-  lines.push("|---|---:|---:|---:|---:|---:|---:|---:|");
-  for (const summary of params.summaries) {
-    lines.push(
-      `| ${summary.variant} | ${summary.successCount}/${summary.cases} (${(summary.successRate * 100).toFixed(1)}%) | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.avgCostUsd)} | ${summary.promptTokens} | ${summary.responseTokens} | ${summary.thinkingTokens} | ${summary.totalTokens} |`,
+function resolveSchemaRoot(schema: JsonRecord): JsonRecord {
+  const refValue = schema.$ref;
+  if (typeof refValue !== "string") {
+    return schema;
+  }
+  const refMatch = /^#\/(definitions|[$]defs)\/(.+)$/u.exec(refValue);
+  if (!refMatch) {
+    return schema;
+  }
+  const defsKey = refMatch[1];
+  const defName = refMatch[2];
+  if (!defsKey || !defName) {
+    return schema;
+  }
+  const defsRaw = schema[defsKey];
+  const defs = asJsonRecord(defsRaw);
+  if (!defs) {
+    return schema;
+  }
+  const defValue = defs[defName];
+  const defRecord = asJsonRecord(defValue);
+  if (!defRecord) {
+    return schema;
+  }
+  return defRecord;
+}
+
+function toSchemaDocument(spec: OutputFileSpec): JsonRecord {
+  const schemaName = spec.schemaFile.replace(/\.schema\.json$/u, "").replace(/[/.]/g, "-");
+  const raw = zodToJsonSchema(spec.schema, {
+    name: schemaName,
+    target: "jsonSchema7",
+  }) as JsonRecord;
+  const root = resolveSchemaRoot(raw);
+  return {
+    $schema: "http://json-schema.org/draft-07/schema#",
+    title: schemaName,
+    ...root,
+  };
+}
+
+function buildTaskFile(params: { task: ScienceBenchmarkTask; layout: WorkspaceLayout }): string {
+  const schemaLines = OUTPUT_FILE_SPECS.map((spec, index) => {
+    const schemaPath = params.layout.schemaPaths[index] ?? "";
+    const outputPath = params.layout.outputPaths[index] ?? "";
+    return [
+      `${index + 1}.`,
+      `Schema path: ${schemaPath}`,
+      `Output path: ${outputPath}`,
+      `Purpose: ${spec.description}`,
+    ].join(" ");
+  }).join("\n");
+
+  return [
+    "# Agent Task",
+    "",
+    `Task id: ${params.task.id}`,
+    `Task title: ${params.task.title}`,
+    `Reference paper: ${params.task.sourceTitle}`,
+    `Reference URL: ${params.task.sourceUrl}`,
+    "",
+    "## Objective",
+    "Read the science report and produce all required JSON outputs. Each output must satisfy its schema exactly.",
+    "",
+    "## Input",
+    `Report markdown path: ${params.layout.reportPath}`,
+    "",
+    "## Required Outputs",
+    schemaLines,
+    "",
+    "## Constraints",
+    "- Do not invent facts or numbers that are absent from the report.",
+    "- Use line references as L<number> (for example L12) when the schema requires line refs.",
+    "- For claim evidence quotes, copy exact report text snippets.",
+    "- Use relative paths only. Never use absolute paths.",
+    "- Never use '..' in any path.",
+    "- Write valid JSON only to output files (no comments, no trailing commas).",
+    "- Before finishing, verify every schema min/max length constraint is satisfied.",
+    "- Keep claim wording precise and avoid overstatement.",
+    "",
+    "## Completion",
+    "After writing all files, respond with a short checklist mentioning each output path.",
+    "",
+  ].join("\n");
+}
+
+async function createWorkspace(params: {
+  task: ScienceBenchmarkTask;
+  workspaceRootAbs: string;
+  workspaceRootRel: string;
+  benchmarkRoot: string;
+}): Promise<WorkspaceLayout> {
+  await mkdir(params.workspaceRootAbs, { recursive: true });
+
+  const reportTemplatePath = join(params.benchmarkRoot, params.task.reportFile);
+  const reportText = await readFile(reportTemplatePath, "utf8");
+
+  const reportPath = "input/report.md";
+  await mkdir(dirname(join(params.workspaceRootAbs, reportPath)), { recursive: true });
+  await writeFile(join(params.workspaceRootAbs, reportPath), reportText);
+
+  const schemaPaths: string[] = [];
+  const outputPaths: string[] = [];
+
+  for (const spec of OUTPUT_FILE_SPECS) {
+    const schemaPath = spec.schemaFile;
+    const outputPath = spec.outputFile;
+
+    await mkdir(dirname(join(params.workspaceRootAbs, schemaPath)), { recursive: true });
+    await mkdir(dirname(join(params.workspaceRootAbs, outputPath)), { recursive: true });
+
+    const schemaDocument = toSchemaDocument(spec);
+    await writeFile(
+      join(params.workspaceRootAbs, schemaPath),
+      `${JSON.stringify(schemaDocument, null, 2)}\n`,
     );
+
+    // Codex profile tends to patch existing files; pre-create placeholders for deterministic edits.
+    await writeFile(join(params.workspaceRootAbs, outputPath), "{}\n");
+
+    schemaPaths.push(schemaPath);
+    outputPaths.push(outputPath);
   }
 
+  const layout: WorkspaceLayout = {
+    rootAbs: params.workspaceRootAbs,
+    rootRel: params.workspaceRootRel,
+    reportPath,
+    reportText,
+    schemaPaths,
+    outputPaths,
+    taskFilePath: "TASK.md",
+  };
+
+  await writeFile(
+    join(params.workspaceRootAbs, layout.taskFilePath),
+    buildTaskFile({ task: params.task, layout }),
+  );
+  return layout;
+}
+
+function buildAgentPrompt(layout: WorkspaceLayout): string {
+  return [
+    "You are a filesystem extraction/summarization agent.",
+    "Use filesystem tools to complete the task from TASK.md.",
+    "Use only workspace-relative paths.",
+    "Do not use absolute paths.",
+    "Do not use '..' in paths.",
+    `Start by reading: ${layout.taskFilePath}`,
+    "",
+    "Hard requirements:",
+    "1. Read the report and each schema from disk before writing outputs.",
+    "2. Write all required output JSON files to the exact paths in TASK.md.",
+    "3. Keep outputs fully faithful to the report.",
+    "4. Respond only after all files are written.",
+  ].join("\n");
+}
+
+function parseLineRef(ref: string): number | undefined {
+  const match = /^L([1-9]\d*)$/u.exec(ref.trim());
+  if (!match) {
+    return undefined;
+  }
+  const raw = match[1];
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function validateLineRefSet(lineRefs: readonly string[], reportLineCount: number): string[] {
+  const errors: string[] = [];
+  for (const ref of lineRefs) {
+    const lineNumber = parseLineRef(ref);
+    if (lineNumber === undefined) {
+      errors.push(`Invalid line reference format: ${ref}`);
+      continue;
+    }
+    if (lineNumber > reportLineCount) {
+      errors.push(`Line reference out of range: ${ref} (report has ${reportLineCount} lines)`);
+    }
+  }
+  return errors;
+}
+
+function validateQuantitativeGrounding(
+  value: QuantitativeFindings,
+  reportLineCount: number,
+): readonly string[] {
+  const lineRefs: string[] = [];
+  for (const finding of value.findings) {
+    lineRefs.push(...finding.evidence_line_refs);
+  }
+  for (const control of value.controls_or_null_results) {
+    lineRefs.push(control.evidence_line_ref);
+  }
+  return validateLineRefSet(lineRefs, reportLineCount);
+}
+
+function validateClaimGrounding(
+  value: ClaimAudit,
+  reportLineCount: number,
+  reportText: string,
+): readonly string[] {
+  const errors: string[] = [];
+  const lineRefs: string[] = [];
+  const normalizedReport = normalizeWhitespace(reportText);
+
+  for (const claim of value.claims) {
+    for (const evidence of claim.evidence) {
+      lineRefs.push(evidence.line_ref);
+      const normalizedQuote = normalizeWhitespace(evidence.quote);
+      if (normalizedQuote.length === 0) {
+        errors.push(`Empty quote in claim ${claim.claim_id}`);
+        continue;
+      }
+      if (!normalizedReport.includes(normalizedQuote)) {
+        errors.push(
+          `Quote in ${claim.claim_id} was not found verbatim in report: ${JSON.stringify(evidence.quote)}`,
+        );
+      }
+    }
+  }
+
+  return errors.concat(validateLineRefSet(lineRefs, reportLineCount));
+}
+
+function flattenLlmToolCalls(steps: readonly LlmToolLoopStep[]): readonly ToolCallTrace[] {
+  const traces: ToolCallTrace[] = [];
+  for (const step of steps) {
+    for (const call of step.toolCalls) {
+      traces.push({
+        source: "llm",
+        step: step.step,
+        toolName: call.toolName,
+        error: call.error,
+      });
+    }
+  }
+  return traces;
+}
+
+function flattenFilesystemActions(
+  actions: readonly FilesystemActionTrace[],
+): readonly ToolCallTrace[] {
+  return actions.map((entry) => ({
+    source: "fs",
+    toolName: entry.toolName,
+    action: entry.action,
+    path: entry.path,
+    timestamp: entry.timestamp,
+  }));
+}
+
+const TOOL_PATH_KEYS = new Set(["file_path", "dir_path", "path", "paths", "from_path", "to_path"]);
+
+function collectPathValuesFromInput(input: unknown): string[] {
+  const values: string[] = [];
+  if (typeof input !== "object" || input === null) {
+    return values;
+  }
+  if (Array.isArray(input)) {
+    for (const entry of input) {
+      values.push(...collectPathValuesFromInput(entry));
+    }
+    return values;
+  }
+
+  for (const [key, value] of Object.entries(input)) {
+    if (TOOL_PATH_KEYS.has(key)) {
+      if (typeof value === "string") {
+        values.push(value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          if (typeof item === "string") {
+            values.push(item);
+          }
+        }
+      }
+    }
+    values.push(...collectPathValuesFromInput(value));
+  }
+  return values;
+}
+
+function collectPathPolicyViolations(steps: readonly LlmToolLoopStep[]): readonly string[] {
+  const violations: string[] = [];
+  for (const step of steps) {
+    for (const call of step.toolCalls) {
+      const pathValues = collectPathValuesFromInput(call.input);
+      for (const rawPath of pathValues) {
+        const pathValue = rawPath.trim();
+        if (pathValue.length === 0) {
+          continue;
+        }
+        if (isAbsolute(pathValue)) {
+          violations.push(
+            `Step ${step.step} tool ${call.toolName}: absolute path is disallowed (${JSON.stringify(pathValue)}).`,
+          );
+        }
+        if (pathValue === ".." || pathValue.startsWith("../") || pathValue.includes("/../")) {
+          violations.push(
+            `Step ${step.step} tool ${call.toolName}: '..' path traversal is disallowed (${JSON.stringify(pathValue)}).`,
+          );
+        }
+      }
+    }
+  }
+  return violations;
+}
+
+function evaluateToolTrace(params: {
+  steps: readonly LlmToolLoopStep[];
+  fsActions: readonly FilesystemActionTrace[];
+}): ToolTraceEvaluation {
+  const llmCalls = flattenLlmToolCalls(params.steps);
+  const fsCalls = flattenFilesystemActions(params.fsActions);
+  const calls = llmCalls.concat(fsCalls);
+  const toolsUsed = [...new Set(calls.map((call) => call.toolName))].sort();
+
+  const hasSuccessfulRead = calls.some(
+    (call) =>
+      (READ_TOOL_NAMES.has(call.toolName) ||
+        call.action === "read" ||
+        call.action === "list" ||
+        call.action === "search") &&
+      !call.error,
+  );
+  const hasSuccessfulWrite = calls.some(
+    (call) =>
+      (WRITE_TOOL_NAMES.has(call.toolName) ||
+        call.action === "write" ||
+        call.action === "delete" ||
+        call.action === "move") &&
+      !call.error,
+  );
+
+  const failedCalls = calls.filter((call) => typeof call.error === "string").length;
+  const notes: string[] = [];
+  const pathPolicyViolations = collectPathPolicyViolations(params.steps);
+
+  if (calls.length < MIN_TOOL_CALLS) {
+    notes.push(`Expected at least ${MIN_TOOL_CALLS} tool calls, observed ${calls.length}.`);
+  }
+  if (!hasSuccessfulRead) {
+    notes.push("No successful read/list/search tool call observed.");
+  }
+  if (!hasSuccessfulWrite) {
+    notes.push("No successful write tool call observed (write_file/replace/apply_patch).");
+  }
+  notes.push(...pathPolicyViolations);
+
+  return {
+    pass: notes.length === 0,
+    totalCalls: calls.length,
+    failedCalls,
+    toolsUsed,
+    hasSuccessfulRead,
+    hasSuccessfulWrite,
+    pathPolicyViolations,
+    notes,
+    calls,
+  };
+}
+
+async function validateOutputs(layout: WorkspaceLayout): Promise<readonly OutputValidation[]> {
+  const validations: OutputValidation[] = [];
+  const reportLineCount = layout.reportText.split("\n").length;
+
+  for (const spec of OUTPUT_FILE_SPECS) {
+    const outputPath = join(layout.rootAbs, spec.outputFile);
+    let content: string | undefined;
+    try {
+      content = await readFile(outputPath, "utf8");
+    } catch {
+      validations.push({
+        outputFile: spec.outputFile,
+        schemaFile: spec.schemaFile,
+        exists: false,
+        jsonValid: false,
+        schemaValid: false,
+        groundingValid: false,
+        errors: [`Missing output file: ${spec.outputFile}`],
+      });
+      continue;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      validations.push({
+        outputFile: spec.outputFile,
+        schemaFile: spec.schemaFile,
+        exists: true,
+        jsonValid: false,
+        schemaValid: false,
+        groundingValid: false,
+        errors: [`Invalid JSON: ${message}`],
+        content,
+      });
+      continue;
+    }
+
+    const schemaResult = spec.schema.safeParse(parsed);
+    if (!schemaResult.success) {
+      validations.push({
+        outputFile: spec.outputFile,
+        schemaFile: spec.schemaFile,
+        exists: true,
+        jsonValid: true,
+        schemaValid: false,
+        groundingValid: false,
+        errors: schemaResult.error.issues.map(
+          (issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`,
+        ),
+        content,
+      });
+      continue;
+    }
+
+    let groundingErrors: readonly string[] = [];
+    if (spec.schema === ClaimAuditSchema) {
+      groundingErrors = validateClaimGrounding(
+        schemaResult.data as ClaimAudit,
+        reportLineCount,
+        layout.reportText,
+      );
+    } else if (spec.outputFile.endsWith("quantitative_findings.json")) {
+      groundingErrors = validateQuantitativeGrounding(
+        schemaResult.data as QuantitativeFindings,
+        reportLineCount,
+      );
+    }
+
+    validations.push({
+      outputFile: spec.outputFile,
+      schemaFile: spec.schemaFile,
+      exists: true,
+      jsonValid: true,
+      schemaValid: true,
+      groundingValid: groundingErrors.length === 0,
+      errors: groundingErrors,
+      content,
+    });
+  }
+
+  return validations;
+}
+
+function renderOutputBundle(validations: readonly OutputValidation[]): string {
+  const sections: string[] = [];
+  for (const validation of validations) {
+    sections.push(`### ${validation.outputFile}`);
+    sections.push(`- exists: ${validation.exists}`);
+    sections.push(`- jsonValid: ${validation.jsonValid}`);
+    sections.push(`- schemaValid: ${validation.schemaValid}`);
+    sections.push(`- groundingValid: ${validation.groundingValid}`);
+    if (validation.errors.length > 0) {
+      sections.push("- validationErrors:");
+      for (const error of validation.errors) {
+        sections.push(`  - ${error}`);
+      }
+    }
+    sections.push("```json");
+    sections.push(validation.content ?? "<missing>");
+    sections.push("```");
+    sections.push("");
+  }
+  return sections.join("\n");
+}
+
+function renderNumberedReport(reportText: string): string {
+  return reportText
+    .split("\n")
+    .map((line, index) => `L${index + 1}: ${line}`)
+    .join("\n");
+}
+
+function buildGraderPrompt(params: {
+  task: ScienceBenchmarkTask;
+  reportText: string;
+  validations: readonly OutputValidation[];
+}): string {
+  return [
+    "You are a strict scientific-output grader.",
+    "Judge whether generated JSON outputs are faithful to the report and practically useful.",
+    "",
+    "Pass criteria:",
+    "- No fabricated quantitative claims.",
+    "- Main findings and caveats are covered.",
+    "- Claims are appropriately calibrated (no overstatement).",
+    "- Outputs are internally coherent and useful for downstream review.",
+    "- Line references are valid and map to the numbered report lines below.",
+    "",
+    "Fail criteria:",
+    "- Hallucinated numbers or contradictions.",
+    "- Missing core outcomes or limitations.",
+    "- Serious misinterpretation of study design or evidence strength.",
+    "",
+    `Task: ${params.task.id} (${params.task.title})`,
+    `Source paper URL: ${params.task.sourceUrl}`,
+    "",
+    "## REPORT WITH LINE NUMBERS",
+    renderNumberedReport(params.reportText),
+    "",
+    "## OUTPUT FILES",
+    renderOutputBundle(params.validations),
+    "",
+    "Return JSON only following schema.",
+  ].join("\n");
+}
+
+async function gradeOutputs(params: {
+  graderModel: string;
+  task: ScienceBenchmarkTask;
+  layout: WorkspaceLayout;
+  validations: readonly OutputValidation[];
+  reasoning: ReasoningEffort;
+}): Promise<{
+  readonly value?: GraderVerdict;
+  readonly error?: string;
+  readonly costUsd: number;
+}> {
+  try {
+    const response = await generateJson({
+      model: params.graderModel,
+      input: buildGraderPrompt({
+        task: params.task,
+        reportText: params.layout.reportText,
+        validations: params.validations,
+      }),
+      schema: GraderSchema,
+      instructions:
+        "Be conservative. If uncertain about fidelity or coverage, choose fail and explain concrete issues.",
+      openAiReasoningEffort: params.reasoning,
+      maxAttempts: 2,
+    });
+
+    return {
+      value: response.value,
+      costUsd: response.result.costUsd,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: message, costUsd: 0 };
+  }
+}
+
+async function runCase(params: {
+  model: string;
+  task: ScienceBenchmarkTask;
+  runIndex: number;
+  outRoot: string;
+  benchmarkRoot: string;
+  reasoning: ReasoningEffort;
+  graderModel: string;
+  maxSteps: number;
+}): Promise<CaseResult> {
+  const caseName = `${sanitizeForPath(params.model)}-${params.task.id}-run-${params.runIndex}`;
+  const workspacePath = normalizeSlashes(join("workspaces", caseName));
+  const workspaceRootAbs = join(params.outRoot, workspacePath);
+  const layout = await createWorkspace({
+    task: params.task,
+    workspaceRootAbs,
+    workspaceRootRel: workspacePath,
+    benchmarkRoot: params.benchmarkRoot,
+  });
+
+  const startedAt = Date.now();
+
+  let agentError: string | undefined;
+  let agentFinalText = "";
+  let agentCostUsd = 0;
+  let modelVersions: readonly string[] = [];
+  let agentSteps: readonly LlmToolLoopStep[] = [];
+  const fsActions: FilesystemActionTrace[] = [];
+
+  try {
+    const result = await runAgentLoop({
+      model: params.model,
+      input: buildAgentPrompt(layout),
+      filesystemTool: {
+        profile: "model-agnostic",
+        options: {
+          cwd: layout.rootAbs,
+          checkAccess: (context) => {
+            const safePath = toSafeRelativePath({
+              cwd: layout.rootAbs,
+              absolutePath: context.path,
+            });
+            fsActions.push({
+              toolName: context.tool,
+              action: context.action,
+              path: safePath,
+              timestamp: new Date().toISOString(),
+            });
+          },
+        },
+      },
+      openAiReasoningEffort: params.reasoning,
+      maxSteps: params.maxSteps,
+    });
+
+    agentFinalText = sanitizePathLikeText(result.text, layout.rootAbs);
+    agentCostUsd = result.totalCostUsd;
+    agentSteps = result.steps;
+    modelVersions = [...new Set(result.steps.map((step) => step.modelVersion))];
+
+    const redactedResult = redactSensitivePaths(result, layout.rootAbs);
+    await writeFile(
+      join(layout.rootAbs, "agent-run.json"),
+      `${JSON.stringify(
+        {
+          model: params.model,
+          taskId: params.task.id,
+          runIndex: params.runIndex,
+          result: redactedResult,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    agentError = sanitizePathLikeText(message, layout.rootAbs);
+  }
+
+  await writeFile(
+    join(layout.rootAbs, "filesystem-access-trace.json"),
+    `${JSON.stringify(fsActions, null, 2)}\n`,
+  );
+
+  const toolTrace = evaluateToolTrace({ steps: agentSteps, fsActions });
+  const validations = await validateOutputs(layout);
+  const schemaPass = validations.every(
+    (validation) => validation.schemaValid && validation.groundingValid,
+  );
+
+  const grader = await gradeOutputs({
+    graderModel: params.graderModel,
+    task: params.task,
+    layout,
+    validations,
+    reasoning: params.reasoning,
+  });
+
+  const graderPass = grader.value?.verdict === "pass";
+  const durationMs = Date.now() - startedAt;
+  const totalCostUsd = agentCostUsd + grader.costUsd;
+
+  const success = !agentError && schemaPass && toolTrace.pass && graderPass;
+
+  const caseResult: CaseResult = {
+    model: params.model,
+    taskId: params.task.id,
+    runIndex: params.runIndex,
+    workspacePath: layout.rootRel,
+    success,
+    schemaPass,
+    toolTracePass: toolTrace.pass,
+    graderPass,
+    durationMs,
+    agentCostUsd,
+    graderCostUsd: grader.costUsd,
+    totalCostUsd,
+    modelVersions,
+    agentFinalText,
+    agentError,
+    outputValidation: validations,
+    toolTrace,
+    grader: {
+      model: params.graderModel,
+      value: grader.value,
+      error: grader.error,
+    },
+  };
+
+  await writeFile(
+    join(layout.rootAbs, "validation.json"),
+    `${JSON.stringify(caseResult, null, 2)}\n`,
+  );
+  return caseResult;
+}
+
+function estimateProjection(params: {
+  models: readonly string[];
+  taskCount: number;
+  runs: number;
+  graderModel: string;
+  agentPromptTokens: number;
+  agentResponseTokens: number;
+  graderPromptTokens: number;
+  graderResponseTokens: number;
+}): Projection {
+  let estimatedAgentCostUsd = 0;
+  let estimatedGraderCostUsd = 0;
+
+  for (const model of params.models) {
+    const perCaseAgent = estimateCallCostUsd({
+      modelId: model,
+      tokens: {
+        promptTokens: params.agentPromptTokens,
+        cachedTokens: 0,
+        responseTokens: params.agentResponseTokens,
+        thinkingTokens: 0,
+      },
+      responseImages: 0,
+    });
+    const casesForModel = params.taskCount * params.runs;
+    estimatedAgentCostUsd += perCaseAgent * casesForModel;
+  }
+
+  const perCaseGrader = estimateCallCostUsd({
+    modelId: params.graderModel,
+    tokens: {
+      promptTokens: params.graderPromptTokens,
+      cachedTokens: 0,
+      responseTokens: params.graderResponseTokens,
+      thinkingTokens: 0,
+    },
+    responseImages: 0,
+  });
+
+  const totalCases = params.models.length * params.taskCount * params.runs;
+  estimatedGraderCostUsd = perCaseGrader * totalCases;
+
+  return {
+    totalCases,
+    estimatedAgentCostUsd,
+    estimatedGraderCostUsd,
+    estimatedTotalCostUsd: estimatedAgentCostUsd + estimatedGraderCostUsd,
+    agentPromptTokens: params.agentPromptTokens,
+    agentResponseTokens: params.agentResponseTokens,
+    graderPromptTokens: params.graderPromptTokens,
+    graderResponseTokens: params.graderResponseTokens,
+  };
+}
+
+function summarizeByModel(
+  model: string,
+  cases: readonly CaseResult[],
+): {
+  readonly model: string;
+  readonly cases: number;
+  readonly success: number;
+  readonly schemaPass: number;
+  readonly toolPass: number;
+  readonly graderPass: number;
+  readonly avgDurationMs: number;
+  readonly totalCostUsd: number;
+} {
+  const modelCases = cases.filter((entry) => entry.model === model);
+  const count = modelCases.length;
+  const success = modelCases.filter((entry) => entry.success).length;
+  const schemaPass = modelCases.filter((entry) => entry.schemaPass).length;
+  const toolPass = modelCases.filter((entry) => entry.toolTracePass).length;
+  const graderPass = modelCases.filter((entry) => entry.graderPass).length;
+  const avgDurationMs =
+    count === 0 ? 0 : modelCases.reduce((acc, entry) => acc + entry.durationMs, 0) / count;
+  const totalCostUsd = modelCases.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+
+  return {
+    model,
+    cases: count,
+    success,
+    schemaPass,
+    toolPass,
+    graderPass,
+    avgDurationMs,
+    totalCostUsd,
+  };
+}
+
+function buildMarkdownReport(params: {
+  runId: string;
+  models: readonly string[];
+  tasks: readonly ScienceBenchmarkTask[];
+  runs: number;
+  reasoning: ReasoningEffort;
+  graderModel: string;
+  projection: Projection;
+  caseResults: readonly CaseResult[];
+}): string {
+  const totalCases = params.caseResults.length;
+  const success = params.caseResults.filter((entry) => entry.success).length;
+  const schemaPass = params.caseResults.filter((entry) => entry.schemaPass).length;
+  const toolPass = params.caseResults.filter((entry) => entry.toolTracePass).length;
+  const graderPass = params.caseResults.filter((entry) => entry.graderPass).length;
+  const totalCostUsd = params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+
+  const lines: string[] = [];
+  lines.push("# Filesystem Agent Benchmark Report");
   lines.push("");
+  lines.push(`- Run id: ${params.runId}`);
+  lines.push(`- Generated at: ${new Date().toISOString()}`);
+  lines.push(`- Models: ${params.models.join(", ")}`);
+  lines.push(`- Grader model: ${params.graderModel}`);
+  lines.push(`- Reasoning effort: ${params.reasoning}`);
+  lines.push(`- Tasks: ${params.tasks.map((task) => task.id).join(", ")}`);
+  lines.push(`- Runs per model/task: ${params.runs}`);
+  lines.push(`- Cases: ${totalCases}`);
+  lines.push(`- Overall success: ${success}/${totalCases}`);
+  lines.push(`- Schema pass: ${schemaPass}/${totalCases}`);
+  lines.push(`- Tool trace pass: ${toolPass}/${totalCases}`);
+  lines.push(`- Grader pass: ${graderPass}/${totalCases}`);
+  lines.push(`- Observed total cost: $${formatUsd(totalCostUsd)}`);
+  lines.push("");
+
+  lines.push("## Source Papers");
+  lines.push("");
+  for (const task of params.tasks) {
+    lines.push(`- ${task.id}: ${task.sourceTitle} (${task.sourceUrl})`);
+  }
+  lines.push("");
+
+  lines.push("## Cost Projection Inputs");
+  lines.push("");
+  lines.push(`- Agent prompt tokens per call: ${params.projection.agentPromptTokens}`);
+  lines.push(`- Agent response tokens per call: ${params.projection.agentResponseTokens}`);
+  lines.push(`- Grader prompt tokens per call: ${params.projection.graderPromptTokens}`);
+  lines.push(`- Grader response tokens per call: ${params.projection.graderResponseTokens}`);
+  lines.push(
+    `- Estimated agent cost total: $${formatUsd(params.projection.estimatedAgentCostUsd)}`,
+  );
+  lines.push(
+    `- Estimated grader cost total: $${formatUsd(params.projection.estimatedGraderCostUsd)}`,
+  );
+  lines.push(`- Estimated grand total: $${formatUsd(params.projection.estimatedTotalCostUsd)}`);
+  lines.push("");
+
+  lines.push("## Per-Model Summary");
+  lines.push("");
+  lines.push(
+    "| Model | Success | Schema pass | Tool pass | Grader pass | Avg latency (s) | Total cost (USD) |",
+  );
+  lines.push("|---|---:|---:|---:|---:|---:|---:|");
+  for (const model of params.models) {
+    const summary = summarizeByModel(model, params.caseResults);
+    lines.push(
+      `| ${summary.model} | ${summary.success}/${summary.cases} | ${summary.schemaPass}/${summary.cases} | ${summary.toolPass}/${summary.cases} | ${summary.graderPass}/${summary.cases} | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.totalCostUsd)} |`,
+    );
+  }
+  lines.push("");
+
+  lines.push("## Case Matrix");
+  lines.push("");
+  lines.push(
+    "| Model | Task | Run | Status | Schema | Tool trace | Grader | Tool calls | Cost (USD) |",
+  );
+  lines.push("|---|---|---:|---|---|---|---|---:|---:|");
+  for (const result of params.caseResults) {
+    lines.push(
+      `| ${result.model} | ${result.taskId} | ${result.runIndex} | ${result.success ? "PASS" : "FAIL"} | ${result.schemaPass ? "pass" : "fail"} | ${result.toolTracePass ? "pass" : "fail"} | ${result.graderPass ? "pass" : "fail"} | ${result.toolTrace.totalCalls} | ${formatUsd(result.totalCostUsd)} |`,
+    );
+  }
+  lines.push("");
+
   lines.push("## Failures");
   lines.push("");
-  if (failed.length === 0) {
+  const failures = params.caseResults.filter((entry) => !entry.success);
+  if (failures.length === 0) {
     lines.push("- None");
   } else {
-    for (const failure of failed) {
+    for (const failure of failures) {
+      const reasons: string[] = [];
+      if (failure.agentError) {
+        reasons.push(`agent_error=${failure.agentError}`);
+      }
+      if (!failure.schemaPass) {
+        reasons.push("schema_or_grounding_failed");
+      }
+      if (!failure.toolTracePass) {
+        reasons.push(`tool_trace=${failure.toolTrace.notes.join("; ") || "failed"}`);
+      }
+      if (!failure.graderPass) {
+        reasons.push(
+          failure.grader.error
+            ? `grader_error=${failure.grader.error}`
+            : `grader_verdict=${failure.grader.value?.verdict ?? "missing"}`,
+        );
+      }
       lines.push(
-        `- \`${failure.variant}\` / \`${failure.taskId}\` / run ${failure.runIndex}: ${failure.error ?? "unknown error"}`,
+        `- ${failure.model} / ${failure.taskId} / run ${failure.runIndex}: ${reasons.join(" | ")}`,
       );
     }
   }
@@ -745,14 +1199,16 @@ function buildMarkdownReport(params: {
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
-      model: { type: "string", default: DEFAULT_MODEL },
-      variants: { type: "string", default: BENCHMARK_VARIANTS.join(",") },
+      models: { type: "string", default: DEFAULT_BENCHMARK_MODELS.join(",") },
       tasks: { type: "string" },
-      "max-tasks": { type: "string", default: "4" },
       runs: { type: "string", default: "1" },
-      reasoning: { type: "string", default: "low" },
-      "estimate-prompt-tokens": { type: "string", default: "1200" },
-      "estimate-response-tokens": { type: "string", default: "300" },
+      reasoning: { type: "string", default: "medium" },
+      "grader-model": { type: "string", default: DEFAULT_GRADER_MODEL },
+      "max-steps": { type: "string", default: String(DEFAULT_MAX_STEPS) },
+      "estimate-agent-prompt-tokens": { type: "string", default: "4200" },
+      "estimate-agent-response-tokens": { type: "string", default: "900" },
+      "estimate-grader-prompt-tokens": { type: "string", default: "5200" },
+      "estimate-grader-response-tokens": { type: "string", default: "350" },
       "estimate-only": { type: "boolean", default: false },
       "out-dir": { type: "string", default: "benchmarks/agent/results" },
       help: { type: "boolean", default: false },
@@ -765,118 +1221,147 @@ async function main(): Promise<void> {
     return;
   }
 
-  const model = values.model ?? DEFAULT_MODEL;
-  const variants = parseVariants(values.variants ?? BENCHMARK_VARIANTS.join(","));
-  const maxTasks = parsePositiveInt(values["max-tasks"] ?? "4", "--max-tasks");
+  const models = parseCsvList(values.models ?? DEFAULT_BENCHMARK_MODELS.join(","));
+  const tasks = selectTasks(values.tasks);
   const runs = parsePositiveInt(values.runs ?? "1", "--runs");
-  const reasoning = parseReasoningEffort(values.reasoning ?? "low");
-  const promptTokensPerCall = parsePositiveInt(
-    values["estimate-prompt-tokens"] ?? "1200",
-    "--estimate-prompt-tokens",
-  );
-  const responseTokensPerCall = parsePositiveInt(
-    values["estimate-response-tokens"] ?? "300",
-    "--estimate-response-tokens",
-  );
-  const tasks = selectTasks(values.tasks, maxTasks);
-
-  if (tasks.length === 0) {
-    throw new Error("No tasks selected.");
+  const reasoning = parseReasoningEffort(values.reasoning ?? "medium");
+  const graderModel = (values["grader-model"] ?? DEFAULT_GRADER_MODEL).trim();
+  if (!graderModel) {
+    throw new Error("--grader-model must not be empty");
   }
+  const maxSteps = parsePositiveInt(
+    values["max-steps"] ?? String(DEFAULT_MAX_STEPS),
+    "--max-steps",
+  );
 
   const projection = estimateProjection({
-    model,
+    models,
     taskCount: tasks.length,
-    variantCount: variants.length,
     runs,
-    promptTokensPerCall,
-    responseTokensPerCall,
+    graderModel,
+    agentPromptTokens: parsePositiveInt(
+      values["estimate-agent-prompt-tokens"] ?? "4200",
+      "--estimate-agent-prompt-tokens",
+    ),
+    agentResponseTokens: parsePositiveInt(
+      values["estimate-agent-response-tokens"] ?? "900",
+      "--estimate-agent-response-tokens",
+    ),
+    graderPromptTokens: parsePositiveInt(
+      values["estimate-grader-prompt-tokens"] ?? "5200",
+      "--estimate-grader-prompt-tokens",
+    ),
+    graderResponseTokens: parsePositiveInt(
+      values["estimate-grader-response-tokens"] ?? "350",
+      "--estimate-grader-response-tokens",
+    ),
   });
 
-  console.log(`Model: ${model}`);
-  console.log(`Variants: ${variants.join(", ")}`);
-  console.log(`Tasks: ${tasks.length}`);
-  console.log(`Runs per task/variant: ${runs}`);
-  console.log(`Projected cases: ${projection.cases}`);
-  console.log(`Projected per-call cost: $${formatUsd(projection.perCallUsd)}`);
-  console.log(`Projected total cost: $${formatUsd(projection.totalUsd)}`);
+  console.log(`Models: ${models.join(", ")}`);
+  console.log(`Tasks: ${tasks.map((task) => task.id).join(", ")}`);
+  console.log(`Runs per model/task: ${runs}`);
+  console.log(`Grader model: ${graderModel}`);
+  console.log(`Projected cases: ${projection.totalCases}`);
+  console.log(`Projected agent cost: $${formatUsd(projection.estimatedAgentCostUsd)}`);
+  console.log(`Projected grader cost: $${formatUsd(projection.estimatedGraderCostUsd)}`);
+  console.log(`Projected total cost: $${formatUsd(projection.estimatedTotalCostUsd)}`);
 
   if (values["estimate-only"]) {
     return;
   }
 
+  const benchmarkRoot = dirname(fileURLToPath(import.meta.url));
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const runId = `agent-fs-${timestamp}`;
+  const outDir = resolve(values["out-dir"] ?? "benchmarks/agent/results");
+  const runRoot = join(outDir, runId);
+  await mkdir(runRoot, { recursive: true });
+
   const caseResults: CaseResult[] = [];
-  for (const variant of variants) {
+
+  for (const model of models) {
     for (const task of tasks) {
       for (let runIndex = 1; runIndex <= runs; runIndex += 1) {
         const result = await runCase({
           model,
-          variant,
           task,
           runIndex,
+          outRoot: runRoot,
+          benchmarkRoot,
           reasoning,
+          graderModel,
+          maxSteps,
         });
         caseResults.push(result);
-        const marker = result.success ? "OK" : "FAIL";
+
+        const status = result.success ? "PASS" : "FAIL";
+        const reason = result.success
+          ? ""
+          : [
+              result.agentError ? `agent=${result.agentError}` : undefined,
+              !result.schemaPass ? "schema" : undefined,
+              !result.toolTracePass ? "tools" : undefined,
+              !result.graderPass
+                ? result.grader.error
+                  ? `grader=${result.grader.error}`
+                  : `grader=${result.grader.value?.verdict ?? "missing"}`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" | ");
+
         console.log(
-          `[${marker}] ${variant} / ${task.id} / run ${runIndex} | ${(
-            result.durationMs / 1000
-          ).toFixed(
-            2,
-          )}s | $${formatUsd(result.costUsd)}${result.error ? ` | ${result.error}` : ""}`,
+          `[${status}] ${model} / ${task.id} / run ${runIndex} | ${(result.durationMs / 1000).toFixed(2)}s | $${formatUsd(result.totalCostUsd)}${reason ? ` | ${reason}` : ""}`,
         );
       }
     }
   }
 
-  const summaries = variants.map((variant) => summarizeVariant(variant, caseResults));
   const markdown = buildMarkdownReport({
-    model,
-    reasoning,
-    variants,
+    runId,
+    models,
     tasks,
     runs,
+    reasoning,
+    graderModel,
     projection,
     caseResults,
-    summaries,
   });
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const outputDir = resolve(values["out-dir"] ?? "benchmarks/agent/results");
-  await mkdir(outputDir, { recursive: true });
-  const jsonPath = join(outputDir, `agent-micro-${timestamp}.json`);
-  const mdPath = join(outputDir, `agent-micro-${timestamp}.md`);
+  const summary = {
+    runId,
+    generatedAt: new Date().toISOString(),
+    models,
+    graderModel,
+    reasoning,
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      sourceTitle: task.sourceTitle,
+      sourceUrl: task.sourceUrl,
+    })),
+    runs,
+    projection,
+    aggregate: {
+      cases: caseResults.length,
+      success: caseResults.filter((entry) => entry.success).length,
+      schemaPass: caseResults.filter((entry) => entry.schemaPass).length,
+      toolTracePass: caseResults.filter((entry) => entry.toolTracePass).length,
+      graderPass: caseResults.filter((entry) => entry.graderPass).length,
+      totalCostUsd: caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0),
+    },
+    results: caseResults,
+  };
 
-  const successful = caseResults.filter((result) => result.success).length;
-  const totalCost = caseResults.reduce((acc, result) => acc + result.costUsd, 0);
-  await writeFile(
-    jsonPath,
-    JSON.stringify(
-      {
-        generatedAt: new Date().toISOString(),
-        model,
-        reasoning,
-        variants,
-        tasks: tasks.map((task) => task.id),
-        runs,
-        projection,
-        summary: {
-          cases: caseResults.length,
-          successful,
-          successRate: caseResults.length > 0 ? successful / caseResults.length : 0,
-          totalCostUsd: totalCost,
-        },
-        variantsSummary: summaries,
-        results: caseResults,
-      },
-      null,
-      2,
-    ),
-  );
-  await writeFile(mdPath, markdown);
+  const summaryJsonPath = join(runRoot, "summary.json");
+  const summaryMarkdownPath = join(runRoot, "report.md");
+  await writeFile(summaryJsonPath, `${JSON.stringify(summary, null, 2)}\n`);
+  await writeFile(summaryMarkdownPath, markdown);
 
-  console.log(`\nWrote: ${jsonPath}`);
-  console.log(`Wrote: ${mdPath}`);
+  const displaySummaryJsonPath = normalizeSlashes(relative(process.cwd(), summaryJsonPath));
+  const displaySummaryMarkdownPath = normalizeSlashes(relative(process.cwd(), summaryMarkdownPath));
+  console.log(`\nWrote: ${displaySummaryJsonPath}`);
+  console.log(`Wrote: ${displaySummaryMarkdownPath}`);
 }
 
 void main().catch((error) => {
