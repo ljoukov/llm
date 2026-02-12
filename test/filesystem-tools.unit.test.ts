@@ -4,6 +4,7 @@ import { createInMemoryAgentFilesystem } from "../src/tools/filesystem.js";
 import {
   createCodexApplyPatchTool,
   createFilesystemToolSetForModel,
+  createGeminiReadFileTool,
   createGlobTool,
   createRgSearchTool,
   createListDirectoryTool,
@@ -86,6 +87,28 @@ describe("filesystemTools behavior", () => {
         file_filtering_options: null,
       }),
     ).toBe("example.ts");
+
+    expect(
+      listDirectory.inputSchema.safeParse({
+        dir_path: "src",
+        file_filtering_options: {
+          respect_git_ignore: null,
+          respect_gemini_ignore: null,
+        },
+      }).success,
+    ).toBe(true);
+
+    const geminiReadFile = createGeminiReadFileTool({ cwd, fs });
+    expect(
+      geminiReadFile.inputSchema.safeParse({ file_path: "src/example.ts", limit: null }).success,
+    ).toBe(true);
+    expect(
+      await geminiReadFile.execute({
+        file_path: "src/example.ts",
+        offset: null,
+        limit: null,
+      }),
+    ).toContain("L1: export const value = 2;");
 
     const rgSearch = createRgSearchTool({ cwd, fs });
     expect(
