@@ -53,6 +53,70 @@ export type {
 } from "./llm.js";
 
 export { loadEnvFromFile, loadLocalEnv } from "./utils/env.js";
+export { runAgentLoop } from "./agent.js";
+export type {
+  AgentFilesystemToolConfig,
+  AgentFilesystemToolSelection,
+  RunAgentLoopRequest,
+} from "./agent.js";
+export {
+  applyPatch,
+  createApplyPatchTool,
+} from "./tools/applyPatch.js";
+export type {
+  ApplyPatchAccessContext,
+  ApplyPatchAccessHook,
+  ApplyPatchRequest,
+  ApplyPatchResult,
+  ApplyPatchToolInput,
+  CreateApplyPatchToolOptions,
+} from "./tools/applyPatch.js";
+export {
+  createInMemoryAgentFilesystem,
+  createNodeAgentFilesystem,
+  InMemoryAgentFilesystem,
+} from "./tools/filesystem.js";
+export type {
+  AgentDirectoryEntry,
+  AgentFilesystem,
+  AgentPathInfo,
+  AgentPathKind,
+} from "./tools/filesystem.js";
+export {
+  createCodexApplyPatchTool,
+  createCodexFilesystemToolSet,
+  createCodexReadFileTool,
+  createFilesystemToolSetForModel,
+  createGeminiFilesystemToolSet,
+  createGlobTool,
+  createGrepFilesTool,
+  createGrepSearchTool,
+  createListDirTool,
+  createListDirectoryTool,
+  createModelAgnosticFilesystemToolSet,
+  createReadFileTool,
+  createReplaceTool,
+  createWriteFileTool,
+  resolveFilesystemToolProfile,
+} from "./tools/filesystemTools.js";
+export type {
+  AgentFilesystemToolAccessContext,
+  AgentFilesystemToolAccessHook,
+  AgentFilesystemToolAction,
+  AgentFilesystemToolName,
+  AgentFilesystemToolProfile,
+  AgentFilesystemToolsOptions,
+  CodexApplyPatchToolInput,
+  CodexGrepFilesToolInput,
+  CodexListDirToolInput,
+  CodexReadFileToolInput,
+  GeminiGlobToolInput,
+  GeminiGrepSearchToolInput,
+  GeminiListDirectoryToolInput,
+  GeminiReadFileToolInput,
+  GeminiReplaceToolInput,
+  GeminiWriteFileToolInput,
+} from "./tools/filesystemTools.js";
 
 export {
   encodeChatGptAuthJson,
