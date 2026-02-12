@@ -159,14 +159,14 @@ export const SCIENCE_BENCHMARK_TASKS: readonly ScienceBenchmarkTask[] = [
   {
     id: "tumor-vaccine-ici",
     title: "mRNA tumor sensitization for checkpoint blockade",
-    reportFile: "reports/tumor-vaccine-ici.md",
+    reportFile: "input/tumor-vaccine-ici.md",
     sourceTitle: "SARS-CoV-2 mRNA vaccines sensitize tumours to immune checkpoint blockade",
     sourceUrl: "https://www.nature.com/articles/s41586-025-09006-8",
   },
   {
     id: "trappist1b-atmosphere",
     title: "JWST phase-curve evidence for an atmosphere on TRAPPIST-1 b",
-    reportFile: "reports/trappist-b-atmosphere.md",
+    reportFile: "input/trappist-b-atmosphere.md",
     sourceTitle: "Phase-curve Evidence for an Atmosphere on TRAPPIST-1 b",
     sourceUrl: "https://arxiv.org/abs/2409.13036",
   },

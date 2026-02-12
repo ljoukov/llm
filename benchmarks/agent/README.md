@@ -14,7 +14,7 @@ It runs the agent with:
 - Gemini Pro: `gemini-2.5-pro`
 - Gemini Flash: `gemini-flash-latest`
 
-The tasks are adapted from real science papers and stored under `benchmarks/agent/reports/`.
+The tasks are adapted from real science papers and stored under `benchmarks/agent/input/`.
 Default run uses one shared task (`tumor-vaccine-ici`) across all models so Codex vs Gemini is directly comparable.
 
 ## Run
@@ -69,6 +69,7 @@ Each benchmark run writes a dedicated folder:
 Workspace folders include:
 
 - `input/report.md`
+- `prompts/*.md` (template prompts loaded by the benchmark runner)
 - `schemas/*.schema.json`
 - `output/*.json` (agent outputs)
 - `agent-run.json` (full step/tool trace)
@@ -76,3 +77,4 @@ Workspace folders include:
 - `validation.json` (schema/grounding/tool/grader verdicts)
 
 A committed high-level snapshot is kept in `benchmarks/agent/LATEST_RESULTS.md`.
+Committed per-model traces/workspaces are kept in `benchmarks/agent/traces/latest/`.

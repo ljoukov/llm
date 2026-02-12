@@ -4,6 +4,7 @@ import { getGoogleAuthOptions, getGoogleServiceAccount } from "./auth.js";
 
 export const GEMINI_MODEL_IDS = [
   "gemini-3-pro-preview",
+  "gemini-3-flash-preview",
   "gemini-2.5-pro",
   "gemini-flash-latest",
   "gemini-flash-lite-latest",

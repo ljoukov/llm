@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "schemas-quantitative_findings",
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^Q[0-9]{2}$"
+          },
+          "metric": {
+            "type": "string",
+            "minLength": 6
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "comparator_or_baseline": {
+            "type": "string",
+            "minLength": 1
+          },
+          "interpretation": {
+            "type": "string",
+            "minLength": 12
+          },
+          "evidence_line_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^L[1-9]\\d*$"
+            },
+            "minItems": 1,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "id",
+          "metric",
+          "value",
+          "comparator_or_baseline",
+          "interpretation",
+          "evidence_line_refs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 5,
+      "maxItems": 14
+    },
+    "controls_or_null_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "statement": {
+            "type": "string",
+            "minLength": 10
+          },
+          "evidence_line_ref": {
+            "$ref": "#/definitions/schemas-quantitative_findings/properties/findings/items/properties/evidence_line_refs/items"
+          }
+        },
+        "required": ["statement", "evidence_line_ref"],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 10
+    }
+  },
+  "required": ["findings", "controls_or_null_results"],
+  "additionalProperties": false
+}
