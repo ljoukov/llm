@@ -174,6 +174,9 @@ export const SCIENCE_BENCHMARK_TASKS: readonly ScienceBenchmarkTask[] = [
 
 export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
   "chatgpt-gpt-5.3-codex",
+  "gpt-5.2",
   "gemini-2.5-pro",
   "gemini-flash-latest",
+  "gemini-3-pro-preview",
+  "gemini-3-flash-preview",
 ];

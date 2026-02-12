@@ -4,33 +4,33 @@
     "doi": "10.1038/s41586-025-09006-8",
     "publication_year": 2025,
     "domain": "oncology-immunology",
-    "study_type": "preclinical+retrospective"
+    "study_type": "mixed"
   },
-  "core_question": "The paper investigates whether intratumoral delivery of an mRNA vaccine can create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 therapy.",
+  "core_question": "Can intratumoral delivery of an mRNA vaccine sensitize non-responsive tumors to immune checkpoint blockade by creating an interferon-rich inflammatory state?",
   "datasets_or_cohorts": [
     {
-      "id": "mouse-efficacy-combo",
-      "label": "Mouse Efficacy Cohort (Combination)",
-      "sample_size_or_observations": "78 tumor-bearing mice",
-      "description": "Mice treated with the combination of intratumoral mRNA vaccine and anti-PD-L1 therapy across repeat experiments to evaluate efficacy. (L19)"
+      "id": "mouse-combo",
+      "label": "Mouse efficacy cohort (combination therapy)",
+      "sample_size_or_observations": "78 mice",
+      "description": "Tumor-bearing mice receiving combined intratumoral mRNA vaccine and anti-PD-L1 therapy across repeat experiments to assess efficacy."
     },
     {
-      "id": "human-retrospective-vaccinated",
-      "label": "Human Retrospective Vaccinated Subgroup",
-      "sample_size_or_observations": "43 patients",
-      "description": "Metastatic patients receiving ICI treatment who had prior SARS-CoV-2 mRNA vaccination. (L22, L15)"
+      "id": "mouse-control",
+      "label": "Mouse control cohort",
+      "sample_size_or_observations": "84 mice",
+      "description": "Tumor-bearing mice receiving vaccine only, ICI only, or vehicle controls to establish baseline activity and specificity of the intervention."
     },
     {
-      "id": "human-retrospective-unvaccinated",
-      "label": "Human Retrospective Unvaccinated Subgroup",
-      "sample_size_or_observations": "87 patients",
-      "description": "Metastatic patients receiving ICI treatment who had no prior SARS-CoV-2 mRNA vaccination, used as a comparator. (L23, L15)"
+      "id": "human-retrospective",
+      "label": "Human retrospective metastatic cohort",
+      "sample_size_or_observations": "130 patients total",
+      "description": "Metastatic cancer patients receiving ICI treatment, retrospectively analyzed based on prior SARS-CoV-2 mRNA vaccination status to look for correlation."
     }
   ],
   "major_limitations": [
-    "The human analysis is retrospective and non-randomized; residual confounding is likely.",
-    "Vaccination timing relative to ICI initiation varied across patients, adding heterogeneity to the retrospective data.",
-    "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation in the human cohort.",
-    "Mouse model effects may not map one-to-one to all human tumors, limiting direct translational certainty."
+    "The human analysis is retrospective and non-randomized, meaning residual confounding from other factors is likely.",
+    "Vaccination timing relative to ICI initiation varied across patients, making it difficult to precisely align the proposed mechanism with outcome.",
+    "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation of the improved survival data in humans.",
+    "Mouse model effects, while informative, may not map one-to-one to the complex biology of all human tumors."
   ]
 }

@@ -1418,47 +1418,50 @@ async function main(): Promise<void> {
   const runRoot = join(outDir, runId);
   await mkdir(runRoot, { recursive: true });
 
-  const caseResults: CaseResult[] = [];
+  const modelCaseGroups = await Promise.all(
+    models.map(async (model) => {
+      const modelResults: CaseResult[] = [];
+      for (const task of tasks) {
+        for (let runIndex = 1; runIndex <= runs; runIndex += 1) {
+          const result = await runCase({
+            model,
+            task,
+            runIndex,
+            outRoot: runRoot,
+            benchmarkRoot,
+            reasoning,
+            graderModel,
+            maxSteps,
+            promptTemplates,
+          });
+          modelResults.push(result);
 
-  for (const model of models) {
-    for (const task of tasks) {
-      for (let runIndex = 1; runIndex <= runs; runIndex += 1) {
-        const result = await runCase({
-          model,
-          task,
-          runIndex,
-          outRoot: runRoot,
-          benchmarkRoot,
-          reasoning,
-          graderModel,
-          maxSteps,
-          promptTemplates,
-        });
-        caseResults.push(result);
+          const status = result.success ? "PASS" : "FAIL";
+          const reason = result.success
+            ? ""
+            : [
+                result.agentError ? `agent=${result.agentError}` : undefined,
+                !result.schemaPass ? "schema" : undefined,
+                !result.toolTracePass ? "tools" : undefined,
+                !result.graderPass
+                  ? result.grader.error
+                    ? `grader=${result.grader.error}`
+                    : `grader=${result.grader.value?.verdict ?? "missing"}`
+                  : undefined,
+              ]
+                .filter(Boolean)
+                .join(" | ");
 
-        const status = result.success ? "PASS" : "FAIL";
-        const reason = result.success
-          ? ""
-          : [
-              result.agentError ? `agent=${result.agentError}` : undefined,
-              !result.schemaPass ? "schema" : undefined,
-              !result.toolTracePass ? "tools" : undefined,
-              !result.graderPass
-                ? result.grader.error
-                  ? `grader=${result.grader.error}`
-                  : `grader=${result.grader.value?.verdict ?? "missing"}`
-                : undefined,
-            ]
-              .filter(Boolean)
-              .join(" | ");
-
-        console.log(
-          `[${status}] ${model} / ${task.id} / run ${runIndex} | ${(result.durationMs / 1000).toFixed(2)}s | $${formatUsd(result.totalCostUsd)}${reason ? ` | ${reason}` : ""}`,
-        );
+          console.log(
+            `[${status}] ${model} / ${task.id} / run ${runIndex} | ${(result.durationMs / 1000).toFixed(2)}s | $${formatUsd(result.totalCostUsd)}${reason ? ` | ${reason}` : ""}`,
+          );
+        }
       }
-    }
-  }
+      return modelResults;
+    }),
+  );
 
+  const caseResults = modelCaseGroups.flat();
   const generatedAt = new Date().toISOString();
 
   const markdown = buildMarkdownReport({
