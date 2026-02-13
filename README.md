@@ -446,7 +446,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -470,13 +470,13 @@ import {
 } from "@ljoukov/llm";
 
 const fs = createInMemoryAgentFilesystem({ "/repo/a.ts": "export const n = 1;\n" });
-const tools = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex", {
+const tools = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex-spark", {
   cwd: "/repo",
   fs,
 });
 
 const result = await runToolLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Update n to 2.",
   tools,
 });

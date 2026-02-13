@@ -20,9 +20,9 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.01015, 8);
   });
 
-  it("estimates ChatGPT codex costs (gpt-5.3-codex)", () => {
+  it("estimates ChatGPT codex spark costs (gpt-5.3-codex-spark) at GPT-5 mini rates", () => {
     const cost = estimateCallCostUsd({
-      modelId: "chatgpt-gpt-5.3-codex",
+      modelId: "chatgpt-gpt-5.3-codex-spark",
       tokens: {
         promptTokens: 1000,
         cachedTokens: 100,
@@ -32,10 +32,10 @@ describe("estimateCallCostUsd", () => {
       responseImages: 0,
     });
 
-    // non-cached prompt: 900 * (1.25/1M) = 0.001125
-    // cached: 100 * (0.125/1M) = 0.0000125
-    // output: 600 * (10/1M) = 0.006
-    expect(cost).toBeCloseTo(0.0071375, 8);
+    // non-cached prompt: 900 * (0.25/1M) = 0.000225
+    // cached: 100 * (0.025/1M) = 0.0000025
+    // output: 600 * (2/1M) = 0.0012
+    expect(cost).toBeCloseTo(0.0014275, 8);
   });
 
   it("estimates Fireworks kimi-k2.5 costs", () => {
