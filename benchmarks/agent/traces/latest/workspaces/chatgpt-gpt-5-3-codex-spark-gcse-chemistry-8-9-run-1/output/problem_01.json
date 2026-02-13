@@ -1,0 +1,20 @@
+{
+  "problem_id": "P01",
+  "final_answer": {
+    "value": 0.0200,
+    "units": "mol dm-3",
+    "precision_note": "Using proportional dilution, 0.200\u00d725.0/250.0 gives 0.0200 mol dm-3 with 3 significant figures."
+  },
+  "method": "Use the dilution relation c1V1 = c2V2. For the initial solution c1 is 0.200 mol dm-3 and V1 is 25.0 cm3. The final volume is V2 = 250.0 cm3. Rearranging gives c2 = c1V1/V2 = 0.200 \u00d7 25.0 / 250.0 = 0.0200 mol dm-3. The result is correctly lower than the original concentration because the acid was diluted by a factor of ten.",
+  "key_equations": [
+    "c1V1 = c2V2",
+    "c2 = c1V1 / V2",
+    "c = n / V"
+  ],
+  "line_refs": ["L16", "L28", "L29", "L30"],
+  "checks": [
+    "The final volume is ten times larger than the initial volume, so concentration should be one-tenth the original.",
+    "Initial moles = 0.200 mol dm-3 \u00d7 0.02500 dm3 = 5.00 \u00d7 10^-3 mol.",
+    "moles in final solution = 0.0200 mol dm-3 \u00d7 0.25000 dm3 = 5.00 \u00d7 10^-3 mol, confirming conservation of moles."
+  ]
+}

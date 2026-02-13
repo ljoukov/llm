@@ -116,6 +116,22 @@ type Projection = {
   readonly graderResponseTokens: number;
 };
 
+type BenchmarkTaskSummary = {
+  readonly id: string;
+  readonly title: string;
+  readonly sourceTitle: string;
+  readonly sourceUrl: string;
+};
+
+type LatestSummarySnapshot = {
+  readonly models: readonly string[];
+  readonly tasks: readonly BenchmarkTaskSummary[];
+  readonly runs: number;
+  readonly graderModel: string;
+  readonly reasoning: ReasoningEffort;
+  readonly caseResults: readonly CaseResult[];
+};
+
 type WorkspaceLayout = {
   readonly rootAbs: string;
   readonly rootRel: string;
@@ -132,7 +148,7 @@ type PromptTemplates = {
 };
 
 const DEFAULT_GRADER_MODEL = "chatgpt-gpt-5.2";
-const DEFAULT_MAX_STEPS = 20;
+const DEFAULT_MAX_STEPS = 100;
 const DEFAULT_AGENT_TIMEOUT_MS = 12 * 60_000;
 const DEFAULT_GRADER_TIMEOUT_MS = 4 * 60_000;
 const MIN_TOOL_CALLS = 3;
@@ -186,6 +202,7 @@ Options:
   --estimate-grader-prompt-tokens <n> Estimated prompt tokens per grader call (default: 5200)
   --estimate-grader-response-tokens <n> Estimated response tokens per grader call (default: 350)
   --estimate-only                    Print cost projection and exit
+  --merge-latest                     Merge this run into traces/latest instead of replacing it
   --prune-traces                     Keep only traces/latest + traces/README.md after run
   --out-dir <path>                   Output directory (default: benchmarks/agent/results)
   --help                             Show this help
@@ -244,6 +261,19 @@ function selectTasks(taskArg: string | undefined): readonly AgentBenchmarkTask[]
   }
   return selected;
 }
+
+function toBenchmarkTaskSummary(task: AgentBenchmarkTask): BenchmarkTaskSummary {
+  return {
+    id: task.id,
+    title: task.title,
+    sourceTitle: task.sourceTitle,
+    sourceUrl: task.sourceUrl,
+  };
+}
+
+const BENCHMARK_TASKS_BY_ID = new Map(
+  AGENT_BENCHMARK_TASKS.map((task) => [task.id, toBenchmarkTaskSummary(task)]),
+);
 
 function sanitizeForPath(value: string): string {
   return value
@@ -1276,7 +1306,7 @@ function buildMarkdownReport(params: {
   runId: string;
   generatedAt: string;
   models: readonly string[];
-  tasks: readonly AgentBenchmarkTask[];
+  tasks: readonly BenchmarkTaskSummary[];
   runs: number;
   reasoning: ReasoningEffort;
   graderModel: string;
@@ -1410,7 +1440,7 @@ function buildLatestResultsMarkdown(params: {
   runId: string;
   generatedAt: string;
   models: readonly string[];
-  tasks: readonly AgentBenchmarkTask[];
+  tasks: readonly BenchmarkTaskSummary[];
   graderModel: string;
   caseResults: readonly CaseResult[];
 }): string {
@@ -1494,6 +1524,209 @@ async function pruneTraceArtifacts(benchmarkRoot: string): Promise<void> {
   );
 }
 
+function caseResultKey(value: Pick<CaseResult, "model" | "taskId" | "runIndex">): string {
+  return `${value.model}::${value.taskId}::${value.runIndex}`;
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === "string" && (REASONING_EFFORTS as readonly string[]).includes(value);
+}
+
+function parseBenchmarkTaskSummaries(value: unknown): BenchmarkTaskSummary[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const tasks: BenchmarkTaskSummary[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const task = item as Record<string, unknown>;
+    const id = typeof task.id === "string" ? task.id.trim() : "";
+    const title = typeof task.title === "string" ? task.title : id;
+    const sourceTitle = typeof task.sourceTitle === "string" ? task.sourceTitle : title;
+    const sourceUrl = typeof task.sourceUrl === "string" ? task.sourceUrl : "";
+    if (!id) {
+      continue;
+    }
+    tasks.push({ id, title, sourceTitle, sourceUrl });
+  }
+  return tasks;
+}
+
+function parseCaseResults(value: unknown): CaseResult[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => {
+    if (typeof item !== "object" || item === null) {
+      return false;
+    }
+    const entry = item as Record<string, unknown>;
+    return (
+      typeof entry.model === "string" &&
+      typeof entry.taskId === "string" &&
+      typeof entry.runIndex === "number"
+    );
+  }) as CaseResult[];
+}
+
+async function loadLatestSummarySnapshot(
+  benchmarkRoot: string,
+): Promise<LatestSummarySnapshot | undefined> {
+  const latestSummaryPath = join(benchmarkRoot, "traces", "latest", "summary.json");
+  let raw: string;
+  try {
+    raw = await readFile(latestSummaryPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const models =
+    Array.isArray(parsed.models) && parsed.models.every((value) => typeof value === "string")
+      ? (parsed.models as string[])
+      : [];
+  const tasks = parseBenchmarkTaskSummaries(parsed.tasks);
+  const runs =
+    typeof parsed.runs === "number" && Number.isFinite(parsed.runs) && parsed.runs > 0
+      ? Math.floor(parsed.runs)
+      : 1;
+  const graderModel = typeof parsed.graderModel === "string" ? parsed.graderModel : "";
+  const reasoning = isReasoningEffort(parsed.reasoning) ? parsed.reasoning : "medium";
+  const caseResults = parseCaseResults(parsed.results);
+
+  return {
+    models,
+    tasks,
+    runs,
+    graderModel,
+    reasoning,
+    caseResults,
+  };
+}
+
+function mergeCaseResults(
+  existing: readonly CaseResult[],
+  updates: readonly CaseResult[],
+): readonly CaseResult[] {
+  const merged = new Map<string, CaseResult>();
+  for (const result of existing) {
+    merged.set(caseResultKey(result), result);
+  }
+  for (const result of updates) {
+    merged.set(caseResultKey(result), result);
+  }
+  return [...merged.values()];
+}
+
+function mergeModels(params: {
+  existingModels: readonly string[];
+  currentModels: readonly string[];
+  caseResults: readonly CaseResult[];
+}): readonly string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+    ordered.push(trimmed);
+  };
+
+  for (const model of params.existingModels) {
+    add(model);
+  }
+  for (const model of params.currentModels) {
+    add(model);
+  }
+  for (const result of params.caseResults) {
+    add(result.model);
+  }
+  return ordered;
+}
+
+function mergeTaskSummaries(params: {
+  existingTasks: readonly BenchmarkTaskSummary[];
+  currentTasks: readonly BenchmarkTaskSummary[];
+  caseResults: readonly CaseResult[];
+}): readonly BenchmarkTaskSummary[] {
+  const ordered = new Map<string, BenchmarkTaskSummary>();
+  const add = (task: BenchmarkTaskSummary) => {
+    if (!ordered.has(task.id)) {
+      ordered.set(task.id, task);
+    }
+  };
+
+  for (const task of params.existingTasks) {
+    add(task);
+  }
+  for (const task of params.currentTasks) {
+    add(task);
+  }
+
+  for (const result of params.caseResults) {
+    if (ordered.has(result.taskId)) {
+      continue;
+    }
+    const known = BENCHMARK_TASKS_BY_ID.get(result.taskId);
+    if (known) {
+      add(known);
+    } else {
+      add({
+        id: result.taskId,
+        title: result.taskId,
+        sourceTitle: "Unknown source",
+        sourceUrl: "",
+      });
+    }
+  }
+
+  return [...ordered.values()];
+}
+
+function sortCaseResultsForReporting(params: {
+  caseResults: readonly CaseResult[];
+  models: readonly string[];
+  tasks: readonly BenchmarkTaskSummary[];
+}): readonly CaseResult[] {
+  const modelOrder = new Map(params.models.map((model, index) => [model, index]));
+  const taskOrder = new Map(params.tasks.map((task, index) => [task.id, index]));
+  return [...params.caseResults].sort((a, b) => {
+    const aModel = modelOrder.get(a.model) ?? Number.MAX_SAFE_INTEGER;
+    const bModel = modelOrder.get(b.model) ?? Number.MAX_SAFE_INTEGER;
+    if (aModel !== bModel) {
+      return aModel - bModel;
+    }
+    const aTask = taskOrder.get(a.taskId) ?? Number.MAX_SAFE_INTEGER;
+    const bTask = taskOrder.get(b.taskId) ?? Number.MAX_SAFE_INTEGER;
+    if (aTask !== bTask) {
+      return aTask - bTask;
+    }
+    return a.runIndex - b.runIndex;
+  });
+}
+
+async function mergeWorkspaceArtifacts(params: {
+  tracesLatestRoot: string;
+  runRoot: string;
+  caseResults: readonly CaseResult[];
+}): Promise<void> {
+  await mkdir(join(params.tracesLatestRoot, "workspaces"), { recursive: true });
+  for (const result of params.caseResults) {
+    const fromPath = join(params.runRoot, result.workspacePath);
+    const toPath = join(params.tracesLatestRoot, result.workspacePath);
+    await rm(toPath, { recursive: true, force: true });
+    await mkdir(dirname(toPath), { recursive: true });
+    await cp(fromPath, toPath, { recursive: true });
+  }
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
@@ -1508,6 +1741,7 @@ async function main(): Promise<void> {
       "estimate-grader-prompt-tokens": { type: "string", default: "5200" },
       "estimate-grader-response-tokens": { type: "string", default: "350" },
       "estimate-only": { type: "boolean", default: false },
+      "merge-latest": { type: "boolean", default: false },
       "prune-traces": { type: "boolean", default: false },
       "out-dir": { type: "string", default: "benchmarks/agent/results" },
       help: { type: "boolean", default: false },
@@ -1564,6 +1798,9 @@ async function main(): Promise<void> {
   console.log(`Projected agent cost: $${formatUsd(projection.estimatedAgentCostUsd)}`);
   console.log(`Projected grader cost: $${formatUsd(projection.estimatedGraderCostUsd)}`);
   console.log(`Projected total cost: $${formatUsd(projection.estimatedTotalCostUsd)}`);
+  if (values["merge-latest"]) {
+    console.log("Merge mode: enabled (patch traces/latest using only this run's cases).");
+  }
   const modelReasoningOverrideEntries = Object.entries(MODEL_REASONING_OVERRIDES);
   if (modelReasoningOverrideEntries.length > 0) {
     console.log(
@@ -1630,59 +1867,152 @@ async function main(): Promise<void> {
 
   const caseResults = modelCaseGroups.flat();
   const generatedAt = new Date().toISOString();
+  const taskSummaries = tasks.map(toBenchmarkTaskSummary);
+  const orderedRunCaseResults = sortCaseResultsForReporting({
+    caseResults,
+    models,
+    tasks: taskSummaries,
+  });
 
   const markdown = buildMarkdownReport({
     runId,
     generatedAt,
     models,
-    tasks,
+    tasks: taskSummaries,
     runs,
     reasoning,
     graderModel,
     projection,
-    caseResults,
+    caseResults: orderedRunCaseResults,
+  });
+
+  const buildSummaryPayload = (params: {
+    models: readonly string[];
+    tasks: readonly BenchmarkTaskSummary[];
+    runs: number;
+    reasoning: ReasoningEffort;
+    graderModel: string;
+    projection: Projection;
+    caseResults: readonly CaseResult[];
+  }) => ({
+    runId,
+    generatedAt,
+    models: params.models,
+    graderModel: params.graderModel,
+    reasoning: params.reasoning,
+    modelReasoningOverrides: MODEL_REASONING_OVERRIDES,
+    tasks: params.tasks,
+    runs: params.runs,
+    projection: params.projection,
+    aggregate: {
+      cases: params.caseResults.length,
+      success: params.caseResults.filter((entry) => entry.success).length,
+      schemaPass: params.caseResults.filter((entry) => entry.schemaPass).length,
+      toolTracePass: params.caseResults.filter((entry) => entry.toolTracePass).length,
+      graderPass: params.caseResults.filter((entry) => entry.graderPass).length,
+      totalDurationMs: params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0),
+      avgDurationMs:
+        params.caseResults.length === 0
+          ? 0
+          : params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0) /
+            params.caseResults.length,
+      totalCostUsd: params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0),
+      usage: sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage)),
+    },
+    results: params.caseResults,
+  });
+
+  const summary = buildSummaryPayload({
+    models,
+    tasks: taskSummaries,
+    runs,
+    reasoning,
+    graderModel,
+    projection,
+    caseResults: orderedRunCaseResults,
+  });
+
+  let latestModels: readonly string[] = models;
+  let latestTasks: readonly BenchmarkTaskSummary[] = taskSummaries;
+  let latestRuns = runs;
+  let latestGraderModel = graderModel;
+  let latestReasoning = reasoning;
+  let latestCaseResults: readonly CaseResult[] = orderedRunCaseResults;
+
+  if (values["merge-latest"]) {
+    const existingSnapshot = await loadLatestSummarySnapshot(benchmarkRoot);
+    if (existingSnapshot) {
+      latestCaseResults = mergeCaseResults(existingSnapshot.caseResults, latestCaseResults);
+      latestModels = mergeModels({
+        existingModels: existingSnapshot.models,
+        currentModels: models,
+        caseResults: latestCaseResults,
+      });
+      latestTasks = mergeTaskSummaries({
+        existingTasks: existingSnapshot.tasks,
+        currentTasks: taskSummaries,
+        caseResults: latestCaseResults,
+      });
+      latestRuns = Math.max(
+        runs,
+        existingSnapshot.runs,
+        ...latestCaseResults.map((entry) => entry.runIndex),
+      );
+      latestGraderModel = existingSnapshot.graderModel || graderModel;
+      latestReasoning = existingSnapshot.reasoning;
+      console.log("Merged this run with existing traces/latest summary.");
+    } else {
+      console.log("No existing traces/latest/summary.json found; merge mode will publish current run.");
+    }
+  }
+
+  latestCaseResults = sortCaseResultsForReporting({
+    caseResults: latestCaseResults,
+    models: latestModels,
+    tasks: latestTasks,
+  });
+
+  const latestProjection = estimateProjection({
+    models: latestModels,
+    taskCount: latestTasks.length,
+    runs: latestRuns,
+    graderModel: latestGraderModel,
+    agentPromptTokens: projection.agentPromptTokens,
+    agentResponseTokens: projection.agentResponseTokens,
+    graderPromptTokens: projection.graderPromptTokens,
+    graderResponseTokens: projection.graderResponseTokens,
+  });
+
+  const latestSummary = buildSummaryPayload({
+    models: latestModels,
+    tasks: latestTasks,
+    runs: latestRuns,
+    reasoning: latestReasoning,
+    graderModel: latestGraderModel,
+    projection: latestProjection,
+    caseResults: latestCaseResults,
+  });
+
+  const latestMarkdown = buildMarkdownReport({
+    runId,
+    generatedAt,
+    models: latestModels,
+    tasks: latestTasks,
+    runs: latestRuns,
+    reasoning: latestReasoning,
+    graderModel: latestGraderModel,
+    projection: latestProjection,
+    caseResults: latestCaseResults,
   });
 
   const latestResultsMarkdown = buildLatestResultsMarkdown({
     runId,
     generatedAt,
-    models,
-    tasks,
-    graderModel,
-    caseResults,
+    models: latestModels,
+    tasks: latestTasks,
+    graderModel: latestGraderModel,
+    caseResults: latestCaseResults,
   });
-
-  const summary = {
-    runId,
-    generatedAt,
-    models,
-    graderModel,
-    reasoning,
-    modelReasoningOverrides: MODEL_REASONING_OVERRIDES,
-    tasks: tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      sourceTitle: task.sourceTitle,
-      sourceUrl: task.sourceUrl,
-    })),
-    runs,
-    projection,
-    aggregate: {
-      cases: caseResults.length,
-      success: caseResults.filter((entry) => entry.success).length,
-      schemaPass: caseResults.filter((entry) => entry.schemaPass).length,
-      toolTracePass: caseResults.filter((entry) => entry.toolTracePass).length,
-      graderPass: caseResults.filter((entry) => entry.graderPass).length,
-      totalDurationMs: caseResults.reduce((acc, entry) => acc + entry.durationMs, 0),
-      avgDurationMs:
-        caseResults.length === 0
-          ? 0
-          : caseResults.reduce((acc, entry) => acc + entry.durationMs, 0) / caseResults.length,
-      totalCostUsd: caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0),
-      usage: sumUsageSummaries(caseResults.map((entry) => entry.totalUsage)),
-    },
-    results: caseResults,
-  };
 
   const summaryJsonPath = join(runRoot, "summary.json");
   const summaryMarkdownPath = join(runRoot, "report.md");
@@ -1692,14 +2022,24 @@ async function main(): Promise<void> {
   await writeFile(summaryJsonPath, `${JSON.stringify(summary, null, 2)}\n`);
   await writeFile(summaryMarkdownPath, markdown);
   await writeFile(latestResultsPath, latestResultsMarkdown);
-
-  await rm(tracesLatestRoot, { recursive: true, force: true });
-  await mkdir(tracesLatestRoot, { recursive: true });
-  await cp(summaryJsonPath, join(tracesLatestRoot, "summary.json"));
-  await cp(summaryMarkdownPath, join(tracesLatestRoot, "report.md"));
-  await cp(join(runRoot, "workspaces"), join(tracesLatestRoot, "workspaces"), {
-    recursive: true,
-  });
+  if (values["merge-latest"]) {
+    await mkdir(tracesLatestRoot, { recursive: true });
+    await writeFile(join(tracesLatestRoot, "summary.json"), `${JSON.stringify(latestSummary, null, 2)}\n`);
+    await writeFile(join(tracesLatestRoot, "report.md"), latestMarkdown);
+    await mergeWorkspaceArtifacts({
+      tracesLatestRoot,
+      runRoot,
+      caseResults: orderedRunCaseResults,
+    });
+  } else {
+    await rm(tracesLatestRoot, { recursive: true, force: true });
+    await mkdir(tracesLatestRoot, { recursive: true });
+    await writeFile(join(tracesLatestRoot, "summary.json"), `${JSON.stringify(latestSummary, null, 2)}\n`);
+    await writeFile(join(tracesLatestRoot, "report.md"), latestMarkdown);
+    await cp(join(runRoot, "workspaces"), join(tracesLatestRoot, "workspaces"), {
+      recursive: true,
+    });
+  }
   if (values["prune-traces"]) {
     await pruneTraceArtifacts(benchmarkRoot);
   }
@@ -1712,6 +2052,9 @@ async function main(): Promise<void> {
   console.log(`Wrote: ${displaySummaryMarkdownPath}`);
   console.log(`Wrote: ${displayLatestResultsPath}`);
   console.log(`Wrote: ${displayLatestTraceRoot}`);
+  if (values["merge-latest"]) {
+    console.log("Merged run artifacts into existing traces/latest workspaces and reports.");
+  }
   if (values["prune-traces"]) {
     console.log("Pruned benchmark traces to keep only traces/latest and traces/README.md");
   }

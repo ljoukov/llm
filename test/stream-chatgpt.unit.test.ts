@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 let capturedRequest: any = null;
+let chatGptCallCount = 0;
+let failFirstTerminated = false;
 
 vi.mock("../src/openai/chatgpt-codex.js", () => {
   return {
     collectChatGptCodexResponse: async (options: any) => {
+      const callIndex = chatGptCallCount++;
+      if (failFirstTerminated && callIndex === 0) {
+        throw new Error("terminated");
+      }
       capturedRequest = options.request;
       options.onDelta?.({ thoughtDelta: "Thinking" });
       options.onDelta?.({ textDelta: "Hello" });
@@ -30,6 +36,8 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 
 describe("streamText (ChatGPT)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
+    chatGptCallCount = 0;
+    failFirstTerminated = false;
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({ model: "chatgpt-gpt-5.1-codex-mini", input: "hi" });
@@ -53,6 +61,8 @@ describe("streamText (ChatGPT)", () => {
 
   it("maps inlineData application/pdf to input_file", async () => {
     capturedRequest = null;
+    chatGptCallCount = 0;
+    failFirstTerminated = false;
     const { generateText } = await import("../src/llm.js");
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
@@ -77,5 +87,19 @@ describe("streamText (ChatGPT)", () => {
     expect(filePart).toBeTruthy();
     expect(filePart.file_data).toBe(pdfB64);
     expect(filePart.filename).toBe("document.pdf");
+  });
+
+  it("retries once when ChatGPT transport fails with terminated", async () => {
+    chatGptCallCount = 0;
+    failFirstTerminated = true;
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "chatgpt-gpt-5.1-codex-mini",
+      input: "hi",
+    });
+
+    expect(result.text).toBe("Hello");
+    expect(chatGptCallCount).toBe(2);
   });
 });

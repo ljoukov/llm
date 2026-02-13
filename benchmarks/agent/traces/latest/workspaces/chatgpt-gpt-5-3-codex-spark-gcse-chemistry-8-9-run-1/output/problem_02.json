@@ -1,0 +1,21 @@
+{
+  "problem_id": "P02",
+  "final_answer": {
+    "value": 1.85,
+    "units": "g",
+    "precision_note": "Mass uses purity-adjusted CaCO3 moles and given molar masses, reported to 3 significant figures."
+  },
+  "method": "Find the mass of pure calcium carbonate: m(CaCO3) = 5.00 g \u00d7 84.0% = 4.20 g. Use moles = m / M_r with M_r(CaCO3) = 100.1 g mol^-1 to give n(CaCO3) = 4.20 / 100.1 = 0.0419 mol. From stoichiometry, CaCO3 + 2HCl \u2192 CO2 + ... gives 1 mol CO2 per 1 mol CaCO3, so n(CO2) = 0.0419 mol. Convert to mass with M_r(CO2) = 44.0 g mol^-1: m(CO2) = 0.0419 \u00d7 44.0 = 1.85 g. Acid is in excess, so this is the maximum CO2 mass.",
+  "key_equations": [
+    "m_pure = m_{sample} \u00d7 purity",
+    "n = m / M_r",
+    "\u200bn(CO2) = \u200bn(CaCO3)",
+    "m = n \u00d7 M_r"
+  ],
+  "line_refs": ["L23", "L25", "L26", "L32"],
+  "checks": [
+    "Purity is applied by mass, reducing 5.00 g to 4.20 g before stoichiometry.",
+    "Stoichiometry ratio is one-to-one between CaCO3 and CO2 in the provided equation.",
+    "Calculated CO2 mass 1.85 g uses all available pure CaCO3 moles, giving a maximum possible product mass."
+  ]
+}

@@ -54,7 +54,16 @@ npx tsx benchmarks/agent/run.ts \
   --runs 1 \
   --reasoning medium \
   --grader-model chatgpt-gpt-5.2 \
-  --max-steps 20
+  --max-steps 100
+```
+
+Patch `traces/latest` with only newly rerun cases (keep older model/task results):
+
+```bash
+npx tsx benchmarks/agent/run.ts \
+  --models chatgpt-gpt-5.3-codex-spark \
+  --tasks all \
+  --merge-latest
 ```
 
 ## What is validated

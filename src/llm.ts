@@ -30,6 +30,9 @@ import {
 export type { LlmUsageTokens } from "./utils/cost.js";
 export { estimateCallCostUsd } from "./utils/cost.js";
 
+type CollectChatGptCodexResponseOptions = Parameters<typeof collectChatGptCodexResponse>[0];
+type CollectChatGptCodexResponseResult = Awaited<ReturnType<typeof collectChatGptCodexResponse>>;
+
 export type LlmToolCallContext = {
   readonly toolName: string;
   readonly toolId: string;
@@ -739,6 +742,37 @@ function toOpenAiReasoningEffort(effort: OpenAiReasoningEffort): OpenAiReasoning
 
 function resolveOpenAiVerbosity(modelId: string): "low" | "medium" | "high" {
   return isOpenAiCodexModel(modelId) ? "medium" : "high";
+}
+
+function isRetryableChatGptTransportError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message === "terminated" ||
+    message.includes("socket hang up") ||
+    message.includes("fetch failed") ||
+    message.includes("network")
+  );
+}
+
+async function collectChatGptCodexResponseWithRetry(
+  options: CollectChatGptCodexResponseOptions,
+  maxAttempts = 2,
+): Promise<CollectChatGptCodexResponseResult> {
+  let attempt = 1;
+  while (true) {
+    try {
+      return await collectChatGptCodexResponse(options);
+    } catch (error) {
+      if (attempt >= maxAttempts || !isRetryableChatGptTransportError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      attempt += 1;
+    }
+  }
 }
 
 function isInlineImageMime(mimeType: string | undefined): boolean {
@@ -2315,7 +2349,7 @@ async function runTextCall(params: {
 
     let sawResponseDelta = false;
     let sawThoughtDelta = false;
-    const result = await collectChatGptCodexResponse({
+    const result = await collectChatGptCodexResponseWithRetry({
       request: requestPayload as any,
       signal,
       onDelta: (delta) => {
@@ -3131,7 +3165,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
-      const response = await collectChatGptCodexResponse({
+      const response = await collectChatGptCodexResponseWithRetry({
         sessionId: conversationId,
         request: {
           model: providerInfo.model,
