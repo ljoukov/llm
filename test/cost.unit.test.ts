@@ -74,6 +74,24 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.00284, 8);
   });
 
+  it("estimates Fireworks minimax-m2.1 costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "minimax-m2.1",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (0.30/1M) = 0.00027
+    // cached: 100 * (0.15/1M) = 0.000015
+    // output: 600 * (1.20/1M) = 0.00072
+    expect(cost).toBeCloseTo(0.001005, 8);
+  });
+
   it("estimates Gemini Pro costs (known model, low tier)", () => {
     const cost = estimateCallCostUsd({
       modelId: "gemini-2.5-pro",

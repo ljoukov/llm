@@ -8,6 +8,9 @@ This folder contains committed, sanitized benchmark artifacts so model behavior 
 - `gcse-calibrated/summary.json`: calibrated GCSE-focused run where Codex + Gemini 3 Pro pass and Flash fails
 - `gcse-calibrated/report.md`: calibrated GCSE-focused report
 - `gcse-calibrated/workspaces/<model-task-run>/...`: calibrated GCSE workspaces/traces
+- `minimax-m2.1-tumor-vaccine-ici/summary.json`: single-model Fireworks minimax-m2.1 run on tumor-vaccine-ici
+- `minimax-m2.1-tumor-vaccine-ici/report.md`: report for that run
+- `minimax-m2.1-tumor-vaccine-ici/workspaces/<model-task-run>/...`: workspace/traces for that run
 
 Sanitization and safety:
 - absolute host paths are redacted or converted to relative workspace paths

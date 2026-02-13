@@ -263,6 +263,7 @@ export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
   "gpt-5.2",
   "kimi-k2.5",
   "glm-5",
+  "minimax-m2.1",
   "gemini-2.5-pro",
   "gemini-flash-latest",
   "gemini-3-pro-preview",
