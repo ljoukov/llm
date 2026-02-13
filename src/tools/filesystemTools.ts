@@ -1007,7 +1007,9 @@ async function globFilesGemini(
   }
 
   matched.sort((left, right) => right.mtimeMs - left.mtimeMs);
-  return matched.map((entry) => normalizeSlashes(toDisplayPath(entry.filePath, runtime.cwd))).join("\n");
+  return matched
+    .map((entry) => normalizeSlashes(toDisplayPath(entry.filePath, runtime.cwd)))
+    .join("\n");
 }
 
 type RuntimeContext = {

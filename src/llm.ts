@@ -1677,7 +1677,6 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   };
 }
 
-
 function extractFireworksUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   if (!usage || typeof usage !== "object") {
     return undefined;
@@ -2091,7 +2090,8 @@ function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[
     if (!call || typeof call !== "object") {
       continue;
     }
-    const id = typeof (call as { id?: unknown }).id === "string" ? (call as { id?: string }).id : "";
+    const id =
+      typeof (call as { id?: unknown }).id === "string" ? (call as { id?: string }).id : "";
     const fn = (call as { function?: unknown }).function;
     const name =
       fn && typeof fn === "object" && typeof (fn as { name?: unknown }).name === "string"
@@ -3326,7 +3326,12 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       totalCostUsd += stepCostUsd;
 
       if (usageTokens) {
-        request.onEvent?.({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
+        request.onEvent?.({
+          type: "usage",
+          usage: usageTokens,
+          costUsd: stepCostUsd,
+          modelVersion,
+        });
       }
 
       const responseToolCalls = extractFireworksToolCalls(message);
