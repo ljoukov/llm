@@ -92,7 +92,7 @@ export type ChatGptCodexRequest = {
   parallel_tool_calls?: boolean;
   temperature?: number;
   tools?: unknown[];
-  reasoning?: { effort: string; summary: string };
+  reasoning?: { effort: string; summary?: string };
 };
 
 export type ChatGptCodexStreamEvent = {

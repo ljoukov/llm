@@ -3,21 +3,21 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "Mass given to 3 s.f., purity to 3 s.f., atomic masses to 3/4 s.f. Result reported to 3 significant figures."
+    "precision_note": "3 significant figures based on limiting data (5.00 g, 84.0% purity)."
   },
-  "method": "First, calculate the mass of pure CaCO3 in the sample: 5.00 g * 0.840 = 4.20 g. Using atomic masses from the data (Ca=40.1, C=12.0, O=16.0), the relative formula mass (Mr) of CaCO3 is 100.1 and CO2 is 44.0. Calculate moles of CaCO3: n = 4.20 / 100.1 = 0.041958 mol. From the balanced equation, the molar ratio of CaCO3 to CO2 is 1:1, so 0.041958 mol of CO2 is produced. Finally, calculate the mass of CO2: mass = n * Mr = 0.041958 * 44.0 = 1.846 g.",
+  "method": "Calculate mass of pure CaCO3: 5.00 g * 0.840 = 4.20 g. Moles of CaCO3 = mass / Mr = 4.20 / 100.1 = 0.041958 mol. From the equation CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, 1 mole of CaCO3 produces 1 mole of CO2. So moles of CO2 = 0.041958 mol. Mass of CO2 = moles * Mr = 0.041958 * 44.0 = 1.8461 g. Rounding to 3 s.f. gives 1.85 g.",
   "key_equations": [
     "n = m / Mr",
     "CaCO3 + 2HCl -> CaCl2 + CO2 + H2O"
   ],
   "line_refs": [
-    "L14",
-    "L24",
     "L33",
-    "L34"
+    "L34",
+    "L25",
+    "L26"
   ],
   "checks": [
-    "The mass of CO2 should be less than the mass of CaCO3 because CO2 (44) is lighter than CaCO3 (100).",
-    "Ratio of masses ~ 44/100 = 0.44. 4.2 * 0.44 = 1.848. Matches result."
+    "Result is less than total sample mass.",
+    "Stoichiometry is respected."
   ]
 }

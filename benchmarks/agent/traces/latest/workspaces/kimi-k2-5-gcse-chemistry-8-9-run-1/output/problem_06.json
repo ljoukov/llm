@@ -3,15 +3,15 @@
   "final_answer": {
     "value": 0.0736,
     "units": "dimensionless",
-    "precision_note": "Calculated Kc is 0.0736, reported as dimensionless to 3 significant figures consistent with the equilibrium composition data provided."
+    "precision_note": "Reported to 3 significant figures as Kc is dimensionless (unitless) per L21; calculated value is 0.073636... rounded to 0.0736."
   },
-  "method": "Calculate equilibrium concentrations by dividing moles by volume: [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3, and [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Apply the equilibrium constant expression Kc = [NO2]^2 / [N2O4]. Substitute the values: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. The result is reported as dimensionless (unitless) as specified in the problem.",
+  "method": "Step 1: Calculate equilibrium concentrations from the given mole amounts and vessel volume. From L56, vessel volume = 2.00 dm3. From L57, moles(NO2) = 0.180 mol. From L58, moles(N2O4) = 0.220 mol. Step 2: Calculate concentrations using c = n / V. [NO2] = 0.180 / 2.00 = 0.0900 mol dm-3. [N2O4] = 0.220 / 2.00 = 0.110 mol dm-3. Step 3: Calculate Kc using the expression from L20: Kc = [NO2]^2 / [N2O4]. Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.073636... = 0.0736 to 3 s.f. Note: L21 confirms Kc should be reported as dimensionless (unitless).",
   "key_equations": [
-    "c = n / V",
-    "Kc = [NO2]^2 / [N2O4]"
+    "Kc = [NO2]^2 / [N2O4]",
+    "c = n / V"
   ],
   "line_refs": [
-    "L15",
+    "L14",
     "L20",
     "L21",
     "L56",
@@ -19,9 +19,7 @@
     "L58"
   ],
   "checks": [
-    "Concentration of NO2 is 0.0900 mol dm-3",
-    "Concentration of N2O4 is 0.110 mol dm-3",
-    "Kc expression correctly applied with squared NO2 term",
-    "Result is dimensionless as required"
+    "Unit check: (mol dm-3)^2 / (mol dm-3) = mol dm-3, but per L21 Kc is reported as dimensionless for this equilibrium expression.",
+    "Physical sense: Kc < 1 indicates equilibrium lies toward reactants (N2O4), consistent with more moles of N2O4 than NO2 at equilibrium."
   ]
 }

@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -78,6 +78,7 @@ type UsageSummary = {
 
 type CaseResult = {
   readonly model: string;
+  readonly agentReasoning: ReasoningEffort;
   readonly taskId: string;
   readonly runIndex: number;
   readonly workspacePath: string;
@@ -136,6 +137,7 @@ const DEFAULT_AGENT_TIMEOUT_MS = 12 * 60_000;
 const DEFAULT_GRADER_TIMEOUT_MS = 4 * 60_000;
 const MIN_TOOL_CALLS = 3;
 const REASONING_EFFORTS: readonly ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+const MODEL_REASONING_OVERRIDES: Readonly<Record<string, ReasoningEffort>> = {};
 
 const READ_TOOL_NAMES = new Set([
   "read_file",
@@ -174,7 +176,7 @@ Usage:
 
 Options:
   --models <list>                    Comma-separated model ids (default: ${DEFAULT_BENCHMARK_MODELS.join(",")})
-  --tasks <list>                     Comma-separated task ids (default: tumor-vaccine-ici)
+  --tasks <list>                     Comma-separated task ids, or "all" (default: tumor-vaccine-ici)
   --runs <n>                         Runs per model/task (default: 1)
   --reasoning <level>                low, medium, high, xhigh (default: medium)
   --grader-model <id>                LLM grader model (default: ${DEFAULT_GRADER_MODEL})
@@ -184,6 +186,7 @@ Options:
   --estimate-grader-prompt-tokens <n> Estimated prompt tokens per grader call (default: 5200)
   --estimate-grader-response-tokens <n> Estimated response tokens per grader call (default: 350)
   --estimate-only                    Print cost projection and exit
+  --prune-traces                     Keep only traces/latest + traces/README.md after run
   --out-dir <path>                   Output directory (default: benchmarks/agent/results)
   --help                             Show this help
 `);
@@ -224,6 +227,10 @@ function selectTasks(taskArg: string | undefined): readonly AgentBenchmarkTask[]
     return [AGENT_BENCHMARK_TASKS[0]].filter(
       (task): task is AgentBenchmarkTask => task !== undefined,
     );
+  }
+  const normalized = taskArg.trim().toLowerCase();
+  if (normalized === "all" || normalized === "*") {
+    return AGENT_BENCHMARK_TASKS;
   }
   const requested = parseCsvList(taskArg);
   const taskById = new Map(AGENT_BENCHMARK_TASKS.map((task) => [task.id, task]));
@@ -321,6 +328,10 @@ function formatUsd(value: number): string {
 
 function formatInt(value: number): string {
   return value.toLocaleString("en-US");
+}
+
+function resolveAgentReasoning(model: string, baseReasoning: ReasoningEffort): ReasoningEffort {
+  return MODEL_REASONING_OVERRIDES[model] ?? baseReasoning;
 }
 
 function toNonNegativeInt(value: unknown): number {
@@ -993,6 +1004,7 @@ async function gradeOutputs(params: {
 
 async function runCase(params: {
   model: string;
+  agentReasoning: ReasoningEffort;
   task: AgentBenchmarkTask;
   runIndex: number;
   outRoot: string;
@@ -1050,7 +1062,7 @@ async function runCase(params: {
           },
         },
       },
-      openAiReasoningEffort: params.reasoning,
+      openAiReasoningEffort: params.agentReasoning,
       maxSteps: params.maxSteps,
       signal: agentAbortController.signal,
     });
@@ -1129,6 +1141,7 @@ async function runCase(params: {
 
   const caseResult: CaseResult = {
     model: params.model,
+    agentReasoning: params.agentReasoning,
     taskId: params.task.id,
     runIndex: params.runIndex,
     workspacePath: layout.rootRel,
@@ -1288,6 +1301,12 @@ function buildMarkdownReport(params: {
   lines.push(`- Models: ${params.models.join(", ")}`);
   lines.push(`- Grader model: ${params.graderModel}`);
   lines.push(`- Reasoning effort: ${params.reasoning}`);
+  const modelReasoningOverrideEntries = Object.entries(MODEL_REASONING_OVERRIDES);
+  if (modelReasoningOverrideEntries.length > 0) {
+    lines.push(
+      `- Model reasoning overrides: ${modelReasoningOverrideEntries.map(([model, effort]) => `${model}=${effort}`).join(", ")}`,
+    );
+  }
   lines.push(`- Tasks: ${params.tasks.map((task) => task.id).join(", ")}`);
   lines.push(`- Runs per model/task: ${params.runs}`);
   lines.push(`- Cases: ${totalCases}`);
@@ -1344,12 +1363,12 @@ function buildMarkdownReport(params: {
   lines.push("## Case Matrix");
   lines.push("");
   lines.push(
-    "| Model | Task | Run | Status | Schema | Tool trace | Grader | Latency (s) | Tool calls | Cost (USD) | In tokens | Cached tokens | Out tokens |",
+    "| Model | Task | Run | Reasoning | Status | Schema | Tool trace | Grader | Latency (s) | Tool calls | Cost (USD) | In tokens | Cached tokens | Out tokens |",
   );
-  lines.push("|---|---|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|");
+  lines.push("|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|");
   for (const result of params.caseResults) {
     lines.push(
-      `| ${result.model} | ${result.taskId} | ${result.runIndex} | ${result.success ? "PASS" : "FAIL"} | ${result.schemaPass ? "pass" : "fail"} | ${result.toolTracePass ? "pass" : "fail"} | ${result.graderPass ? "pass" : "fail"} | ${(result.durationMs / 1000).toFixed(2)} | ${result.toolTrace.totalCalls} | ${formatUsd(result.totalCostUsd)} | ${formatInt(result.totalUsage.promptTokens)} | ${formatInt(result.totalUsage.cachedTokens)} | ${formatInt(result.totalUsage.responseTokens)} |`,
+      `| ${result.model} | ${result.taskId} | ${result.runIndex} | ${result.agentReasoning} | ${result.success ? "PASS" : "FAIL"} | ${result.schemaPass ? "pass" : "fail"} | ${result.toolTracePass ? "pass" : "fail"} | ${result.graderPass ? "pass" : "fail"} | ${(result.durationMs / 1000).toFixed(2)} | ${result.toolTrace.totalCalls} | ${formatUsd(result.totalCostUsd)} | ${formatInt(result.totalUsage.promptTokens)} | ${formatInt(result.totalUsage.cachedTokens)} | ${formatInt(result.totalUsage.responseTokens)} |`,
     );
   }
   lines.push("");
@@ -1415,6 +1434,12 @@ function buildLatestResultsMarkdown(params: {
   lines.push(`- Tasks: ${params.tasks.map((task) => `\`${task.id}\``).join(", ")}`);
   lines.push(`- Models: ${params.models.map((model) => `\`${model}\``).join(", ")}`);
   lines.push(`- Grader: \`${params.graderModel}\``);
+  const modelReasoningOverrideEntries = Object.entries(MODEL_REASONING_OVERRIDES);
+  if (modelReasoningOverrideEntries.length > 0) {
+    lines.push(
+      `- Model reasoning overrides: ${modelReasoningOverrideEntries.map(([model, effort]) => `\`${model}=${effort}\``).join(", ")}`,
+    );
+  }
   lines.push("");
 
   lines.push("## Aggregate");
@@ -1456,6 +1481,19 @@ function buildLatestResultsMarkdown(params: {
   return `${lines.join("\n")}\n`;
 }
 
+async function pruneTraceArtifacts(benchmarkRoot: string): Promise<void> {
+  const tracesRoot = join(benchmarkRoot, "traces");
+  const entries = await readdir(tracesRoot, { withFileTypes: true });
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (entry.name === "latest" || entry.name === "README.md") {
+        return;
+      }
+      await rm(join(tracesRoot, entry.name), { recursive: true, force: true });
+    }),
+  );
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
@@ -1470,6 +1508,7 @@ async function main(): Promise<void> {
       "estimate-grader-prompt-tokens": { type: "string", default: "5200" },
       "estimate-grader-response-tokens": { type: "string", default: "350" },
       "estimate-only": { type: "boolean", default: false },
+      "prune-traces": { type: "boolean", default: false },
       "out-dir": { type: "string", default: "benchmarks/agent/results" },
       help: { type: "boolean", default: false },
     },
@@ -1525,6 +1564,12 @@ async function main(): Promise<void> {
   console.log(`Projected agent cost: $${formatUsd(projection.estimatedAgentCostUsd)}`);
   console.log(`Projected grader cost: $${formatUsd(projection.estimatedGraderCostUsd)}`);
   console.log(`Projected total cost: $${formatUsd(projection.estimatedTotalCostUsd)}`);
+  const modelReasoningOverrideEntries = Object.entries(MODEL_REASONING_OVERRIDES);
+  if (modelReasoningOverrideEntries.length > 0) {
+    console.log(
+      `Model reasoning overrides: ${modelReasoningOverrideEntries.map(([model, effort]) => `${model}=${effort}`).join(", ")}`,
+    );
+  }
 
   if (values["estimate-only"]) {
     return;
@@ -1541,10 +1586,12 @@ async function main(): Promise<void> {
   const modelCaseGroups = await Promise.all(
     models.map(async (model) => {
       const modelResults: CaseResult[] = [];
+      const agentReasoning = resolveAgentReasoning(model, reasoning);
       for (const task of tasks) {
         for (let runIndex = 1; runIndex <= runs; runIndex += 1) {
           const result = await runCase({
             model,
+            agentReasoning,
             task,
             runIndex,
             outRoot: runRoot,
@@ -1611,6 +1658,7 @@ async function main(): Promise<void> {
     models,
     graderModel,
     reasoning,
+    modelReasoningOverrides: MODEL_REASONING_OVERRIDES,
     tasks: tasks.map((task) => ({
       id: task.id,
       title: task.title,
@@ -1652,6 +1700,9 @@ async function main(): Promise<void> {
   await cp(join(runRoot, "workspaces"), join(tracesLatestRoot, "workspaces"), {
     recursive: true,
   });
+  if (values["prune-traces"]) {
+    await pruneTraceArtifacts(benchmarkRoot);
+  }
 
   const displaySummaryJsonPath = normalizeSlashes(relative(process.cwd(), summaryJsonPath));
   const displaySummaryMarkdownPath = normalizeSlashes(relative(process.cwd(), summaryMarkdownPath));
@@ -1661,6 +1712,9 @@ async function main(): Promise<void> {
   console.log(`Wrote: ${displaySummaryMarkdownPath}`);
   console.log(`Wrote: ${displayLatestResultsPath}`);
   console.log(`Wrote: ${displayLatestTraceRoot}`);
+  if (values["prune-traces"]) {
+    console.log("Pruned benchmark traces to keep only traces/latest and traces/README.md");
+  }
 }
 
 void main().catch((error) => {

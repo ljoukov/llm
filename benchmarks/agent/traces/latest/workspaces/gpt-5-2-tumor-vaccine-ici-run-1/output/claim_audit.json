@@ -2,91 +2,91 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination induces a type I interferon response in tumours.",
+      "claim": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling in tumors.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors",
-          "line_ref": "L31"
+          "quote": "1. Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
+          "line_ref": "L42"
         },
         {
-          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-          "line_ref": "L42"
+          "quote": "| Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors |",
+          "line_ref": "L31"
         }
       ],
-      "caveat": "This report summarizes mechanistic induction primarily from tumour measurements and proposed chain; strength may vary by model system."
+      "caveat": "This report summarizes normalized scores but does not provide full experimental details or variability; mechanistic readouts were not uniformly strongest across all settings."
     },
     {
       "claim_id": "C02",
-      "claim": "Intratumoral mRNA vaccination broadens antigen presentation, including expansion of the MHC-I peptidome.",
+      "claim": "Intratumoral mRNA vaccination broadens antigen processing/presentation and expands the MHC-I peptidome.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3% | Broader antigen display after intratumoral mRNA vaccination",
-          "line_ref": "L28"
+          "quote": "3. A broader peptide repertoire appears on MHC-I, improving tumor visibility to T cells.",
+          "line_ref": "L44"
         },
         {
-          "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape",
+          "quote": "| Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape |",
           "line_ref": "L29"
         },
         {
-          "quote": "A broader peptide repertoire appears on MHC-I, improving tumor visibility to T cells.",
-          "line_ref": "L44"
+          "quote": "| Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3% | Broader antigen display after intratumoral mRNA vaccination |",
+          "line_ref": "L28"
         }
       ],
-      "caveat": "These quantitative peptidome fractions are reported as preclinical readouts and may not directly translate to clinical tumour antigen presentation breadth."
+      "caveat": "The summary provides fractions of proteins represented but does not specify which tumor models or technical parameters drove the changes, limiting generalizability."
     },
     {
       "claim_id": "C03",
-      "claim": "The combined strategy (intratumoral mRNA vaccination plus anti-PD-L1) improves tumour control in mice and is consistent with improved outcomes in a retrospective human cohort.",
-      "strength": "tentative",
+      "claim": "Intratumoral mRNA vaccination increases PD-L1 pathway activity, supporting combination with checkpoint blockade.",
+      "strength": "moderate",
       "evidence": [
         {
-          "quote": "Preclinical arm: multiple murine tumor models with intratumoral mRNA vaccine and anti-PD-L1 combinations.",
-          "line_ref": "L14"
+          "quote": "4. PD-L1 pathway activity also increases, creating a rationale for combining with checkpoint blockade.",
+          "line_ref": "L45"
         },
         {
-          "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
-          "line_ref": "L46"
-        },
-        {
-          "quote": "Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment",
-          "line_ref": "L30"
+          "quote": "| PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x | Checkpoint axis became more targetable |",
+          "line_ref": "L32"
         }
       ],
-      "caveat": "The human evidence is explicitly retrospective and non-randomized, so the alignment with better outcomes cannot establish causality for vaccination improving ICI response."
+      "caveat": "Increased PD-L1 expression can reflect inflammatory signaling and does not by itself prove improved clinical benefit without direct outcome data in controlled settings."
     },
     {
       "claim_id": "C04",
-      "claim": "The sensitization benefit depends on type I interferon signaling, because IFNAR1 blockade eliminates the effect.",
-      "strength": "strong",
+      "claim": "The combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
+      "strength": "tentative",
       "evidence": [
         {
-          "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
-          "line_ref": "L39"
+          "quote": "5. Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
+          "line_ref": "L46"
         },
         {
-          "quote": "Interferon-associated antigen processing and presentation pathways increase.",
-          "line_ref": "L43"
+          "quote": "| Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment |",
+          "line_ref": "L30"
+        },
+        {
+          "quote": "- Translational arm: a retrospective cohort of metastatic patients receiving ICI treatment, compared by prior SARS-CoV-2 mRNA vaccination status.",
+          "line_ref": "L15"
         }
       ],
-      "caveat": "Elimination of benefit with IFNAR1 blockade is a mechanistic control within the tested models; it does not prove the same dependency in all tumour types or in patients."
+      "caveat": "The human evidence is retrospective and non-randomized with heterogeneous timing and tumor types, so association cannot establish causality."
     },
     {
       "claim_id": "C05",
-      "claim": "The retrospective human comparison is vulnerable to confounding and is not sufficient for direct causal interpretation.",
-      "strength": "strong",
+      "claim": "Type I interferon signaling is required for the sensitization effect, and non-mRNA lipid particle controls do not reproduce it.",
+      "strength": "moderate",
       "evidence": [
         {
-          "quote": "The human analysis is retrospective and non-randomized; residual confounding is likely.",
-          "line_ref": "L49"
+          "quote": "- Lipid particle controls lacking mRNA did not reproduce the sensitization effect.",
+          "line_ref": "L38"
         },
         {
-          "quote": "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation.",
-          "line_ref": "L51"
+          "quote": "- Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
+          "line_ref": "L39"
         }
       ],
-      "caveat": "Despite these limitations, the analysis may still be hypothesis-generating for prospective trial design rather than definitive evidence of benefit."
+      "caveat": "These are summarized control statements without effect sizes; the report does not quantify the degree of elimination or whether alternative pathways contribute."
     }
   ]
 }

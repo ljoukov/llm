@@ -3,16 +3,17 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Given values are to 3-4 significant figures; 0.0702 mol dm-3 is reported to 3 significant figures."
+    "precision_note": "Rounded to 3 significant figures based on 0.150 mol dm-3 and measured titres/volumes."
   },
-  "method": "Use the neutralization stoichiometry H2SO4 + 2NaOH -> Na2SO4 + 2H2O. Moles NaOH used are 0.150 x 0.02340 = 0.00351 mol. Therefore moles H2SO4 = 0.00351/2 = 0.001755 mol. The acid volume is 25.00 cm3 = 0.02500 dm3, so concentration is c = n/V = 0.001755/0.02500 = 0.0702 mol dm-3.",
+  "method": "Convert NaOH volume to dm3: 23.40 cm3 = 0.02340 dm3. Moles of NaOH used are n = cV = 0.150 x 0.02340 = 0.00351 mol. From H2SO4 + 2NaOH -> Na2SO4 + 2H2O, 2 mol NaOH react with 1 mol H2SO4, so n(H2SO4)=0.00351/2=0.001755 mol. Acid volume is 25.00 cm3 = 0.02500 dm3, hence c(H2SO4)=n/V=0.001755/0.02500=0.0702 mol dm-3.",
   "key_equations": [
     "c = n / V",
+    "n = cV",
     "n(H2SO4) = n(NaOH)/2"
   ],
   "line_refs": ["L15", "L39", "L40"],
   "checks": [
-    "Because 2 mol NaOH react with 1 mol H2SO4, acid moles must be half the base moles.",
-    "Computed acid concentration is below base concentration, reasonable with similar titration volumes and 2:1 stoichiometry."
+    "Units were converted to dm3 before applying concentration equations.",
+    "Stoichiometric factor of 2 for NaOH was applied from the balanced equation."
   ]
 }

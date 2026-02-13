@@ -3,16 +3,17 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "3 significant figures are appropriate from 5.00 g, 84.0%, and 44.0 Mr data, giving 1.85 g CO2."
+    "precision_note": "3 significant figures are suitable from 5.00 g, 84.0%, and Mr(CO2)=44.0."
   },
-  "method": "First find pure calcium carbonate mass: 5.00 g x 0.840 = 4.20 g CaCO3. From CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio CaCO3:CO2 is 1:1, so mass scales by molar mass ratio. Therefore mass(CO2) = 4.20 x (44.0/100.1) = 1.846 g, which rounds to 1.85 g as the maximum CO2 mass.",
+  "method": "First find pure CaCO3 in the impure limestone: 5.00 g x 0.840 = 4.20 g CaCO3. Convert to moles using Mr(CaCO3)=100.1: n(CaCO3) = 4.20/100.1 = 0.04196 mol. From CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio CaCO3:CO2 is 1:1, so n(CO2)=0.04196 mol. Then mass of CO2 = n x Mr = 0.04196 x 44.0 = 1.846 g, rounded to 1.85 g.",
   "key_equations": [
-    "mass(CO2) = mass(CaCO3 in sample) x Mr(CO2)/Mr(CaCO3)",
-    "mass(CaCO3 in sample) = total mass x purity fraction"
+    "n = m / Mr",
+    "CaCO3 : CO2 = 1 : 1",
+    "m = n x Mr"
   ],
   "line_refs": ["L33", "L34", "L25", "L26"],
   "checks": [
-    "CO2 mass must be less than the pure CaCO3 mass because only part of CaCO3 mass becomes CO2.",
-    "Acid is stated in excess, so CaCO3 amount limits the maximum product."
+    "Acid is stated in excess, so CaCO3 amount limits maximum CO2 formed.",
+    "Result is below initial sample mass, physically reasonable for gas released from carbonate fraction only."
   ]
 }

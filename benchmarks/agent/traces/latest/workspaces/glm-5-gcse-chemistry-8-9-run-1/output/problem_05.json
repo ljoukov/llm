@@ -3,23 +3,17 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Answer given to 3 significant figures, limited by the least precise input: current (1.50 A), time (30.0 min), and Faraday constant (96500 C mol-1)."
+    "precision_note": "Result given to 3 significant figures, consistent with the precision of current (1.50 A) and time (30.0 min) measurements."
   },
-  "method": "First, convert time to seconds: t = 30.0 min × 60 = 1800 s. Calculate charge using Q = I × t: Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons using n(e-) = Q/F: n(e-) = 2700 C / 96500 C mol-1 = 0.0280 mol. From the half-equation, 2 moles of electrons deposit 1 mole of Cu, so n(Cu) = 0.0280 / 2 = 0.0140 mol. Calculate mass: m = n × Ar = 0.0140 mol × 63.55 g mol-1 = 0.889 g.",
+  "method": "First, convert time to seconds: t = 30.0 min × 60 = 1800 s. Calculate charge using Q = I × t: Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons using n(e-) = Q / F: n(e-) = 2700 C / 96500 C mol-1 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of Cu. Therefore n(Cu) = 0.02798 mol / 2 = 0.01399 mol. Calculate mass using m = n × Ar: mass(Cu) = 0.01399 mol × 63.55 g mol-1 = 0.889 g.",
   "key_equations": [
     "Q = I × t",
     "n(e-) = Q / F",
     "m = n × Ar"
   ],
-  "line_refs": [
-    "L19",
-    "L24",
-    "L51",
-    "L52"
-  ],
+  "line_refs": ["L17", "L18", "L19", "L24", "L51", "L52"],
   "checks": [
-    "Time conversion: 30.0 min × 60 = 1800 s correctly calculated.",
-    "Charge calculation: 1.50 A × 1800 s = 2700 C verified.",
-    "Stoichiometry: 2 mol e- per 1 mol Cu from half-equation correctly applied."
+    "Half-equation check: Cu2+ + 2e- -> Cu confirms 2:1 ratio of electrons to copper atoms.",
+    "Mass calculation check: (1.50 × 1800 / 96500) / 2 × 63.55 = 0.889 g, consistent with 3 sig figs."
   ]
 }

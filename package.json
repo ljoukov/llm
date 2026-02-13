@@ -45,6 +45,8 @@
     "lint:fix": "biome lint --write src test benchmarks tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
     "bench:agent": "tsx benchmarks/agent/run.ts",
     "bench:agent:estimate": "tsx benchmarks/agent/run.ts --estimate-only",
+    "bench:agent:latest": "tsx benchmarks/agent/run.ts --tasks all --prune-traces",
+    "bench:agent:latest:estimate": "tsx benchmarks/agent/run.ts --tasks all --estimate-only",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",

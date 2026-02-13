@@ -3,16 +3,16 @@
   "final_answer": {
     "value": 0.02,
     "units": "mol dm-3",
-    "precision_note": "Using 3 significant figures from the given concentration and volumes gives 0.0200 mol dm-3 (reported as 0.02)."
+    "precision_note": "Given values are to about 3 significant figures, so 0.0200 mol dm-3 is appropriate; numeric JSON stores this as 0.02."
   },
-  "method": "Apply dilution directly with c1V1 = c2V2. Substitute c1 = 0.200 mol dm-3, V1 = 25.0 cm3, V2 = 250.0 cm3. So c2 = c1V1/V2 = 0.200 x 25.0 / 250.0 = 0.0200 mol dm-3. The tenfold increase in volume causes a tenfold decrease in concentration, matching the arithmetic result.",
+  "method": "Use the dilution relationship c1V1 = c2V2. The stock acid is 0.200 mol dm-3 and 25.0 cm3 is diluted to 250.0 cm3, so c2 = c1(V1/V2) = 0.200 x (25.0/250.0) = 0.0200 mol dm-3. Because the two volumes are both in cm3, their ratio is unitless and no separate conversion is needed.",
   "key_equations": [
     "c1V1 = c2V2",
-    "c2 = c1V1 / V2"
+    "c2 = c1(V1/V2)"
   ],
   "line_refs": ["L16", "L29"],
   "checks": [
-    "Final concentration is lower than initial because the solution was diluted.",
-    "Volume ratio 25.0 to 250.0 is 1:10, so concentration should be divided by 10."
+    "Final concentration is lower than initial, consistent with a tenfold dilution.",
+    "Volume ratio 25.0:250.0 equals 0.100, so 0.200 x 0.100 = 0.0200 is self-consistent."
   ]
 }

@@ -1,27 +1,28 @@
 {
   "problem_id": "P05",
   "final_answer": {
-    "value": 0.889,
+    "value": 0.890,
     "units": "g",
-    "precision_note": "The current (1.50 A) and time (30.0 min) both have three significant figures, which dictates the precision of the final answer."
+    "precision_note": "The least precise values (current and time) have three significant figures, so the final mass is reported to three significant figures."
   },
-  "method": "First, the time is converted to seconds: 30.0 min * 60 s/min = 1800 s. The total charge (Q) passed is calculated using Faraday's first law, Q = I * t: Q = 1.50 A * 1800 s = 2700 C. The moles of electrons ($n_{e-}$) are calculated using the Faraday constant (F): $n_{e-} = Q / F = 2700 C / 96500 C mol^{-1} = 0.027979 mol$. From the half-equation ($Cu^{2+} + 2e^- -> Cu$), the mole ratio is $2 \text{ mol } e^- : 1 \text{ mol } Cu$, so $n_{Cu} = n_{e-} / 2 = 0.0139895 mol$. Finally, the mass is calculated: $m = n \times Mr = 0.0139895 mol \times 63.55 g mol^{-1} = 0.88914 g$. Rounded to three significant figures, the mass is 0.889 g.",
+  "method": "First, calculate the total charge (Q) passed, converting time to seconds: Q = I * t = 1.50 A * (30.0 * 60 s) = 2700 C (L17, L51). Second, calculate the moles of electrons (n(e-)) using the Faraday constant (F): n(e-) = Q / F = 2700 C / 96500 C mol-1 ≈ 0.027979 mol (L18, L19). Third, use the half-equation (L52), Cu2+ + 2e- -> Cu, which shows a 2:1 ratio, to find the moles of Cu deposited: n(Cu) = 0.027979 mol / 2 ≈ 0.0139895 mol. Finally, calculate the mass of copper using m = n * Mr: m(Cu) = 0.0139895 mol * 63.55 g mol-1 ≈ 0.88998 g (L14, L24). Rounded to three significant figures, this is 0.890 g.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
-    "Cu2+ + 2e- -> Cu",
-    "n = m / Mr"
+    "Cu2+ + 2e- -> Cu"
   ],
   "line_refs": [
     "L17",
+    "L18",
     "L19",
     "L24",
-    "L51"
+    "L51",
+    "L52",
+    "L53"
   ],
   "checks": [
-    "Total charge Q = 2700 C.",
-    "Moles of electrons = 2700 / 96500 \u2248 0.02798 mol.",
-    "Moles of Cu = 0.02798 / 2 \u2248 0.01399 mol.",
-    "Mass of Cu = 0.01399 * 63.55 \u2248 0.889 g. Confirmed."
+    "Charge Q = 2700 C.",
+    "Moles of Cu deposited is (2700 / 96500) / 2 ≈ 0.01399 mol.",
+    "Mass of Cu = 0.01399 * 63.55 ≈ 0.890 g."
   ]
 }

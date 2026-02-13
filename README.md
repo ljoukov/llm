@@ -490,6 +490,12 @@ For filesystem extraction/summarization evaluation across Codex, Fireworks, and 
 npm run bench:agent
 ```
 
+Standard full refresh (all tasks, auto-write `LATEST_RESULTS.md`, refresh `traces/latest`, prune old traces):
+
+```bash
+npm run bench:agent:latest
+```
+
 Estimate-only:
 
 ```bash

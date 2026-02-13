@@ -2,7 +2,7 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination broadens antigen presentation, including expansion of the MHC-I peptidome in tumors.",
+      "claim": "Intratumoral mRNA vaccination broadens tumor antigen presentation, including MHC-I peptide display.",
       "strength": "strong",
       "evidence": [
         {
@@ -18,55 +18,51 @@
     },
     {
       "claim_id": "C02",
-      "claim": "Vaccination-associated tumor priming aligns with improved outcomes during checkpoint blockade, including better survival in the retrospective human cohort.",
+      "claim": "mRNA vaccination induces a type I interferon-rich tumor state linked to sensitization.",
+      "strength": "strong",
+      "evidence": [
+        {
+          "quote": "Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors",
+          "line_ref": "L31"
+        },
+        {
+          "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
+          "line_ref": "L39"
+        }
+      ],
+      "caveat": "Mouse model effects may not map one-to-one to all human tumors, limiting direct clinical extrapolation."
+    },
+    {
+      "claim_id": "C03",
+      "claim": "The combination rationale is supported by increased PD-L1 axis activity and improved mouse tumor control context.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment",
-          "line_ref": "L30"
+          "quote": "PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x | Checkpoint axis became more targetable",
+          "line_ref": "L32"
         },
         {
           "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
           "line_ref": "L46"
         }
       ],
-      "caveat": "The human analysis is retrospective and non-randomized, and tumor-type plus treatment-history heterogeneity limits causal interpretation."
-    },
-    {
-      "claim_id": "C03",
-      "claim": "Type I interferon signaling appears mechanistically necessary for the sensitization effect.",
-      "strength": "strong",
-      "evidence": [
-        {
-          "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
-          "line_ref": "L39"
-        },
-        {
-          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-          "line_ref": "L42"
-        }
-      ],
-      "caveat": "Mouse model effects may not map one-to-one to all human tumors, so mechanistic dependence should be prospectively validated clinically."
+      "caveat": "Vaccine-only and ICI-only arms showed limited durability/activity in some settings, so benefit depends on context and combination design."
     },
     {
       "claim_id": "C04",
-      "claim": "The sensitization effect is conditional, because single-agent arms and non-mRNA particle controls did not replicate durable benefit.",
-      "strength": "strong",
+      "claim": "Prior SARS-CoV-2 mRNA vaccination is associated with better survival among metastatic patients treated with ICI.",
+      "strength": "tentative",
       "evidence": [
         {
-          "quote": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models.",
-          "line_ref": "L36"
+          "quote": "Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment",
+          "line_ref": "L30"
         },
         {
-          "quote": "ICI-only treatment had limited activity in low-immunogenic baseline settings.",
-          "line_ref": "L37"
-        },
-        {
-          "quote": "Lipid particle controls lacking mRNA did not reproduce the sensitization effect.",
-          "line_ref": "L38"
+          "quote": "The human analysis is retrospective and non-randomized; residual confounding is likely.",
+          "line_ref": "L49"
         }
       ],
-      "caveat": "Some model systems showed stronger effects than others, indicating context dependence and limiting broad generalization across all tumor settings."
+      "caveat": "Because patient groups were non-randomized and clinically heterogeneous, this association should not be interpreted as definitive causality."
     }
   ]
 }

@@ -1,11 +1,11 @@
 {
   "problem_id": "P05",
   "final_answer": {
-    "value": 0.889,
+    "value": 0.888,
     "units": "g",
-    "precision_note": "Calculated mass of copper is 0.889 g, reported to 3 significant figures matching the precision of the current and time measurements."
+    "precision_note": "Reported to 3 significant figures, consistent with the current (1.50 A, 3 s.f.) and time (30.0 min, 3 s.f.) data."
   },
-  "method": "First convert time to seconds: 30.0 min × 60 s/min = 1800 s. Calculate charge Q using Q = I × t: Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons using n(e-) = Q / F: n(e-) = 2700 C / 96500 C mol-1 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons produce 1 mole of copper. Therefore n(Cu) = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper using m = n × Ar: m(Cu) = 0.01399 mol × 63.55 g/mol = 0.889 g.",
+  "method": "Step 1: Calculate total charge passed using Q = I × t from L17. Convert time to seconds: 30.0 min × 60 = 1800 s. Q = 1.50 A × 1800 s = 2700 C (using I = 1.50 A from L51, t = 30.0 min from L51). Step 2: Calculate moles of electrons using n(e-) = Q / F from L18 with F = 96,500 C mol-1 from L19. n(e-) = 2700 / 96500 = 0.02798 mol. Step 3: Use half-equation from L52 (Cu2+ + 2e- -> Cu) which shows 2 moles of electrons deposit 1 mole of Cu. Therefore n(Cu) = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Step 4: Calculate mass of copper using m = n × Ar with Ar(Cu) = 63.55 from L24. Mass Cu = 0.01399 × 63.55 = 0.888 g to 3 s.f.",
   "key_equations": [
     "Q = I × t",
     "n(e-) = Q / F",
@@ -17,13 +17,10 @@
     "L19",
     "L24",
     "L51",
-    "L52",
-    "L53"
+    "L52"
   ],
   "checks": [
-    "Time correctly converted to 1800 seconds",
-    "Charge calculated as 2700 Coulombs",
-    "Moles of electrons divided by 2 for copper deposition",
-    "Final mass reported to 3 significant figures"
+    "Unit check: A × s = C, C / (C mol-1) = mol, mol × g mol-1 = g, all units consistent.",
+    "Stoichiometry check: 2 electrons per Cu2+ ion reduced, so moles Cu = moles e- / 2."
   ]
 }

@@ -3,24 +3,21 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "The result is given to 3 significant figures, consistent with the input current (1.50 A) and time (30.0 min)."
+    "precision_note": "The result is given to three significant figures, consistent with the input values (1.50 A, 30.0 min)."
   },
-  "method": "First, the total electrical charge (Q) passed is calculated using the formula Q = I * t. The time is converted from minutes to seconds (30.0 min * 60 = 1800 s). Q = 1.50 A * 1800 s = 2700 C. Next, the moles of electrons are found by dividing the charge by the Faraday constant (F): n(e-) = Q / F = 2700 C / 96500 C mol-1 = 0.02798 mol. The cathode half-equation Cu2+ + 2e- -> Cu shows a 2:1 molar ratio between electrons and copper. Thus, moles of Cu = 0.02798 / 2 = 0.01399 mol. Finally, the mass of copper deposited is calculated by multiplying the moles of Cu by its atomic mass (63.55 g/mol), which gives 0.889 g.",
+  "method": "First, convert the time from minutes to seconds: 30.0 min * 60 = 1800 s. Then, calculate the total charge passed using Q = I * t: 1.50 A * 1800 s = 2700 C. Next, find the moles of electrons using n(e-) = Q / F: 2700 C / 96500 C/mol = 0.027979 mol. From the half-equation (Cu2+ + 2e- -> Cu), the mole ratio of Cu to electrons is 1:2, so moles of Cu is 0.027979 / 2 = 0.0139895 mol. Finally, calculate the mass of copper deposited using m = n * Mr: 0.0139895 mol * 63.55 g/mol = 0.889 g, rounded to three significant figures.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
-    "Cu2+ + 2e- -> Cu",
     "n = m / Mr"
   ],
   "line_refs": [
     "L17",
     "L18",
-    "L51",
-    "L52"
+    "L19",
+    "L51"
   ],
   "checks": [
-    "Time was correctly converted to seconds.",
-    "The stoichiometric ratio from the half-equation was correctly used.",
-    "The final mass is a reasonable value for a laboratory-scale electrolysis experiment."
+    "All steps of the calculation were reviewed and appear correct. The final answer is reasonable and has the correct units and precision."
   ]
 }

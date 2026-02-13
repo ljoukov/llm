@@ -2,8 +2,8 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination significantly broadens the repertoire of tumor antigens presented by MHC-I molecules.",
-      "strength": "strong",
+      "claim": "Intratumoral mRNA vaccination significantly expands the repertoire of tumor antigens presented on MHC-I molecules.",
+      "strength": "moderate",
       "evidence": [
         {
           "quote": "Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3% | Broader antigen display after intratumoral mRNA vaccination",
@@ -14,31 +14,11 @@
           "line_ref": "L29"
         }
       ],
-      "caveat": "The increased antigen presentation is linked to type I interferon signaling, which can be experimentally blocked, eliminating the benefit."
+      "caveat": "Mouse model effects may not map one-to-one to all human tumors."
     },
     {
       "claim_id": "C02",
-      "claim": "Intratumoral mRNA vaccination sensitizes previously non-responsive tumors to the therapeutic effects of immune checkpoint blockade (ICI).",
-      "strength": "moderate",
-      "evidence": [
-        {
-          "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
-          "line_ref": "L46"
-        },
-        {
-          "quote": "Vaccinated subgroup had improved survival under ICI treatment",
-          "line_ref": "L30"
-        },
-        {
-          "quote": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models.",
-          "line_ref": "L36"
-        }
-      ],
-      "caveat": "The observed human benefit comes from a retrospective, non-randomized cohort analysis, meaning residual confounding cannot be ruled out and direct causal interpretation is limited."
-    },
-    {
-      "claim_id": "C03",
-      "claim": "The sensitization effect is mechanistically dependent on the induction of Type I interferon signaling within the tumor microenvironment.",
+      "claim": "The ability of intratumoral mRNA vaccination to sensitize tumors to immune checkpoint blockade is strictly dependent on the induction of Type I interferon signaling.",
       "strength": "strong",
       "evidence": [
         {
@@ -48,18 +28,14 @@
         {
           "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
           "line_ref": "L39"
-        },
-        {
-          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-          "line_ref": "L42"
         }
       ],
-      "caveat": "The study noted that lipid particle controls lacking the mRNA sequence failed to reproduce the sensitization, indicating the payload is essential for this pathway activation."
+      "caveat": "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
     },
     {
-      "claim_id": "C04",
-      "claim": "The combined therapy increases tumor targetability by upregulating PD-L1 expression and enhancing CD8+ T-cell infiltration in the tumor.",
-      "strength": "strong",
+      "claim_id": "C03",
+      "claim": "Combination therapy involving mRNA vaccination and ICI promotes an inflammatory state characterized by increased CD8+ T-cell infiltration and PD-L1 expression.",
+      "strength": "moderate",
       "evidence": [
         {
           "quote": "PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x | Checkpoint axis became more targetable",
@@ -70,7 +46,23 @@
           "line_ref": "L33"
         }
       ],
-      "caveat": "Despite these favorable changes, ICI-only treatment still showed limited activity in low-immunogenic settings, suggesting the combination effect is synergistic rather than purely additive."
+      "caveat": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models."
+    },
+    {
+      "claim_id": "C04",
+      "claim": "Patients who had received a prior SARS-CoV-2 mRNA vaccination showed an improved survival outcome when subsequently treated with immune checkpoint inhibitors (ICI).",
+      "strength": "tentative",
+      "evidence": [
+        {
+          "quote": "Human retrospective metastatic cohort: 130 patients total.",
+          "line_ref": "L21"
+        },
+        {
+          "quote": "Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment",
+          "line_ref": "L30"
+        }
+      ],
+      "caveat": "The human analysis is retrospective and non-randomized; residual confounding is likely."
     }
   ]
 }
