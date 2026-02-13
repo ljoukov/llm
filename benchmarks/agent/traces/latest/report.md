@@ -1,23 +1,23 @@
 # Filesystem Agent Benchmark Report
 
-- Run id: agent-fs-2026-02-13T15-11-45-630Z
-- Generated at: 2026-02-13T15:30:13.089Z
-- Models: chatgpt-gpt-5.3-codex, gpt-5.2, kimi-k2.5, glm-5, minimax-m2.1, gemini-2.5-pro, gemini-flash-latest, gemini-3-pro-preview, gemini-3-flash-preview
+- Run id: agent-fs-2026-02-13T16-53-28-315Z
+- Generated at: 2026-02-13T16:56:32.406Z
+- Models: chatgpt-gpt-5.3-codex, gpt-5.2, kimi-k2.5, glm-5, minimax-m2.1, gemini-2.5-pro, gemini-flash-latest, gemini-3-pro-preview, gemini-3-flash-preview, chatgpt-gpt-5.3-codex-spark
 - Grader model: chatgpt-gpt-5.2
 - Reasoning effort: medium
 - Tasks: tumor-vaccine-ici, trappist1b-atmosphere, gcse-chemistry-8-9
 - Runs per model/task: 1
-- Cases: 27
-- Overall success: 7/27
-- Schema pass: 13/27
-- Tool trace pass: 26/27
-- Grader pass: 7/27
-- Observed total latency: 5384.69s
-- Observed avg latency/case: 199.43s
-- Observed total cost: $2.093792
-- Observed tokens (in/cached/out): 1,353,598/669,666/108,223
-- Observed thinking tokens: 81,379
-- Observed total tokens: 1,543,200
+- Cases: 30
+- Overall success: 8/30
+- Schema pass: 14/30
+- Tool trace pass: 29/30
+- Grader pass: 8/30
+- Observed total latency: 5568.73s
+- Observed avg latency/case: 185.62s
+- Observed total cost: $2.267800
+- Observed tokens (in/cached/out): 1,763,799/1,004,770/127,886
+- Observed thinking tokens: 115,196
+- Observed total tokens: 2,006,881
 
 ## Source Papers
 
@@ -31,9 +31,9 @@
 - Agent response tokens per call: 900
 - Grader prompt tokens per call: 5200
 - Grader response tokens per call: 350
-- Estimated agent cost total: $0.246870
-- Estimated grader cost total: $0.378000
-- Estimated grand total: $0.624870
+- Estimated agent cost total: $0.255420
+- Estimated grader cost total: $0.420000
+- Estimated grand total: $0.675420
 
 ## Per-Model Summary
 
@@ -48,6 +48,7 @@
 | gemini-flash-latest | 0/3 | 1/3 | 3/3 | 0/3 | 241.38 | 724.14 | 74 | 0.053902 | 187,940 | 125,531 | 11,010 |
 | gemini-3-pro-preview | 2/3 | 3/3 | 3/3 | 2/3 | 276.20 | 828.60 | 76 | 0.548001 | 199,653 | 100,232 | 8,570 |
 | gemini-3-flash-preview | 0/3 | 1/3 | 2/3 | 0/3 | 369.10 | 1107.29 | 62 | 0.041393 | 136,109 | 48,477 | 6,972 |
+| chatgpt-gpt-5.3-codex-spark | 1/3 | 1/3 | 3/3 | 1/3 | 61.34 | 184.03 | 162 | 0.174009 | 410,201 | 335,104 | 19,663 |
 
 ## Case Matrix
 
@@ -80,6 +81,9 @@
 | gemini-3-flash-preview | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 107.27 | 22 | 0.015172 | 52,213 | 19,981 | 3,207 |
 | gemini-3-flash-preview | trappist1b-atmosphere | 1 | medium | FAIL | fail | fail | fail | 737.38 | 8 | 0.008578 | 1,622 | 0 | 377 |
 | gemini-3-flash-preview | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 262.64 | 32 | 0.017642 | 82,274 | 28,496 | 3,388 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 1 | medium | PASS | pass | pass | pass | 65.93 | 40 | 0.060631 | 137,704 | 113,664 | 5,686 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 83.58 | 76 | 0.073185 | 245,433 | 211,840 | 7,809 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 34.52 | 46 | 0.040193 | 27,064 | 9,600 | 6,168 |
 
 ## Failures
 
@@ -103,3 +107,5 @@
 - gemini-3-flash-preview / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_verdict=fail
 - gemini-3-flash-preview / trappist1b-atmosphere / run 1: agent_error=terminated | schema_or_grounding_failed | tool_trace=No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
 - gemini-3-flash-preview / gcse-chemistry-8-9 / run 1: grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_verdict=fail

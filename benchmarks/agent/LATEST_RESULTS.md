@@ -2,21 +2,21 @@
 
 This file is auto-generated from the latest benchmark run.
 
-- Run id: `agent-fs-2026-02-13T15-11-45-630Z`
-- Generated at: `2026-02-13T15:30:13.089Z`
+- Run id: `agent-fs-2026-02-13T16-53-28-315Z`
+- Generated at: `2026-02-13T16:56:32.406Z`
 - Tasks: `tumor-vaccine-ici`, `trappist1b-atmosphere`, `gcse-chemistry-8-9`
-- Models: `chatgpt-gpt-5.3-codex`, `gpt-5.2`, `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`
+- Models: `chatgpt-gpt-5.3-codex`, `gpt-5.2`, `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`, `chatgpt-gpt-5.3-codex-spark`
 - Grader: `chatgpt-gpt-5.2`
 
 ## Aggregate
 
-- Cases: 7/27 pass (13/27 schema, 26/27 tool trace, 7/27 grader)
-- Total latency: 5384.69s
-- Avg latency per case: 199.43s
-- Total cost: $2.093792
-- Tokens (in/cached/out): 1,353,598/669,666/108,223
-- Thinking tokens: 81,379
-- Total tokens: 1,543,200
+- Cases: 8/30 pass (14/30 schema, 29/30 tool trace, 8/30 grader)
+- Total latency: 5568.73s
+- Avg latency per case: 185.62s
+- Total cost: $2.267800
+- Tokens (in/cached/out): 1,763,799/1,004,770/127,886
+- Thinking tokens: 115,196
+- Total tokens: 2,006,881
 
 ## Outcome
 
@@ -31,6 +31,7 @@ This file is auto-generated from the latest benchmark run.
 | `gemini-flash-latest` | FAIL | 1/3 | 3/3 | 0/3 | 74 | 241.38 | 724.14 | 0.053902 | 187,940 | 125,531 | 11,010 |
 | `gemini-3-pro-preview` | FAIL | 3/3 | 3/3 | 2/3 | 76 | 276.20 | 828.60 | 0.548001 | 199,653 | 100,232 | 8,570 |
 | `gemini-3-flash-preview` | FAIL | 1/3 | 2/3 | 0/3 | 62 | 369.10 | 1107.29 | 0.041393 | 136,109 | 48,477 | 6,972 |
+| `chatgpt-gpt-5.3-codex-spark` | FAIL | 1/3 | 3/3 | 1/3 | 162 | 61.34 | 184.03 | 0.174009 | 410,201 | 335,104 | 19,663 |
 
 ## Artifact Paths
 

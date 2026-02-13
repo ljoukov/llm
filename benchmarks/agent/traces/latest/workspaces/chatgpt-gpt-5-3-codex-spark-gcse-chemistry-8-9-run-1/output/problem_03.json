@@ -1,0 +1,20 @@
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "Derived from titrant moles and stoichiometric 1:2 ratio, rounded to 3 significant figures."
+  },
+  "method": "Calculate moles of NaOH added. V(NaOH)=23.40 cm3 = 0.02340 dm3, so n(NaOH)=cV=0.150\times0.02340=3.51\times10^-3 mol. Use the reaction H2SO4 + 2NaOH \u2192 Na2SO4 + 2H2O from the line of data: one mole H2SO4 consumes two moles NaOH. Therefore n(H2SO4)=n(NaOH)/2 = 1.755\times10^-3 mol. Divide by sample volume 25.00 cm3 = 0.02500 dm3 to get c(H2SO4)=1.755\times10^-3/0.02500=7.02\times10^-2 mol dm-3.",
+  "key_equations": [
+    "n = cV",
+    "n(H2SO4) = n(NaOH) / 2",
+    "c = n / V"
+  ],
+  "line_refs": ["L15", "L16", "L39", "L40"],
+  "checks": [
+    "Stoichiometric factor is exactly 2, so acid moles are half the moles of NaOH.",
+    "Concentration is moles of H2SO4 divided by 0.02500 dm3, giving 0.0702 mol dm-3.",
+    "The units from mol dm-3 are consistent with c=n/V where V is in dm3."
+  ]
+}}

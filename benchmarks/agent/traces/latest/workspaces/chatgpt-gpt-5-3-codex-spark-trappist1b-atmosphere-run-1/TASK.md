@@ -1,19 +1,22 @@
 # Agent Task
 
-Task id: {{TASK_ID}}
-Task title: {{TASK_TITLE}}
-Reference paper: {{SOURCE_TITLE}}
-Reference URL: {{SOURCE_URL}}
+Task id: trappist1b-atmosphere
+Task title: JWST phase-curve evidence for an atmosphere on TRAPPIST-1 b
+Reference paper: Phase-curve Evidence for an Atmosphere on TRAPPIST-1 b
+Reference URL: https://arxiv.org/abs/2409.13036
 
 ## Objective
 Read the report and produce all required JSON outputs that satisfy their schemas.
 
 ## Inputs On Disk
-- Report: `{{REPORT_PATH}}`
+- Report: `input/report.md`
 - Schemas: in `schemas/`
 
 ## Required Outputs
-{{OUTPUT_SCHEMA_MAPPING_LIST}}
+- `output/study_overview.json` (schema: `schemas/study_overview.schema.json`)
+- `output/quantitative_findings.json` (schema: `schemas/quantitative_findings.schema.json`)
+- `output/claim_audit.json` (schema: `schemas/claim_audit.schema.json`)
+- `output/public_summary.json` (schema: `schemas/public_summary.schema.json`)
 
 ## Constraints
 - Do not invent source facts; derive calculations only from values in the report.
