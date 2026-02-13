@@ -73,7 +73,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           ],
           webSearchCalls: [],
           usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-          model: "gpt-5.3-codex",
+          model: "gpt-5.3-codex-spark",
           status: "completed",
           blocked: false,
         };
@@ -85,7 +85,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
         toolCalls: [],
         webSearchCalls: [],
         usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
-        model: "gpt-5.3-codex",
+        model: "gpt-5.3-codex-spark",
         status: "completed",
         blocked: false,
       };
@@ -129,7 +129,7 @@ describe("runToolLoop custom tools", () => {
 
     const { customTool, runToolLoop } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.3-codex",
+      model: "chatgpt-gpt-5.3-codex-spark",
       input: "apply a patch",
       tools: {
         apply_patch: customTool({

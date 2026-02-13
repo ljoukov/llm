@@ -77,7 +77,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Change value from 1 to 2.",
   filesystemTool: {
     profile: "auto",

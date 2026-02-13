@@ -32,7 +32,7 @@ describe("runAgentLoop", () => {
     };
 
     const result = await runAgentLoop({
-      model: "chatgpt-gpt-5.3-codex",
+      model: "chatgpt-gpt-5.3-codex-spark",
       input: "test",
       filesystemTool: true,
       tools: customTools,
@@ -105,7 +105,7 @@ describe("runAgentLoop", () => {
 
     await expect(
       runAgentLoop({
-        model: "chatgpt-gpt-5.3-codex",
+        model: "chatgpt-gpt-5.3-codex-spark",
         input: "test",
         filesystemTool: true,
         tools: {

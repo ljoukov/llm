@@ -16,13 +16,13 @@ import {
 
 describe("filesystemTools profiles", () => {
   it("resolves profile by model when profile=auto", () => {
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex-spark")).toBe("codex");
     expect(resolveFilesystemToolProfile("gemini-2.5-pro")).toBe("gemini");
     expect(resolveFilesystemToolProfile("gpt-5.2")).toBe("model-agnostic");
   });
 
   it("creates codex toolset for codex model ids", () => {
-    const toolSet = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex");
+    const toolSet = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex-spark");
     expect(Object.keys(toolSet).sort()).toEqual([
       "apply_patch",
       "grep_files",

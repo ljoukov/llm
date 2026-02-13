@@ -198,7 +198,19 @@ export async function collectChatGptCodexResponse(options: {
   signal?: AbortSignal;
   onDelta?: (delta: ChatGptCodexDelta) => void;
 }): Promise<ChatGptCodexCollectedResponse> {
-  const stream = await streamChatGptCodexResponse(options);
+  let stream: AsyncIterable<ChatGptCodexStreamEvent>;
+  try {
+    stream = await streamChatGptCodexResponse(options);
+  } catch (error) {
+    if (shouldRetryWithoutReasoningSummary(options.request, error)) {
+      stream = await streamChatGptCodexResponse({
+        ...options,
+        request: removeReasoningSummary(options.request),
+      });
+    } else {
+      throw error;
+    }
+  }
   const toolCalls = new Map<string, ChatGptCodexToolCall>();
   const toolCallOrder: string[] = [];
   const webSearchCalls = new Map<string, ChatGptCodexWebSearchCall>();
@@ -335,6 +347,30 @@ export async function collectChatGptCodexResponse(options: {
     model,
     status,
     blocked,
+  };
+}
+
+function shouldRetryWithoutReasoningSummary(request: ChatGptCodexRequest, error: unknown): boolean {
+  if (!request.reasoning?.summary) {
+    return false;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("unsupported parameter") && message.includes("reasoning.summary");
+}
+
+function removeReasoningSummary(request: ChatGptCodexRequest): ChatGptCodexRequest {
+  const reasoning = request.reasoning;
+  if (!reasoning?.summary) {
+    return request;
+  }
+  return {
+    ...request,
+    reasoning: {
+      effort: reasoning.effort,
+    },
   };
 }
 
