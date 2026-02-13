@@ -9,7 +9,7 @@ Unified TypeScript wrapper over:
 
 - **OpenAI Responses API** (`openai`)
 - **Google Gemini via Vertex AI** (`@google/genai`)
-- **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`)
+- **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`, `minimax-m2.1`)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (requires `CHATGPT_AUTH_JSON_B64`)
 
 Designed around a single streaming API that yields:
@@ -252,7 +252,7 @@ console.log(result.text);
 
 ### Fireworks
 
-Use Fireworks model ids directly:
+Use Fireworks model ids directly (for example `kimi-k2.5`, `glm-5`, `minimax-m2.1`):
 
 ```ts
 import { generateText } from "@ljoukov/llm";
