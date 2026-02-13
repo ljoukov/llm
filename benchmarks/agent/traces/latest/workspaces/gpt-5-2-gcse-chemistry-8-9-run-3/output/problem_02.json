@@ -1,0 +1,25 @@
+{
+  "problem_id": "P02",
+  "final_answer": {
+    "value": 1.85,
+    "units": "g",
+    "precision_note": "Mass to 3 s.f., limited by 5.00 g and 84.0% (both 3 s.f.)."
+  },
+  "method": "First find the mass of calcium carbonate in the impure limestone: m(CaCO3) = 5.00 g × 0.840 = 4.20 g. Next calculate moles using n = m/Mr. From the atomic data, Mr(CaCO3) = 40.1 + 12.0 + 3×16.0 = 100.1, so n(CaCO3) = 4.20/100.1 = 0.04196 mol ≈ 0.0420 mol. From the balanced equation CaCO3 + 2HCl → CaCl2 + CO2 + H2O, 1 mol CaCO3 produces 1 mol CO2, so n(CO2) = 0.0420 mol. Mr(CO2) = 12.0 + 2×16.0 = 44.0, so mass of CO2 = n×Mr = 0.0420 × 44.0 = 1.85 g (maximum, since acid is in excess).",
+  "key_equations": [
+    "n = m / Mr",
+    "m(CaCO3) = sample mass × (percent/100)",
+    "1 mol CaCO3 → 1 mol CO2 (from balanced equation)",
+    "m = n × Mr"
+  ],
+  "line_refs": [
+    "L24",
+    "L14",
+    "L33",
+    "L34"
+  ],
+  "checks": [
+    "Since CO2 is lighter than CaCO3, the CO2 mass should be less than 4.20 g; 1.85 g fits.",
+    "Mole ratio CaCO3:CO2 is 1:1 in the given equation, so moles should match."
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "Result reported to 3 significant figures, consistent with the concentration of NaOH (0.150 mol dm-3) and volume measurements (23.40 cm3 and 25.00 cm3)."
+  },
+  "method": "First, convert volumes to dm3: V(NaOH) = 23.40 cm3 = 0.02340 dm3. Calculate moles of NaOH using c = n/V rearranged as n = cV: n(NaOH) = 0.150 mol dm-3 × 0.02340 dm3 = 0.003510 mol. From the balanced equation H2SO4 + 2NaOH → Na2SO4 + 2H2O, the mole ratio NaOH:H2SO4 is 2:1. Therefore, n(H2SO4) = 0.003510 / 2 = 0.001755 mol. Finally, concentration of H2SO4 = n/V = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
+  "key_equations": [
+    "c = n / V",
+    "n(NaOH) = c(NaOH) × V(NaOH)",
+    "n(H2SO4) = n(NaOH) / 2"
+  ],
+  "line_refs": ["L15", "L39", "L40"],
+  "checks": [
+    "Mole ratio from balanced equation: 2 mol NaOH reacts with 1 mol H2SO4",
+    "H2SO4 concentration (0.0702 mol dm-3) is lower than NaOH concentration (0.150 mol dm-3), consistent with diprotic acid behavior",
+    "Volume of NaOH (23.40 cm3) is less than volume of H2SO4 (25.00 cm3), yet NaOH concentration is higher"
+  ]
+}

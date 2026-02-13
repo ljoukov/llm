@@ -3,16 +3,14 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Result given to 3 significant figures, consistent with the precision of bond energy values provided in the report."
+    "precision_note": "Result given to 3 significant figures, consistent with the bond energy values provided (all to 3 sig figs). Negative sign indicates exothermic reaction."
   },
-  "method": "Using deltaH = sum(bonds broken) - sum(bonds formed). For CH4 + 2O2 -> CO2 + 2H2O: Bonds broken are 4 C-H bonds (4 × 413 = 1652 kJ mol-1) and 2 O=O bonds (2 × 498 = 996 kJ mol-1), total = 2648 kJ mol-1. Bonds formed are 2 C=O bonds in CO2 (2 × 805 = 1610 kJ mol-1) and 4 O-H bonds in 2H2O (4 × 463 = 1852 kJ mol-1), total = 3462 kJ mol-1. Therefore deltaH = 2648 - 3462 = -814 kJ mol-1. The negative value indicates an exothermic reaction.",
+  "method": "Using bond energy calculations: Bonds broken in reactants (endothermic): 4×C-H bonds in CH4 = 4×413 = 1652 kJ mol-1, plus 2×O=O bonds in 2O2 = 2×498 = 996 kJ mol-1. Total bonds broken = 2648 kJ mol-1. Bonds formed in products (exothermic): 2×C=O bonds in CO2 = 2×805 = 1610 kJ mol-1, plus 4×O-H bonds in 2H2O = 4×463 = 1852 kJ mol-1. Total bonds formed = 3462 kJ mol-1. deltaH = bonds broken - bonds formed = 2648 - 3462 = -814 kJ mol-1.",
   "key_equations": [
-    "deltaH = sum(bonds broken) - sum(bonds formed)",
-    "CH4 + 2O2 -> CO2 + 2H2O"
+    "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
-  "line_refs": ["L44", "L45", "L46", "L47"],
+  "line_refs": ["L45", "L46", "L47"],
   "checks": [
-    "Bond count verification: CH4 has 4 C-H bonds; 2O2 has 2 O=O bonds; CO2 has 2 C=O bonds; 2H2O has 4 O-H bonds. All correct.",
-    "Sign check: More energy released from bond formation than required for bond breaking, so negative deltaH is correct for exothermic combustion."
+    "Energy balance check: Bonds broken (2648 kJ) minus bonds formed (3462 kJ) gives -814 kJ mol-1, correctly showing exothermic combustion."
   ]
 }

@@ -1,17 +1,19 @@
 {
   "problem_id": "P05",
   "final_answer": {
-    "value": 0.890,
+    "value": 0.889,
     "units": "g",
-    "precision_note": "The least precise values (current and time) have three significant figures, so the final mass is reported to three significant figures."
+    "precision_note": "The current (1.50 A) and time (30.0 min) are both given to three significant figures. The Faraday constant (96,500 C mol-1) is assumed to have three significant figures (9.65 x 10^4). The relative atomic mass of copper (63.55) has four significant figures. The final answer is limited to three significant figures by the current and time."
   },
-  "method": "First, calculate the total charge (Q) passed, converting time to seconds: Q = I * t = 1.50 A * (30.0 * 60 s) = 2700 C (L17, L51). Second, calculate the moles of electrons (n(e-)) using the Faraday constant (F): n(e-) = Q / F = 2700 C / 96500 C mol-1 ≈ 0.027979 mol (L18, L19). Third, use the half-equation (L52), Cu2+ + 2e- -> Cu, which shows a 2:1 ratio, to find the moles of Cu deposited: n(Cu) = 0.027979 mol / 2 ≈ 0.0139895 mol. Finally, calculate the mass of copper using m = n * Mr: m(Cu) = 0.0139895 mol * 63.55 g mol-1 ≈ 0.88998 g (L14, L24). Rounded to three significant figures, this is 0.890 g.",
+  "method": "The mass of copper deposited is determined by Faraday's laws of electrolysis. First, calculate the total charge ($Q$) passed using $Q = I \\times t$. Convert time to seconds: $30.0 \\text{ min} \\times 60 \\text{ s min}^{-1} = 1800 \\text{ s}$. $Q = 1.50 \\text{ A} \\times 1800 \\text{ s} = 2700 \\text{ C}$. Second, calculate the moles of electrons ($n(\\text{e}^-)$) using the Faraday constant ($F = 96,500 \\text{ C mol}^{-1}$): $n(\\text{e}^-) = Q / F = 2700 \\text{ C} / 96,500 \\text{ C mol}^{-1} \\approx 0.027979 \\text{ mol}$. Third, use the half-equation $\\text{Cu}^{2+} + 2\\text{e}^- \\rightarrow \\text{Cu}$ to find the moles of copper (a $1:2$ ratio): $n(\\text{Cu}) = n(\\text{e}^-) / 2 = 0.027979 \\text{ mol} / 2 \\approx 0.013989 \\text{ mol}$. Finally, calculate the mass of copper using $\\text{Mr}(\\text{Cu}) = 63.55 \\text{ g mol}^{-1}$: $\\text{Mass}(\\text{Cu}) = 0.013989 \\text{ mol} \\times 63.55 \\text{ g mol}^{-1} \\approx 0.88907 \\text{ g}$. Rounded to three significant figures, the mass deposited is $0.889 \\text{ g}$.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
+    "n = m / Mr",
     "Cu2+ + 2e- -> Cu"
   ],
   "line_refs": [
+    "L14",
     "L17",
     "L18",
     "L19",
@@ -21,8 +23,6 @@
     "L53"
   ],
   "checks": [
-    "Charge Q = 2700 C.",
-    "Moles of Cu deposited is (2700 / 96500) / 2 ≈ 0.01399 mol.",
-    "Mass of Cu = 0.01399 * 63.55 ≈ 0.890 g."
+    "An alternative check is to calculate the mass deposited per Faraday: 63.55 g / 2 mol e- = 31.775 g F^-1. The number of Faradays used is n(e-) = 0.027979 F. Mass = 0.027979 F * 31.775 g F^-1 = 0.889 g. This confirms the steps and result."
   ]
 }

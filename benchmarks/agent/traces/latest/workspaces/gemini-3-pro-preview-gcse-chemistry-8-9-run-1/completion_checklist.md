@@ -1,0 +1,6 @@
+- [x] output/problem_01.json
+- [x] output/problem_02.json
+- [x] output/problem_03.json
+- [x] output/problem_04.json
+- [x] output/problem_05.json
+- [x] output/problem_06.json

@@ -1,0 +1,21 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Integer precision derived from the provided integer bond energies."
+  },
+  "method": "Calculate energy required to break bonds in reactants: 4*(C-H) + 2*(O=O) = 4*413 + 2*498 = 1652 + 996 = 2648 kJ. Calculate energy released forming bonds in products: 2*(C=O) + 4*(O-H) = 2*805 + 4*463 = 1610 + 1852 = 3462 kJ. Apply formula deltaH = broken - formed = 2648 - 3462 = -814 kJ mol-1.",
+  "key_equations": [
+    "deltaH = sum(bonds broken) - sum(bonds formed)"
+  ],
+  "line_refs": [
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "Combustion is exothermic, so result must be negative. -814 is negative.",
+    "Stoichiometry factors (4 C-H, 2 O=O, 2 C=O, 4 O-H) correctly applied."
+  ]
+}

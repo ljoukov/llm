@@ -3,9 +3,9 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "The final answer is calculated as an exact integer based on the provided mean bond energy values in the report."
+    "precision_note": "The result is an integer based on the integer values provided for bond energies."
   },
-  "method": "The enthalpy change (deltaH) is calculated using the bond energy formula: deltaH = sum(bonds broken) - sum(bonds formed). Bonds broken in the reactants include four C-H bonds from CH4 (4 * 413 = 1652 kJ mol-1) and two O=O bonds from 2O2 (2 * 498 = 996 kJ mol-1), totaling 2648 kJ mol-1. Bonds formed in the products include two C=O bonds from CO2 (2 * 805 = 1610 kJ mol-1) and four O-H bonds from 2H2O (4 * 463 = 1852 kJ mol-1), totaling 3462 kJ mol-1. Subtracting the total energy of bonds formed from the total energy of bonds broken gives 2648 - 3462 = -814 kJ mol-1.",
+  "method": "The enthalpy change (deltaH) for methane combustion is estimated by calculating the energy required to break bonds in the reactants and the energy released when bonds are formed in the products. Bonds broken: 4 C-H bonds (4 * 413) and 2 O=O bonds (2 * 498), totaling 2648 kJ mol-1. Bonds formed: 2 C=O bonds (2 * 805) and 4 O-H bonds (4 * 463), totaling 3462 kJ mol-1. Using the formula deltaH = sum(bonds broken) - sum(bonds formed), we get 2648 - 3462 = -814 kJ mol-1. The negative value indicates an exothermic reaction.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
@@ -15,8 +15,9 @@
     "L47"
   ],
   "checks": [
-    "Ensure that 2 moles of H2O results in 4 O-H bonds being counted.",
-    "Confirm that the deltaH value is negative, indicating an exothermic combustion process.",
-    "Verify the sum of energy for bonds broken (2648 kJ mol-1) and bonds formed (3462 kJ mol-1)."
+    "Identify all bonds in reactants",
+    "Identify all bonds in products",
+    "Calculate sum of bonds broken",
+    "Calculate sum of bonds formed"
   ]
 }

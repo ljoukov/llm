@@ -1,0 +1,24 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "Final answer is rounded to three significant figures, consistent with the input current and time data."
+  },
+  "method": "First, calculate the total charge Q using Q = I * t. Time is converted to seconds: 30.0 min * 60 = 1800 s. Q = 1.50 A * 1800 s = 2700 C. Next, find the moles of electrons using n(e-) = Q / F = 2700 / 96,500 \u2248 0.027979 mol. From the cathode half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of copper. So, moles of Cu = 0.027979 / 2 = 0.0139896 mol. Finally, find the mass of copper using m = n * Mr with Mr(Cu) = 63.55: m = 0.0139896 * 63.55 \u2248 0.88904 g. This rounds to 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "m = n * Mr"
+  ],
+  "line_refs": [
+    "L17",
+    "L18",
+    "L19",
+    "L51"
+  ],
+  "checks": [
+    "Converted time from minutes to seconds before calculating charge.",
+    "Correctly identified that two moles of electrons are required per mole of copper deposited."
+  ]
+}

@@ -3,11 +3,11 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Mean bond energies are given as whole-number kJ mol-1; report ΔH to 3 s.f. to reflect the estimates."
+    "precision_note": "Reported as an integer because mean bond energies are given as whole-number kJ mol-1 values."
   },
-  "method": "Use ΔH = Σ(bonds broken) − Σ(bonds formed). For CH4 + 2O2 → CO2 + 2H2O: bonds broken are 4×(C–H) in CH4 and 2×(O=O) from 2O2. Broken energy = 4×413 + 2×498 = 1652 + 996 = 2648 kJ mol-1. Bonds formed are 2×(C=O) in CO2 and 4×(O–H) in 2H2O (each H2O has two O–H bonds). Formed energy = 2×805 + 4×463 = 1610 + 1852 = 3462 kJ mol-1. Therefore ΔH = 2648 − 3462 = −814 kJ mol-1 (exothermic).",
+  "method": "Use deltaH = sum(bonds broken) - sum(bonds formed). For CH4 + 2O2 -> CO2 + 2H2O: break 4 C–H bonds in CH4 and 2 O=O bonds from 2O2. Energy broken = 4×413 + 2×498 = 1652 + 996 = 2648 kJ mol-1. Form bonds in products: CO2 contains 2 C=O bonds so 2×805 = 1610 kJ mol-1, and 2H2O contains 4 O–H bonds so 4×463 = 1852 kJ mol-1. Total formed = 1610 + 1852 = 3462 kJ mol-1. Therefore deltaH = 2648 − 3462 = −814 kJ mol-1.",
   "key_equations": [
-    "ΔH = Σ(bonds broken) − Σ(bonds formed)"
+    "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
   "line_refs": [
     "L45",
@@ -15,7 +15,7 @@
     "L47"
   ],
   "checks": [
-    "Combustion reactions should be exothermic, so a negative ΔH is expected.",
-    "Magnitude is in the typical hundreds of kJ mol-1 for hydrocarbon combustion, so −814 kJ mol-1 is reasonable for an estimate."
+    "Combustion reactions are exothermic, so a negative deltaH is expected.",
+    "Bond-count check: broken bonds (4 C–H, 2 O=O) and formed bonds (2 C=O, 4 O–H) match the balanced equation."
   ]
 }

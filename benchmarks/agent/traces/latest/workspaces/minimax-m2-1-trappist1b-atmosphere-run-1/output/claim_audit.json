@@ -2,119 +2,99 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "TRAPPIST-1 b shows evidence for an atmosphere based on JWST MIRI phase-curve spectroscopy measuring thermal phase variations and spectral structure around the 15 um CO2 band.",
+      "claim": "JWST MIRI phase-curve observations of TRAPPIST-1 b provide evidence for the presence of an atmosphere rather than a bare-rock surface.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "The study uses JWST MIRI low-resolution spectroscopy to jointly constrain day-night heat transport and atmospheric composition.",
-          "line_ref": "L14-L16"
-        },
-        {
-          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio",
+          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
           "line_ref": "L31"
         },
         {
-          "quote": "Atmosphere-bearing models better explain combined data products.",
-          "line_ref": "L31"
+          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit | Non-zero redistribution is favored",
+          "line_ref": "L28"
+        },
+        {
+          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
+          "line_ref": "L35"
         }
       ],
-      "caveat": "The likelihood ratio of 7.4 provides moderate evidence, but composition and pressure remain uncertain enough that follow-up spectroscopy is essential."
+      "caveat": "While the atmosphere-bearing models are statistically favored, the likelihood ratio of 7.4 represents moderate rather than overwhelming evidence, and degeneracies in the retrieval model could affect the robustness of this conclusion."
     },
     {
       "claim_id": "C02",
-      "claim": "The dayside brightness temperature measurement of 342 +/- 22 K combined with heat transport efficiency of 0.19 (+0.23 / -0.14) indicates non-zero atmospheric redistribution.",
-      "strength": "moderate",
+      "claim": "The data show evidence of day-night heat redistribution that is inconsistent with instantaneous reradiation from a bare rock surface.",
+      "strength": "strong",
       "evidence": [
         {
-          "quote": "Dayside brightness temperature | 342 +/- 22 K | Bare-rock expectation from no-redistribution model",
-          "line_ref": "L27"
+          "quote": "Thermal phase offsets and amplitudes probe day-night energy redistribution.",
+          "line_ref": "L40"
         },
         {
-          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit",
-          "line_ref": "L28"
+          "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+          "line_ref": "L41"
         },
         {
-          "quote": "Non-zero redistribution is favored.",
+          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit | Non-zero redistribution is favored",
           "line_ref": "L28"
         }
       ],
-      "caveat": "Error bars are large and overlap with zero, so while non-zero redistribution is favored, a bare-rock interpretation cannot be definitively ruled out."
+      "caveat": "The heat redistribution evidence is robust across different model assumptions, though the absolute efficiency depends on circulation model priors."
     },
     {
       "claim_id": "C03",
-      "claim": "Spectral structure near 15 um provides composition-sensitive evidence, particularly for CO2-rich atmosphere scenarios with band depth of 96 ppm.",
+      "claim": "Spectral structure near 15 um is consistent with the presence of CO2 or a similar greenhouse gas in the atmosphere.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null",
-          "line_ref": "L30"
-        },
-        {
-          "quote": "Spectral structure is consistent with atmospheric absorption.",
+          "quote": "15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null | Spectral structure is consistent with atmospheric absorption",
           "line_ref": "L30"
         },
         {
           "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
           "line_ref": "L42"
+        },
+        {
+          "quote": "Observables: thermal phase variation and spectral structure around the 15 um CO2 band.",
+          "line_ref": "L15"
         }
       ],
-      "caveat": "Weak spectral features can be biased by stellar variability and instrument systematics, and the 96 ppm detection is at low signal-to-noise."
+      "caveat": "The CO2 feature detection is marginal (96 ppm) and could be affected by stellar variability, instrument systematics, or unmodeled spectral contaminants; alternative absorbers could produce similar spectral structure."
     },
     {
       "claim_id": "C04",
-      "claim": "A bare-rock, no-atmosphere model is ruled out because it cannot simultaneously match both phase amplitude and spectral band behavior.",
+      "claim": "The preferred atmospheric pressure is in the range of 0.3-1.0 bar based on the CO2-rich retrieval family.",
+      "strength": "tentative",
+      "evidence": [
+        {
+          "quote": "Preferred pressure scale in CO2-rich retrieval family | 0.3-1.0 bar | Near-vacuum branch | Moderate-pressure atmosphere family remains plausible",
+          "line_ref": "L32"
+        },
+        {
+          "quote": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant.",
+          "line_ref": "L37"
+        }
+      ],
+      "caveat": "The pressure constraint depends heavily on assumptions about atmospheric composition and cloud properties; a different composition or cloud scenario could shift the preferred pressure to much lower values."
+    },
+    {
+      "claim_id": "C05",
+      "claim": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
       "strength": "moderate",
       "evidence": [
+        {
+          "quote": "Practical Takeaway: The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b, but atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential.",
+          "line_ref": "L53"
+        },
         {
           "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
           "line_ref": "L35"
         },
         {
-          "quote": "Day side is warm but not sufficient alone to prove a bare surface.",
-          "line_ref": "L27"
-        },
-        {
-          "quote": "Joint constraints from phase curve and spectrum are stronger than either observable alone.",
-          "line_ref": "L43"
+          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
+          "line_ref": "L31"
         }
       ],
-      "caveat": "While pure bare-rock models are disfavored, the specific atmospheric composition (CO2-rich vs O2-rich) and pressure level remain uncertain."
-    },
-    {
-      "claim_id": "C05",
-      "claim": "The preferred pressure scale for CO2-rich atmosphere scenarios is 0.3-1.0 bar, indicating moderate-pressure atmospheres remain plausible.",
-      "strength": "tentative",
-      "evidence": [
-        {
-          "quote": "Preferred pressure scale in CO2-rich retrieval family | 0.3-1.0 bar | Near-vacuum branch",
-          "line_ref": "L32"
-        },
-        {
-          "quote": "Moderate-pressure atmosphere family remains plausible.",
-          "line_ref": "L32"
-        }
-      ],
-      "caveat": "Pressure constraints are degenerate with composition and cloud assumptions, and lower pressure scenarios cannot be completely excluded."
-    },
-    {
-      "claim_id": "C06",
-      "claim": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b, but follow-up spectroscopy is essential.",
-      "strength": "strong",
-      "evidence": [
-        {
-          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
-          "line_ref": "L53"
-        },
-        {
-          "quote": "Atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential.",
-          "line_ref": "L53"
-        },
-        {
-          "quote": "Remaining degeneracies motivate broader wavelength coverage and repeated observations.",
-          "line_ref": "L44"
-        }
-      ],
-      "caveat": "This conclusion appropriately accounts for remaining uncertainties and does not overstate the findings given the observational limitations."
+      "caveat": "While the airless hypothesis is disfavored, the data cannot definitively distinguish between all possible atmosphere types; O2-rich atmospheres and other compositions remain viable alternatives."
     }
   ]
 }

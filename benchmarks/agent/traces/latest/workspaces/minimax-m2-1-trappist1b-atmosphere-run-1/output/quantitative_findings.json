@@ -5,7 +5,7 @@
       "metric": "Dayside brightness temperature",
       "value": "342 +/- 22 K",
       "comparator_or_baseline": "Bare-rock expectation from no-redistribution model",
-      "interpretation": "The dayside is warm but this measurement alone is not sufficient to prove a bare surface interpretation.",
+      "interpretation": "The day side is warm but this measurement alone is not sufficient to prove a bare surface, as atmospheric models can also reproduce this temperature.",
       "evidence_line_refs": ["L27"]
     },
     {
@@ -13,7 +13,7 @@
       "metric": "Heat transport efficiency (epsilon)",
       "value": "0.19 (+0.23 / -0.14)",
       "comparator_or_baseline": "0.0 for perfect no-atmosphere limit",
-      "interpretation": "Non-zero redistribution is favored, indicating atmospheric heat transport beyond simple bare-rock reradiation.",
+      "interpretation": "Non-zero redistribution is favored, indicating that heat is being transported from the dayside to the nightside in a manner inconsistent with a bare-rock scenario.",
       "evidence_line_refs": ["L28"]
     },
     {
@@ -21,7 +21,7 @@
       "metric": "Bond albedo upper bound",
       "value": "<0.08",
       "comparator_or_baseline": "Higher-albedo reflective cases",
-      "interpretation": "The planet appears very dark in thermal-energy balance fits, consistent with efficient absorption of stellar radiation.",
+      "interpretation": "The planet appears very dark in thermal-energy balance fits, which is consistent with a surface or atmosphere that absorbs rather than reflects stellar radiation.",
       "evidence_line_refs": ["L29"]
     },
     {
@@ -29,7 +29,7 @@
       "metric": "15 um CO2 spectral band depth estimate",
       "value": "96 ppm",
       "comparator_or_baseline": "Flat-spectrum null",
-      "interpretation": "Spectral structure is consistent with atmospheric absorption, providing composition-sensitive evidence for an atmosphere.",
+      "interpretation": "Spectral structure is consistent with atmospheric absorption, specifically indicating the presence of CO2 or a spectrally similar absorber in the atmosphere.",
       "evidence_line_refs": ["L30"]
     },
     {
@@ -37,7 +37,7 @@
       "metric": "Joint fit likelihood ratio (atmosphere vs no atmosphere)",
       "value": "7.4",
       "comparator_or_baseline": "1.0 baseline ratio",
-      "interpretation": "Atmosphere-bearing models better explain the combined phase curve and spectral data products.",
+      "interpretation": "Atmosphere-bearing models better explain the combined data products, providing statistical support for the presence of an atmosphere.",
       "evidence_line_refs": ["L31"]
     },
     {
@@ -45,22 +45,54 @@
       "metric": "Preferred pressure scale in CO2-rich retrieval family",
       "value": "0.3-1.0 bar",
       "comparator_or_baseline": "Near-vacuum branch",
-      "interpretation": "Moderate-pressure atmosphere family remains plausible given current observational constraints.",
+      "interpretation": "A moderate-pressure atmosphere family remains plausible, though pressures could be lower if composition or cloud properties differ from assumed priors.",
       "evidence_line_refs": ["L32"]
+    },
+    {
+      "id": "Q07",
+      "metric": "Phase-curve amplitude",
+      "value": "Measured thermal phase variation",
+      "comparator_or_baseline": "No-atmosphere model prediction",
+      "interpretation": "The observed phase amplitude is inconsistent with a bare-rock reradiation pattern, supporting atmospheric heat transport.",
+      "evidence_line_refs": ["L40", "L41"]
+    },
+    {
+      "id": "Q08",
+      "metric": "Thermal phase offset",
+      "value": "Non-zero offset measured",
+      "comparator_or_baseline": "Zero offset for instantaneous reradiation",
+      "interpretation": "A non-zero thermal phase offset probes day-night energy redistribution, providing evidence for atmospheric circulation.",
+      "evidence_line_refs": ["L40", "L41"]
+    },
+    {
+      "id": "Q09",
+      "metric": "Spectral band shape",
+      "value": "Structured spectrum near 15 um",
+      "comparator_or_baseline": "Flat/blackbody spectrum",
+      "interpretation": "Spectral structure near 15 um provides composition-sensitive evidence, particularly supporting CO2-rich scenarios over featureless atmospheres.",
+      "evidence_line_refs": ["L42"]
     }
   ],
   "controls_or_null_results": [
     {
-      "statement": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
+      "statement": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior, indicating that additional physics (atmosphere) is required.",
       "evidence_line_ref": "L35"
     },
     {
-      "statement": "O2-rich atmosphere cases are not fully ruled out by current data, indicating composition degeneracy remains significant.",
+      "statement": "O2-rich atmosphere cases are not fully ruled out by current data, demonstrating that multiple atmospheric compositions remain plausible given the observational constraints.",
       "evidence_line_ref": "L36"
     },
     {
-      "statement": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant and affect interpretation.",
+      "statement": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant, meaning that current data cannot uniquely determine atmospheric properties.",
       "evidence_line_ref": "L37"
+    },
+    {
+      "statement": "Joint constraints from phase curve and spectrum are stronger than either observable alone, demonstrating the power of combining thermal and compositional measurements.",
+      "evidence_line_ref": "L43"
+    },
+    {
+      "statement": "Night-side constraints are weaker than day-side constraints in the current dataset, indicating that future observations should prioritize nightside coverage.",
+      "evidence_line_ref": "L50"
     }
   ]
 }

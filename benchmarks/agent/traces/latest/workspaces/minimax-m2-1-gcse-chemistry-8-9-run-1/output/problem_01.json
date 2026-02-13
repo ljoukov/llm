@@ -3,19 +3,19 @@
   "final_answer": {
     "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "The dilution factor is exactly 10x (250.0/25.0), and the initial concentration has 3 significant figures, so the answer should have 3 significant figures."
+    "precision_note": "Result expressed to 3 significant figures, matching the input data precision of 25.0 cm3 (3 sf), 250.0 cm3 (4 sf), and 0.200 mol dm-3 (3 sf)."
   },
-  "method": "Using the dilution formula c1V1 = c2V2 where c1 = 0.200 mol dm-3, V1 = 25.0 cm3, and V2 = 250.0 cm3. Convert the dilution formula to solve for c2: c2 = c1 × V1 / V2. Substitute the values: c2 = 0.200 × (25.0 / 250.0) = 0.200 × 0.100 = 0.0200 mol dm-3. The new concentration is 0.0200 mol dm-3.",
+  "method": "Using the dilution equation c1V1 = c2V2 from line L16, where c1 = 0.200 mol dm-3 (L29), V1 = 25.0 cm3 (L29), and V2 = 250.0 cm3 (L29). Converting volumes to the same units, V1/V2 = 25.0/250.0 = 0.100. Therefore c2 = c1 × V1/V2 = 0.200 × 0.100 = 0.0200 mol dm-3. The dilution factor is exactly 10 times, confirming the concentration is reduced by one order of magnitude.",
   "key_equations": [
-    "c1V1 = c2V2"
+    "c1V1 = c2V2 (dilution equation, from L16)"
   ],
   "line_refs": [
     "L16",
-    "L29",
-    "L30"
+    "L29"
   ],
   "checks": [
-    "The dilution factor is 250.0/25.0 = 10, so the concentration should decrease by a factor of 10 from 0.200 to 0.0200 mol dm-3, which matches the calculation.",
-    "The answer has been reported to 3 significant figures, consistent with the input data (25.0, 250.0, and 0.200 all have 3 significant figures)."
+    "Dilution factor of 10 (250/25) correctly reduces concentration by factor of 10: 0.200/10 = 0.0200",
+    "Units remain consistent: cm3 units cancel, result in mol dm-3",
+    "Answer is reasonable: diluted concentration is lower than original, as expected in dilution"
   ]
 }

@@ -3,17 +3,15 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Result given to 3 significant figures, consistent with the precision of the NaOH concentration (0.150 mol dm-3)."
+    "precision_note": "Result given to 3 significant figures, consistent with the input data (23.40 cm3, 0.150 mol dm-3, 25.00 cm3 all to 3 sig figs)."
   },
-  "method": "First, calculate moles of NaOH used: n(NaOH) = concentration × volume = 0.150 mol dm-3 × (23.40 cm3 / 1000) dm3 = 0.00351 mol. From the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the mole ratio is 1:2, so n(H2SO4) = n(NaOH) / 2 = 0.00351 mol / 2 = 0.001755 mol. The volume of H2SO4 is 25.00 cm3 = 0.02500 dm3. Therefore, concentration of H2SO4 = n / V = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
+  "method": "First calculate moles of NaOH used: n(NaOH) = c × V = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.003510 mol. From the balanced equation H2SO4 + 2NaOH, the ratio is 1:2, so n(H2SO4) = 0.003510/2 = 0.001755 mol. The concentration of H2SO4 is then c = n/V = 0.001755 mol / (25.00/1000) dm3 = 0.001755/0.02500 = 0.0702 mol dm-3.",
   "key_equations": [
-    "c = n / V",
-    "n(NaOH) = c(NaOH) × V(NaOH)",
-    "n(H2SO4) = n(NaOH) / 2"
+    "n = c × V",
+    "c = n / V"
   ],
-  "line_refs": ["L15", "L39", "L40"],
+  "line_refs": ["L39", "L40"],
   "checks": [
-    "Mole ratio check: From L40, H2SO4 + 2NaOH confirms 1:2 ratio, correctly applied.",
-    "Concentration check: 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3, consistent with 3 sig figs."
+    "Mole ratio check: moles NaOH = 0.00351 mol, divided by 2 gives 0.001755 mol H2SO4, which in 25.00 cm3 gives 0.0702 mol dm-3."
   ]
 }

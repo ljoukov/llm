@@ -3,15 +3,15 @@
   "final_answer": {
     "value": 0.0736,
     "units": "dimensionless",
-    "precision_note": "Reported to 3 significant figures as Kc is dimensionless (unitless) per L21; calculated value is 0.073636... rounded to 0.0736."
+    "precision_note": "3 significant figures, as equilibrium moles are given to 3 s.f. (0.180 and 0.220)"
   },
-  "method": "Step 1: Calculate equilibrium concentrations from the given mole amounts and vessel volume. From L56, vessel volume = 2.00 dm3. From L57, moles(NO2) = 0.180 mol. From L58, moles(N2O4) = 0.220 mol. Step 2: Calculate concentrations using c = n / V. [NO2] = 0.180 / 2.00 = 0.0900 mol dm-3. [N2O4] = 0.220 / 2.00 = 0.110 mol dm-3. Step 3: Calculate Kc using the expression from L20: Kc = [NO2]^2 / [N2O4]. Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.073636... = 0.0736 to 3 s.f. Note: L21 confirms Kc should be reported as dimensionless (unitless).",
+  "method": "Calculate equilibrium concentrations by dividing moles by volume (2.00 dm3). [NO2] = 0.180 / 2.00 = 0.0900 mol dm-3. [N2O4] = 0.220 / 2.00 = 0.110 mol dm-3. Apply the equilibrium constant expression Kc = [NO2]² / [N2O4]. Substituting values: Kc = (0.0900)² / 0.110 = 0.00810 / 0.110 = 0.0736. The value is reported as dimensionless (unitless) as specified in the constants section.",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4]",
+    "Kc = [NO2]² / [N2O4]",
     "c = n / V"
   ],
   "line_refs": [
-    "L14",
+    "L15",
     "L20",
     "L21",
     "L56",
@@ -19,7 +19,8 @@
     "L58"
   ],
   "checks": [
-    "Unit check: (mol dm-3)^2 / (mol dm-3) = mol dm-3, but per L21 Kc is reported as dimensionless for this equilibrium expression.",
-    "Physical sense: Kc < 1 indicates equilibrium lies toward reactants (N2O4), consistent with more moles of N2O4 than NO2 at equilibrium."
+    "Concentration check: moles divided by volume 2.00 dm3 gives correct concentrations - verified",
+    "Expression check: product concentration squared (NO2) divided by reactant (N2O4) - verified",
+    "Magnitude check: similar moles of each species with squared term gives Kc < 1 - verified (0.0736 indicates reactants favored)"
   ]
 }

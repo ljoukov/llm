@@ -3,23 +3,23 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Moles of NaOH = 0.150 mol dm-3 × 0.02340 dm3 = 0.00351 mol (3 significant figures). From stoichiometry 1:2, moles H2SO4 = 0.00351 / 2 = 0.001755 mol. Concentration = 0.001755 / 0.02500 = 0.0702 mol dm-3 (3 significant figures)."
+    "precision_note": "Result expressed to 3 significant figures, matching the input data precision of 23.40 cm3 (4 sf), 0.150 mol dm-3 (3 sf), and 25.00 cm3 (4 sf)."
   },
-  "method": "Calculate moles of NaOH used: n(NaOH) = concentration × volume = 0.150 mol dm-3 × (23.40 cm3 / 1000) = 0.150 × 0.02340 = 0.003510 mol. From the balanced equation H2SO4 + 2NaOH → Na2SO4 + 2H2O, the mole ratio is 1:2, meaning 1 mole of H2SO4 reacts with 2 moles of NaOH. So moles of H2SO4 = n(NaOH) / 2 = 0.003510 / 2 = 0.001755 mol. Calculate concentration of H2SO4: c = n / V = 0.001755 mol / (25.00 cm3 / 1000) = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
+  "method": "First calculate moles of NaOH used: n(NaOH) = c × V = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.150 × 0.02340 = 0.003510 mol (L15, L39). From the reaction H2SO4 + 2NaOH → Na2SO4 + 2H2O (L40), the mole ratio is 1 mole H2SO4 : 2 moles NaOH. Therefore moles of H2SO4 = n(NaOH)/2 = 0.003510/2 = 0.001755 mol. Concentration of H2SO4 = moles / volume = 0.001755 mol / (25.00/1000) dm3 = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
   "key_equations": [
-    "c = n / V",
-    "H2SO4 + 2NaOH → Na2SO4 + 2H2O (1:2 mole ratio)"
+    "c = n / V (concentration equation, from L15)",
+    "n = c × V",
+    "H2SO4 + 2NaOH → Na2SO4 + 2H2O (1:2 mole ratio from L40)"
   ],
   "line_refs": [
     "L15",
-    "L38",
     "L39",
-    "L40",
-    "L41"
+    "L40"
   ],
   "checks": [
-    "The stoichiometric ratio of 1:2 between H2SO4 and NaOH was correctly applied from the balanced equation.",
-    "Volumes were converted to dm3 by dividing by 1000 (23.40 cm3 = 0.02340 dm3, 25.00 cm3 = 0.02500 dm3).",
-    "The final concentration 0.0702 mol dm-3 is consistent with the titration data and has been reported to 3 significant figures."
+    "Mole ratio correctly applied: 2 moles NaOH per 1 mole H2SO4",
+    "Volume conversion correct: cm3 to dm3 by dividing by 1000",
+    "Calculation consistency: (0.150 × 0.02340/2) / 0.02500 = 0.0702 mol dm-3",
+    "Result is reasonable: acid concentration should be less than base concentration due to 2:1 ratio"
   ]
 }

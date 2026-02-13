@@ -1,0 +1,20 @@
+{
+  "problem_id": "P02",
+  "final_answer": {
+    "value": 1.85,
+    "units": "g",
+    "precision_note": "Result reported to 3 significant figures, limited by the purity value (84.0%) and sample mass (5.00 g) which both have 3 significant figures."
+  },
+  "method": "First, calculate the mass of pure CaCO3 in the limestone sample: mass = 5.00 g × 0.840 = 4.20 g. Next, calculate moles of CaCO3 using n = m/Mr: n(CaCO3) = 4.20 g / 100.1 g mol-1 = 0.04196 mol. From the balanced equation CaCO3 + 2HCl → CaCl2 + CO2 + H2O, the mole ratio is 1:1 for CaCO3:CO2. Therefore, moles of CO2 = 0.04196 mol. Finally, mass of CO2 = n × Mr = 0.04196 mol × 44.0 g mol-1 = 1.846 g ≈ 1.85 g.",
+  "key_equations": [
+    "n = m / Mr",
+    "mass(CaCO3) = sample mass × purity",
+    "mass(CO2) = n(CO2) × Mr(CO2)"
+  ],
+  "line_refs": ["L14", "L25", "L26", "L33"],
+  "checks": [
+    "Mass of pure CaCO3 = 5.00 × 0.840 = 4.20 g, which is less than sample mass",
+    "Mole ratio CaCO3:CO2 is 1:1 from the balanced equation at L34",
+    "Final mass of CO2 (1.85 g) is less than mass of CaCO3 (4.20 g), as expected since Mr(CO2) < Mr(CaCO3)"
+  ]
+}

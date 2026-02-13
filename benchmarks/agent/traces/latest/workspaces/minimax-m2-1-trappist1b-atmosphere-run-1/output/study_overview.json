@@ -6,37 +6,38 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Does TRAPPIST-1 b retain any atmosphere under strong stellar irradiation from its M dwarf host star, given its very short and likely tidally locked orbit?",
+  "core_question": "Does TRAPPIST-1 b, an Earth-sized rocky planet on a very short, tidally locked orbit around an M dwarf, retain an atmosphere under strong stellar irradiation?",
   "datasets_or_cohorts": [
     {
-      "id": "trappist-1b-observed",
-      "label": "Observed planetary system",
-      "sample_size_or_observations": "One rocky exoplanet with phase-resolved thermal spectra",
-      "description": "JWST MIRI low-resolution spectroscopy observations of TRAPPIST-1 b, capturing thermal emission variations over a complete orbital phase curve and spectral structure around the 15 um CO2 band."
+      "id": "trappist1b-system",
+      "label": "TRAPPIST-1 b System",
+      "sample_size_or_observations": "Single planet with phase-resolved thermal spectra",
+      "description": "The observed rocky exoplanet TRAPPIST-1 b with JWST MIRI low-resolution spectroscopy over an orbital phase curve, providing thermal phase variation and spectral structure around the 15 um CO2 band."
     },
     {
-      "id": "bare-rock-null",
-      "label": "Bare-rock null hypothesis",
-      "sample_size_or_observations": "Model scenario comparison",
-      "description": "Atmosphere-free model assuming minimal heat redistribution, where absorbed stellar energy is immediately reradiated from the dayside without atmospheric transport mechanisms."
+      "id": "null-scenario",
+      "label": "Bare-rock Null Scenario",
+      "sample_size_or_observations": "Model comparison scenario",
+      "description": "A pure no-atmosphere model with minimal heat redistribution, serving as the null hypothesis to test whether an atmosphere is required to explain the observations."
     },
     {
-      "id": "co2-rich-atmosphere",
-      "label": "CO2-rich atmosphere scenario",
-      "sample_size_or_observations": "Model retrieval scenario",
-      "description": "Atmosphere model incorporating significant greenhouse gas absorption, particularly targeting the 15 um spectral band where CO2 creates a characteristic spectral signature."
+      "id": "co2-rich-scenario",
+      "label": "CO2-rich Atmosphere Scenario",
+      "sample_size_or_observations": "Model comparison scenario",
+      "description": "An atmosphere model with significant greenhouse gas absorption, particularly targeting the CO2 spectral feature near 15 um to assess whether carbon dioxide can explain the observed spectral structure."
     },
     {
-      "id": "o2-rich-atmosphere",
-      "label": "O2-rich atmosphere scenario",
-      "sample_size_or_observations": "Model retrieval scenario",
-      "description": "Oxidized atmospheric composition scenario with weaker CO2 signature constraints, representing a potential alternative atmospheric chemistry for tidally locked rocky planets."
+      "id": "o2-rich-scenario",
+      "label": "O2-rich Atmosphere Scenario",
+      "sample_size_or_observations": "Model comparison scenario",
+      "description": "An oxidized atmospheric composition with weaker CO2 signature constraints, representing an alternative composition that could also potentially match the data."
     }
   ],
   "major_limitations": [
     "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets.",
-    "Retrieval assumptions including circulation models, opacity priors, and cloud treatment affect quantitative posteriors and conclusions.",
-    "Stellar variability and instrument systematics can bias weak spectral features and introduce uncertainties in atmospheric detections.",
-    "Night-side constraints are weaker than day-side constraints in the current JWST MIRI dataset, limiting complete atmospheric characterization."
+    "Retrieval assumptions including circulation models, opacity priors, and cloud treatment affect quantitative posteriors and could bias results.",
+    "Stellar variability and instrument systematics can bias weak spectral features, introducing uncertainty into the detection claims.",
+    "Night-side constraints are weaker than day-side constraints in the current dataset due to observational geometry.",
+    "Degeneracies between atmospheric composition, cloud/haze properties, and circulation assumptions remain significant and limit compositional constraints."
   ]
 }
