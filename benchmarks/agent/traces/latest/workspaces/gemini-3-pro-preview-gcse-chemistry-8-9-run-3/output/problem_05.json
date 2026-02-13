@@ -1,0 +1,23 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "Inputs 1.50 A and 30.0 min have 3 s.f. Result is rounded to 0.889 g."
+  },
+  "method": "Convert time to seconds: 30.0 * 60 = 1800 s. Calculate charge: Q = I * t = 1.50 * 1800 = 2700 C. Calculate moles of electrons: n(e-) = 2700 / 96500 = 0.02798 mol. Moles of Cu = n(e-) / 2 = 0.01399 mol. Mass of Cu = 0.01399 * 63.55 = 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "n = m / Mr"
+  ],
+  "line_refs": [
+    "L51",
+    "L52",
+    "L17",
+    "L18"
+  ],
+  "checks": [
+    "Roughly 0.028 mol e- -> 0.014 mol Cu. 0.014 * 64 ~ 0.9 g. Matches."
+  ]
+}

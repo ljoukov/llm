@@ -3,9 +3,9 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "All bond energy data provided has three significant figures, so the estimated enthalpy change is reported to three significant figures."
+    "precision_note": "All mean bond energies are given to three significant figures. The final result from the summation and subtraction (2648 - 3462 = -814) is also given to three significant figures, consistent with the precision of the input data."
   },
-  "method": "The enthalpy change (deltaH) is estimated using the formula deltaH = sum(bonds broken) - sum(bonds formed) (L47). First, calculate the energy for bonds broken (reactants: CH4 + 2O2, L45, L46): (4 * C-H) + (2 * O=O) = (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ mol-1. Second, calculate the energy for bonds formed (products: CO2 + 2H2O, L45, L46): (2 * C=O) + (4 * O-H) = (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ mol-1. Finally, deltaH = 2648 - 3462 = -814 kJ mol-1.",
+  "method": "The enthalpy change ($\\Delta H$) is estimated using the formula $\\Delta H = \\sum(\\text{Bonds Broken}) - \\sum(\\text{Bonds Formed})$. Bonds broken (reactants: $\\text{CH}_4 + 2\\text{O}_2$): $4 \\times (\\text{C-H}) + 2 \\times (\\text{O=O}) = 4 \\times 413 \\text{ kJ mol}^{-1} + 2 \\times 498 \\text{ kJ mol}^{-1} = 1652 \\text{ kJ mol}^{-1} + 996 \\text{ kJ mol}^{-1} = 2648 \\text{ kJ mol}^{-1}$. Bonds formed (products: $\\text{CO}_2 + 2\\text{H}_2\\text{O}$): $2 \\times (\\text{C=O}) + 4 \\times (\\text{O-H}) = 2 \\times 805 \\text{ kJ mol}^{-1} + 4 \\times 463 \\text{ kJ mol}^{-1} = 1610 \\text{ kJ mol}^{-1} + 1852 \\text{ kJ mol}^{-1} = 3462 \\text{ kJ mol}^{-1}$. The estimated enthalpy change is $\\Delta H = 2648 \\text{ kJ mol}^{-1} - 3462 \\text{ kJ mol}^{-1} = -814 \\text{ kJ mol}^{-1}$. The negative sign indicates an exothermic reaction.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)",
     "CH4 + 2O2 -> CO2 + 2H2O"
@@ -16,8 +16,6 @@
     "L47"
   ],
   "checks": [
-    "Energy broken (endothermic) = 2648 kJ mol-1.",
-    "Energy formed (exothermic) = 3462 kJ mol-1.",
-    "deltaH = 2648 - 3462 = -814 kJ mol-1, which is exothermic as expected for combustion."
+    "A check on the bond count: Reactants (broken): 4 C-H, 2 O=O. Products (formed): 2 C=O, 4 O-H. The calculation is 2648 - 3462 = -814 kJ mol-1. This is a common value for the estimated enthalpy of methane combustion."
   ]
 }

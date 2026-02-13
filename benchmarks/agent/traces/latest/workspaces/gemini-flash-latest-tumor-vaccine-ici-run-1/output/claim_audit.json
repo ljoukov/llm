@@ -2,25 +2,13 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination significantly expands the repertoire of tumor antigens presented on MHC-I molecules.",
-      "strength": "moderate",
-      "evidence": [
-        {
-          "quote": "Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3% | Broader antigen display after intratumoral mRNA vaccination",
-          "line_ref": "L28"
-        },
-        {
-          "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape",
-          "line_ref": "L29"
-        }
-      ],
-      "caveat": "Mouse model effects may not map one-to-one to all human tumors."
-    },
-    {
-      "claim_id": "C02",
-      "claim": "The ability of intratumoral mRNA vaccination to sensitize tumors to immune checkpoint blockade is strictly dependent on the induction of Type I interferon signaling.",
+      "claim": "Intratumoral mRNA vaccination triggers a local innate sensing and strong type I interferon signaling response within the tumor microenvironment.",
       "strength": "strong",
       "evidence": [
+        {
+          "quote": "intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
+          "line_ref": "L42"
+        },
         {
           "quote": "Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors",
           "line_ref": "L31"
@@ -33,36 +21,64 @@
       "caveat": "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
     },
     {
+      "claim_id": "C02",
+      "claim": "mRNA vaccination significantly expands the repertoire of tumor-associated peptides presented on MHC-I, effectively increasing tumor visibility to T cells.",
+      "strength": "strong",
+      "evidence": [
+        {
+          "quote": "Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3% | Broader antigen display after intratumoral mRNA vaccination",
+          "line_ref": "L28"
+        },
+        {
+          "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape",
+          "line_ref": "L29"
+        },
+        {
+          "quote": "A broader peptide repertoire appears on MHC-I, improving tumor visibility to T cells.",
+          "line_ref": "L44"
+        }
+      ],
+      "caveat": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models, suggesting the T cell response is insufficient without checkpoint blockade."
+    },
+    {
       "claim_id": "C03",
-      "claim": "Combination therapy involving mRNA vaccination and ICI promotes an inflammatory state characterized by increased CD8+ T-cell infiltration and PD-L1 expression.",
+      "claim": "Combining intratumoral mRNA vaccination with checkpoint blockade results in a synergistic anti-tumor effect, increasing T-cell infiltration and making the checkpoint axis more targetable.",
       "strength": "moderate",
       "evidence": [
+        {
+          "quote": "Intratumoral CD8+ T-cell density fold-change | 1.8x | 1.0x | Increased immune infiltration with combination therapy",
+          "line_ref": "L33"
+        },
         {
           "quote": "PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x | Checkpoint axis became more targetable",
           "line_ref": "L32"
         },
         {
-          "quote": "Intratumoral CD8+ T-cell density fold-change | 1.8x | 1.0x | Increased immune infiltration with combination therapy",
-          "line_ref": "L33"
+          "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
+          "line_ref": "L46"
         }
       ],
-      "caveat": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models."
+      "caveat": "Mouse model effects may not map one-to-one to all human tumors, and ICI-only treatment had limited activity in low-immunogenic baseline settings."
     },
     {
       "claim_id": "C04",
-      "claim": "Patients who had received a prior SARS-CoV-2 mRNA vaccination showed an improved survival outcome when subsequently treated with immune checkpoint inhibitors (ICI).",
+      "claim": "In a retrospective analysis, prior SARS-CoV-2 mRNA vaccination is statistically associated with improved survival outcomes in metastatic cancer patients treated with Immune Checkpoint Inhibitors (ICI).",
       "strength": "tentative",
       "evidence": [
         {
-          "quote": "Human retrospective metastatic cohort: 130 patients total.",
-          "line_ref": "L21"
-        },
-        {
           "quote": "Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment",
           "line_ref": "L30"
+        },
+        {
+          "quote": "Translational arm: a retrospective cohort of metastatic patients receiving ICI treatment, compared by prior SARS-CoV-2 mRNA vaccination status.",
+          "line_ref": "L15"
+        },
+        {
+          "quote": "The study supports a biologically coherent hypothesis that intratumoral mRNA vaccination can prime tumors for stronger ICI responses, but prospective randomized studies are required before clinical protocol changes are justified.",
+          "line_ref": "L56"
         }
       ],
-      "caveat": "The human analysis is retrospective and non-randomized; residual confounding is likely."
+      "caveat": "The human analysis is retrospective and non-randomized; residual confounding is likely, and vaccination timing relative to ICI initiation varied across patients."
     }
   ]
 }

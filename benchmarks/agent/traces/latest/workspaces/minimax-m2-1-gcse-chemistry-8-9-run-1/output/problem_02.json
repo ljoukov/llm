@@ -3,25 +3,24 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "The mass of CaCO3 is calculated from 5.00 g × 0.840 (3 significant figures), giving 4.20 g. Moles of CaCO3 = 4.20 / 100.1 = 0.04196 mol (4 significant figures from division). Final answer reported to 3 significant figures."
+    "precision_note": "Result expressed to 3 significant figures, matching the input data precision of 5.00 g (3 sf) and 84.0% (3 sf)."
   },
-  "method": "First calculate the mass of pure CaCO3 in the 5.00 g sample: mass(CaCO3) = 5.00 g × 0.840 = 4.20 g. Then calculate moles of CaCO3: n = m / Mr = 4.20 g / 100.1 g mol-1 = 0.041958 mol. From the balanced equation CaCO3 + 2HCl → CaCl2 + CO2 + H2O, 1 mole of CaCO3 produces 1 mole of CO2. So moles of CO2 = 0.041958 mol. Finally calculate mass of CO2: m = n × Mr = 0.041958 mol × 44.0 g mol-1 = 1.846 g, which rounds to 1.85 g.",
+  "method": "First calculate the mass of pure CaCO3 in the sample: 5.00 g × 84.0% = 5.00 g × 0.840 = 4.20 g (L33). Using moles equation n = m/Mr from L14, moles of CaCO3 = 4.20 g / 100.1 g mol-1 = 0.04196 mol (L25). From the reaction CaCO3 + 2HCl → CaCl2 + CO2 + H2O (L34), 1 mole of CaCO3 produces 1 mole of CO2. Therefore moles of CO2 = 0.04196 mol. Using Mr(CO2) = 44.0 g mol-1 (L26), mass of CO2 = 0.04196 mol × 44.0 g mol-1 = 1.846 g, rounded to 1.85 g.",
   "key_equations": [
-    "n = m / Mr",
-    "CaCO3 + 2HCl → CaCl2 + CO2 + H2O (1:1 mole ratio)"
+    "n = m / Mr (moles equation, from L14)",
+    "Mass of CO2 = moles(CO2) × Mr(CO2)"
   ],
   "line_refs": [
     "L14",
     "L25",
     "L26",
     "L33",
-    "L34",
-    "L35",
-    "L36"
+    "L34"
   ],
   "checks": [
-    "The stoichiometry is correct: 1 mole CaCO3 produces 1 mole CO2 based on the balanced equation.",
-    "The molar mass of CO2 (44.0 g mol-1) from line 26 was used correctly.",
-    "The final answer 1.85 g has been rounded to 3 significant figures, appropriate for the input data."
+    "Mole ratio 1:1 in reaction correctly applied (1 mol CaCO3 produces 1 mol CO2)",
+    "Molar mass values correctly used: Mr(CaCO3) = 100.1, Mr(CO2) = 44.0",
+    "Calculation is consistent: (4.20/100.1) × 44.0 = 1.846 g → 1.85 g (3 sf)",
+    "Result is reasonable: less CO2 produced than original CaCO3 mass due to oxygen contribution"
   ]
 }

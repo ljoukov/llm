@@ -123,6 +123,24 @@ type BenchmarkTaskSummary = {
   readonly sourceUrl: string;
 };
 
+type ModelTaskRunSummary = {
+  readonly model: string;
+  readonly taskId: string;
+  readonly runs: number;
+  readonly passCount: number;
+  readonly schemaPassCount: number;
+  readonly toolPassCount: number;
+  readonly graderPassCount: number;
+  readonly bestRunIndex: number;
+  readonly bestSuccess: boolean;
+  readonly avgDurationMs: number;
+  readonly bestDurationMs: number;
+  readonly avgCostUsd: number;
+  readonly bestCostUsd: number;
+  readonly avgToolCalls: number;
+  readonly bestToolCalls: number;
+};
+
 type LatestSummarySnapshot = {
   readonly models: readonly string[];
   readonly tasks: readonly BenchmarkTaskSummary[];
@@ -358,6 +376,13 @@ function formatUsd(value: number): string {
 
 function formatInt(value: number): string {
   return value.toLocaleString("en-US");
+}
+
+function formatPercent(numerator: number, denominator: number): string {
+  if (denominator <= 0) {
+    return "0.0%";
+  }
+  return `${((numerator / denominator) * 100).toFixed(1)}%`;
 }
 
 function resolveAgentReasoning(model: string, baseReasoning: ReasoningEffort): ReasoningEffort {
@@ -1302,6 +1327,143 @@ function summarizeByModel(
   };
 }
 
+function modelTaskResultKey(value: Pick<CaseResult, "model" | "taskId">): string {
+  return `${value.model}::${value.taskId}`;
+}
+
+function graderScoreTotal(result: CaseResult): number {
+  const scores = result.grader.value?.scores;
+  if (!scores) {
+    return 0;
+  }
+  return scores.faithfulness + scores.coverage + scores.usefulness;
+}
+
+function resultGateScore(result: CaseResult): number {
+  let score = 0;
+  if (result.success) {
+    score += 8;
+  }
+  if (result.schemaPass) {
+    score += 4;
+  }
+  if (result.toolTracePass) {
+    score += 2;
+  }
+  if (result.graderPass) {
+    score += 1;
+  }
+  return score;
+}
+
+function isBetterCaseResult(candidate: CaseResult, best: CaseResult): boolean {
+  const candidateGate = resultGateScore(candidate);
+  const bestGate = resultGateScore(best);
+  if (candidateGate !== bestGate) {
+    return candidateGate > bestGate;
+  }
+
+  const candidateGrader = graderScoreTotal(candidate);
+  const bestGrader = graderScoreTotal(best);
+  if (candidateGrader !== bestGrader) {
+    return candidateGrader > bestGrader;
+  }
+
+  if (candidate.durationMs !== best.durationMs) {
+    return candidate.durationMs < best.durationMs;
+  }
+  if (candidate.totalCostUsd !== best.totalCostUsd) {
+    return candidate.totalCostUsd < best.totalCostUsd;
+  }
+  return candidate.runIndex < best.runIndex;
+}
+
+function summarizeByModelTaskAcrossRuns(params: {
+  models: readonly string[];
+  tasks: readonly BenchmarkTaskSummary[];
+  cases: readonly CaseResult[];
+}): readonly ModelTaskRunSummary[] {
+  const grouped = new Map<string, CaseResult[]>();
+  for (const result of params.cases) {
+    const key = modelTaskResultKey(result);
+    const group = grouped.get(key);
+    if (group) {
+      group.push(result);
+    } else {
+      grouped.set(key, [result]);
+    }
+  }
+
+  const summaries: ModelTaskRunSummary[] = [];
+  const consumed = new Set<string>();
+  const appendSummary = (model: string, taskId: string, entries: readonly CaseResult[]) => {
+    if (entries.length === 0) {
+      return;
+    }
+
+    let best = entries[0];
+    if (!best) {
+      return;
+    }
+    for (const result of entries.slice(1)) {
+      if (isBetterCaseResult(result, best)) {
+        best = result;
+      }
+    }
+
+    const runs = entries.length;
+    const passCount = entries.filter((entry) => entry.success).length;
+    const schemaPassCount = entries.filter((entry) => entry.schemaPass).length;
+    const toolPassCount = entries.filter((entry) => entry.toolTracePass).length;
+    const graderPassCount = entries.filter((entry) => entry.graderPass).length;
+    const avgDurationMs = entries.reduce((acc, entry) => acc + entry.durationMs, 0) / runs;
+    const avgCostUsd = entries.reduce((acc, entry) => acc + entry.totalCostUsd, 0) / runs;
+    const avgToolCalls = entries.reduce((acc, entry) => acc + entry.toolTrace.totalCalls, 0) / runs;
+
+    summaries.push({
+      model,
+      taskId,
+      runs,
+      passCount,
+      schemaPassCount,
+      toolPassCount,
+      graderPassCount,
+      bestRunIndex: best.runIndex,
+      bestSuccess: best.success,
+      avgDurationMs,
+      bestDurationMs: best.durationMs,
+      avgCostUsd,
+      bestCostUsd: best.totalCostUsd,
+      avgToolCalls,
+      bestToolCalls: best.toolTrace.totalCalls,
+    });
+  };
+
+  for (const model of params.models) {
+    for (const task of params.tasks) {
+      const key = modelTaskResultKey({ model, taskId: task.id });
+      const entries = grouped.get(key);
+      if (!entries) {
+        continue;
+      }
+      consumed.add(key);
+      appendSummary(model, task.id, entries);
+    }
+  }
+
+  const remaining = [...grouped.entries()].filter(([key]) => !consumed.has(key));
+  remaining.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const [key, entries] of remaining) {
+    const [model, taskId] = key.split("::");
+    if (!model || !taskId) {
+      continue;
+    }
+    appendSummary(model, taskId, entries);
+  }
+
+  return summaries;
+}
+
 function buildMarkdownReport(params: {
   runId: string;
   generatedAt: string;
@@ -1322,6 +1484,11 @@ function buildMarkdownReport(params: {
   const totalDurationMs = params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0);
   const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
   const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
+  const perTaskAcrossRuns = summarizeByModelTaskAcrossRuns({
+    models: params.models,
+    tasks: params.tasks,
+    cases: params.caseResults,
+  });
 
   const lines: string[] = [];
   lines.push("# Filesystem Agent Benchmark Report");
@@ -1390,6 +1557,19 @@ function buildMarkdownReport(params: {
   }
   lines.push("");
 
+  lines.push("## Per-Task Across Runs (Best + Average)");
+  lines.push("");
+  lines.push(
+    "| Model | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls |",
+  );
+  lines.push("|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|");
+  for (const summary of perTaskAcrossRuns) {
+    lines.push(
+      `| ${summary.model} | ${summary.taskId} | ${summary.runs} | ${summary.bestSuccess ? "PASS" : "FAIL"} (run ${summary.bestRunIndex}) | ${summary.passCount}/${summary.runs} (${formatPercent(summary.passCount, summary.runs)}) | ${summary.schemaPassCount}/${summary.runs} (${formatPercent(summary.schemaPassCount, summary.runs)}) | ${summary.toolPassCount}/${summary.runs} (${formatPercent(summary.toolPassCount, summary.runs)}) | ${summary.graderPassCount}/${summary.runs} (${formatPercent(summary.graderPassCount, summary.runs)}) | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.bestDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.avgCostUsd)} | ${formatUsd(summary.bestCostUsd)} | ${summary.avgToolCalls.toFixed(2)} | ${summary.bestToolCalls} |`,
+    );
+  }
+  lines.push("");
+
   lines.push("## Case Matrix");
   lines.push("");
   lines.push(
@@ -1453,6 +1633,11 @@ function buildLatestResultsMarkdown(params: {
   const totalDurationMs = params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0);
   const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
   const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
+  const perTaskAcrossRuns = summarizeByModelTaskAcrossRuns({
+    models: params.models,
+    tasks: params.tasks,
+    cases: params.caseResults,
+  });
 
   const lines: string[] = [];
   lines.push("# Latest Agent Benchmark Results");
@@ -1498,6 +1683,19 @@ function buildLatestResultsMarkdown(params: {
     const overall = summary.success === summary.cases ? "PASS" : "FAIL";
     lines.push(
       `| \`${summary.model}\` | ${overall} | ${summary.schemaPass}/${summary.cases} | ${summary.toolPass}/${summary.cases} | ${summary.graderPass}/${summary.cases} | ${summary.totalToolCalls} | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.totalDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.totalCostUsd)} | ${formatInt(summary.totalUsage.promptTokens)} | ${formatInt(summary.totalUsage.cachedTokens)} | ${formatInt(summary.totalUsage.responseTokens)} |`,
+    );
+  }
+  lines.push("");
+
+  lines.push("## Per-Task Across Runs (Best + Average)");
+  lines.push("");
+  lines.push(
+    "| Model | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls |",
+  );
+  lines.push("|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|");
+  for (const summary of perTaskAcrossRuns) {
+    lines.push(
+      `| \`${summary.model}\` | \`${summary.taskId}\` | ${summary.runs} | ${summary.bestSuccess ? "PASS" : "FAIL"} (run ${summary.bestRunIndex}) | ${summary.passCount}/${summary.runs} (${formatPercent(summary.passCount, summary.runs)}) | ${summary.schemaPassCount}/${summary.runs} (${formatPercent(summary.schemaPassCount, summary.runs)}) | ${summary.toolPassCount}/${summary.runs} (${formatPercent(summary.toolPassCount, summary.runs)}) | ${summary.graderPassCount}/${summary.runs} (${formatPercent(summary.graderPassCount, summary.runs)}) | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.bestDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.avgCostUsd)} | ${formatUsd(summary.bestCostUsd)} | ${summary.avgToolCalls.toFixed(2)} | ${summary.bestToolCalls} |`,
     );
   }
   lines.push("");
@@ -1918,6 +2116,11 @@ async function main(): Promise<void> {
             params.caseResults.length,
       totalCostUsd: params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0),
       usage: sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage)),
+      perModelTask: summarizeByModelTaskAcrossRuns({
+        models: params.models,
+        tasks: params.tasks,
+        cases: params.caseResults,
+      }),
     },
     results: params.caseResults,
   });
@@ -1962,7 +2165,9 @@ async function main(): Promise<void> {
       latestReasoning = existingSnapshot.reasoning;
       console.log("Merged this run with existing traces/latest summary.");
     } else {
-      console.log("No existing traces/latest/summary.json found; merge mode will publish current run.");
+      console.log(
+        "No existing traces/latest/summary.json found; merge mode will publish current run.",
+      );
     }
   }
 
@@ -2024,7 +2229,10 @@ async function main(): Promise<void> {
   await writeFile(latestResultsPath, latestResultsMarkdown);
   if (values["merge-latest"]) {
     await mkdir(tracesLatestRoot, { recursive: true });
-    await writeFile(join(tracesLatestRoot, "summary.json"), `${JSON.stringify(latestSummary, null, 2)}\n`);
+    await writeFile(
+      join(tracesLatestRoot, "summary.json"),
+      `${JSON.stringify(latestSummary, null, 2)}\n`,
+    );
     await writeFile(join(tracesLatestRoot, "report.md"), latestMarkdown);
     await mergeWorkspaceArtifacts({
       tracesLatestRoot,
@@ -2034,7 +2242,10 @@ async function main(): Promise<void> {
   } else {
     await rm(tracesLatestRoot, { recursive: true, force: true });
     await mkdir(tracesLatestRoot, { recursive: true });
-    await writeFile(join(tracesLatestRoot, "summary.json"), `${JSON.stringify(latestSummary, null, 2)}\n`);
+    await writeFile(
+      join(tracesLatestRoot, "summary.json"),
+      `${JSON.stringify(latestSummary, null, 2)}\n`,
+    );
     await writeFile(join(tracesLatestRoot, "report.md"), latestMarkdown);
     await cp(join(runRoot, "workspaces"), join(tracesLatestRoot, "workspaces"), {
       recursive: true,

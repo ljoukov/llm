@@ -32,3 +32,4 @@ Read the report and produce all required JSON outputs that satisfy their schemas
 
 ## Completion
 Respond with a checklist of written output files.
+After the checklist, stop. Do not call more tools.

@@ -3,21 +3,22 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Key inputs are 3 s.f. (0.150 mol dm-3, 23.40 cm3, 25.00 cm3); report concentration to 3 s.f."
+    "precision_note": "Reported to 3 significant figures (limited by 0.150 mol dm-3 and titre data)."
   },
-  "method": "Convert the NaOH titre to dm3: 23.40 cm3 = 0.02340 dm3. Use c = n/V to get moles of NaOH: n(NaOH) = cV = 0.150 × 0.02340 = 0.00351 mol. From H2SO4 + 2NaOH → Na2SO4 + 2H2O, 2 mol NaOH neutralize 1 mol H2SO4, so n(H2SO4) = 0.00351/2 = 0.001755 mol. Convert acid volume: 25.00 cm3 = 0.02500 dm3. Then c(H2SO4) = n/V = 0.001755/0.02500 = 0.0702 mol dm-3.",
+  "method": "Convert the NaOH titre to dm3: 23.40 cm3 = 0.02340 dm3. Use c = n/V rearranged to n = cV: n(NaOH)=0.150×0.02340=0.00351 mol. From H2SO4 + 2NaOH -> Na2SO4 + 2H2O, 2 mol NaOH neutralize 1 mol H2SO4, so n(H2SO4)=0.00351/2=0.001755 mol. The acid volume is 25.00 cm3 = 0.02500 dm3, therefore c(H2SO4)=n/V=0.001755/0.02500=0.0702 mol dm-3.",
   "key_equations": [
     "c = n / V",
-    "n = cV",
-    "n(H2SO4) = n(NaOH)/2 (from 1:2 stoichiometry)"
+    "n = c×V",
+    "n(H2SO4) = n(NaOH)/2"
   ],
   "line_refs": [
     "L15",
     "L39",
-    "L40"
+    "L40",
+    "L41"
   ],
   "checks": [
-    "Because 2 mol NaOH react per 1 mol H2SO4 and the volumes are similar, the acid concentration should be a bit under half the NaOH concentration; 0.0702 is slightly under 0.075 and is plausible.",
-    "Recalculate quickly: (0.150×23.40/25.00)/2 ≈ (0.1404)/2 ≈ 0.0702 mol dm-3."
+    "If acid were 0.070 mol dm-3, moles in 0.0250 dm3 is ~0.00175 mol, matching stoichiometry from NaOH.",
+    "Concentration is lower than NaOH concentration, as expected because NaOH volume is similar but 2:1 base:acid ratio."
   ]
 }

@@ -3,9 +3,9 @@
   "final_answer": {
     "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "The data provided (0.200, 25.0, 250.0) is given to three significant figures, so the answer is also reported to three significant figures."
+    "precision_note": "The initial concentration (0.200 mol dm-3) and initial volume (25.0 cm3) both have three significant figures. The final volume (250.0 cm3) has four significant figures. The result is limited by the three significant figures of the least precise inputs."
   },
-  "method": "The final concentration (c2) is determined using the dilution equation, c1V1 = c2V2, where c1 is the initial concentration, V1 is the initial volume, and V2 is the final volume. The volumes can be used in cm3 as they cancel out. The final concentration is calculated as c2 = (c1 * V1) / V2 = (0.200 mol dm-3 * 25.0 cm3) / 250.0 cm3 = 0.0200 mol dm-3.",
+  "method": "The dilution formula, $c_1V_1 = c_2V_2$, is used to find the final concentration ($c_2$). The initial concentration ($c_1$) is $0.200 \\text{ mol dm}^{-3}$, the initial volume ($V_1$) is $25.0 \\text{ cm}^3$, and the final volume ($V_2$) is $250.0 \\text{ cm}^3$. Since the ratio of volumes is used, it is not necessary to convert to $\\text{dm}^3$ as long as the units are consistent. The equation is rearranged to $c_2 = c_1 \\times (V_1 / V_2)$. The calculation is $c_2 = 0.200 \\times (25.0 / 250.0) = 0.0200 \\text{ mol dm}^{-3}$.",
   "key_equations": [
     "c1V1 = c2V2"
   ],
@@ -15,8 +15,6 @@
     "L30"
   ],
   "checks": [
-    "The dilution factor is 250.0 cm3 / 25.0 cm3 = 10.",
-    "The initial concentration (0.200 mol dm-3) divided by the dilution factor (10) gives 0.0200 mol dm-3, confirming the calculation.",
-    "The final concentration (0.0200 mol dm-3) is correctly lower than the initial concentration, as expected for a dilution."
+    "The final volume (250.0 cm3) is exactly 10 times the initial volume (25.0 cm3). Therefore, the final concentration should be one-tenth of the initial concentration. 0.200 mol dm-3 / 10 = 0.0200 mol dm-3. This confirms the calculation."
   ]
 }

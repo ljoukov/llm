@@ -1,0 +1,23 @@
+{
+  "problem_id": "P06",
+  "final_answer": {
+    "value": 0.0736,
+    "units": "unitless",
+    "precision_note": "Kc to 3 s.f., limited by given moles (3 s.f.) and volume (3 s.f.)."
+  },
+  "method": "Convert moles to equilibrium concentrations using the vessel volume 2.00 dm3. [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Use Kc = [NO2]^2 / [N2O4]. Substitute: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736 (dimensionless).",
+  "key_equations": [
+    "Kc = [NO2]^2 / [N2O4]",
+    "[X] = moles(X) / volume"
+  ],
+  "line_refs": [
+    "L20",
+    "L56",
+    "L57",
+    "L58"
+  ],
+  "checks": [
+    "Both concentrations are < 0.2/2 = 0.1 mol dm-3 scale, so Kc should be around (0.09^2)/0.11 ≈ 0.07, matching.",
+    "If [NO2] were higher relative to [N2O4], Kc would increase; squaring [NO2] makes this sensitivity clear."
+  ]
+}

@@ -50,8 +50,8 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 ```bash
 npx tsx benchmarks/agent/run.ts \
   --models chatgpt-gpt-5.3-codex-spark,gpt-5.2,kimi-k2.5,glm-5,minimax-m2.1,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3-flash-preview \
-  --tasks tumor-vaccine-ici \
-  --runs 1 \
+  --tasks all \
+  --runs 3 \
   --reasoning medium \
   --grader-model chatgpt-gpt-5.2 \
   --max-steps 100
@@ -103,3 +103,4 @@ Workspace folders include:
 
 A committed high-level snapshot is kept in `benchmarks/agent/LATEST_RESULTS.md`.
 Committed per-model traces/workspaces are kept in `benchmarks/agent/traces/latest/`.
+Reports include a "Per-Task Across Runs (Best + Average)" section that summarizes each model/task pair across repeated runs.

@@ -1,0 +1,66 @@
+{
+  "findings": [
+    {
+      "id": "Q01",
+      "metric": "Dayside brightness temperature",
+      "value": "342 +/- 22 K",
+      "comparator_or_baseline": "Bare-rock expectation from no-redistribution model",
+      "interpretation": "The measured day-side brightness temperature is warm, but the authors note it is not by itself decisive evidence for a bare, atmosphere-free surface.",
+      "evidence_line_refs": ["L27"]
+    },
+    {
+      "id": "Q02",
+      "metric": "Heat transport efficiency (epsilon)",
+      "value": "0.19 (+0.23 / -0.14)",
+      "comparator_or_baseline": "0.0 for perfect no-atmosphere limit",
+      "interpretation": "A non-zero redistribution parameter is favored compared with the no-atmosphere limit, indicating some day-night energy transport beyond immediate local reradiation.",
+      "evidence_line_refs": ["L28", "L41"]
+    },
+    {
+      "id": "Q03",
+      "metric": "Bond albedo upper bound",
+      "value": "<0.08",
+      "comparator_or_baseline": "Higher-albedo reflective cases",
+      "interpretation": "Energy-balance fits imply the planet is very dark (low reflectivity), which affects the inferred thermal budget and model fits.",
+      "evidence_line_refs": ["L29"]
+    },
+    {
+      "id": "Q04",
+      "metric": "15 um CO2 spectral band depth estimate",
+      "value": "96 ppm",
+      "comparator_or_baseline": "Flat-spectrum null",
+      "interpretation": "The reported spectral structure near 15 um is consistent with atmospheric absorption and is highlighted as composition-sensitive evidence (especially for CO2-rich scenarios).",
+      "evidence_line_refs": ["L30", "L42"]
+    },
+    {
+      "id": "Q05",
+      "metric": "Joint fit likelihood ratio (atmosphere vs no atmosphere)",
+      "value": "7.4",
+      "comparator_or_baseline": "1.0 baseline ratio",
+      "interpretation": "In the joint fit of phase-curve and spectral information, atmosphere-bearing models better explain the combined data products than no-atmosphere models.",
+      "evidence_line_refs": ["L31"]
+    },
+    {
+      "id": "Q06",
+      "metric": "Preferred pressure scale in CO2-rich retrieval family",
+      "value": "0.3-1.0 bar",
+      "comparator_or_baseline": "Near-vacuum branch",
+      "interpretation": "Within the CO2-rich family of retrievals, moderate-pressure solutions remain plausible relative to a near-vacuum branch.",
+      "evidence_line_refs": ["L32"]
+    }
+  ],
+  "controls_or_null_results": [
+    {
+      "statement": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
+      "evidence_line_ref": "L35"
+    },
+    {
+      "statement": "O2-rich atmosphere cases are not fully ruled out by current data.",
+      "evidence_line_ref": "L36"
+    },
+    {
+      "statement": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant.",
+      "evidence_line_ref": "L37"
+    }
+  ]
+}

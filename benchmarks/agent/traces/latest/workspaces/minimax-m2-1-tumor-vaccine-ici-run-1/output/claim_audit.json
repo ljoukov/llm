@@ -2,11 +2,11 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling within the tumor microenvironment.",
+      "claim": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling, creating an inflammatory state that sensitizes tumors to checkpoint blockade",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Type I interferon response score (normalized units)",
+          "quote": "Type I interferon response score (normalized units) | 3.1 | 1.0",
           "line_ref": "L31"
         },
         {
@@ -14,63 +14,67 @@
           "line_ref": "L39"
         }
       ],
-      "caveat": "The interferon response magnitude may vary across different tumor types and model systems, as some mechanistic readouts were strongest in specific settings rather than uniformly across all tested conditions."
+      "caveat": "While the interferon response and its necessity are well-supported by experimental controls, the precise molecular pathways of innate sensing in different tumor types may vary and require further characterization"
     },
     {
       "claim_id": "C02",
-      "claim": "Interferon-associated antigen processing and presentation pathways increase following mRNA vaccination, leading to broader MHC-I peptide presentation.",
+      "claim": "Intratumoral mRNA vaccination significantly expands the MHC-I presented peptide repertoire, improving tumor visibility to T cells",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Fraction of proteins represented in MHC-I peptidome",
+          "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6%",
           "line_ref": "L29"
         },
         {
-          "quote": "Fraction of tumor proteins represented in immunopeptidome",
+          "quote": "Fraction of tumor proteins represented in immunopeptidome | 62.3% | 37.3%",
           "line_ref": "L28"
         }
       ],
-      "caveat": "While the expansion of the MHC-I peptidome was substantial, the clinical significance of this expansion for T-cell recognition depends on the specific peptide repertoire and T-cell avidity distributions."
+      "caveat": "The expansion in antigen presentation was demonstrated across multiple models but was characterized as strongest in specific model systems rather than uniformly consistent"
     },
     {
       "claim_id": "C03",
-      "claim": "PD-L1 pathway activity increases following mRNA vaccination, creating a rationale for combining with checkpoint blockade.",
-      "strength": "moderate",
-      "evidence": [
-        {
-          "quote": "PD-L1 expression fold-change in tumor tissue",
-          "line_ref": "L32"
-        }
-      ],
-      "caveat": "The causal relationship between mRNA vaccination and PD-L1 upregulation requires further mechanistic validation, as observed changes could reflect indirect inflammatory effects rather than direct transcriptional regulation."
-    },
-    {
-      "claim_id": "C04",
-      "claim": "Combined intratumoral mRNA vaccination and anti-PD-L1 therapy improves tumor control in preclinical mouse models.",
+      "claim": "Combining intratumoral mRNA vaccination with anti-PD-L1 therapy improves tumor control in preclinical models through complementary mechanisms",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Intratumoral CD8+ T-cell density fold-change",
-          "line_ref": "L33"
+          "quote": "PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x",
+          "line_ref": "L32"
         },
         {
-          "quote": "Vaccine-only treatment did not produce durable tumor control",
-          "line_ref": "L36"
+          "quote": "Intratumoral CD8+ T-cell density fold-change | 1.8x | 1.0x",
+          "line_ref": "L33"
         }
       ],
-      "caveat": "Preclinical efficacy in mouse models may not translate directly to human tumors due to differences in tumor immunobiology, T-cell receptor repertoires, and the tumor microenvironment."
+      "caveat": "Preclinical efficacy may not translate directly to all human tumors; mouse model effects require validation in clinical trials"
     },
     {
-      "claim_id": "C05",
-      "claim": "Retrospective clinical data suggests that patients with prior SARS-CoV-2 mRNA vaccination demonstrate improved survival outcomes when receiving ICI treatment.",
+      "claim_id": "C04",
+      "claim": "Patients who received SARS-CoV-2 mRNA vaccination showed improved survival outcomes when undergoing immune checkpoint inhibitor treatment compared to unvaccinated patients",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Retrospective human survival comparison p-value",
+          "quote": "Retrospective human survival comparison p-value | p=0.01",
+          "line_ref": "L30"
+        },
+        {
+          "quote": "The vaccinated subgroup had improved survival under ICI treatment",
           "line_ref": "L30"
         }
       ],
-      "caveat": "The human analysis is retrospective and non-randomized; vaccination timing varied across patients, and residual confounding from tumor type heterogeneity and treatment history likely influences the observed survival benefit."
+      "caveat": "This finding is based on retrospective observational data; the analysis is non-randomized and subject to confounding factors including variable vaccination timing and heterogeneous patient characteristics"
+    },
+    {
+      "claim_id": "C05",
+      "claim": "The proposed mechanistic chain from mRNA vaccination to improved ICI responsiveness is biologically coherent and well-supported by the cumulative evidence",
+      "strength": "moderate",
+      "evidence": [
+        {
+          "quote": "1. Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling. 2. Interferon-associated antigen processing and presentation pathways increase. 3. A broader peptide repertoire appears on MHC-I, improving tumor visibility to T cells. 4. PD-L1 pathway activity also increases, creating a rationale for combining with checkpoint blockade. 5. Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort",
+          "line_ref": "L42"
+        }
+      ],
+      "caveat": "While the overall mechanistic chain is coherent, individual steps and their relative contributions across different tumor types require further systematic investigation"
     }
   ]
 }

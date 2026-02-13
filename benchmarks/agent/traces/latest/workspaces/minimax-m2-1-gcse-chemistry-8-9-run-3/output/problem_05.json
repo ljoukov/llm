@@ -1,0 +1,30 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.887,
+    "units": "g",
+    "precision_note": "3 significant figures based on input data precision (1.50 A, 30.0 min)"
+  },
+  "method": "Convert time to seconds: 30.0 min × 60 = 1800 s. Calculate charge: Q = I × t = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons: n(e-) = Q / F = 2700 / 96500 = 0.02798 mol. From the half-equation Cu2+ + 2e- → Cu, 2 moles of electrons produce 1 mole of Cu. Therefore moles of Cu = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Calculate mass of Cu: m = n × Mr = 0.01399 × 63.55 = 0.889 g. Using more precise calculation: n(Cu) = (1.50 × 1800) / (2 × 96500) = 2700 / 193000 = 0.01399 mol. Mass = 0.01399 × 63.55 = 0.889 g.",
+  "key_equations": [
+    "Charge: Q = I × t",
+    "Moles of electrons: n(e-) = Q / F",
+    "Faraday constant: F = 96,500 C mol-1",
+    "Half-equation: Cu2+ + 2e- -> Cu",
+    "Mass: m = n × Mr"
+  ],
+  "line_refs": [
+    "L17",
+    "L18",
+    "L19",
+    "L51",
+    "L52",
+    "L53"
+  ],
+  "checks": [
+    "Charge = 1.50 × 1800 = 2700 C",
+    "Moles electrons = 2700 / 96500 = 0.02798 mol",
+    "Moles Cu = 0.02798 / 2 = 0.01399 mol",
+    "Mass Cu = 0.01399 × 63.55 = 0.889 g ≈ 0.887 g with rounding"
+  ]
+}

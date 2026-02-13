@@ -1,0 +1,26 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.888,
+    "units": "g",
+    "precision_note": "Given data has 3 significant figures; final answer reported to 3 significant figures as 0.888 g Cu."
+  },
+  "method": "First convert time to seconds: t = 30.0 min × 60 s/min = 1800 s. Calculate charge using Q = I × t: Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons using n(e-) = Q / F with F = 96500 C/mol: n(e-) = 2700 / 96500 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of Cu, so n(Cu) = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper using m = n × Ar with Ar(Cu) = 63.55: m = 0.01399 mol × 63.55 g/mol = 0.888 g.",
+  "key_equations": [
+    "Q = I × t",
+    "n(e-) = Q / F",
+    "Cu2+ + 2e- -> Cu"
+  ],
+  "line_refs": [
+    "L17",
+    "L18",
+    "L19",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "Time conversion correct: 30.0 min = 1800 s",
+    "2 moles electrons required per mole Cu deposited",
+    "Mass is reasonable for given current and time"
+  ]
+}

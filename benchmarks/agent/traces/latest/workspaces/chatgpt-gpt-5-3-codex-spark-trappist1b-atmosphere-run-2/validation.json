@@ -1,0 +1,117 @@
+{
+  "model": "chatgpt-gpt-5.3-codex-spark",
+  "agentReasoning": "medium",
+  "taskId": "trappist1b-atmosphere",
+  "runIndex": 2,
+  "workspacePath": "workspaces/chatgpt-gpt-5-3-codex-spark-trappist1b-atmosphere-run-2",
+  "success": false,
+  "schemaPass": false,
+  "toolTracePass": false,
+  "graderPass": false,
+  "durationMs": 693,
+  "agentCostUsd": 0,
+  "graderCostUsd": 0,
+  "totalCostUsd": 0,
+  "agentUsage": {
+    "promptTokens": 0,
+    "cachedTokens": 0,
+    "responseTokens": 0,
+    "thinkingTokens": 0,
+    "totalTokens": 0
+  },
+  "graderUsage": {
+    "promptTokens": 0,
+    "cachedTokens": 0,
+    "responseTokens": 0,
+    "thinkingTokens": 0,
+    "totalTokens": 0
+  },
+  "totalUsage": {
+    "promptTokens": 0,
+    "cachedTokens": 0,
+    "responseTokens": 0,
+    "thinkingTokens": 0,
+    "totalTokens": 0
+  },
+  "modelVersions": [],
+  "agentFinalText": "",
+  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "outputValidation": [
+    {
+      "outputFile": "output/study_overview.json",
+      "schemaFile": "schemas/study_overview.schema.json",
+      "exists": true,
+      "jsonValid": true,
+      "schemaValid": false,
+      "groundingValid": false,
+      "errors": [
+        "paper: Invalid input: expected object, received undefined",
+        "core_question: Invalid input: expected string, received undefined",
+        "datasets_or_cohorts: Invalid input: expected array, received undefined",
+        "major_limitations: Invalid input: expected array, received undefined"
+      ],
+      "content": "{}\n"
+    },
+    {
+      "outputFile": "output/quantitative_findings.json",
+      "schemaFile": "schemas/quantitative_findings.schema.json",
+      "exists": true,
+      "jsonValid": true,
+      "schemaValid": false,
+      "groundingValid": false,
+      "errors": [
+        "findings: Invalid input: expected array, received undefined",
+        "controls_or_null_results: Invalid input: expected array, received undefined"
+      ],
+      "content": "{}\n"
+    },
+    {
+      "outputFile": "output/claim_audit.json",
+      "schemaFile": "schemas/claim_audit.schema.json",
+      "exists": true,
+      "jsonValid": true,
+      "schemaValid": false,
+      "groundingValid": false,
+      "errors": [
+        "claims: Invalid input: expected array, received undefined"
+      ],
+      "content": "{}\n"
+    },
+    {
+      "outputFile": "output/public_summary.json",
+      "schemaFile": "schemas/public_summary.schema.json",
+      "exists": true,
+      "jsonValid": true,
+      "schemaValid": false,
+      "groundingValid": false,
+      "errors": [
+        "headline: Invalid input: expected string, received undefined",
+        "plain_language_summary: Invalid input: expected string, received undefined",
+        "what_is_new: Invalid input: expected array, received undefined",
+        "why_caution_is_needed: Invalid input: expected array, received undefined",
+        "glossary: Invalid input: expected array, received undefined",
+        "open_questions: Invalid input: expected array, received undefined"
+      ],
+      "content": "{}\n"
+    }
+  ],
+  "toolTrace": {
+    "pass": false,
+    "totalCalls": 0,
+    "failedCalls": 0,
+    "toolsUsed": [],
+    "hasSuccessfulRead": false,
+    "hasSuccessfulWrite": false,
+    "pathPolicyViolations": [],
+    "notes": [
+      "Expected at least 3 tool calls, observed 0.",
+      "No successful read/list/search tool call observed.",
+      "No successful write tool call observed (write_file/replace/apply_patch)."
+    ],
+    "calls": []
+  },
+  "grader": {
+    "model": "chatgpt-gpt-5.2",
+    "error": "LLM JSON call failed after 2 attempt(s)"
+  }
+}

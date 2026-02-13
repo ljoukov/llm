@@ -1,0 +1,26 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "Answer is given to 3 significant figures, consistent with the least precise inputs (1.50 A and 30.0 min)."
+  },
+  "method": "First, calculate the total electric charge (Q) passed using Q = I * t. The time must be converted to seconds: 30.0 min = 1800 s. Q = 1.50 A * 1800 s = 2700 C. Second, calculate the moles of electrons (n(e-)) using the Faraday constant (F = 96,500 C mol-1) in n(e-) = Q / F. n(e-) = 2700 C / 96500 C mol-1 ≈ 0.027979 mol. Third, use the half-equation Cu2+ + 2e- -> Cu to find the moles of Cu deposited (n(Cu)), which is half the moles of electrons: n(Cu) = 0.027979 mol / 2 ≈ 0.0139895 mol. Finally, calculate the mass of copper deposited using m = n * Mr with Mr(Cu) = 63.55. m(Cu) = 0.0139895 mol * 63.55 g mol-1 ≈ 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "n = m / Mr",
+    "Cu2+ + 2e- -> Cu"
+  ],
+  "line_refs": [
+    "L17",
+    "L18",
+    "L19",
+    "L24",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "A current of 1.50 A for 30 minutes deposits a mass of copper less than 1 g, which is a physically plausible result for a small-scale laboratory electrolysis."
+  ]
+}

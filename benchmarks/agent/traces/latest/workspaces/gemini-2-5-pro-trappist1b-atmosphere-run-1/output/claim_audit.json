@@ -1,68 +1,69 @@
+
 {
     "claims": [
         {
             "claim_id": "C01",
-            "claim": "The observation data suggests that TRAPPIST-1 b has an atmosphere, as atmosphere-bearing models better explain the combined data products than a bare-rock model.",
+            "claim": "The thermal phase curve of TRAPPIST-1b indicates day-night energy redistribution, suggesting the presence of an atmosphere.",
             "strength": "moderate",
             "evidence": [
                 {
-                    "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4",
-                    "line_ref": "L31"
+                    "quote": "Thermal phase offsets and amplitudes probe day-night energy redistribution.",
+                    "line_ref": "L40"
                 },
                 {
-                    "quote": "Atmosphere-bearing models better explain combined data products",
-                    "line_ref": "L31"
+                    "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+                    "line_ref": "L41"
                 }
             ],
-            "caveat": "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets."
+            "caveat": "The heat transport efficiency has large uncertainties, and degeneracies with other parameters exist."
         },
         {
             "claim_id": "C02",
-            "claim": "The atmosphere of TRAPPIST-1 b likely contains carbon dioxide, as evidenced by spectral absorption features near 15 um.",
+            "claim": "The 15 um spectral feature is consistent with a CO2-rich atmosphere.",
             "strength": "moderate",
             "evidence": [
                 {
-                    "quote": "15 um CO2 spectral band depth estimate | 96 ppm",
-                    "line_ref": "L30"
+                    "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
+                    "line_ref": "L42"
                 },
                 {
-                    "quote": "Spectral structure is consistent with atmospheric absorption",
+                    "quote": "15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null | Spectral structure is consistent with atmospheric absorption",
                     "line_ref": "L30"
                 }
             ],
-            "caveat": "O2-rich atmosphere cases are not fully ruled out by current data."
+            "caveat": "O2-rich atmospheres are not ruled out, and degeneracies with clouds/hazes can affect interpretation."
         },
         {
             "claim_id": "C03",
-            "claim": "Energy is redistributed from the dayside to the nightside of the planet, suggesting atmospheric circulation.",
-            "strength": "moderate",
-            "evidence": [
-                {
-                    "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14)",
-                    "line_ref": "L28"
-                },
-                {
-                    "quote": "Non-zero redistribution is favored",
-                    "line_ref": "L28"
-                }
-            ],
-            "caveat": "Night-side constraints are weaker than day-side constraints in the current dataset."
-        },
-        {
-            "claim_id": "C04",
-            "claim": "The planet has a low Bond albedo, meaning it is very dark and absorbs most of the light that hits it.",
+            "claim": "Joint analysis of the phase curve and spectrum provides stronger evidence for an atmosphere than either dataset alone.",
             "strength": "strong",
             "evidence": [
                 {
-                    "quote": "Bond albedo upper bound | <0.08",
-                    "line_ref": "L29"
+                    "quote": "Joint constraints from phase curve and spectrum are stronger than either observable alone.",
+                    "line_ref": "L43"
                 },
                 {
-                    "quote": "Planet appears very dark in thermal-energy balance fits",
-                    "line_ref": "L29"
+                    "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
+                    "line_ref": "L31"
                 }
             ],
-            "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors."
+            "caveat": "The strength of the joint evidence is dependent on the specific models and priors used in the analysis."
+        },
+        {
+            "claim_id": "C04",
+            "claim": "The data provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
+            "strength": "strong",
+            "evidence": [
+                {
+                    "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b...",
+                    "line_ref": "L53"
+                },
+                {
+                    "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
+                    "line_ref": "L35"
+                }
+            ],
+            "caveat": "While evidence is against a *strictly* airless body, the atmosphere could be very thin or have a composition not yet fully constrained."
         }
     ]
 }

@@ -1,0 +1,24 @@
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "Concentration to 3 s.f., limited by 0.150 mol dm-3 and 23.40 cm3 (3 s.f.)."
+  },
+  "method": "Calculate moles of NaOH used: convert volume to dm3, V(NaOH) = 23.40 cm3 = 0.02340 dm3. Then n(NaOH) = c×V = 0.150 mol dm-3 × 0.02340 dm3 = 0.00351 mol. Use the balanced equation H2SO4 + 2NaOH → Na2SO4 + 2H2O: 2 mol NaOH neutralize 1 mol H2SO4, so n(H2SO4) = 0.00351/2 = 0.001755 mol. Convert acid volume: V(H2SO4) = 25.00 cm3 = 0.02500 dm3. Finally c(H2SO4) = n/V = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
+  "key_equations": [
+    "c = n / V",
+    "n = c × V",
+    "n(H2SO4) = n(NaOH)/2 (from stoichiometry)"
+  ],
+  "line_refs": [
+    "L39",
+    "L40",
+    "L15",
+    "L41"
+  ],
+  "checks": [
+    "Because 2 mol NaOH react per 1 mol H2SO4, the acid concentration should be about half the base concentration when similar volumes are used.",
+    "Here base volume (23.40 cm3) is slightly smaller than acid volume (25.00 cm3), so acid concentration slightly less than 0.150/2 = 0.075 mol dm-3; 0.0702 fits."
+  ]
+}

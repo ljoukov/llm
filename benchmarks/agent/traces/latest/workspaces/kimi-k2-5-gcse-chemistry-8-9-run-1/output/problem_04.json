@@ -1,11 +1,11 @@
 {
   "problem_id": "P04",
   "final_answer": {
-    "value": -698,
+    "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Reported to 3 significant figures; the calculation yields -698 kJ mol-1 (exothermic reaction)."
+    "precision_note": "3 significant figures (no decimal places), as bond energies are given as whole numbers"
   },
-  "method": "Using the bond energy formula from L47: deltaH = sum(bonds broken) - sum(bonds formed). For CH4 + 2O2 -> CO2 + 2H2O from L45. Bonds broken: 4 C-H bonds (4 × 413 = 1652 kJ mol-1) and 2 O=O bonds (2 × 498 = 996 kJ mol-1), total = 2648 kJ mol-1. Bonds formed: 2 C=O bonds in CO2 (2 × 805 = 1610 kJ mol-1) and 4 O-H bonds in 2H2O (4 × 463 = 1852 kJ mol-1), total = 3462 kJ mol-1. Therefore deltaH = 2648 - 3462 = -814 kJ mol-1. Correction: Rechecking with proper bond counting - CH4 has 4 C-H bonds, 2O2 has 2 O=O bonds, CO2 has 2 C=O bonds, 2H2O has 4 O-H bonds. Bonds broken: (4 × 413) + (2 × 498) = 1652 + 996 = 2648 kJ mol-1. Bonds formed: (2 × 805) + (4 × 463) = 1610 + 1852 = 3462 kJ mol-1. deltaH = 2648 - 3462 = -814 kJ mol-1. Using values from L46: C-H = 413, O=O = 498, C=O = 805, O-H = 463.",
+  "method": "Identify bonds broken and formed from the equation CH4 + 2O2 -> CO2 + 2H2O. Bonds broken in reactants: 4 C-H bonds (4 × 413 = 1652 kJ) and 2 O=O bonds (2 × 498 = 996 kJ), total = 2648 kJ. Bonds formed in products: 2 C=O bonds in CO2 (2 × 805 = 1610 kJ) and 4 O-H bonds in 2H2O (4 × 463 = 1852 kJ), total = 3462 kJ. Using deltaH = sum(bonds broken) - sum(bonds formed) = 2648 - 3462 = -814 kJ mol-1. The negative value indicates an exothermic reaction, consistent with combustion.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
@@ -15,7 +15,8 @@
     "L47"
   ],
   "checks": [
-    "Combustion reactions are exothermic, so negative deltaH is expected.",
-    "Bond energy calculation: Bonds broken (endothermic) minus bonds formed (exothermic) gives negative value for exothermic reaction."
+    "Exothermic check: combustion reactions are exothermic, deltaH should be negative - verified (-814 kJ mol-1)",
+    "Bond count check: CH4 has 4 C-H, 2 O2 has 2 O=O, CO2 has 2 C=O, 2 H2O has 4 O-H - verified",
+    "Calculation check: 1652 + 996 = 2648; 1610 + 1852 = 3462; 2648 - 3462 = -814 - verified"
   ]
 }

@@ -1,11 +1,11 @@
 {
   "problem_id": "P05",
   "final_answer": {
-    "value": 0.888,
+    "value": 0.889,
     "units": "g",
-    "precision_note": "Reported to 3 significant figures, consistent with the current (1.50 A, 3 s.f.) and time (30.0 min, 3 s.f.) data."
+    "precision_note": "3 significant figures, matching the precision of the time measurement (30.0 min has 3 s.f.)"
   },
-  "method": "Step 1: Calculate total charge passed using Q = I × t from L17. Convert time to seconds: 30.0 min × 60 = 1800 s. Q = 1.50 A × 1800 s = 2700 C (using I = 1.50 A from L51, t = 30.0 min from L51). Step 2: Calculate moles of electrons using n(e-) = Q / F from L18 with F = 96,500 C mol-1 from L19. n(e-) = 2700 / 96500 = 0.02798 mol. Step 3: Use half-equation from L52 (Cu2+ + 2e- -> Cu) which shows 2 moles of electrons deposit 1 mole of Cu. Therefore n(Cu) = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Step 4: Calculate mass of copper using m = n × Ar with Ar(Cu) = 63.55 from L24. Mass Cu = 0.01399 × 63.55 = 0.888 g to 3 s.f.",
+  "method": "First convert time to seconds: t = 30.0 min × 60 = 1800 s. Calculate charge using Q = I × t: Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons: n(e-) = Q / F = 2700 / 96500 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons produce 1 mole of copper, so n(Cu) = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper: m = n × Ar = 0.01399 mol × 63.55 g mol-1 = 0.889 g. Rounded to 3 significant figures: 0.889 g.",
   "key_equations": [
     "Q = I × t",
     "n(e-) = Q / F",
@@ -20,7 +20,8 @@
     "L52"
   ],
   "checks": [
-    "Unit check: A × s = C, C / (C mol-1) = mol, mol × g mol-1 = g, all units consistent.",
-    "Stoichiometry check: 2 electrons per Cu2+ ion reduced, so moles Cu = moles e- / 2."
+    "Unit conversion check: 30.0 min = 1800 s - verified",
+    "Stoichiometry check: 2 electrons per Cu2+ ion, so moles Cu = moles e-/2 - verified",
+    "Magnitude check: typical electrolysis deposits fractions of a gram with these parameters - verified (0.889 g is reasonable)"
   ]
 }

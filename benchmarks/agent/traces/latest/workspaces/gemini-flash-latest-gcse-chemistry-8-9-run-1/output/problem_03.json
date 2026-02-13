@@ -3,9 +3,9 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "The concentration of NaOH (0.150 mol dm-3) has three significant figures, which is the minimum precision provided. The final answer is reported to three significant figures."
+    "precision_note": "The concentration of NaOH (0.150 mol dm-3) has three significant figures, while the volumes (25.00 cm3 and 23.40 cm3) have four. The final result is limited by the least precise measurement, 0.150 mol dm-3, to three significant figures."
   },
-  "method": "First, calculate the moles of NaOH used: n(NaOH) = c * V. V must be converted to dm3: n(NaOH) = 0.150 mol dm-3 * (23.40 / 1000) dm3 = 0.00351 mol (L15, L39). The balanced equation (L40) H2SO4 + 2NaOH -> ... shows a 1:2 mole ratio. Thus, the moles of H2SO4 is half the moles of NaOH: n(H2SO4) = 0.00351 mol / 2 = 0.001755 mol. Finally, calculate the concentration of H2SO4: c = n / V. V must be converted to dm3: c(H2SO4) = 0.001755 mol / (25.00 / 1000) dm3 = 0.0702 mol dm-3.",
+  "method": "First, calculate the moles of $\\text{NaOH}$ used in the titration. Convert the volume to $\\text{dm}^3$: $23.40 \\text{ cm}^3 / 1000 = 0.02340 \\text{ dm}^3$. Then, $n(\\text{NaOH}) = c \\times V = 0.150 \\text{ mol dm}^{-3} \\times 0.02340 \\text{ dm}^3 = 0.003510 \\text{ mol}$. Second, use the stoichiometry from the balanced equation $\\text{H}_2\\text{SO}_4 + 2\\text{NaOH} \\rightarrow \\text{Na}_2\\text{SO}_4 + 2\\text{H}_2\\text{O}$ (a $1:2$ mole ratio) to find the moles of $\\text{H}_2\\text{SO}_4$: $n(\\text{H}_2\\text{SO}_4) = 0.003510 \\text{ mol} / 2 = 0.001755 \\text{ mol}$. Finally, calculate the concentration of $\\text{H}_2\\text{SO}_4$ using the volume $25.00 \\text{ cm}^3$ ($0.02500 \\text{ dm}^3$): $c(\\text{H}_2\\text{SO}_4) = n / V = 0.001755 \\text{ mol} / 0.02500 \\text{ dm}^3 = 0.0702 \\text{ mol dm}^{-3}$.",
   "key_equations": [
     "c = n / V",
     "H2SO4 + 2NaOH -> Na2SO4 + 2H2O"
@@ -17,8 +17,6 @@
     "L41"
   ],
   "checks": [
-    "The moles of NaOH is 0.00351 mol.",
-    "The concentration of H2SO4 is 0.150 * (23.40/25.00) / 2 = 0.0702 mol dm-3.",
-    "The acid volume (25.00 cm3) is slightly larger than the base volume (23.40 cm3), but the acid is diprotic (2:1 ratio), so the acid concentration is expected to be less than half of the base concentration (0.075), which 0.0702 is."
+    "A quick check can be performed using the relationship (c_a * V_a) / n_a = (c_b * V_b) / n_b, where n_a=1 and n_b=2. c_a = (c_b * V_b * n_a) / (V_a * n_b) = (0.150 * 23.40 * 1) / (25.00 * 2) = 3.51 / 50.00 = 0.0702 mol dm-3. This confirms the calculation."
   ]
 }

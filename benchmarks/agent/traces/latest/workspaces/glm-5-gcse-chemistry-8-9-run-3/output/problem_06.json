@@ -1,0 +1,20 @@
+{
+  "problem_id": "P06",
+  "final_answer": {
+    "value": 0.0736,
+    "units": "dimensionless",
+    "precision_note": "Kc reported as dimensionless (unitless) as specified in the report. Result given to 3 significant figures based on the equilibrium mole values."
+  },
+  "method": "First, calculate equilibrium concentrations in the 2.00 dm3 vessel. [NO2] = moles/volume = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = moles/volume = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Using the equilibrium expression for N2O4(g) ↔ 2NO2(g): Kc = [NO2]^2 / [N2O4]. Substituting: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. Kc is reported as dimensionless as specified in the report.",
+  "key_equations": [
+    "Kc = [NO2]^2 / [N2O4]",
+    "[NO2] = n(NO2) / V",
+    "[N2O4] = n(N2O4) / V"
+  ],
+  "line_refs": ["L20", "L21", "L56", "L57", "L58"],
+  "checks": [
+    "Kc < 1 indicates equilibrium lies to the left (towards N2O4), consistent with higher moles of N2O4 (0.220 mol) than NO2 (0.180 mol)",
+    "Concentration units (mol dm-3) cancel in the Kc expression, giving a dimensionless value",
+    "The stoichiometry shows 2 moles of NO2 for every 1 mole of N2O4 at equilibrium"
+  ]
+}

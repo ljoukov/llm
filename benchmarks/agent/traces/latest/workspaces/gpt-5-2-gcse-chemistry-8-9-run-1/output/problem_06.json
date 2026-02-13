@@ -2,13 +2,13 @@
   "problem_id": "P06",
   "final_answer": {
     "value": 0.0736,
-    "units": "unitless",
-    "precision_note": "Moles and volume are given to 3 s.f.; report Kc to 3 s.f. and as dimensionless."
+    "units": "dimensionless",
+    "precision_note": "Reported to 3 significant figures based on the given equilibrium amounts and 2.00 dm3 volume."
   },
-  "method": "For N2O4(g) ⇌ 2NO2(g), Kc = [NO2]^2/[N2O4]. Using concentrations [X] = n/V, substitute to eliminate concentration calculation: Kc = ( (n(NO2)/V)^2 ) / (n(N2O4)/V ) = n(NO2)^2 / (n(N2O4) × V). With n(NO2)=0.180 mol, n(N2O4)=0.220 mol, V=2.00 dm3: Kc = (0.180^2) / (0.220 × 2.00) = 0.0324 / 0.440 = 0.073636... = 0.0736 (3 s.f.).",
+  "method": "Find equilibrium concentrations in the 2.00 dm3 vessel by dividing moles by volume: [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3 and [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Substitute into Kc = [NO2]^2 / [N2O4]: Kc = (0.0900^2) / 0.110 = 0.00810 / 0.110 = 0.0736. Kc is reported as a unitless (dimensionless) value.",
   "key_equations": [
     "Kc = [NO2]^2 / [N2O4]",
-    "Kc = n(NO2)^2 / (n(N2O4) × V)  (since [X]=n/V)"
+    "[X] = moles/volume"
   ],
   "line_refs": [
     "L20",
@@ -17,7 +17,7 @@
     "L58"
   ],
   "checks": [
-    "Kc is small (<1), indicating equilibrium favours N2O4, consistent with having comparable moles but NO2 needing to be squared.",
-    "Recompute via concentrations: [NO2]=0.180/2.00=0.0900, [N2O4]=0.220/2.00=0.110; Kc=(0.0900^2)/0.110 ≈ 0.0736 (matches)."
+    "If all concentrations were scaled by the same factor, Kc should not depend on vessel size; using concentrations gives a consistent unitless result.",
+    "Sanity: [NO2] < [N2O4], so Kc should be less than 1; 0.0736 fits."
   ]
 }

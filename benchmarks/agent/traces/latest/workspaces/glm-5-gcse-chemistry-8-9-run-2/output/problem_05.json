@@ -1,0 +1,19 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "Answer given to 3 significant figures, consistent with the precision of current (1.50 A), time (30.0 min), Faraday constant (96500 C mol-1), and Cu atomic mass (63.55)."
+  },
+  "method": "First convert time to seconds: 30.0 min x 60 = 1800 s. Calculate charge using Q = It: Q = 1.50 A x 1800 s = 2700 C. Calculate moles of electrons using n(e-) = Q/F: n(e-) = 2700 C / 96500 C mol-1 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons produce 1 mole of Cu, so n(Cu) = n(e-)/2 = 0.02798/2 = 0.01399 mol. Calculate mass: mass = n x Ar = 0.01399 mol x 63.55 g mol-1 = 0.889 g.",
+  "key_equations": [
+    "Q = I x t",
+    "n(e-) = Q / F",
+    "n = m / Mr"
+  ],
+  "line_refs": ["L17", "L18", "L19", "L24", "L51", "L52"],
+  "checks": [
+    "Charge Q = 1.50 A x 1800 s = 2700 C, divided by F = 96500 C mol-1 gives 0.02798 mol electrons.",
+    "The 2:1 ratio of electrons to Cu gives n(Cu) = 0.01399 mol, and mass = 0.01399 x 63.55 = 0.889 g."
+  ]
+}

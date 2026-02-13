@@ -2,27 +2,47 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "TRAPPIST-1 b has non-zero heat redistribution as evidenced by the heat transport efficiency parameter epsilon of 0.19.",
-      "strength": "moderate",
+      "claim": "Thermal phase offsets and amplitudes probe day-night energy redistribution on TRAPPIST-1 b.",
+      "strength": "strong",
       "evidence": [
         {
-          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit | Non-zero redistribution is favored",
-          "line_ref": "L28"
+          "quote": "Thermal phase offsets and amplitudes probe day-night energy redistribution.",
+          "line_ref": "L40"
         },
         {
-          "quote": "Thermal phase offsets and amplitudes probe day-night energy redistribution. A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
-          "line_ref": "L40"
+          "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+          "line_ref": "L41"
         }
       ],
-      "caveat": "The uncertainty range (+0.23 / -0.14) is substantial, with the lower bound approaching zero, and retrieval assumptions about circulation affect the quantitative posterior."
+      "caveat": "Night-side constraints are weaker than day-side constraints in the current dataset."
     },
     {
       "claim_id": "C02",
-      "claim": "Atmosphere-bearing models are favored over no-atmosphere models based on the joint fit likelihood ratio of 7.4.",
+      "claim": "TRAPPIST-1 b has a non-zero heat redistribution parameter, indicating transport beyond bare-rock reradiation.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
+          "quote": "Heat transport efficiency (epsilon): 0.19 (+0.23 / -0.14)",
+          "line_ref": "L28"
+        },
+        {
+          "quote": "Non-zero redistribution is favored",
+          "line_ref": "L28"
+        }
+      ],
+      "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors."
+    },
+    {
+      "claim_id": "C03",
+      "claim": "The dataset provides evidence against a strictly airless interpretation for TRAPPIST-1 b.",
+      "strength": "moderate",
+      "evidence": [
+        {
+          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere): 7.4",
+          "line_ref": "L31"
+        },
+        {
+          "quote": "Atmosphere-bearing models better explain combined data products",
           "line_ref": "L31"
         },
         {
@@ -30,47 +50,23 @@
           "line_ref": "L35"
         }
       ],
-      "caveat": "A likelihood ratio of 7.4 provides moderate but not overwhelming evidence, and degeneracies between atmospheric composition, clouds, and circulation assumptions remain significant."
-    },
-    {
-      "claim_id": "C03",
-      "claim": "Spectral structure near 15 um provides composition-sensitive evidence for CO2-rich atmospheric scenarios.",
-      "strength": "tentative",
-      "evidence": [
-        {
-          "quote": "15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null | Spectral structure is consistent with atmospheric absorption",
-          "line_ref": "L30"
-        },
-        {
-          "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
-          "line_ref": "L42"
-        }
-      ],
-      "caveat": "Stellar variability and instrument systematics can bias weak spectral features, and O2-rich atmosphere cases are not fully ruled out by current data."
+      "caveat": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant."
     },
     {
       "claim_id": "C04",
-      "claim": "TRAPPIST-1 b is very dark with a Bond albedo upper bound less than 0.08.",
-      "strength": "strong",
-      "evidence": [
-        {
-          "quote": "Bond albedo upper bound | <0.08 | Higher-albedo reflective cases | Planet appears very dark in thermal-energy balance fits",
-          "line_ref": "L29"
-        }
-      ],
-      "caveat": "This constraint applies to the thermal-energy balance fits and may be affected by retrieval assumptions about opacity priors and cloud treatment."
-    },
-    {
-      "claim_id": "C05",
-      "claim": "Moderate-pressure atmosphere family (0.3-1.0 bar) remains plausible for CO2-rich scenarios.",
+      "claim": "The 15 um CO2 spectral band provides composition-sensitive evidence for atmospheric absorption on TRAPPIST-1 b.",
       "strength": "tentative",
       "evidence": [
         {
-          "quote": "Preferred pressure scale in CO2-rich retrieval family | 0.3-1.0 bar | Near-vacuum branch | Moderate-pressure atmosphere family remains plausible",
-          "line_ref": "L32"
+          "quote": "15 um CO2 spectral band depth estimate: 96 ppm",
+          "line_ref": "L30"
+        },
+        {
+          "quote": "Spectral structure is consistent with atmospheric absorption",
+          "line_ref": "L30"
         }
       ],
-      "caveat": "The preferred pressure scale range is broad (0.3-1.0 bar), and degeneracies between pressure, composition, and cloud properties in retrieval models mean specific atmospheric pressure remains uncertain."
+      "caveat": "Stellar variability and instrument systematics can bias weak spectral features."
     }
   ]
 }
