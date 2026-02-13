@@ -3,19 +3,18 @@
   "final_answer": {
     "value": 0.02,
     "units": "mol dm-3",
-    "precision_note": "Quoted to 3 s.f. (0.0200 mol dm-3) based on given 0.200 mol dm-3 and 25.0 cm3."
+    "precision_note": "Inputs are given to 3 s.f.; report the diluted concentration to 3 s.f. (0.0200 mol dm-3)."
   },
-  "method": "Use the dilution relationship c1V1 = c2V2. Here c1 = 0.200 mol dm-3 and V1 = 25.0 cm3, diluted to V2 = 250.0 cm3. Rearranging gives c2 = c1 × V1 / V2 = 0.200 × (25.0/250.0) = 0.200 × 0.100 = 0.0200 mol dm-3.",
+  "method": "Use the dilution relationship c1V1 = c2V2. The initial acid has c1 = 0.200 mol dm-3 and volume V1 = 25.0 cm3, diluted to final volume V2 = 250.0 cm3. Because both volumes are in cm3, the units cancel in the ratio V1/V2. Rearrange to c2 = c1 × V1/V2 = 0.200 × (25.0/250.0) = 0.200 × 0.100 = 0.0200 mol dm-3.",
   "key_equations": [
     "c1V1 = c2V2",
-    "c2 = c1V1/V2"
+    "c2 = c1 × (V1/V2)"
   ],
   "line_refs": [
     "L16",
-    "L29",
-    "L30"
+    "L29"
   ],
   "checks": [
-    "Volume increases by a factor of 10, so concentration should drop by a factor of 10: 0.200 → 0.0200 mol dm-3."
+    "Volume increases by a factor of 10 (25.0 → 250.0 cm3), so concentration should fall by 10×: 0.200/10 = 0.0200 mol dm-3."
   ]
 }

@@ -3,9 +3,9 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "The concentration of NaOH (0.150 mol dm-3) has three significant figures, which is the least precise value, so the answer is reported to three significant figures."
+    "precision_note": "The concentration of NaOH (0.150 mol dm-3) has three significant figures, which is the minimum precision provided. The final answer is reported to three significant figures."
   },
-  "method": "First, calculate the moles of the titrant, NaOH, using n = cV. n(NaOH) = 0.150 mol dm-3 * (23.40 / 1000) dm3 = 0.00351 mol. Next, use the stoichiometry from the balanced equation (H2SO4 + 2NaOH -> Na2SO4 + 2H2O) to find the moles of H2SO4. The mole ratio is 1:2 (H2SO4:NaOH), so n(H2SO4) = n(NaOH) / 2 = 0.00351 mol / 2 = 0.001755 mol. Finally, calculate the concentration of H2SO4 using c = n/V: c(H2SO4) = 0.001755 mol / (25.00 / 1000) dm3 = 0.0702 mol dm-3.",
+  "method": "First, calculate the moles of NaOH used: n(NaOH) = c * V. V must be converted to dm3: n(NaOH) = 0.150 mol dm-3 * (23.40 / 1000) dm3 = 0.00351 mol (L15, L39). The balanced equation (L40) H2SO4 + 2NaOH -> ... shows a 1:2 mole ratio. Thus, the moles of H2SO4 is half the moles of NaOH: n(H2SO4) = 0.00351 mol / 2 = 0.001755 mol. Finally, calculate the concentration of H2SO4: c = n / V. V must be converted to dm3: c(H2SO4) = 0.001755 mol / (25.00 / 1000) dm3 = 0.0702 mol dm-3.",
   "key_equations": [
     "c = n / V",
     "H2SO4 + 2NaOH -> Na2SO4 + 2H2O"
@@ -17,8 +17,8 @@
     "L41"
   ],
   "checks": [
-    "Moles of NaOH = 0.150 * 0.02340 dm3 = 0.00351 mol.",
-    "Moles of H2SO4 = 0.00351 mol / 2 = 0.001755 mol.",
-    "Concentration of H2SO4 = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3. Confirmed."
+    "The moles of NaOH is 0.00351 mol.",
+    "The concentration of H2SO4 is 0.150 * (23.40/25.00) / 2 = 0.0702 mol dm-3.",
+    "The acid volume (25.00 cm3) is slightly larger than the base volume (23.40 cm3), but the acid is diprotic (2:1 ratio), so the acid concentration is expected to be less than half of the base concentration (0.075), which 0.0702 is."
   ]
 }

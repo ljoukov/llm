@@ -3,23 +3,20 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Calculated concentration is 0.0702 mol dm-3 with 3 significant figures, consistent with the precision of the titration data provided."
+    "precision_note": "Reported to 3 significant figures, consistent with the limiting precision of the NaOH concentration (0.150 mol dm-3, 3 s.f.)."
   },
-  "method": "First convert the volume of NaOH to dm3: 23.40 cm3 = 0.02340 dm3. Calculate moles of NaOH using n = c × V: 0.150 mol dm-3 × 0.02340 dm3 = 0.00351 mol. From the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the mole ratio of H2SO4 to NaOH is 1:2. Therefore moles of H2SO4 = 0.00351 / 2 = 0.001755 mol. Convert acid volume to dm3: 25.00 cm3 = 0.02500 dm3. Calculate concentration of H2SO4: c = n/V = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
+  "method": "Step 1: Calculate moles of NaOH used. n(NaOH) = c × V = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.150 × 0.02340 = 0.00351 mol (using c from L39 and V from L39). Step 2: Use reaction stoichiometry from L40 (H2SO4 + 2NaOH -> Na2SO4 + 2H2O) which shows 1:2 mole ratio between H2SO4 and NaOH. Therefore n(H2SO4) = n(NaOH) / 2 = 0.00351 / 2 = 0.001755 mol. Step 3: Calculate concentration of H2SO4 using c = n / V with V = 25.00 cm3 = 0.02500 dm3 from L39. c(H2SO4) = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
   "key_equations": [
-    "n = c × V",
-    "c = n / V"
+    "c = n / V",
+    "n = c × V"
   ],
   "line_refs": [
-    "L15",
+    "L14",
     "L39",
-    "L40",
-    "L41"
+    "L40"
   ],
   "checks": [
-    "Moles of NaOH calculated correctly as 0.00351 mol",
-    "Stoichiometric ratio H2SO4:NaOH = 1:2 applied correctly",
-    "Volume conversions from cm3 to dm3 are correct",
-    "Final concentration has appropriate significant figures (3 sf)"
+    "Stoichiometry check: H2SO4 is diprotic acid, so should require half the moles of NaOH for neutralization.",
+    "Magnitude check: Stronger acid (diprotic) should have lower concentration than NaOH for same neutralization volume ratio, which matches (0.0702 < 0.150)."
   ]
 }

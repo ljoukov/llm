@@ -1,0 +1,42 @@
+{
+  "paper": {
+    "title": "Phase-curve Evidence for an Atmosphere on TRAPPIST-1 b",
+    "doi": "10.48550/arXiv.2409.13036",
+    "publication_year": 2024,
+    "domain": "exoplanet-atmospheres",
+    "study_type": "observational-astronomy"
+  },
+  "core_question": "Whether the strongly irradiated, likely tidally locked rocky exoplanet TRAPPIST-1 b retains an atmosphere, based on JWST phase-curve spectroscopy and atmospheric retrievals.",
+  "datasets_or_cohorts": [
+    {
+      "id": "observed-system",
+      "label": "Observed TRAPPIST-1 b phase-curve dataset",
+      "sample_size_or_observations": "One rocky exoplanet observed with phase-resolved thermal spectra",
+      "description": "JWST MIRI low-resolution spectroscopy across orbital phase measuring thermal phase variation and spectral structure near the 15 um CO2 band."
+    },
+    {
+      "id": "null-no-atmosphere",
+      "label": "Bare-rock null scenario",
+      "sample_size_or_observations": "Model comparator with no atmosphere",
+      "description": "Atmosphere-free model representing minimal heat redistribution, used as a null case for evaluating whether data require atmospheric transport and absorption."
+    },
+    {
+      "id": "co2-rich-atmosphere",
+      "label": "CO2-rich atmosphere scenario",
+      "sample_size_or_observations": "Model comparator with greenhouse-gas-rich composition",
+      "description": "Atmosphere-bearing retrieval family with significant CO2 absorption that is tested against observed phase behavior and 15 um spectral structure."
+    },
+    {
+      "id": "o2-rich-atmosphere",
+      "label": "O2-rich atmosphere scenario",
+      "sample_size_or_observations": "Alternative oxidized-composition model",
+      "description": "Atmospheric scenario with weaker CO2-signature constraints that remains considered in the inference because current data do not fully exclude it."
+    }
+  ],
+  "major_limitations": [
+    "Single-planet evidence cannot establish atmospheric prevalence for all rocky M-dwarf planets.",
+    "Retrieval assumptions about circulation, opacity priors, and cloud treatment materially affect posterior estimates.",
+    "Stellar variability and instrument systematics can bias weak spectral-feature inference.",
+    "Night-side constraints are weaker than day-side constraints in the current dataset."
+  ]
+}

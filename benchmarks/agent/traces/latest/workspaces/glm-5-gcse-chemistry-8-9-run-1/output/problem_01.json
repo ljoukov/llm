@@ -3,19 +3,16 @@
   "final_answer": {
     "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "Answer given to 3 significant figures, consistent with the precision of the initial concentration (0.200 mol dm-3) and volumes (25.0 cm3, 250.0 cm3)."
+    "precision_note": "Result given to 3 significant figures, consistent with the precision of input values (25.0 cm3, 0.200 mol dm-3, 250.0 cm3)."
   },
-  "method": "Using the dilution equation c1V1 = c2V2, where c1 = 0.200 mol dm-3 is the initial concentration, V1 = 25.0 cm3 is the initial volume, and V2 = 250.0 cm3 is the final volume. Rearranging gives c2 = c1V1/V2. Substituting values: c2 = (0.200 × 25.0) / 250.0 = 5.00 / 250.0 = 0.0200 mol dm-3. The concentration decreases by a factor of 10, consistent with a tenfold volume increase.",
+  "method": "Using the dilution equation c1V1 = c2V2, where c1 = 0.200 mol dm-3 is the initial concentration, V1 = 25.0 cm3 is the initial volume, and V2 = 250.0 cm3 is the final volume. Rearranging gives c2 = (c1 × V1) / V2. Substituting values: c2 = (0.200 mol dm-3 × 25.0 cm3) / 250.0 cm3 = 0.0200 mol dm-3. The concentration decreases by a factor of 10, matching the 10-fold volume increase from 25.0 cm3 to 250.0 cm3.",
   "key_equations": [
-    "c1V1 = c2V2"
+    "c1V1 = c2V2",
+    "c2 = (c1 × V1) / V2"
   ],
-  "line_refs": [
-    "L16",
-    "L29"
-  ],
+  "line_refs": ["L16", "L29"],
   "checks": [
-    "Dilution factor is 250.0/25.0 = 10, so concentration should decrease tenfold from 0.200 to 0.0200 mol dm-3.",
-    "Units consistent: mol dm-3 throughout the calculation.",
-    "Three significant figures maintained throughout as per GCSE conventions."
+    "Dilution factor check: 250.0 cm3 / 25.0 cm3 = 10, so concentration should be 0.200 / 10 = 0.0200 mol dm-3, which matches calculated result.",
+    "Units consistent: concentration correctly expressed in mol dm-3 as required."
   ]
 }

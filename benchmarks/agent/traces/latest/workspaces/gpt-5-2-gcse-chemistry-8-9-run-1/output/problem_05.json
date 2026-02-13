@@ -3,22 +3,22 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "3 s.f., limited by 1.50 A, 30.0 min, and F = 96,500 C mol-1 (all 3 s.f.)."
+    "precision_note": "I and t are 3 s.f. and Cu Ar is 4–5 s.f.; report deposited mass to 3 s.f."
   },
-  "method": "Convert time to seconds: 30.0 min × 60 = 1800 s. Charge passed Q = I×t = 1.50×1800 = 2700 C. Faraday constant gives charge per mole of electrons, so moles of electrons n(e−) = Q/F = 2700/96500 = 0.02798 mol. From Cu2+ + 2e− → Cu, 2 mol e− deposit 1 mol Cu, so n(Cu) = 0.02798/2 = 0.01399 mol. Using the molar mass of copper from the atomic data (63.55 g mol−1), mass Cu = 0.01399×63.55 = 0.8886 g, which rounds to 0.889 g.",
+  "method": "Convert time to seconds: 30.0 min = 30.0 × 60 = 1800 s. Total charge passed is I×t = 1.50 × 1800 = 2700 C. Convert charge to moles of electrons using the Faraday constant: n(e−) = 2700/96500 = 0.02798 mol e−. From the cathode half-equation Cu2+ + 2e− → Cu, 2 mol e− deposit 1 mol Cu, so n(Cu) = 0.02798/2 = 0.01399 mol. Mass deposited = n × Ar(Cu) = 0.01399 × 63.55 = 0.8887 g ≈ 0.889 g.",
   "key_equations": [
-    "Q = It",
-    "n(e−) = Q/F",
-    "n(Cu) = n(e−)/2",
-    "m = n×Mr"
+    "n(e−) = (I × t) / F",
+    "For Cu2+ + 2e− → Cu: n(Cu) = n(e−)/2",
+    "m = n × Ar"
   ],
   "line_refs": [
-    "L19",
-    "L24",
     "L51",
-    "L52"
+    "L19",
+    "L52",
+    "L24"
   ],
   "checks": [
-    "2700 C corresponds to about 0.028 mol e−; half of that is ~0.014 mol Cu, giving ~0.014×64 ≈ 0.9 g, consistent."
+    "Order-of-magnitude check: 1.50 A for 1800 s gives 2700 C; dividing by ~10^5 gives ~0.03 mol e−, so ~0.015 mol Cu, which is ~1 g — consistent with 0.889 g.",
+    "If the time or current doubled, mass would double; the linear dependence on I and t matches electrolysis expectations."
   ]
 }

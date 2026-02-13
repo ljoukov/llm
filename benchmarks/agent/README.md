@@ -26,6 +26,19 @@ Runs execute models in parallel and tasks/runs sequentially per model.
 npx tsx benchmarks/agent/run.ts
 ```
 
+## Standard refresh (all tasks + latest traces + latest results)
+
+```bash
+npm run bench:agent:latest
+```
+
+This command:
+
+- runs all default models across all benchmark tasks (models run in parallel),
+- writes `benchmarks/agent/LATEST_RESULTS.md` automatically,
+- rewrites `benchmarks/agent/traces/latest/`,
+- prunes older trace folders so only `traces/latest/` remains.
+
 ## Estimate-only
 
 ```bash
@@ -81,4 +94,3 @@ Workspace folders include:
 
 A committed high-level snapshot is kept in `benchmarks/agent/LATEST_RESULTS.md`.
 Committed per-model traces/workspaces are kept in `benchmarks/agent/traces/latest/`.
-A calibrated GCSE comparison run (Codex + Gemini 3 Pro pass, Flash fails) is kept in `benchmarks/agent/traces/gcse-calibrated/`.

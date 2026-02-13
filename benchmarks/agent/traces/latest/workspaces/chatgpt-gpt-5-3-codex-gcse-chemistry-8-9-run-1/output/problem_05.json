@@ -3,16 +3,18 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "With 1.50 A and 30.0 min, the calculated deposited copper mass is 0.889 g (3 significant figures)."
+    "precision_note": "Using 1.50 A and 30.0 min gives a 3 significant figure deposited mass estimate."
   },
-  "method": "Convert time: 30.0 min = 1800 s, so charge passed is 2700 C from 1.50 A over that interval. From Cu2+ + 2e- -> Cu, two moles of electrons deposit one mole of copper. Using F = 96500 C mol-1 gives n(Cu) = 2700/(2 x 96500) = 0.01399 mol. Multiply by Cu molar mass 63.55 to get m = 0.01399 x 63.55 = 0.889 g.",
+  "method": "Time is 30.0 min = 1800 s, so charge passed Q = It = 1.50 x 1800 = 2700 C. Moles of electrons are n(e-) = Q/F = 2700/96500 = 0.02798 mol. From Cu2+ + 2e- -> Cu, 2 mol electrons deposit 1 mol Cu, so n(Cu)=0.02798/2=0.01399 mol. Convert to mass with Cu molar mass 63.55 g mol-1: m = 0.01399 x 63.55 = 0.889 g.",
   "key_equations": [
-    "n(Cu) = Q/(2F)",
+    "Q = I x t",
+    "n(e-) = Q / F",
+    "n(Cu) = n(e-) / 2",
     "m = n x Mr"
   ],
-  "line_refs": ["L19", "L24", "L51", "L52"],
+  "line_refs": ["L51", "L52", "L19", "L24"],
   "checks": [
-    "Doubling either current or time would double deposited mass, matching electrolysis proportionality.",
-    "Result is less than 1 g for a moderate current over 30 minutes, which is physically plausible."
+    "Seconds were used in Q = It by converting 30.0 min to 1800 s.",
+    "Electron-to-copper stoichiometry from the half-equation correctly halves electron moles."
   ]
 }

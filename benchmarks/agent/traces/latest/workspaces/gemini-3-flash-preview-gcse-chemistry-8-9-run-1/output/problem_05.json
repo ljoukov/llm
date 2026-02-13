@@ -1,1 +1,26 @@
-{}
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "The final answer is rounded to three significant figures, matching the precision of the provided current (1.50 A) and time (30.0 min)."
+  },
+  "method": "The calculation of copper mass begins with finding the total charge passed (Q) using Q = I * t. The current is 1.50 A and the time is 30.0 minutes (1800 seconds), so Q = 1.50 * 1800 = 2700 C. The moles of electrons are then found using n(e-) = Q / F, where F is the Faraday constant (96,500 C mol-1), giving 2700 / 96500 = 0.027979 mol. According to the half-equation Cu2+ + 2e- -> Cu, the molar ratio of electrons to copper is 2:1, so the moles of Cu deposited is 0.027979 / 2 = 0.013990 mol. Finally, the mass is calculated as moles * Ar(Cu) = 0.013990 * 63.55 = 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "n(Cu) = n(e-) / 2",
+    "m = n * Ar"
+  ],
+  "line_refs": [
+    "L51",
+    "L52",
+    "L19",
+    "L24"
+  ],
+  "checks": [
+    "Confirm that time was converted from minutes to seconds (1800 s).",
+    "Verify the use of the 2:1 ratio of electrons to copper from the half-equation.",
+    "Ensure the Faraday constant (96,500 C mol-1) and Ar(Cu) (63.55) are correctly used."
+  ]
+}

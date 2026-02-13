@@ -3,22 +3,23 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "The least number of significant figures in the input data is three (5.00 g, 84.0%, 44.0 g mol-1), so the answer is reported to three significant figures."
+    "precision_note": "The least precise values in the data (84.0% purity and Mr(CO2) = 44.0) have three significant figures, so the answer is reported to three significant figures."
   },
-  "method": "First, calculate the mass of pure CaCO3 in the sample: Mass(CaCO3) = 5.00 g * 0.840 = 4.20 g. Next, calculate the moles of CaCO3 using n = m / Mr: n(CaCO3) = 4.20 g / 100.1 g mol-1 = 0.041958 mol. Based on the reaction (CaCO3 + 2HCl -> CaCl2 + CO2 + H2O), the mole ratio of CaCO3 to CO2 is 1:1, so n(CO2) = 0.041958 mol. Finally, calculate the mass of CO2 produced using m = n * Mr: Mass(CO2) = 0.041958 mol * 44.0 g mol-1 = 1.846 g. Rounding to three significant figures gives 1.85 g.",
+  "method": "First, calculate the mass of pure CaCO3 in the sample: Mass CaCO3 = 5.00 g * 0.840 = 4.20 g (L33). Next, calculate the moles of CaCO3 using n = m/Mr (L14): n(CaCO3) = 4.20 g / 100.1 g mol-1 ≈ 0.041958 mol (L25). The reaction (L34) shows a 1:1 mole ratio between CaCO3 and CO2, so n(CO2) = 0.041958 mol. Finally, calculate the mass of CO2: m(CO2) = n * Mr = 0.041958 mol * 44.0 g mol-1 ≈ 1.846 g (L26). Rounded to three significant figures, the mass is 1.85 g.",
   "key_equations": [
-    "n = m / Mr",
-    "CaCO3 + 2HCl -> CaCl2 + CO2 + H2O"
+    "n = m / Mr"
   ],
   "line_refs": [
     "L14",
     "L25",
     "L26",
-    "L33"
+    "L33",
+    "L34",
+    "L36"
   ],
   "checks": [
-    "Mass of pure CaCO3 = 5.00 * 0.840 = 4.20 g.",
-    "Moles of CaCO3 = 4.20 / 100.1 \u2248 0.04196 mol.",
-    "Maximum mass of CO2 = 0.04196 mol * 44.0 g mol-1 \u2248 1.846 g, which rounds to 1.85 g."
+    "Moles of CaCO3 is 4.20 / 100.1 ≈ 0.04196 mol.",
+    "Mass of CO2 is 0.04196 mol * 44.0 g/mol ≈ 1.846 g.",
+    "The mass ratio of CO2 to CaCO3 is 44.0 / 100.1 ≈ 0.4396. Mass CO2 = 4.20 g * 0.4396 ≈ 1.846 g, confirming the result."
   ]
 }

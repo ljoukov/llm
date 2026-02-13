@@ -3,21 +3,21 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "3 s.f., limited by 5.00 g sample mass and 84.0% purity (both 3 s.f.)."
+    "precision_note": "Limiting data are 3 s.f. (5.00 g, 84.0%, 44.0, 100.1); report mass to 3 s.f."
   },
-  "method": "First find the mass of pure CaCO3 in the limestone: 5.00 g × 0.840 = 4.20 g CaCO3. Calculate Mr values from the atomic data: Mr(CaCO3) = 40.1 + 12.0 + 3×16.0 = 100.1; Mr(CO2) = 12.0 + 2×16.0 = 44.0. Moles of CaCO3 = m/Mr = 4.20/100.1 = 0.04196 mol. From CaCO3 + 2HCl → CaCl2 + CO2 + H2O, the mole ratio CaCO3:CO2 is 1:1, so moles CO2 = 0.04196 mol. Mass of CO2 = n×Mr = 0.04196×44.0 = 1.846 g, which rounds to 1.85 g.",
+  "method": "First find the mass of calcium carbonate present using the stated purity: m(CaCO3) = 5.00 g × 0.840 = 4.20 g. From the balanced equation CaCO3 + 2HCl → CaCl2 + CO2 + H2O, 1 mol CaCO3 produces 1 mol CO2. Convert from CaCO3 mass to CO2 mass using molar-mass ratios for the 1:1 mole relationship: m(CO2) = m(CaCO3) × Mr(CO2)/Mr(CaCO3) = 4.20 × (44.0/100.1) = 1.85 g (3 s.f.).",
   "key_equations": [
-    "n = m/Mr",
-    "m = n×Mr",
-    "CaCO3 : CO2 = 1 : 1 (from the balanced equation)"
+    "m(pure CaCO3) = m(sample) × purity",
+    "For 1:1 CaCO3:CO2, m(CO2) = m(CaCO3) × Mr(CO2)/Mr(CaCO3)"
   ],
   "line_refs": [
-    "L14",
-    "L24",
     "L33",
-    "L34"
+    "L34",
+    "L25",
+    "L26"
   ],
   "checks": [
-    "If the sample were 100% CaCO3, CO2 mass would be 5.00×(44.0/100.1) ≈ 2.20 g; at 84.0% purity, expect ≈ 1.85 g, consistent."
+    "Only 4.20 g of CaCO3 is available, so CO2 produced must be less than this; 1.85 g is reasonable.",
+    "Using moles: 4.20/100.1 ≈ 0.042 mol CaCO3, giving 0.042×44.0 ≈ 1.85 g CO2 (consistent)."
   ]
 }

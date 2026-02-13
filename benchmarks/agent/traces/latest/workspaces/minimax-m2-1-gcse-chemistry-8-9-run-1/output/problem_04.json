@@ -1,0 +1,24 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -810,
+    "units": "kJ mol-1",
+    "precision_note": "Bond energy calculations: bonds broken = (4 × 413) + (2 × 498) = 1652 + 996 = 2648 kJ mol-1. Bonds formed = (2 × 805) + (4 × 463) = 1610 + 1852 = 3462 kJ mol-1. ΔH = bonds broken - bonds formed = 2648 - 3462 = -814 kJ mol-1. The negative sign indicates an exothermic reaction."
+  },
+  "method": "Calculate total energy required to break bonds (energy absorbed, positive): In CH4, there are 4 C-H bonds, so energy = 4 × 413 = 1652 kJ mol-1. In O2, there are 2 O=O bonds, so energy = 2 × 498 = 996 kJ mol-1. Total bonds broken = 1652 + 996 = 2648 kJ mol-1. Calculate total energy released when bonds form (energy released, negative): In CO2, there are 2 C=O bonds, so energy = 2 × 805 = 1610 kJ mol-1. In 2 H2O, there are 4 O-H bonds total (2 per H2O), so energy = 4 × 463 = 1852 kJ mol-1. Total bonds formed = 1610 + 1852 = 3462 kJ mol-1. Calculate ΔH = total energy absorbed - total energy released = 2648 - 3462 = -814 kJ mol-1.",
+  "key_equations": [
+    "ΔH = sum(bonds broken) - sum(bonds formed)",
+    "CH4 + 2O2 → CO2 + 2H2O"
+  ],
+  "line_refs": [
+    "L44",
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "All bond counts were correctly identified from the balanced equation: 4 C-H in CH4, 2 O=O in 2 O2, 2 C=O in CO2, and 4 O-H in 2 H2O.",
+    "The calculation correctly applies the formula ΔH = bonds broken - bonds formed.",
+    "The negative ΔH value of -814 kJ mol-1 correctly indicates that the combustion of methane is an exothermic process, as expected."
+  ]
+}

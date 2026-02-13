@@ -1,1 +1,25 @@
-{}
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "The result is calculated to three significant figures, consistent with the precision of the concentration of NaOH (0.150 mol dm-3) and the volumes provided (25.00 cm3 and 23.40 cm3)."
+  },
+  "method": "The titration calculation begins by determining the moles of NaOH used. Using the formula c = n / V from the report, moles of NaOH = 0.150 mol dm-3 * (23.40/1000) dm3 = 0.00351 mol. Based on the balanced chemical equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the molar ratio of H2SO4 to NaOH is 1:2. Therefore, the moles of H2SO4 required for neutralization is 0.00351 / 2 = 0.001755 mol. Finally, the concentration of H2SO4 is calculated by dividing the moles by the volume in dm3: 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
+  "key_equations": [
+    "c = n / V",
+    "n = c * V",
+    "Moles(H2SO4) = Moles(NaOH) / 2"
+  ],
+  "line_refs": [
+    "L39",
+    "L40",
+    "L41",
+    "L15"
+  ],
+  "checks": [
+    "Confirm volumes are converted from cm3 to dm3 by dividing by 1000.",
+    "Apply the 1:2 stoichiometric ratio between H2SO4 and NaOH correctly.",
+    "Verify that the final concentration of H2SO4 is approximately half that of NaOH given the similar volumes."
+  ]
+}

@@ -3,18 +3,18 @@
   "final_answer": {
     "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "The result is given to 3 significant figures, consistent with the input concentration (0.200 mol dm-3) and volumes (25.0 cm3, 250.0 cm3), all of which are given to 3 s.f."
+    "precision_note": "The result is given to three significant figures, consistent with the input values (25.0 cm3, 0.200 mol dm-3, 250.0 cm3)."
   },
-  "method": "The problem is a straightforward dilution calculation. Using the dilution formula c1V1 = c2V2, the final concentration (c2) is found by rearranging to c2 = c1 * (V1 / V2). The initial concentration (c1) is 0.200 mol dm-3 and the initial volume (V1) is 25.0 cm3. The final diluted volume (V2) is 250.0 cm3. Substituting these values gives c2 = 0.200 * (25.0 / 250.0) = 0.0200 mol dm-3. The units of volume cancel out, so no conversion to dm3 is required for the ratio.",
+  "method": "The dilution equation c1V1 = c2V2 is used. The initial concentration (c1) is 0.200 mol dm-3 and the initial volume (V1) is 25.0 cm3. The final volume (V2) is 250.0 cm3. The volumes are converted to dm3 by dividing by 1000, but the ratio is the same, so we can use cm3 directly. c2 = (c1 * V1) / V2 = (0.200 * 25.0) / 250.0 = 0.0200 mol dm-3.",
   "key_equations": [
     "c1V1 = c2V2"
   ],
   "line_refs": [
     "L16",
-    "L29"
+    "L29",
+    "L30"
   ],
   "checks": [
-    "The final concentration is 1/10th of the initial concentration, which is expected as the volume was increased by a factor of 10.",
-    "Units are correct (mol dm-3)."
+    "The dilution factor is 250.0 / 25.0 = 10. The new concentration should be the original concentration divided by 10, which is 0.200 / 10 = 0.0200. This matches the calculated answer."
   ]
 }

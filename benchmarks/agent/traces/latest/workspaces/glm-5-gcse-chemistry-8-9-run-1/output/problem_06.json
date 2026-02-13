@@ -3,22 +3,16 @@
   "final_answer": {
     "value": 0.0736,
     "units": "dimensionless",
-    "precision_note": "Answer given to 3 significant figures, consistent with input mole values (0.180 mol and 0.220 mol) and volume (2.00 dm3)."
+    "precision_note": "Kc reported as unitless (dimensionless) per L21, with 3 significant figures from equilibrium concentration values."
   },
-  "method": "First, calculate equilibrium concentrations: [NO2] = moles/volume = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3; [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Then apply the equilibrium expression Kc = [NO2]^2 / [N2O4]: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. The result is dimensionless (unitless) as specified in the report instructions.",
+  "method": "Calculate equilibrium concentrations: [NO2] = moles / volume = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. For the equilibrium N2O4(g) <-> 2NO2(g), Kc = [NO2]^2 / [N2O4]. Substituting: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. As specified, Kc is reported as dimensionless.",
   "key_equations": [
     "Kc = [NO2]^2 / [N2O4]",
-    "[X] = moles / volume"
+    "[X] = moles(X) / V"
   ],
-  "line_refs": [
-    "L20",
-    "L56",
-    "L57",
-    "L58"
-  ],
+  "line_refs": ["L20", "L21", "L56", "L57", "L58"],
   "checks": [
-    "Concentration [NO2] = 0.180 / 2.00 = 0.0900 mol dm-3 correctly calculated.",
-    "Concentration [N2O4] = 0.220 / 2.00 = 0.110 mol dm-3 correctly calculated.",
-    "Kc calculation: (0.0900)^2 / 0.110 = 0.0736 dimensionless verified."
+    "Equilibrium expression check: Kc = [NO2]^2 / [N2O4] matches the formula given at L20 for N2O4 <-> 2NO2.",
+    "Unit check: Concentration terms cancel to give dimensionless Kc as required by L21."
   ]
 }
