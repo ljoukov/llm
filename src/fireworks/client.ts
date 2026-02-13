@@ -19,8 +19,7 @@ function resolveTimeoutMs(): number {
 
   const raw = process.env.FIREWORKS_TIMEOUT_MS;
   const parsed = raw ? Number(raw) : Number.NaN;
-  cachedTimeoutMs =
-    Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_FIREWORKS_TIMEOUT_MS;
+  cachedTimeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_FIREWORKS_TIMEOUT_MS;
   return cachedTimeoutMs;
 }
 

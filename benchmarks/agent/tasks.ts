@@ -252,7 +252,8 @@ export const AGENT_BENCHMARK_TASKS: readonly AgentBenchmarkTask[] = [
     title: "GCSE chemistry grade 8-9 multi-step quantitative solving",
     reportFile: "input/gcse-chemistry-8-9.md",
     sourceTitle: "GCSE Chemistry topic set (AQA specification-aligned, synthesized benchmark)",
-    sourceUrl: "https://www.aqa.org.uk/subjects/science/gcse/chemistry-8462/specification-at-a-glance",
+    sourceUrl:
+      "https://www.aqa.org.uk/subjects/science/gcse/chemistry-8462/specification-at-a-glance",
     outputFileSpecs: GCSE_CHEMISTRY_OUTPUT_FILE_SPECS,
   },
 ];

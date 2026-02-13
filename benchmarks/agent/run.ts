@@ -746,10 +746,7 @@ function collectLineRefsFromValue(value: unknown): string[] {
 }
 
 function normalizeUnit(value: string): string {
-  const compact = value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
+  const compact = value.trim().toLowerCase().replace(/\s+/g, "");
 
   if (compact === "g") {
     return "g";
@@ -793,7 +790,9 @@ function validateExpectedAnswerValue(
   if (typeof actualUnits !== "string" || actualUnits.trim().length === 0) {
     errors.push("final_answer.units must be a non-empty string.");
   } else if (normalizeUnit(actualUnits) !== normalizeUnit(expected.units)) {
-    errors.push(`final_answer.units ${JSON.stringify(actualUnits)} != expected ${JSON.stringify(expected.units)}.`);
+    errors.push(
+      `final_answer.units ${JSON.stringify(actualUnits)} != expected ${JSON.stringify(expected.units)}.`,
+    );
   }
   return errors;
 }
