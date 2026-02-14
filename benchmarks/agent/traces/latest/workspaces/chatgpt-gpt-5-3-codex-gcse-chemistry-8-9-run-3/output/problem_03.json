@@ -1,0 +1,24 @@
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "3 s.f. (limited by 0.150 mol dm-3 and 23.40 cm3)"
+  },
+  "method": "Convert NaOH volume to dm3: 23.40 cm3 = 0.02340 dm3. Use c = n/V to find moles of NaOH: n(NaOH)=cV=0.150×0.02340=0.00351 mol. From H2SO4 + 2NaOH → Na2SO4 + 2H2O, 2 mol NaOH neutralize 1 mol H2SO4, so n(H2SO4)=0.00351/2=0.001755 mol. Convert acid volume: 25.00 cm3 = 0.02500 dm3, then c(H2SO4)=n/V=0.001755/0.02500=0.0702 mol dm-3.",
+  "key_equations": [
+    "c = n / V",
+    "n = cV",
+    "n(H2SO4) = n(NaOH) / 2"
+  ],
+  "line_refs": [
+    "L15",
+    "L39",
+    "L40",
+    "L41"
+  ],
+  "checks": [
+    "Acid concentration should be lower than NaOH because twice as many moles of NaOH are needed; 0.0702 is < 0.150.",
+    "n(NaOH)=3.51×10^-3 mol, so n(H2SO4)=1.755×10^-3 mol; dividing by 0.025 dm3 gives ~7×10^-2 mol dm-3, consistent."
+  ]
+}

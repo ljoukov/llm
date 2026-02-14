@@ -1,0 +1,25 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.89,
+    "units": "g",
+    "precision_note": "Limited by I (1.50 A) and time (30.0 min), so report mass to 3 s.f."
+  },
+  "method": "Current is 1.50 A for 30.0 min, so time in seconds is t = 30.0×60 = 1800 s and charge passed is Q = I×t = 1.50×1800 = 2700 C. Faraday constant F = 96,500 C mol-1 means 96,500 C corresponds to 1 mol of electrons, so n(e−) = 2700/96500 = 0.02798 mol e−. From the half-equation Cu2+ + 2e− → Cu, 2 mol e− deposit 1 mol Cu, so n(Cu) = 0.02798/2 = 0.01399 mol. Using the given atomic mass of copper (63.55 g mol-1), m(Cu) = 0.01399×63.55 = 0.890 g, which rounds to 0.890 g (3 s.f.).",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "Cu2+ + 2e- -> Cu",
+    "m = nMr"
+  ],
+  "line_refs": [
+    "L19",
+    "L24",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "Charge scales with current and time (Q = It), so doubling either would double the deposited mass.",
+    "Because 2 e− are needed per Cu, the amount of Cu must be half the amount of electrons."
+  ]
+}
