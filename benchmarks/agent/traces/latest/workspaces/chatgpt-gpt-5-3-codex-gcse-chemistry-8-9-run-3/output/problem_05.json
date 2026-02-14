@@ -1,0 +1,25 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "3 s.f. based on I=1.50 A and t=30.0 min"
+  },
+  "method": "Convert time: 30.0 min = 1800 s. Charge passed is current × time: Q = 1.50 × 1800 = 2700 C. Using F = 96,500 C mol-1, the moles of electrons transferred are n(e−) = Q/96,500 = 2700/96,500 = 0.02798 mol e−. From Cu2+ + 2e− → Cu, 2 mol e− deposit 1 mol Cu, so n(Cu)=0.02798/2=0.01399 mol. With Ar(Cu)=63.55, mass deposited m = n×Ar = 0.01399×63.55 = 0.8886 g, which rounds to 0.889 g.",
+  "key_equations": [
+    "Q = I × t",
+    "F = 96,500 C mol-1",
+    "n(e−) = Q / 96,500",
+    "Cu2+ + 2e− → Cu"
+  ],
+  "line_refs": [
+    "L51",
+    "L19",
+    "L52",
+    "L24"
+  ],
+  "checks": [
+    "Doubling current or time would double Q and therefore double the mass deposited; the method uses this proportionality.",
+    "n(e−)≈0.028 mol gives n(Cu)≈0.014 mol; multiplying by ~64 g/mol gives just under 1 g, consistent with 0.889 g."
+  ]
+}
