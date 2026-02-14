@@ -2,21 +2,21 @@
 
 This file is auto-generated from the latest benchmark run.
 
-- Run id: `agent-fs-2026-02-14T14-45-27-017Z`
-- Generated at: `2026-02-14T14:53:49.274Z`
+- Run id: `agent-fs-2026-02-14T15-32-35-138Z`
+- Generated at: `2026-02-14T16:20:51.448Z`
 - Tasks: `tumor-vaccine-ici`, `trappist1b-atmosphere`, `gcse-chemistry-8-9`
-- Models: `chatgpt-gpt-5.3-codex-spark`, `gpt-5.2`, `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`
+- Models: `chatgpt-gpt-5.3-codex-spark`, `gpt-5.2`, `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`, `chatgpt-gpt-5.3-codex`
 - Grader: `gpt-5.2`
 
 ## Aggregate
 
-- Cases: 22/81 pass (43/81 schema, 81/81 tool trace, 22/81 grader)
-- Total latency: 8711.49s
-- Avg latency per case: 107.55s
-- Total cost: $6.795905
-- Tokens (in/cached/out): 5,929,775/3,288,221/375,934
-- Thinking tokens: 359,466
-- Total tokens: 6,665,175
+- Cases: 29/90 pass (52/90 schema, 90/90 tool trace, 30/90 grader)
+- Total latency: 11607.67s
+- Avg latency per case: 128.97s
+- Total cost: $8.743710
+- Tokens (in/cached/out): 6,702,731/3,832,093/417,081
+- Thinking tokens: 422,014
+- Total tokens: 7,541,826
 
 ## Outcome
 
@@ -31,6 +31,7 @@ This file is auto-generated from the latest benchmark run.
 | `gemini-flash-latest` | FAIL | 3/9 | 9/9 | 1/9 | 194 | 80.85 | 727.62 | 0.166178 | 454,046 | 264,994 | 33,397 |
 | `gemini-3-pro-preview` | FAIL | 8/9 | 9/9 | 3/9 | 256 | 192.28 | 1730.54 | 1.681807 | 551,325 | 270,983 | 31,155 |
 | `gemini-3-flash-preview` | FAIL | 9/9 | 9/9 | 4/9 | 232 | 116.65 | 1049.85 | 0.159815 | 586,504 | 233,324 | 28,528 |
+| `chatgpt-gpt-5.3-codex` | FAIL | 9/9 | 9/9 | 8/9 | 403 | 321.80 | 2896.18 | 1.947805 | 772,956 | 543,872 | 41,147 |
 
 ## Per-Task Across Runs (Best + Average)
 
@@ -63,6 +64,9 @@ This file is auto-generated from the latest benchmark run.
 | `gemini-3-flash-preview` | `tumor-vaccine-ici` | 3 | PASS (run 3) | 1/3 (33.3%) | 3/3 (100.0%) | 3/3 (100.0%) | 1/3 (33.3%) | 125.04 | 120.50 | 0.017876 | 0.015297 | 24.67 | 26 |
 | `gemini-3-flash-preview` | `trappist1b-atmosphere` | 3 | PASS (run 2) | 1/3 (33.3%) | 3/3 (100.0%) | 3/3 (100.0%) | 1/3 (33.3%) | 118.05 | 123.13 | 0.017123 | 0.012840 | 24.00 | 26 |
 | `gemini-3-flash-preview` | `gcse-chemistry-8-9` | 3 | PASS (run 1) | 2/3 (66.7%) | 3/3 (100.0%) | 3/3 (100.0%) | 2/3 (66.7%) | 106.86 | 97.51 | 0.018273 | 0.015997 | 28.67 | 30 |
+| `chatgpt-gpt-5.3-codex` | `tumor-vaccine-ici` | 3 | PASS (run 3) | 2/3 (66.7%) | 3/3 (100.0%) | 3/3 (100.0%) | 2/3 (66.7%) | 218.73 | 275.64 | 0.220825 | 0.256317 | 48.00 | 46 |
+| `chatgpt-gpt-5.3-codex` | `trappist1b-atmosphere` | 3 | PASS (run 3) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 122.25 | 87.51 | 0.123359 | 0.090014 | 30.00 | 24 |
+| `chatgpt-gpt-5.3-codex` | `gcse-chemistry-8-9` | 3 | PASS (run 3) | 2/3 (66.7%) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 624.41 | 512.46 | 0.305084 | 0.404958 | 56.33 | 60 |
 
 ## Artifact Paths
 

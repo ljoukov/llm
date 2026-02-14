@@ -1,0 +1,21 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Nearest whole number from given mean bond energies"
+  },
+  "method": "Use ΔH = Σ(bonds broken) − Σ(bonds formed). For CH4 + 2O2 → CO2 + 2H2O: bonds broken are 4×(C–H) from CH4 and 2×(O=O) from 2O2. Using the given mean bond energies: broken = 4×413 + 2×498 = 1652 + 996 = 2648 kJ mol-1. Bonds formed are 2×(C=O in CO2) and 4×(O–H) in 2H2O: formed = 2×805 + 4×463 = 1610 + 1852 = 3462 kJ mol-1. Therefore ΔH = 2648 − 3462 = −814 kJ mol-1 (exothermic).",
+  "key_equations": [
+    "ΔH = Σ(bonds broken) − Σ(bonds formed)"
+  ],
+  "line_refs": [
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "Combustion reactions are exothermic, so a negative ΔH is expected.",
+    "Formed-bond total (3462) is larger than broken-bond total (2648), giving a negative difference, consistent with energy release."
+  ]
+}

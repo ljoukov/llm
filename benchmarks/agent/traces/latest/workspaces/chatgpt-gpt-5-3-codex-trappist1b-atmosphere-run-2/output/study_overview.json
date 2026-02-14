@@ -1,0 +1,43 @@
+{
+  "paper": {
+    "title": "Phase-curve Evidence for an Atmosphere on TRAPPIST-1 b",
+    "doi": "10.48550/arXiv.2409.13036",
+    "publication_year": 2024,
+    "domain": "exoplanet-atmospheres",
+    "study_type": "observational-astronomy"
+  },
+  "core_question": "Does TRAPPIST-1 b retain an atmosphere, as inferred from JWST MIRI phase-curve thermal spectroscopy and retrieval modeling?",
+  "datasets_or_cohorts": [
+    {
+      "id": "trappist-1b-phase-curve",
+      "label": "TRAPPIST-1 b JWST MIRI phase curve",
+      "sample_size_or_observations": "One planet; JWST MIRI low-resolution spectroscopy over an orbital phase curve",
+      "description": "Phase-resolved thermal spectra and phase variation measurements used to constrain day-night heat transport and spectral structure near the 15 um CO2 band."
+    },
+    {
+      "id": "bare-rock-null",
+      "label": "Bare-rock, no-atmosphere null model",
+      "sample_size_or_observations": "Model comparison against the observed phase-curve spectra",
+      "description": "Atmosphere-free scenario with minimal heat redistribution, used as the null benchmark for fitting phase amplitude and spectral behavior."
+    },
+    {
+      "id": "co2-rich-retrieval",
+      "label": "CO2-rich atmosphere retrieval family",
+      "sample_size_or_observations": "Model comparison against the observed phase-curve spectra",
+      "description": "Atmosphere-bearing retrievals emphasizing CO2 absorption (including the 15 um band) and allowing for non-zero heat transport and moderate pressures."
+    },
+    {
+      "id": "o2-rich-retrieval",
+      "label": "O2-rich atmosphere retrieval family",
+      "sample_size_or_observations": "Model comparison against the observed phase-curve spectra",
+      "description": "Oxidized composition retrievals considered as alternative atmosphere-bearing cases, with weaker constraints on the CO2 signature."
+    }
+  ],
+  "major_limitations": [
+    "Single-planet study; cannot generalize to all M-dwarf rocky planets.",
+    "Retrieval assumptions (circulation, opacity priors, clouds) affect posteriors.",
+    "Stellar variability and instrument systematics can bias weak spectral features.",
+    "Night-side constraints are weaker than day-side constraints in this dataset.",
+    "Degeneracies between composition, clouds/hazes, and circulation remain significant."
+  ]
+}
