@@ -86,6 +86,7 @@ async function fetchChatGptAuthProfileFromServer(options: {
     method: "GET",
     headers: {
       Authorization: `Bearer ${options.apiKey}`,
+      "x-chatgpt-auth": options.apiKey,
       Accept: "application/json",
     },
   });
@@ -198,7 +199,12 @@ export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
 
   const authServerUrl = process.env[CHATGPT_AUTH_SERVER_URL_ENV];
   const authServerKey = process.env[CHATGPT_AUTH_API_KEY_ENV];
-  if (authServerUrl && authServerUrl.trim().length > 0 && authServerKey && authServerKey.trim().length > 0) {
+  if (
+    authServerUrl &&
+    authServerUrl.trim().length > 0 &&
+    authServerKey &&
+    authServerKey.trim().length > 0
+  ) {
     if (cachedProfile && !isExpired(cachedProfile)) {
       return cachedProfile;
     }
@@ -404,8 +410,8 @@ function extractChatGptAccountId(token: string): string | undefined {
   }
 
   // Codex/ChatGPT tokens often nest it under this namespaced claim.
-  const namespaced = (payload as { "https://api.openai.com/auth"?: { chatgpt_account_id?: unknown } })[
-    "https://api.openai.com/auth"
-  ]?.chatgpt_account_id;
+  const namespaced = (
+    payload as { "https://api.openai.com/auth"?: { chatgpt_account_id?: unknown } }
+  )["https://api.openai.com/auth"]?.chatgpt_account_id;
   return typeof namespaced === "string" && namespaced.length > 0 ? namespaced : undefined;
 }

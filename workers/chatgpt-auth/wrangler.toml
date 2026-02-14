@@ -1,0 +1,18 @@
+name = "chatgpt-auth"
+main = "src/index.ts"
+compatibility_date = "2026-02-14"
+
+# Refresh check window is 1 hour; run 4x more frequently.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[[d1_databases]]
+binding = "CHATGPT_AUTH_DB"
+database_name = "chatgpt-auth"
+database_id = "f41f50c9-9b02-4f94-b5aa-435499697de6"
+remote = true
+
+[[kv_namespaces]]
+binding = "CHATGPT_AUTH_KV"
+id = "623ac725dd4444ac85bbea9a41dc2b6b"
+remote = true
