@@ -2,83 +2,91 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling in tumors.",
+      "claim": "Intratumoral mRNA vaccination can create an interferon-rich inflammatory state that sensitizes tumors to immune checkpoint blockade",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Type I interferon response score (normalized units) 3.1 vs 1.0",
+          "quote": "Intratumoral delivery of an mRNA vaccine can create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 therapy",
+          "line_ref": "L11"
+        },
+        {
+          "quote": "Type I interferon response score (normalized units) 3.1 vs 1.0 - Marked induction after mRNA vaccination in tumors",
           "line_ref": "L31"
         },
         {
-          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-          "line_ref": "L42"
+          "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit",
+          "line_ref": "L39"
         }
       ],
-      "caveat": "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
+      "caveat": "Mouse model effects may not map one-to-one to all human tumors, and some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings"
     },
     {
       "claim_id": "C02",
-      "claim": "mRNA vaccination leads to a broader peptide repertoire on MHC-I, improving tumor visibility to T cells.",
+      "claim": "mRNA vaccination triggers broader antigen presentation on MHC-I, improving tumor visibility to T cells",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Fraction of tumor proteins represented in immunopeptidome 62.3% vs 37.3%",
+          "quote": "Fraction of tumor proteins represented in immunopeptidome 62.3% vs 37.3% - Broader antigen display after intratumoral mRNA vaccination",
           "line_ref": "L28"
         },
         {
-          "quote": "Fraction of proteins represented in MHC-I peptidome 40.6% vs 20.6%",
+          "quote": "Fraction of proteins represented in MHC-I peptidome 40.6% vs 20.6% - Strong expansion of MHC-I-presented landscape",
           "line_ref": "L29"
+        },
+        {
+          "quote": "Interferon-associated antigen processing and presentation pathways increase",
+          "line_ref": "L43"
         }
       ],
-      "caveat": "Mouse model effects may not map one-to-one to all human tumors."
+      "caveat": "Immunopeptidomics readouts may vary across different tumor types and model systems"
     },
     {
       "claim_id": "C03",
-      "claim": "Patients with prior SARS-CoV-2 mRNA vaccination had improved survival under ICI treatment compared to unvaccinated patients.",
-      "strength": "moderate",
+      "claim": "Prior SARS-CoV-2 mRNA vaccination is associated with improved survival in patients receiving immune checkpoint inhibitor therapy",
+      "strength": "tentative",
       "evidence": [
         {
-          "quote": "Retrospective human survival comparison p-value p=0.01",
+          "quote": "Retrospective human survival comparison p-value p=0.01 - Vaccinated subgroup had improved survival under ICI treatment",
           "line_ref": "L30"
         },
         {
-          "quote": "Vaccinated subgroup had improved survival under ICI treatment",
-          "line_ref": "L30"
+          "quote": "The human analysis is retrospective and non-randomized; residual confounding is likely",
+          "line_ref": "L49"
         }
       ],
-      "caveat": "The human analysis is retrospective and non-randomized; residual confounding is likely. Vaccination timing relative to ICI initiation varied across patients."
+      "caveat": "The human analysis is retrospective and non-randomized with varied vaccination timing relative to ICI initiation and tumor-type mix heterogeneity, limiting causal interpretation"
     },
     {
       "claim_id": "C04",
-      "claim": "Type I interferon signaling is required for the observed tumor sensitization effect.",
+      "claim": "PD-L1 pathway activity increases following mRNA vaccination, creating rationale for combining with checkpoint blockade",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
-          "line_ref": "L39"
+          "quote": "PD-L1 expression fold-change in tumor tissue 2.4x vs 1.0x - Checkpoint axis became more targetable",
+          "line_ref": "L32"
         },
         {
-          "quote": "Lipid particle controls lacking mRNA did not reproduce the sensitization effect.",
-          "line_ref": "L38"
+          "quote": "PD-L1 pathway activity also increases, creating a rationale for combining with checkpoint blockade",
+          "line_ref": "L45"
         }
       ],
-      "caveat": "Perturbation results may be model-specific and require confirmation across diverse tumor types."
+      "caveat": "PD-L1 induction was measured in specific model systems and may not be uniform across all tumor types"
     },
     {
       "claim_id": "C05",
-      "claim": "The combination of intratumoral mRNA vaccination with checkpoint blockade increases immune cell infiltration into tumors.",
+      "claim": "The mRNA component specifically is required for sensitization, as lipid particles alone do not produce the effect",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Intratumoral CD8+ T-cell density fold-change 1.8x vs 1.0x",
-          "line_ref": "L33"
+          "quote": "Lipid particle controls lacking mRNA did not reproduce the sensitization effect",
+          "line_ref": "L38"
         },
         {
-          "quote": "Increased immune infiltration with combination therapy",
-          "line_ref": "L33"
+          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling",
+          "line_ref": "L42"
         }
       ],
-      "caveat": "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation in human settings."
+      "caveat": "Specific lipid particle formulations may vary in their immunogenicity independent of mRNA content"
     }
   ]
 }

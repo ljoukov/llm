@@ -1,29 +1,31 @@
 {
   "problem_id": "P05",
   "final_answer": {
-    "value": 0.892,
+    "value": 0.889,
     "units": "g",
-    "precision_note": "Result expressed to 3 significant figures, matching the input data precision of 1.50 A (3 sf), 30.0 min (3 sf), and Cu = 63.55 (4 sf)."
+    "precision_note": "Three significant figures. Input values (1.50 A, 30.0 min) have 3 sig figs. Faraday constant (96500 C mol-1) has 3 sig figs. Molar mass Cu (63.55) has 4 sig figs but limited by other inputs."
   },
-  "method": "First calculate the total charge: Q = I × t = 1.50 A × (30.0 × 60) s = 1.50 × 1800 = 2700 C (L17, L51). Calculate moles of electrons using n(e-) = Q / F = 2700 C / 96500 C mol-1 = 0.02798 mol (L18, L19). From the half-equation Cu2+ + 2e- → Cu (L52), 2 moles of electrons produce 1 mole of Cu. Therefore moles of Cu = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Mass of Cu deposited = moles × atomic mass = 0.01399 mol × 63.55 g mol-1 = 0.889 g, rounded to 0.892 g. The copper deposit mass is consistent with the electrolysis calculations using Faraday's laws.",
+  "method": "Calculate total charge passed: Q = I × t where I = 1.50 A and t = 30.0 min. Convert time to seconds: 30.0 min × 60 = 1800 s. Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons: n(e-) = Q / F where F = 96500 C mol-1 from line 19. n(e-) = 2700 / 96500 = 0.02798 mol. From half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of copper. Calculate moles of Cu: n(Cu) = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper deposited: mass = n × Mr where Mr(Cu) = 63.55 g mol-1 from line 24. mass(Cu) = 0.01399 mol × 63.55 g mol-1 = 0.889 g. Alternative calculation: Q = 2700 C, n(e-) = 2700/96500 = 0.02798 mol, n(Cu) = 0.01399 mol, mass = 0.01399 × 63.55 = 0.889 g. Result rounded to 3 significant figures.",
   "key_equations": [
-    "Q = I × t (charge equation, from L17)",
-    "n(e-) = Q / F (moles of electrons, from L18)",
-    "F = 96500 C mol-1 (Faraday constant from L19)",
-    "Cu2+ + 2e- → Cu (half-equation from L52, 2e- : 1 Cu ratio)"
+    "Q = I × t",
+    "n(e-) = Q / F",
+    "From half-equation: n(Cu) = n(e-) / 2",
+    "mass(Cu) = n(Cu) × Mr(Cu)",
+    "F = 96500 C mol-1"
   ],
   "line_refs": [
     "L17",
     "L18",
     "L19",
+    "L24",
     "L51",
-    "L52"
+    "L52",
+    "L53"
   ],
   "checks": [
-    "Time conversion correct: 30.0 min = 1800 seconds",
-    "Charge calculation verified: Q = 1.50 × 1800 = 2700 C",
-    "Moles of electrons verified: n(e-) = 2700/96500 = 0.02798 mol",
-    "Stoichiometry verified: Cu produced = 0.02798/2 × 63.55 = 0.889 g → 0.892 g",
-    "Result is reasonable: mass deposited is consistent with typical electrolysis yields"
+    "Charge calculation: 1.50 A × (30.0 × 60) s = 1.50 × 1800 = 2700 C, time conversion correct",
+    "Moles electrons: 2700 / 96500 = 0.02798 mol, Faraday constant applied correctly",
+    "Copper moles: 0.02798 / 2 = 0.01399 mol, stoichiometry from half-equation verified",
+    "Final mass: 0.01399 mol × 63.55 g/mol = 0.889 g, three sig figs confirmed"
   ]
 }

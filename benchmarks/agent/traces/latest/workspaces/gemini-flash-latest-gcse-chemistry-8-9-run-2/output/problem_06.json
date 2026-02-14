@@ -2,13 +2,13 @@
   "problem_id": "P06",
   "final_answer": {
     "value": 0.0736,
-    "units": "dimensionless",
-    "precision_note": "Answer is given to 3 significant figures, consistent with the precision of the input data (moles and volume)."
+    "units": "unitless",
+    "precision_note": "Calculated to 3 significant figures (0.0736), consistent with all input values (moles and volume). The report requires Kc to be reported as dimensionless (unitless)."
   },
-  "method": "The equilibrium constant (Kc) is calculated using the expression $K_c = [\\text{NO}_2]^2 / [\\text{N}_2\\text{O}_4]$. First, the concentrations for each species are determined using the volume ($V = 2.00 \\text{ dm}^3$) and the formula $c = n/V$. [\\text{NO}_2] = 0.180 \\text{ mol} / 2.00 \\text{ dm}^3 = 0.0900 \\text{ mol dm}^{-3}$. [\\text{N}_2\\text{O}_4] = 0.220 \\text{ mol} / 2.00 \\text{ dm}^3 = 0.110 \\text{ mol dm}^{-3}$. Finally, these concentrations are substituted into the $K_c$ expression: $K_c = (0.0900)^2 / 0.110 = 0.00810 / 0.110 \\approx 0.0736$. The result is reported as dimensionless as specified (L21).",
+  "method": "First, calculate the equilibrium concentrations. The volume V is 2.00 dm3. [NO2] = n(NO2) / V = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = n(N2O4) / V = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Next, calculate Kc using the expression Kc = [NO2]^2 / [N2O4] (L20): Kc = (0.0900)^2 / 0.110 = 0.008100 / 0.110 = 0.073636... The result, 0.0736, is reported to 3 significant figures and is unitless as specified in the constraints (L21).",
   "key_equations": [
-    "c = n / V",
-    "Kc = [NO2]^2 / [N2O4]"
+    "Kc = [NO2]^2 / [N2O4]",
+    "c = n / V"
   ],
   "line_refs": [
     "L15",
@@ -19,9 +19,7 @@
     "L58"
   ],
   "checks": [
-    "Concentrations are correctly calculated using the vessel volume (2.00 dm3).",
-    "The concentration of NO2 is correctly squared in the Kc expression.",
-    "The final answer is reported as dimensionless, as required.",
-    "The answer has 3 significant figures."
+    "The concentrations calculated are [NO2] = 0.0900 mol dm-3 and [N2O4] = 0.110 mol dm-3. The ratio 0.0900^2 / 0.110 = 0.073636..., which confirms the result.",
+    "The calculated value of Kc is less than 1, indicating that the equilibrium lies to the left, favoring the reactant N2O4."
   ]
 }

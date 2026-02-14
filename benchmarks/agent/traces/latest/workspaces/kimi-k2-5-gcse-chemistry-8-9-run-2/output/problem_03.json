@@ -3,12 +3,12 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "3 significant figures matching the least precise input (0.150 mol dm-3 with 3 sig figs)"
+    "precision_note": "Reported to 3 significant figures consistent with input data precision."
   },
-  "method": "First calculate moles of NaOH used: n(NaOH) = c × V = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.00351 mol. From the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the mole ratio of H2SO4 to NaOH is 1:2, so moles of H2SO4 = 0.00351 / 2 = 0.001755 mol. The concentration of H2SO4 is calculated using c = n/V: c(H2SO4) = 0.001755 mol / (25.00/1000) dm3 = 0.001755 / 0.02500 = 0.0702 mol dm-3. The answer is given to 3 significant figures consistent with the input data precision.",
+  "method": "First calculate moles of NaOH: n = c × V = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.00351 mol. From the balanced equation H2SO4 + 2NaOH → Na2SO4 + 2H2O, the mole ratio is 1:2 (acid:base). Therefore moles of H2SO4 = 0.00351 / 2 = 0.001755 mol. The concentration of H2SO4 is c = n/V = 0.001755 mol / (25.00/1000) dm3 = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
   "key_equations": [
-    "n = c × V",
-    "c = n / V"
+    "c = n / V",
+    "n = c × V"
   ],
   "line_refs": [
     "L15",
@@ -16,8 +16,8 @@
     "L40"
   ],
   "checks": [
-    "H2SO4 is diprotic acid requiring 2 moles NaOH per mole acid - stoichiometry correctly applied",
-    "Calculated concentration is lower than NaOH concentration, expected for acid neutralized by base of similar concentration",
-    "Volume conversion cm3 to dm3 correctly applied by dividing by 1000"
+    "Diprotic acid requires half the moles of NaOH for neutralization",
+    "Concentration is lower than NaOH as expected (1:2 ratio with similar volumes)",
+    "Units are correct for molar concentration"
   ]
 }

@@ -1,21 +1,22 @@
 {
   "problem_id": "P01",
   "final_answer": {
-    "value": 0.02,
+    "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "3 significant figures, matching the least precise input value (25.0 cm3 and 250.0 cm3 both have 3 s.f.)"
+    "precision_note": "Reported to 3 significant figures, consistent with given data (3 sig figs)"
   },
-  "method": "Using the dilution formula c1V1 = c2V2, where c1 = 0.200 mol dm-3, V1 = 25.0 cm3, and V2 = 250.0 cm3. Rearranging for c2 gives c2 = c1V1/V2. Substituting values: c2 = 0.200 × 25.0 / 250.0 = 5.00 / 250.0 = 0.0200 mol dm-3. Since V1 and V2 share the same units (cm3), no unit conversion is needed. The answer is reported to 3 significant figures to match the precision of the input data.",
+  "method": "Using the dilution formula c1V1 = c2V2, where c1 is the initial concentration, V1 is the initial volume, and V2 is the final volume. Rearranging for c2: c2 = c1V1/V2. Substituting values: c2 = (0.200 mol dm-3 × 25.0 cm3) / 250.0 cm3 = 5.00 / 250.0 = 0.0200 mol dm-3. Note that since both volumes are in cm3, the units cancel and no unit conversion is needed.",
   "key_equations": [
     "c1V1 = c2V2"
   ],
   "line_refs": [
     "L16",
-    "L29"
+    "L29",
+    "L30"
   ],
   "checks": [
-    "Dilution by factor of 10 (250/25) should reduce concentration by factor of 10: 0.200/10 = 0.0200 - verified",
-    "Units consistent: cm3 cancels leaving mol dm-3 - verified",
-    "Magnitude check: dilution increases volume 10-fold, concentration decreases 10-fold - reasonable"
+    "Dilution increases volume by factor of 10 (250/25), so concentration should decrease by factor of 10",
+    "0.200/10 = 0.0200, which matches calculated value",
+    "Units are consistent: mol dm-3 is correct for concentration"
   ]
 }

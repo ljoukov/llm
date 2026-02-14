@@ -3,27 +3,24 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "3 significant figures based on input data precision (5.00 g, 84.0%)"
+    "precision_note": "Calculated to 3 significant figures based on input data precision (5.00 g and 84.0% have 3 sig figs; atomic masses given to 3-4 sig figs)"
   },
-  "method": "Calculate the mass of CaCO3 in the sample: 5.00 g × 0.840 = 4.20 g. Calculate moles of CaCO3: n = m / Mr = 4.20 / 100.1 = 0.04196 mol. From the balanced equation CaCO3 + 2HCl → CaCl2 + CO2 + H2O, the mole ratio of CaCO3 to CO2 is 1:1. Therefore moles of CO2 = 0.04196 mol. Calculate mass of CO2: m = n × Mr = 0.04196 × 44.0 = 1.846 g, rounded to 1.85 g.",
+  "method": "First, calculate the mass of CaCO₃ in the sample: mass_CaCO₃ = 5.00 g × 0.840 = 4.20 g. Then calculate moles of CaCO₃: n(CaCO₃) = 4.20 g / 100.1 g mol-1 = 0.04196 mol. From the balanced equation CaCO₃ + 2HCl -> CaCl₂ + CO₂ + H₂O, the stoichiometry shows 1:1 ratio between CaCO₃ and CO₂, so n(CO₂) = n(CaCO₃) = 0.04196 mol. Finally, calculate mass of CO₂: m(CO₂) = 0.04196 mol × 44.0 g mol-1 = 1.85 g.",
   "key_equations": [
-    "Moles: n = m / Mr",
-    "Stoichiometry: CaCO3 + 2HCl -> CaCl2 + CO2 + H2O (1:1 mole ratio)",
-    "Mr(CaCO3) = 100.1, Mr(CO2) = 44.0"
+    "n = m / Mr",
+    "CaCO₃ + 2HCl -> CaCl₂ + CO₂ + H₂O"
   ],
   "line_refs": [
     "L14",
-    "L24",
     "L25",
     "L26",
     "L33",
-    "L34",
-    "L35",
-    "L36"
+    "L34"
   ],
   "checks": [
-    "Mass of CaCO3 (4.20 g) ÷ Mr (100.1) = 0.0420 mol × 44.0 g/mol = 1.85 g CO2",
-    "Purity calculation: 84% of 5.00 g = 4.20 g CaCO3 is reasonable",
-    "Mole ratio verification: 1 mol CaCO3 produces exactly 1 mol CO2"
+    "The mass of CO₂ produced should be less than the mass of CaCO₃ used (4.20 g)",
+    "1.85 g < 4.20 g, which is reasonable",
+    "The calculated moles of CaCO₃ (0.0420 mol) should produce equal moles of CO₂ (0.0420 mol)",
+    "0.0420 mol × 44.0 g/mol ≈ 1.85 g, which matches the result"
   ]
 }

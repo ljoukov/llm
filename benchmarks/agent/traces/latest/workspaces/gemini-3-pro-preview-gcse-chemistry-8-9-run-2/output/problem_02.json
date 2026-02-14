@@ -3,21 +3,21 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "Calculated to 3 significant figures based on the precision of the sample mass (5.00 g) and percentage (84.0%)."
+    "precision_note": "Calculated to 3 significant figures based on input data precision."
   },
-  "method": "First, calculate the mass of pure CaCO3 in the sample: 5.00 g * 0.840 = 4.20 g. Next, calculate the moles of CaCO3 using n = m / Mr: n(CaCO3) = 4.20 / 100.1 = 0.041958 mol. From the reaction stoichiometry (CaCO3 + 2HCl -> CaCl2 + CO2 + H2O), the ratio of CaCO3 to CO2 is 1:1. Therefore, moles of CO2 = 0.041958 mol. Finally, calculate the mass of CO2: m = n * Mr = 0.041958 * 44.0 = 1.846 g (to 3 s.f.).",
+  "method": "First, calculate the mass of pure CaCO3: 5.00 g * 0.840 = 4.20 g. Next, calculate moles of CaCO3: n = m / Mr = 4.20 / 100.1. From stoichiometry (CaCO3 + 2HCl -> CaCl2 + CO2 + H2O), 1 mol CaCO3 produces 1 mol CO2. So n(CO2) = n(CaCO3). Finally, calculate mass of CO2: m = n * Mr = (4.20 / 100.1) * 44.0 = 1.846... g.",
   "key_equations": [
     "n = m / Mr",
-    "mass pure = mass sample * purity"
+    "CaCO3 + 2HCl -> CaCl2 + CO2 + H2O"
   ],
   "line_refs": [
-    "L14",
+    "L33",
+    "L34",
     "L25",
-    "L26",
-    "L33"
+    "L26"
   ],
   "checks": [
-    "Check if mass of CO2 is less than mass of CaCO3 (should be roughly 44/100). 1.85 vs 4.20 is consistent.",
-    "Stoichiometry 1:1 verified."
+    "Mass of product is less than reactant, as expected.",
+    "Stoichiometry is 1:1."
   ]
 }

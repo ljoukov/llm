@@ -3,12 +3,11 @@
   "final_answer": {
     "value": 0.0736,
     "units": "unitless",
-    "precision_note": "Kc to 3 s.f., limited by given moles (3 s.f.) and volume (3 s.f.)."
+    "precision_note": "Reported to 3 s.f., consistent with the 0.180 mol, 0.220 mol, and 2.00 dm3 inputs (3 s.f.)."
   },
-  "method": "Convert moles to equilibrium concentrations using the vessel volume 2.00 dm3. [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Use Kc = [NO2]^2 / [N2O4]. Substitute: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736 (dimensionless).",
+  "method": "Convert equilibrium moles into equilibrium concentrations by dividing by the vessel volume 2.00 dm3. [NO2] = 0.180/2.00 = 0.0900 mol dm-3 and [N2O4] = 0.220/2.00 = 0.110 mol dm-3. Use the given equilibrium expression for N2O4(g) ⇌ 2NO2(g): Kc = [NO2]^2 / [N2O4]. Substitute: Kc = (0.0900^2)/0.110 = 0.00810/0.110 = 0.073636..., which rounds to 0.0736 (3 s.f.). Kc is reported as dimensionless.",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4]",
-    "[X] = moles(X) / volume"
+    "Kc = [NO2]^2 / [N2O4]"
   ],
   "line_refs": [
     "L20",
@@ -17,7 +16,7 @@
     "L58"
   ],
   "checks": [
-    "Both concentrations are < 0.2/2 = 0.1 mol dm-3 scale, so Kc should be around (0.09^2)/0.11 ≈ 0.07, matching.",
-    "If [NO2] were higher relative to [N2O4], Kc would increase; squaring [NO2] makes this sensitivity clear."
+    "If [NO2] increased, Kc would increase because it is squared; computed value is small because [NO2] is <0.1.",
+    "Using rough numbers: (0.09^2)/0.11 ≈ 0.0081/0.11 ≈ 0.074, matching the final result."
   ]
 }

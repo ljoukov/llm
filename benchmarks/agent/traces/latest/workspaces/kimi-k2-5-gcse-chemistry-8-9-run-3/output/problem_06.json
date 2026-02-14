@@ -3,21 +3,25 @@
   "final_answer": {
     "value": 0.0736,
     "units": "dimensionless",
-    "precision_note": "Given data has 3 significant figures; final answer reported to 3 significant figures as 0.0736 (no units)."
+    "precision_note": "Calculated as 0.07363...; reported to 3 significant figures consistent with mole data (0.180 mol, 0.220 mol, 2.00 dm3)."
   },
-  "method": "For the equilibrium N2O4(g) <-> 2NO2(g) in a 2.00 dm3 vessel, first calculate equilibrium concentrations. [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Using Kc = [NO2]^2 / [N2O4]: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. The equilibrium constant is reported as dimensionless as specified.",
+  "method": "First calculate equilibrium concentrations by dividing moles by volume (2.00 dm3). [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Apply the Kc expression for N2O4(g) ⇌ 2NO2(g): Kc = [NO2]² / [N2O4]. Substitute values: Kc = (0.0900)² / 0.110 = 0.00810 / 0.110 = 0.0736. The Kc value is reported as dimensionless (unitless) as specified.",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4]"
+    "Kc = [NO2]² / [N2O4]",
+    "c = n / V"
   ],
   "line_refs": [
+    "L15",
     "L20",
+    "L21",
     "L56",
     "L57",
     "L58"
   ],
   "checks": [
-    "Concentrations calculated by dividing moles by volume in dm3",
-    "Kc expression correctly uses product concentration squared over reactant",
-    "Small Kc value indicates equilibrium lies to the left (reactants favored)"
+    "[NO2] = 0.180/2.00 = 0.0900 mol dm-3, correct",
+    "[N2O4] = 0.220/2.00 = 0.110 mol dm-3, correct",
+    "Kc = (0.0900)²/0.110 = 0.00810/0.110 = 0.0736",
+    "Since [NO2] < [N2O4] and squared term is small, Kc < 1 is reasonable"
   ]
 }

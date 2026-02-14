@@ -8,10 +8,10 @@
   "schemaPass": false,
   "toolTracePass": false,
   "graderPass": false,
-  "durationMs": 692,
+  "durationMs": 7725,
   "agentCostUsd": 0,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0,
+  "graderCostUsd": 0.0088305,
+  "totalCostUsd": 0.0088305,
   "agentUsage": {
     "promptTokens": 0,
     "cachedTokens": 0,
@@ -20,22 +20,22 @@
     "totalTokens": 0
   },
   "graderUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1622,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 392,
+    "thinkingTokens": 36,
+    "totalTokens": 2050
   },
   "totalUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1622,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 392,
+    "thinkingTokens": 36,
+    "totalTokens": 2050
   },
   "modelVersions": [],
   "agentFinalText": "",
-  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
   "outputValidation": [
     {
       "outputFile": "output/study_overview.json",
@@ -111,7 +111,22 @@
     "calls": []
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 1,
+        "coverage": 1,
+        "usefulness": 1
+      },
+      "critical_issues": [
+        "All four output JSON files are empty objects (`{}`) and therefore do not contain any claims grounded in the report, any quantitative findings, or any caveats. This is a complete coverage failure.",
+        "Schema validity failures are explicitly reported for every file (missing required fields such as `paper`, `core_question`, `datasets_or_cohorts`, `major_limitations`, `findings`, `controls_or_null_results`, `claims`, `headline`, etc.). This makes the outputs not practically usable for downstream review.",
+        "Grounding validity failures are explicitly reported for every file. There are no line references at all, so the requirement that 'Line references are valid and map to the numbered report lines' is not satisfied.",
+        "Core report content is missing, including (but not limited to): JWST MIRI phase-curve design (L13-L17), key quantitative results (dayside brightness temperature 342±22 K; heat transport efficiency 0.19 +0.23/-0.14; Bond albedo <0.08; CO2 band depth 96 ppm; likelihood ratio 7.4; pressure scale 0.3–1.0 bar) (L24-L33), null/control results (L34-L38), and caveats about retrieval assumptions/systematics/weak nightside constraints (L46-L51).",
+        "Because the outputs contain no content, they cannot be evaluated as 'calibrated' or 'coherent and useful' summaries; they provide no actionable information for review."
+      ],
+      "summary": "Fail because the generated JSON outputs are empty and violate the required schemas and grounding/line-reference requirements. They omit all main findings, quantitative results, controls, and caveats from the report, making them unusable for downstream scientific review."
+    }
   }
 }

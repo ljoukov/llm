@@ -8,10 +8,10 @@
   "schemaPass": false,
   "toolTracePass": false,
   "graderPass": false,
-  "durationMs": 845,
+  "durationMs": 9849,
   "agentCostUsd": 0,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0,
+  "graderCostUsd": 0.0076223,
+  "totalCostUsd": 0.0076223,
   "agentUsage": {
     "promptTokens": 0,
     "cachedTokens": 0,
@@ -20,22 +20,22 @@
     "totalTokens": 0
   },
   "graderUsage": {
-    "promptTokens": 0,
-    "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "promptTokens": 1690,
+    "cachedTokens": 1536,
+    "responseTokens": 458,
+    "thinkingTokens": 48,
+    "totalTokens": 2196
   },
   "totalUsage": {
-    "promptTokens": 0,
-    "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "promptTokens": 1690,
+    "cachedTokens": 1536,
+    "responseTokens": 458,
+    "thinkingTokens": 48,
+    "totalTokens": 2196
   },
   "modelVersions": [],
   "agentFinalText": "",
-  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
   "outputValidation": [
     {
       "outputFile": "output/study_overview.json",
@@ -111,7 +111,23 @@
     "calls": []
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 2,
+        "coverage": 1,
+        "usefulness": 1
+      },
+      "critical_issues": [
+        "All four output JSON files are empty objects (`{}`) and therefore do not contain any claims grounded in the report, nor any line references. This fails the requirement that outputs be coherent and useful for downstream review.",
+        "Schema compliance is broken for every file (explicit validation errors: missing `paper`, `core_question`, `datasets_or_cohorts`, `major_limitations`, `findings`, `controls_or_null_results`, `claims`, `headline`, `plain_language_summary`, etc.). This makes the outputs practically unusable.",
+        "Coverage is effectively zero: none of the report’s main findings are included (e.g., immunopeptidome expansion 62.3% vs 37.3% (L28), MHC-I peptidome 40.6% vs 20.6% (L29), human retrospective p=0.01 (L30), type I IFN score 3.1 vs 1.0 (L31), PD-L1 2.4x (L32), CD8 density 1.8x (L33)).",
+        "Core study design elements are missing: preclinical murine models + translational retrospective cohort (L13-L16), cohort sizes (L19-L24), and mechanistic probes/controls (L16, L35-L40).",
+        "Key caveats are missing, including that the human analysis is retrospective/non-randomized with likely confounding and heterogeneous timing/tumor types (L48-L53), and that prospective randomized trials are needed before clinical changes (L55-L56).",
+        "Line-reference requirement is not met: there are no citations to numbered report lines anywhere, so none can be ‘valid and map’ to the report (requirement explicitly stated by the user)."
+      ],
+      "summary": "The generated outputs contain no content beyond empty JSON objects, fail schema validation, provide no grounded findings or caveats from the report (L10-L56), and include no line references. While they do not fabricate numbers, they are non-compliant and not useful for review, so they fail."
+    }
   }
 }

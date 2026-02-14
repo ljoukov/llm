@@ -1,23 +1,23 @@
 # Filesystem Agent Benchmark Report
 
-- Run id: agent-fs-2026-02-13T17-38-16-588Z
-- Generated at: 2026-02-13T18:51:29.047Z
+- Run id: agent-fs-2026-02-14T12-57-06-825Z
+- Generated at: 2026-02-14T13:25:57.915Z
 - Models: chatgpt-gpt-5.3-codex-spark, gpt-5.2, kimi-k2.5, glm-5, minimax-m2.1, gemini-2.5-pro, gemini-flash-latest, gemini-3-pro-preview, gemini-3-flash-preview
-- Grader model: chatgpt-gpt-5.2
+- Grader model: gpt-5.2
 - Reasoning effort: medium
 - Tasks: tumor-vaccine-ici, trappist1b-atmosphere, gcse-chemistry-8-9
 - Runs per model/task: 3
 - Cases: 81
-- Overall success: 0/81
-- Schema pass: 31/81
-- Tool trace pass: 70/81
-- Grader pass: 0/81
-- Observed total latency: 12220.30s
-- Observed avg latency/case: 150.87s
-- Observed total cost: $3.949424
-- Observed tokens (in/cached/out): 3,324,065/1,608,052/266,633
-- Observed thinking tokens: 211,641
-- Observed total tokens: 3,802,339
+- Overall success: 20/81
+- Schema pass: 37/81
+- Tool trace pass: 72/81
+- Grader pass: 20/81
+- Observed total latency: 8291.20s
+- Observed avg latency/case: 102.36s
+- Observed total cost: $6.346483
+- Observed tokens (in/cached/out): 4,320,552/1,886,749/328,547
+- Observed thinking tokens: 260,209
+- Observed total tokens: 4,909,308
 
 ## Source Papers
 
@@ -39,214 +39,257 @@
 
 | Model | Success | Schema pass | Tool pass | Grader pass | Avg latency (s) | Total latency (s) | Tool calls | Total cost (USD) | In tokens | Cached tokens | Out tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| chatgpt-gpt-5.3-codex-spark | 0/9 | 0/9 | 0/9 | 0/9 | 0.73 | 6.61 | 0 | 0.000000 | 0 | 0 | 0 |
-| gpt-5.2 | 0/9 | 8/9 | 8/9 | 0/9 | 113.01 | 1017.09 | 243 | 0.934545 | 307,789 | 229,888 | 30,316 |
-| kimi-k2.5 | 0/9 | 2/9 | 9/9 | 0/9 | 29.44 | 264.98 | 226 | 0.205371 | 196,661 | 87,482 | 43,705 |
-| glm-5 | 0/9 | 4/9 | 9/9 | 0/9 | 488.02 | 4392.19 | 304 | 0.433669 | 364,917 | 60,796 | 36,684 |
-| minimax-m2.1 | 0/9 | 0/9 | 9/9 | 0/9 | 40.87 | 367.87 | 292 | 0.141659 | 390,648 | 248,452 | 51,444 |
-| gemini-2.5-pro | 0/9 | 1/9 | 8/9 | 0/9 | 146.16 | 1315.45 | 210 | 0.821967 | 447,959 | 208,348 | 23,252 |
-| gemini-flash-latest | 0/9 | 1/9 | 9/9 | 0/9 | 144.50 | 1300.54 | 198 | 0.000000 | 544,888 | 318,372 | 30,897 |
-| gemini-3-pro-preview | 0/9 | 7/9 | 9/9 | 0/9 | 214.40 | 1929.59 | 228 | 1.412212 | 514,663 | 237,312 | 23,942 |
-| gemini-3-flash-preview | 0/9 | 8/9 | 9/9 | 0/9 | 180.67 | 1626.00 | 226 | 0.000000 | 556,540 | 217,402 | 26,393 |
+| chatgpt-gpt-5.3-codex-spark | 0/9 | 0/9 | 0/9 | 0/9 | 9.09 | 81.83 | 0 | 0.074819 | 15,885 | 3,328 | 3,406 |
+| gpt-5.2 | 6/9 | 7/9 | 9/9 | 6/9 | 152.04 | 1368.34 | 312 | 1.400333 | 480,902 | 294,400 | 36,951 |
+| kimi-k2.5 | 0/9 | 0/9 | 9/9 | 0/9 | 42.55 | 382.93 | 258 | 0.368985 | 311,033 | 129,076 | 46,306 |
+| glm-5 | 4/9 | 7/9 | 9/9 | 4/9 | 148.44 | 1335.94 | 380 | 1.106094 | 904,502 | 131,424 | 62,346 |
+| minimax-m2.1 | 0/9 | 0/9 | 9/9 | 0/9 | 82.79 | 745.10 | 288 | 0.313905 | 482,287 | 361,916 | 59,010 |
+| gemini-2.5-pro | 2/9 | 3/9 | 9/9 | 2/9 | 96.56 | 869.05 | 238 | 1.074547 | 534,068 | 197,304 | 27,448 |
+| gemini-flash-latest | 1/9 | 3/9 | 9/9 | 1/9 | 80.85 | 727.62 | 194 | 0.166178 | 454,046 | 264,994 | 33,397 |
+| gemini-3-pro-preview | 3/9 | 8/9 | 9/9 | 3/9 | 192.28 | 1730.54 | 256 | 1.681807 | 551,325 | 270,983 | 31,155 |
+| gemini-3-flash-preview | 4/9 | 9/9 | 9/9 | 4/9 | 116.65 | 1049.85 | 232 | 0.159815 | 586,504 | 233,324 | 28,528 |
 
 ## Per-Task Across Runs (Best + Average)
 
 | Model | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls |
 |---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0.83 | 0.74 | 0.000000 | 0.000000 | 0.00 | 0 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0.69 | 0.67 | 0.000000 | 0.000000 | 0.00 | 0 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0.69 | 0.67 | 0.000000 | 0.000000 | 0.00 | 0 |
-| gpt-5.2 | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 103.03 | 99.83 | 0.108176 | 0.112221 | 26.67 | 24 |
-| gpt-5.2 | trappist1b-atmosphere | 3 | FAIL (run 1) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 100.91 | 92.27 | 0.099191 | 0.089446 | 24.00 | 22 |
-| gpt-5.2 | gcse-chemistry-8-9 | 3 | FAIL (run 3) | 0/3 (0.0%) | 2/3 (66.7%) | 2/3 (66.7%) | 0/3 (0.0%) | 135.09 | 164.78 | 0.104148 | 0.145080 | 30.33 | 32 |
-| kimi-k2.5 | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 29.81 | 23.07 | 0.023388 | 0.019559 | 22.00 | 22 |
-| kimi-k2.5 | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 26.97 | 30.50 | 0.019560 | 0.021299 | 22.67 | 24 |
-| kimi-k2.5 | gcse-chemistry-8-9 | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 31.55 | 27.49 | 0.025509 | 0.027350 | 30.67 | 30 |
-| glm-5 | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 2/3 (66.7%) | 3/3 (100.0%) | 0/3 (0.0%) | 473.60 | 370.39 | 0.077901 | 0.049313 | 34.67 | 30 |
-| glm-5 | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 605.99 | 720.37 | 0.028003 | 0.000000 | 24.67 | 19 |
-| glm-5 | gcse-chemistry-8-9 | 3 | FAIL (run 1) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 384.48 | 174.83 | 0.038652 | 0.047551 | 42.00 | 48 |
-| minimax-m2.1 | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 35.33 | 30.02 | 0.013599 | 0.010275 | 29.33 | 22 |
-| minimax-m2.1 | trappist1b-atmosphere | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 52.76 | 41.65 | 0.018544 | 0.013931 | 32.00 | 26 |
-| minimax-m2.1 | gcse-chemistry-8-9 | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 34.53 | 30.55 | 0.015076 | 0.015019 | 36.00 | 44 |
-| gemini-2.5-pro | tumor-vaccine-ici | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 144.41 | 100.78 | 0.095809 | 0.087523 | 22.67 | 22 |
-| gemini-2.5-pro | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 138.25 | 72.58 | 0.090345 | 0.074598 | 23.33 | 22 |
-| gemini-2.5-pro | gcse-chemistry-8-9 | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 2/3 (66.7%) | 0/3 (0.0%) | 155.81 | 186.84 | 0.087836 | 0.108467 | 24.00 | 30 |
-| gemini-flash-latest | tumor-vaccine-ici | 3 | FAIL (run 2) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 120.12 | 169.01 | 0.000000 | 0.000000 | 21.33 | 22 |
-| gemini-flash-latest | trappist1b-atmosphere | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 152.41 | 132.13 | 0.000000 | 0.000000 | 21.33 | 20 |
-| gemini-flash-latest | gcse-chemistry-8-9 | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 160.98 | 137.28 | 0.000000 | 0.000000 | 23.33 | 20 |
-| gemini-3-pro-preview | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 234.75 | 247.58 | 0.154964 | 0.148137 | 22.00 | 22 |
-| gemini-3-pro-preview | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 238.27 | 203.61 | 0.152236 | 0.144586 | 23.33 | 22 |
-| gemini-3-pro-preview | gcse-chemistry-8-9 | 3 | FAIL (run 2) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 170.18 | 110.76 | 0.163538 | 0.180718 | 30.67 | 30 |
-| gemini-3-flash-preview | tumor-vaccine-ici | 3 | FAIL (run 3) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 183.09 | 143.37 | 0.000000 | 0.000000 | 22.67 | 22 |
-| gemini-3-flash-preview | trappist1b-atmosphere | 3 | FAIL (run 2) | 0/3 (0.0%) | 2/3 (66.7%) | 3/3 (100.0%) | 0/3 (0.0%) | 140.97 | 127.54 | 0.000000 | 0.000000 | 24.00 | 22 |
-| gemini-3-flash-preview | gcse-chemistry-8-9 | 3 | FAIL (run 3) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 217.93 | 121.59 | 0.000000 | 0.000000 | 28.67 | 30 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 9.92 | 10.61 | 0.009408 | 0.011511 | 0.00 | 0 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 6.89 | 6.49 | 0.008462 | 0.007893 | 0.00 | 0 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 10.47 | 9.31 | 0.007070 | 0.008174 | 0.00 | 0 |
+| gpt-5.2 | tumor-vaccine-ici | 3 | PASS (run 2) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 129.69 | 109.16 | 0.156963 | 0.123976 | 32.67 | 34 |
+| gpt-5.2 | trappist1b-atmosphere | 3 | PASS (run 3) | 2/3 (66.7%) | 2/3 (66.7%) | 3/3 (100.0%) | 2/3 (66.7%) | 128.63 | 130.04 | 0.135775 | 0.135960 | 34.00 | 32 |
+| gpt-5.2 | gcse-chemistry-8-9 | 3 | PASS (run 1) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 197.79 | 199.29 | 0.174040 | 0.175918 | 37.33 | 32 |
+| kimi-k2.5 | tumor-vaccine-ici | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 40.83 | 49.89 | 0.038440 | 0.041528 | 22.67 | 22 |
+| kimi-k2.5 | trappist1b-atmosphere | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 42.26 | 36.15 | 0.041740 | 0.039418 | 26.00 | 24 |
+| kimi-k2.5 | gcse-chemistry-8-9 | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 44.55 | 34.24 | 0.042815 | 0.033346 | 37.33 | 30 |
+| glm-5 | tumor-vaccine-ici | 3 | PASS (run 1) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 134.34 | 209.64 | 0.150666 | 0.302268 | 35.33 | 60 |
+| glm-5 | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 2/3 (66.7%) | 3/3 (100.0%) | 0/3 (0.0%) | 115.50 | 193.24 | 0.100599 | 0.173041 | 38.67 | 52 |
+| glm-5 | gcse-chemistry-8-9 | 3 | PASS (run 2) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 195.47 | 88.01 | 0.117433 | 0.141561 | 52.67 | 54 |
+| minimax-m2.1 | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 61.17 | 61.84 | 0.029666 | 0.030168 | 26.67 | 24 |
+| minimax-m2.1 | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 96.93 | 81.55 | 0.036327 | 0.033879 | 31.33 | 28 |
+| minimax-m2.1 | gcse-chemistry-8-9 | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 90.27 | 118.37 | 0.038642 | 0.047070 | 38.00 | 38 |
+| gemini-2.5-pro | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 87.97 | 95.38 | 0.123706 | 0.128530 | 22.67 | 24 |
+| gemini-2.5-pro | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 88.83 | 104.66 | 0.112035 | 0.128524 | 24.00 | 24 |
+| gemini-2.5-pro | gcse-chemistry-8-9 | 3 | PASS (run 1) | 2/3 (66.7%) | 2/3 (66.7%) | 3/3 (100.0%) | 2/3 (66.7%) | 112.89 | 125.96 | 0.122441 | 0.118445 | 32.67 | 34 |
+| gemini-flash-latest | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 89.21 | 93.84 | 0.018192 | 0.021488 | 21.33 | 22 |
+| gemini-flash-latest | trappist1b-atmosphere | 3 | PASS (run 3) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 70.33 | 65.93 | 0.018146 | 0.021817 | 21.33 | 22 |
+| gemini-flash-latest | gcse-chemistry-8-9 | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 83.00 | 86.83 | 0.019055 | 0.014353 | 22.00 | 28 |
+| gemini-3-pro-preview | tumor-vaccine-ici | 3 | PASS (run 1) | 1/3 (33.3%) | 3/3 (100.0%) | 3/3 (100.0%) | 1/3 (33.3%) | 173.14 | 202.17 | 0.171214 | 0.192556 | 22.67 | 22 |
+| gemini-3-pro-preview | trappist1b-atmosphere | 3 | FAIL (run 1) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 134.96 | 116.66 | 0.156204 | 0.127303 | 23.33 | 22 |
+| gemini-3-pro-preview | gcse-chemistry-8-9 | 3 | PASS (run 2) | 2/3 (66.7%) | 2/3 (66.7%) | 3/3 (100.0%) | 2/3 (66.7%) | 268.75 | 459.97 | 0.233184 | 0.216345 | 39.33 | 42 |
+| gemini-3-flash-preview | tumor-vaccine-ici | 3 | PASS (run 3) | 1/3 (33.3%) | 3/3 (100.0%) | 3/3 (100.0%) | 1/3 (33.3%) | 125.04 | 120.50 | 0.017876 | 0.015297 | 24.67 | 26 |
+| gemini-3-flash-preview | trappist1b-atmosphere | 3 | PASS (run 2) | 1/3 (33.3%) | 3/3 (100.0%) | 3/3 (100.0%) | 1/3 (33.3%) | 118.05 | 123.13 | 0.017123 | 0.012840 | 24.00 | 26 |
+| gemini-3-flash-preview | gcse-chemistry-8-9 | 3 | PASS (run 1) | 2/3 (66.7%) | 3/3 (100.0%) | 3/3 (100.0%) | 2/3 (66.7%) | 106.86 | 97.51 | 0.018273 | 0.015997 | 28.67 | 30 |
 
 ## Case Matrix
 
 | Model | Task | Run | Reasoning | Status | Schema | Tool trace | Grader | Latency (s) | Tool calls | Cost (USD) | In tokens | Cached tokens | Out tokens |
 |---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 1 | medium | FAIL | fail | fail | fail | 0.89 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 2 | medium | FAIL | fail | fail | fail | 0.74 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | medium | FAIL | fail | fail | fail | 0.84 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 1 | medium | FAIL | fail | fail | fail | 0.69 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 2 | medium | FAIL | fail | fail | fail | 0.69 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | medium | FAIL | fail | fail | fail | 0.67 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | fail | fail | 0.72 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | fail | fail | 0.69 | 0 | 0.000000 | 0 | 0 | 0 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | fail | fail | 0.67 | 0 | 0.000000 | 0 | 0 | 0 |
-| gpt-5.2 | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 99.83 | 24 | 0.112221 | 24,968 | 7,424 | 4,045 |
-| gpt-5.2 | tumor-vaccine-ici | 2 | medium | FAIL | pass | pass | fail | 104.33 | 32 | 0.110724 | 36,687 | 28,800 | 4,202 |
-| gpt-5.2 | tumor-vaccine-ici | 3 | medium | FAIL | pass | pass | fail | 104.94 | 24 | 0.101582 | 19,791 | 12,800 | 3,832 |
-| gpt-5.2 | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 92.27 | 22 | 0.089446 | 18,091 | 9,728 | 3,471 |
-| gpt-5.2 | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 110.42 | 24 | 0.111280 | 26,750 | 17,024 | 4,026 |
-| gpt-5.2 | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 100.02 | 26 | 0.096847 | 29,850 | 23,552 | 3,708 |
-| gpt-5.2 | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 171.13 | 50 | 0.167365 | 116,055 | 103,424 | 3,790 |
-| gpt-5.2 | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | fail | fail | 69.35 | 9 | 0.000000 | 0 | 0 | 0 |
-| gpt-5.2 | gcse-chemistry-8-9 | 3 | medium | FAIL | pass | pass | fail | 164.78 | 32 | 0.145080 | 35,597 | 27,136 | 3,242 |
-| kimi-k2.5 | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 23.07 | 22 | 0.019559 | 18,364 | 8,778 | 4,310 |
-| kimi-k2.5 | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 37.27 | 24 | 0.030054 | 26,560 | 16,746 | 7,497 |
-| kimi-k2.5 | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 29.10 | 20 | 0.020551 | 15,925 | 3,844 | 4,306 |
-| kimi-k2.5 | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 29.60 | 22 | 0.018554 | 17,541 | 8,181 | 4,040 |
-| kimi-k2.5 | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 20.80 | 22 | 0.018826 | 17,653 | 7,909 | 4,063 |
-| kimi-k2.5 | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 30.50 | 24 | 0.021299 | 26,727 | 16,294 | 4,470 |
-| kimi-k2.5 | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 27.49 | 30 | 0.027350 | 27,721 | 9,094 | 5,088 |
-| kimi-k2.5 | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 29.84 | 30 | 0.025606 | 20,059 | 4,040 | 5,197 |
-| kimi-k2.5 | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 37.31 | 32 | 0.023571 | 26,111 | 12,596 | 4,734 |
-| glm-5 | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 370.39 | 30 | 0.049313 | 32,628 | 0 | 5,214 |
-| glm-5 | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 359.42 | 30 | 0.048926 | 32,568 | 0 | 5,112 |
-| glm-5 | tumor-vaccine-ici | 3 | medium | FAIL | pass | pass | fail | 690.99 | 44 | 0.135463 | 130,315 | 21,157 | 6,898 |
-| glm-5 | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 377.21 | 40 | 0.084010 | 65,934 | 10,145 | 8,185 |
-| glm-5 | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 720.38 | 15 | 0.000000 | 0 | 0 | 0 |
-| glm-5 | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 720.37 | 19 | 0.000000 | 0 | 0 | 0 |
-| glm-5 | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 174.83 | 48 | 0.047551 | 54,464 | 27,829 | 4,797 |
-| glm-5 | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 720.34 | 22 | 0.000000 | 0 | 0 | 0 |
-| glm-5 | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 258.25 | 56 | 0.068406 | 49,008 | 1,665 | 6,478 |
-| minimax-m2.1 | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 30.02 | 22 | 0.010275 | 20,652 | 9,863 | 4,632 |
-| minimax-m2.1 | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 35.98 | 32 | 0.017078 | 55,454 | 40,052 | 5,375 |
-| minimax-m2.1 | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 40.00 | 34 | 0.013444 | 34,741 | 21,703 | 5,231 |
-| minimax-m2.1 | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 70.12 | 46 | 0.021556 | 60,482 | 36,903 | 7,456 |
-| minimax-m2.1 | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 41.65 | 26 | 0.013931 | 34,911 | 22,690 | 5,718 |
-| minimax-m2.1 | trappist1b-atmosphere | 3 | medium | FAIL | fail | pass | fail | 46.52 | 24 | 0.020145 | 73,191 | 59,120 | 5,880 |
-| minimax-m2.1 | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 38.96 | 34 | 0.015237 | 40,034 | 22,411 | 5,490 |
-| minimax-m2.1 | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 34.07 | 30 | 0.014973 | 33,962 | 13,605 | 5,688 |
-| minimax-m2.1 | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 30.55 | 44 | 0.015019 | 37,221 | 22,105 | 5,974 |
-| gemini-2.5-pro | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 154.44 | 22 | 0.101073 | 50,443 | 20,916 | 2,966 |
-| gemini-2.5-pro | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 178.03 | 24 | 0.098829 | 45,781 | 17,011 | 3,123 |
-| gemini-2.5-pro | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 100.78 | 22 | 0.087523 | 36,199 | 11,107 | 2,725 |
-| gemini-2.5-pro | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 141.95 | 22 | 0.080578 | 48,904 | 20,455 | 2,869 |
-| gemini-2.5-pro | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 200.23 | 26 | 0.115859 | 65,464 | 31,370 | 3,685 |
-| gemini-2.5-pro | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 72.58 | 22 | 0.074598 | 19,998 | 5,564 | 2,810 |
-| gemini-2.5-pro | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | fail | fail | 87.07 | 10 | 0.046272 | 10,340 | 2,767 | 60 |
-| gemini-2.5-pro | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 186.84 | 30 | 0.108467 | 81,174 | 45,423 | 2,617 |
-| gemini-2.5-pro | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 193.54 | 32 | 0.108768 | 89,656 | 53,735 | 2,397 |
-| gemini-flash-latest | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 76.43 | 22 | 0.000000 | 52,206 | 37,745 | 3,274 |
-| gemini-flash-latest | tumor-vaccine-ici | 2 | medium | FAIL | pass | pass | fail | 169.01 | 22 | 0.000000 | 49,689 | 35,085 | 2,877 |
-| gemini-flash-latest | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 114.92 | 20 | 0.000000 | 48,934 | 37,251 | 3,446 |
-| gemini-flash-latest | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 164.21 | 22 | 0.000000 | 53,298 | 31,557 | 4,099 |
-| gemini-flash-latest | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 132.13 | 20 | 0.000000 | 48,303 | 36,846 | 3,293 |
-| gemini-flash-latest | trappist1b-atmosphere | 3 | medium | FAIL | fail | pass | fail | 160.89 | 22 | 0.000000 | 49,577 | 32,266 | 3,021 |
-| gemini-flash-latest | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 137.28 | 20 | 0.000000 | 85,354 | 21,214 | 4,271 |
-| gemini-flash-latest | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 196.85 | 30 | 0.000000 | 123,380 | 61,379 | 3,410 |
-| gemini-flash-latest | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 148.81 | 20 | 0.000000 | 34,147 | 25,029 | 3,206 |
-| gemini-3-pro-preview | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 247.58 | 22 | 0.148137 | 49,778 | 15,864 | 2,774 |
-| gemini-3-pro-preview | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 228.37 | 22 | 0.132050 | 50,219 | 20,611 | 2,876 |
-| gemini-3-pro-preview | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 228.31 | 22 | 0.184704 | 48,540 | 16,600 | 2,707 |
-| gemini-3-pro-preview | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 248.19 | 24 | 0.155743 | 54,945 | 32,073 | 2,709 |
-| gemini-3-pro-preview | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 263.00 | 24 | 0.156378 | 54,398 | 27,192 | 2,502 |
-| gemini-3-pro-preview | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 203.61 | 22 | 0.144586 | 49,015 | 15,202 | 2,677 |
-| gemini-3-pro-preview | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 158.88 | 32 | 0.180150 | 92,955 | 54,480 | 2,757 |
-| gemini-3-pro-preview | gcse-chemistry-8-9 | 2 | medium | FAIL | pass | pass | fail | 110.76 | 30 | 0.180718 | 59,657 | 16,880 | 2,572 |
-| gemini-3-pro-preview | gcse-chemistry-8-9 | 3 | medium | FAIL | pass | pass | fail | 240.90 | 30 | 0.129746 | 55,156 | 38,410 | 2,368 |
-| gemini-3-flash-preview | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 150.82 | 24 | 0.000000 | 56,907 | 17,717 | 2,738 |
-| gemini-3-flash-preview | tumor-vaccine-ici | 2 | medium | FAIL | pass | pass | fail | 255.08 | 22 | 0.000000 | 50,100 | 14,315 | 2,860 |
-| gemini-3-flash-preview | tumor-vaccine-ici | 3 | medium | FAIL | pass | pass | fail | 143.37 | 22 | 0.000000 | 49,703 | 7,800 | 2,688 |
-| gemini-3-flash-preview | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 120.68 | 22 | 0.000000 | 48,928 | 13,864 | 2,586 |
-| gemini-3-flash-preview | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 127.54 | 22 | 0.000000 | 47,960 | 20,013 | 2,498 |
-| gemini-3-flash-preview | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 174.70 | 28 | 0.000000 | 74,448 | 29,547 | 3,908 |
-| gemini-3-flash-preview | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 323.42 | 32 | 0.000000 | 92,525 | 47,678 | 2,929 |
-| gemini-3-flash-preview | gcse-chemistry-8-9 | 2 | medium | FAIL | pass | pass | fail | 208.78 | 24 | 0.000000 | 52,920 | 23,506 | 3,474 |
-| gemini-3-flash-preview | gcse-chemistry-8-9 | 3 | medium | FAIL | pass | pass | fail | 121.59 | 30 | 0.000000 | 83,049 | 42,962 | 2,712 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 1 | medium | FAIL | fail | fail | fail | 9.29 | 0 | 0.009090 | 1,690 | 0 | 404 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 2 | medium | FAIL | fail | fail | fail | 10.61 | 0 | 0.011511 | 1,690 | 0 | 568 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | medium | FAIL | fail | fail | fail | 9.85 | 0 | 0.007622 | 1,690 | 1,536 | 458 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 1 | medium | FAIL | fail | fail | fail | 7.72 | 0 | 0.008830 | 1,622 | 0 | 392 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 2 | medium | FAIL | fail | fail | fail | 6.47 | 0 | 0.008663 | 1,622 | 0 | 390 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | medium | FAIL | fail | fail | fail | 6.49 | 0 | 0.007893 | 1,622 | 0 | 323 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | fail | fail | 9.31 | 0 | 0.008174 | 1,983 | 0 | 302 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | fail | fail | 10.02 | 0 | 0.007684 | 1,983 | 0 | 273 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | fail | fail | 12.07 | 0 | 0.005352 | 1,983 | 1,792 | 296 |
+| gpt-5.2 | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 105.95 | 24 | 0.121099 | 27,345 | 5,504 | 3,816 |
+| gpt-5.2 | tumor-vaccine-ici | 2 | medium | PASS | pass | pass | pass | 109.16 | 34 | 0.123976 | 43,696 | 23,552 | 4,140 |
+| gpt-5.2 | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 173.97 | 40 | 0.225813 | 107,473 | 57,472 | 5,293 |
+| gpt-5.2 | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 119.69 | 30 | 0.125209 | 39,119 | 21,248 | 4,264 |
+| gpt-5.2 | trappist1b-atmosphere | 2 | medium | PASS | pass | pass | pass | 136.15 | 40 | 0.146157 | 69,696 | 48,384 | 4,136 |
+| gpt-5.2 | trappist1b-atmosphere | 3 | medium | PASS | pass | pass | pass | 130.04 | 32 | 0.135960 | 41,909 | 26,624 | 4,086 |
+| gpt-5.2 | gcse-chemistry-8-9 | 1 | medium | PASS | pass | pass | pass | 199.29 | 32 | 0.175918 | 41,822 | 27,264 | 3,300 |
+| gpt-5.2 | gcse-chemistry-8-9 | 2 | medium | PASS | pass | pass | pass | 196.47 | 36 | 0.174580 | 53,843 | 41,088 | 4,235 |
+| gpt-5.2 | gcse-chemistry-8-9 | 3 | medium | PASS | pass | pass | pass | 197.62 | 44 | 0.171621 | 55,999 | 43,264 | 3,681 |
+| kimi-k2.5 | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 31.82 | 22 | 0.034828 | 22,482 | 6,656 | 4,704 |
+| kimi-k2.5 | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 40.80 | 24 | 0.038965 | 31,780 | 11,150 | 4,543 |
+| kimi-k2.5 | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 49.89 | 22 | 0.041528 | 22,784 | 5,915 | 5,047 |
+| kimi-k2.5 | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 43.08 | 22 | 0.041929 | 22,046 | 3,444 | 5,657 |
+| kimi-k2.5 | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 36.15 | 24 | 0.039418 | 29,721 | 8,701 | 4,076 |
+| kimi-k2.5 | trappist1b-atmosphere | 3 | medium | FAIL | fail | pass | fail | 47.56 | 32 | 0.043873 | 40,073 | 15,805 | 5,014 |
+| kimi-k2.5 | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 62.83 | 52 | 0.057873 | 94,667 | 63,495 | 7,364 |
+| kimi-k2.5 | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 34.24 | 30 | 0.033346 | 23,325 | 8,984 | 4,751 |
+| kimi-k2.5 | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 36.57 | 30 | 0.037225 | 24,155 | 4,926 | 5,150 |
+| glm-5 | tumor-vaccine-ici | 1 | medium | PASS | pass | pass | pass | 209.64 | 60 | 0.302268 | 287,836 | 36,891 | 10,292 |
+| glm-5 | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 77.42 | 22 | 0.067303 | 46,982 | 11,815 | 5,434 |
+| glm-5 | tumor-vaccine-ici | 3 | medium | FAIL | pass | pass | fail | 115.96 | 24 | 0.082427 | 55,121 | 7,846 | 5,472 |
+| glm-5 | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 89.07 | 40 | 0.076681 | 46,803 | 2,408 | 6,280 |
+| glm-5 | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 64.20 | 24 | 0.052077 | 31,601 | 6,267 | 5,007 |
+| glm-5 | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 193.24 | 52 | 0.173041 | 159,254 | 28,145 | 6,939 |
+| glm-5 | gcse-chemistry-8-9 | 1 | medium | PASS | pass | pass | pass | 323.88 | 44 | 0.074127 | 44,839 | 3,494 | 6,552 |
+| glm-5 | gcse-chemistry-8-9 | 2 | medium | PASS | pass | pass | pass | 88.01 | 54 | 0.141561 | 115,865 | 6,470 | 6,365 |
+| glm-5 | gcse-chemistry-8-9 | 3 | medium | PASS | pass | pass | pass | 174.54 | 60 | 0.136609 | 116,201 | 28,088 | 10,005 |
+| minimax-m2.1 | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 61.84 | 24 | 0.030168 | 30,974 | 17,386 | 6,340 |
+| minimax-m2.1 | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 47.53 | 24 | 0.027155 | 36,799 | 25,696 | 4,404 |
+| minimax-m2.1 | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 74.13 | 32 | 0.031675 | 37,471 | 24,981 | 6,293 |
+| minimax-m2.1 | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 104.83 | 32 | 0.037579 | 60,445 | 47,408 | 6,758 |
+| minimax-m2.1 | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 104.41 | 34 | 0.037523 | 46,863 | 33,889 | 7,732 |
+| minimax-m2.1 | trappist1b-atmosphere | 3 | medium | FAIL | fail | pass | fail | 81.55 | 28 | 0.033879 | 56,856 | 44,298 | 6,138 |
+| minimax-m2.1 | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 62.29 | 32 | 0.033886 | 41,613 | 25,501 | 6,851 |
+| minimax-m2.1 | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 118.37 | 38 | 0.047070 | 129,785 | 114,745 | 7,658 |
+| minimax-m2.1 | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 90.15 | 44 | 0.034970 | 41,481 | 28,012 | 6,836 |
+| gemini-2.5-pro | tumor-vaccine-ici | 1 | medium | FAIL | fail | pass | fail | 95.38 | 24 | 0.128530 | 61,703 | 14,440 | 3,286 |
+| gemini-2.5-pro | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 77.47 | 22 | 0.110972 | 40,592 | 12,134 | 3,314 |
+| gemini-2.5-pro | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 91.05 | 22 | 0.131616 | 40,956 | 0 | 3,483 |
+| gemini-2.5-pro | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 89.46 | 24 | 0.119207 | 62,173 | 22,869 | 3,187 |
+| gemini-2.5-pro | trappist1b-atmosphere | 2 | medium | FAIL | fail | pass | fail | 72.37 | 24 | 0.088375 | 53,045 | 23,769 | 3,123 |
+| gemini-2.5-pro | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 104.66 | 24 | 0.128524 | 61,661 | 27,328 | 3,436 |
+| gemini-2.5-pro | gcse-chemistry-8-9 | 1 | medium | PASS | pass | pass | pass | 125.96 | 34 | 0.118445 | 76,187 | 42,307 | 2,080 |
+| gemini-2.5-pro | gcse-chemistry-8-9 | 2 | medium | PASS | pass | pass | pass | 112.01 | 32 | 0.111709 | 42,472 | 11,822 | 2,356 |
+| gemini-2.5-pro | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 100.69 | 32 | 0.137169 | 95,279 | 42,635 | 3,183 |
+| gemini-flash-latest | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 93.84 | 22 | 0.021488 | 54,785 | 34,798 | 3,638 |
+| gemini-flash-latest | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 68.82 | 22 | 0.017395 | 55,153 | 33,591 | 3,722 |
+| gemini-flash-latest | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 104.95 | 20 | 0.015692 | 53,298 | 37,175 | 3,468 |
+| gemini-flash-latest | trappist1b-atmosphere | 1 | medium | FAIL | fail | pass | fail | 69.24 | 22 | 0.016002 | 20,411 | 3,885 | 3,932 |
+| gemini-flash-latest | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 75.83 | 20 | 0.016618 | 52,454 | 29,220 | 3,557 |
+| gemini-flash-latest | trappist1b-atmosphere | 3 | medium | PASS | pass | pass | pass | 65.93 | 22 | 0.021817 | 54,046 | 17,770 | 3,723 |
+| gemini-flash-latest | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 71.77 | 20 | 0.021198 | 38,807 | 24,980 | 3,732 |
+| gemini-flash-latest | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 90.39 | 18 | 0.021614 | 37,647 | 23,147 | 3,886 |
+| gemini-flash-latest | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 86.83 | 28 | 0.014353 | 87,445 | 60,428 | 3,739 |
+| gemini-3-pro-preview | tumor-vaccine-ici | 1 | medium | PASS | pass | pass | pass | 202.17 | 22 | 0.192556 | 55,117 | 21,006 | 3,184 |
+| gemini-3-pro-preview | tumor-vaccine-ici | 2 | medium | FAIL | pass | pass | fail | 138.20 | 22 | 0.142690 | 40,911 | 12,983 | 3,207 |
+| gemini-3-pro-preview | tumor-vaccine-ici | 3 | medium | FAIL | pass | pass | fail | 179.04 | 24 | 0.178396 | 54,186 | 22,070 | 3,348 |
+| gemini-3-pro-preview | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 116.66 | 22 | 0.127303 | 37,988 | 18,227 | 2,836 |
+| gemini-3-pro-preview | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 171.10 | 24 | 0.196282 | 57,946 | 27,384 | 2,973 |
+| gemini-3-pro-preview | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 117.12 | 24 | 0.145027 | 50,441 | 29,892 | 3,200 |
+| gemini-3-pro-preview | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | pass | fail | 153.99 | 46 | 0.240613 | 100,949 | 57,494 | 4,752 |
+| gemini-3-pro-preview | gcse-chemistry-8-9 | 2 | medium | PASS | pass | pass | pass | 459.97 | 42 | 0.216345 | 67,565 | 37,076 | 4,640 |
+| gemini-3-pro-preview | gcse-chemistry-8-9 | 3 | medium | PASS | pass | pass | pass | 192.29 | 30 | 0.242594 | 86,222 | 44,851 | 3,015 |
+| gemini-3-flash-preview | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 112.16 | 24 | 0.017937 | 62,670 | 15,626 | 3,328 |
+| gemini-3-flash-preview | tumor-vaccine-ici | 2 | medium | FAIL | pass | pass | fail | 142.47 | 24 | 0.020394 | 62,592 | 26,608 | 3,281 |
+| gemini-3-flash-preview | tumor-vaccine-ici | 3 | medium | PASS | pass | pass | pass | 120.50 | 26 | 0.015297 | 56,069 | 19,153 | 3,165 |
+| gemini-3-flash-preview | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 122.08 | 24 | 0.017981 | 60,841 | 25,723 | 3,273 |
+| gemini-3-flash-preview | trappist1b-atmosphere | 2 | medium | PASS | pass | pass | pass | 123.13 | 26 | 0.012840 | 62,629 | 23,836 | 3,112 |
+| gemini-3-flash-preview | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 108.95 | 22 | 0.020547 | 53,201 | 13,995 | 3,300 |
+| gemini-3-flash-preview | gcse-chemistry-8-9 | 1 | medium | PASS | pass | pass | pass | 97.51 | 30 | 0.015997 | 88,390 | 41,981 | 3,418 |
+| gemini-3-flash-preview | gcse-chemistry-8-9 | 2 | medium | FAIL | pass | pass | fail | 94.03 | 26 | 0.017468 | 52,648 | 23,701 | 2,388 |
+| gemini-3-flash-preview | gcse-chemistry-8-9 | 3 | medium | PASS | pass | pass | pass | 129.03 | 30 | 0.021353 | 87,464 | 42,701 | 3,263 |
 
 ## Failures
 
-- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 1: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 2: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 3: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 1: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 2: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 3: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 1: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 2: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 3: agent_error=Failed to extract chatgpt_account_id from access token. | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / tumor-vaccine-ici / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / tumor-vaccine-ici / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / tumor-vaccine-ici / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / trappist1b-atmosphere / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / trappist1b-atmosphere / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / trappist1b-atmosphere / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / gcse-chemistry-8-9 / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / gcse-chemistry-8-9 / run 2: agent_error=terminated | schema_or_grounding_failed | tool_trace=No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- gpt-5.2 / gcse-chemistry-8-9 / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / tumor-vaccine-ici / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / trappist1b-atmosphere / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- kimi-k2.5 / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / tumor-vaccine-ici / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / tumor-vaccine-ici / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / trappist1b-atmosphere / run 2: agent_error=Request was aborted. | schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / trappist1b-atmosphere / run 3: agent_error=Request was aborted. | grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / gcse-chemistry-8-9 / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / gcse-chemistry-8-9 / run 2: agent_error=Request was aborted. | schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- glm-5 / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / trappist1b-atmosphere / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- minimax-m2.1 / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / trappist1b-atmosphere / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | tool_trace=No successful write tool call observed (write_file/replace/apply_patch). | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-2.5-pro / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / tumor-vaccine-ici / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / trappist1b-atmosphere / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-flash-latest / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / tumor-vaccine-ici / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / trappist1b-atmosphere / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / trappist1b-atmosphere / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / trappist1b-atmosphere / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / gcse-chemistry-8-9 / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / gcse-chemistry-8-9 / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-pro-preview / gcse-chemistry-8-9 / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / tumor-vaccine-ici / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / tumor-vaccine-ici / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / tumor-vaccine-ici / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / trappist1b-atmosphere / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / trappist1b-atmosphere / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / gcse-chemistry-8-9 / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / gcse-chemistry-8-9 / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
-- gemini-3-flash-preview / gcse-chemistry-8-9 / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
+- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 1: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 2: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 3: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 1: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 2: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 3: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 1: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 2: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 3: agent_error=ChatGPT OAuth refresh failed (401): {
+  "error": {
+    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_reused"
+  }
+} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- gpt-5.2 / tumor-vaccine-ici / run 1: grader_verdict=fail
+- gpt-5.2 / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gpt-5.2 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / trappist1b-atmosphere / run 3: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_verdict=fail
+- kimi-k2.5 / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_verdict=fail
+- glm-5 / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_verdict=fail
+- glm-5 / tumor-vaccine-ici / run 3: grader_verdict=fail
+- glm-5 / trappist1b-atmosphere / run 1: grader_verdict=fail
+- glm-5 / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_verdict=fail
+- glm-5 / trappist1b-atmosphere / run 3: grader_verdict=fail
+- minimax-m2.1 / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / trappist1b-atmosphere / run 3: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_verdict=fail
+- minimax-m2.1 / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gemini-2.5-pro / tumor-vaccine-ici / run 1: schema_or_grounding_failed | grader_verdict=fail
+- gemini-2.5-pro / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_verdict=fail
+- gemini-2.5-pro / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gemini-2.5-pro / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
+- gemini-2.5-pro / trappist1b-atmosphere / run 2: schema_or_grounding_failed | grader_verdict=fail
+- gemini-2.5-pro / trappist1b-atmosphere / run 3: grader_verdict=fail
+- gemini-2.5-pro / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gemini-flash-latest / tumor-vaccine-ici / run 1: grader_verdict=fail
+- gemini-flash-latest / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_verdict=fail
+- gemini-flash-latest / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gemini-flash-latest / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
+- gemini-flash-latest / trappist1b-atmosphere / run 2: grader_verdict=fail
+- gemini-flash-latest / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_verdict=fail
+- gemini-flash-latest / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_verdict=fail
+- gemini-flash-latest / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gemini-3-pro-preview / tumor-vaccine-ici / run 2: grader_verdict=fail
+- gemini-3-pro-preview / tumor-vaccine-ici / run 3: grader_verdict=fail
+- gemini-3-pro-preview / trappist1b-atmosphere / run 1: grader_verdict=fail
+- gemini-3-pro-preview / trappist1b-atmosphere / run 2: grader_verdict=fail
+- gemini-3-pro-preview / trappist1b-atmosphere / run 3: grader_verdict=fail
+- gemini-3-pro-preview / gcse-chemistry-8-9 / run 1: schema_or_grounding_failed | grader_verdict=fail
+- gemini-3-flash-preview / tumor-vaccine-ici / run 1: grader_verdict=fail
+- gemini-3-flash-preview / tumor-vaccine-ici / run 2: grader_verdict=fail
+- gemini-3-flash-preview / trappist1b-atmosphere / run 1: grader_verdict=fail
+- gemini-3-flash-preview / trappist1b-atmosphere / run 3: grader_verdict=fail
+- gemini-3-flash-preview / gcse-chemistry-8-9 / run 2: grader_verdict=fail

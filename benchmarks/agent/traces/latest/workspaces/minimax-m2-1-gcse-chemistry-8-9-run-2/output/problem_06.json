@@ -2,24 +2,26 @@
   "problem_id": "P06",
   "final_answer": {
     "value": 0.0736,
-    "units": "",
-    "precision_note": "Using three significant figures from equilibrium data, Kc is dimensionless as specified in report"
+    "units": "dimensionless",
+    "precision_note": "Based on moles data with 3 significant figures (0.180 mol, 0.220 mol) and vessel volume 2.00 dm3 (3 sf)"
   },
-  "method": "Calculate equilibrium concentrations using moles and vessel volume of 2.00 dm3: [NO2] = moles(NO2) / V = 0.180 / 2.00 = 0.0900 mol dm-3, and [N2O4] = moles(N2O4) / V = 0.220 / 2.00 = 0.110 mol dm-3. Apply the equilibrium constant expression for N2O4(g) <-> 2NO2(g): Kc = [NO2]^2 / [N2O4]. Substitute the concentrations: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. The dimensionless Kc value confirms the equilibrium position favors the reactant N2O4.",
+  "method": "Calculate concentrations from moles and volume: [NO2] = moles(NO2) / volume = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3, and [N2O4] = moles(N2O4) / volume = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Apply the equilibrium constant expression for N2O4(g) <-> 2NO2(g): Kc = [NO2]^2 / [N2O4]. Substitute concentrations: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736. The result is dimensionless as specified.",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4]",
-    "Concentration calculation: c = n / V",
-    "Equilibrium expression for N2O4 <-> 2NO2"
+    "Kc = [NO2]^2 / [N2O4] (for N2O4(g) <-> 2NO2(g))",
+    "[NO2] = 0.180 / 2.00 = 0.0900 mol dm-3",
+    "[N2O4] = 0.220 / 2.00 = 0.110 mol dm-3",
+    "Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736"
   ],
   "line_refs": [
+    "L20",
+    "L21",
+    "L56",
     "L57",
     "L58",
-    "L20",
-    "L21"
+    "L59"
   ],
   "checks": [
-    "Concentrations calculated correctly: NO2 = 0.180/2.00 = 0.0900, N2O4 = 0.220/2.00 = 0.110",
-    "Kc = (0.0900)^2 / 0.110 = 0.00810/0.110 = 0.0736",
-    "Kc value less than 1 indicates equilibrium favors reactants (N2O4)"
+    "Squaring NO2 concentration (0.0900^2 = 0.00810) and dividing by N2O4 concentration (0.110) gives Kc = 0.0736",
+    "Kc value of 0.0736 is less than 1, indicating reactants (N2O4) are favored at equilibrium, consistent with more moles of N2O4 (0.220) than NO2 (0.180)"
   ]
 }

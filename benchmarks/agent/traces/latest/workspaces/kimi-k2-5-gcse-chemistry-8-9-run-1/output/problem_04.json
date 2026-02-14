@@ -3,9 +3,9 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "3 significant figures (no decimal places), as bond energies are given as whole numbers"
+    "precision_note": "Reported to 3 significant figures, consistent with bond energy data (3 sig figs)"
   },
-  "method": "Identify bonds broken and formed from the equation CH4 + 2O2 -> CO2 + 2H2O. Bonds broken in reactants: 4 C-H bonds (4 × 413 = 1652 kJ) and 2 O=O bonds (2 × 498 = 996 kJ), total = 2648 kJ. Bonds formed in products: 2 C=O bonds in CO2 (2 × 805 = 1610 kJ) and 4 O-H bonds in 2H2O (4 × 463 = 1852 kJ), total = 3462 kJ. Using deltaH = sum(bonds broken) - sum(bonds formed) = 2648 - 3462 = -814 kJ mol-1. The negative value indicates an exothermic reaction, consistent with combustion.",
+  "method": "Calculate energy required to break bonds (endothermic, positive): 4 C-H bonds at 413 kJ mol-1 each = 4 × 413 = 1652 kJ mol-1; 2 O=O bonds at 498 kJ mol-1 each = 2 × 498 = 996 kJ mol-1. Total bonds broken = 1652 + 996 = 2648 kJ mol-1. Calculate energy released forming bonds (exothermic, positive value for calculation): 2 C=O bonds at 805 kJ mol-1 each = 2 × 805 = 1610 kJ mol-1; 4 O-H bonds at 463 kJ mol-1 each = 4 × 463 = 1852 kJ mol-1. Total bonds formed = 1610 + 1852 = 3462 kJ mol-1. DeltaH = bonds broken - bonds formed = 2648 - 3462 = -814 kJ mol-1.",1. Applying deltaH = sum(bonds broken) - sum(bonds formed) = 2648 - 3462 = -814 kJ mol-1.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
@@ -15,8 +15,9 @@
     "L47"
   ],
   "checks": [
-    "Exothermic check: combustion reactions are exothermic, deltaH should be negative - verified (-814 kJ mol-1)",
-    "Bond count check: CH4 has 4 C-H, 2 O2 has 2 O=O, CO2 has 2 C=O, 2 H2O has 4 O-H - verified",
-    "Calculation check: 1652 + 996 = 2648; 1610 + 1852 = 3462; 2648 - 3462 = -814 - verified"
+    "Combustion reactions are exothermic, so negative deltaH expected",
+    "Bonds broken: 4 C-H + 2 O=O; bonds formed: 2 C=O + 4 O-H",
+    "More energy released forming bonds (3462) than required to break them (2648), confirming exothermic nature",
+    "Calculation: (4×413 + 2×498) - (2×805 + 4×463) = 2648 - 3462 = -814 kJ mol-1"
   ]
 }

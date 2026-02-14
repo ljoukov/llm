@@ -1,26 +1,29 @@
 {
   "problem_id": "P06",
   "final_answer": {
-    "value": 0.0365,
+    "value": 0.0736,
     "units": "dimensionless",
-    "precision_note": "Result expressed to 3 significant figures, matching the input data precision of 0.180 mol (3 sf), 0.220 mol (3 sf), and 2.00 dm3 (3 sf)."
+    "precision_note": "Three significant figures. Input mole values (0.180 mol, 0.220 mol) have 3 sig figs. Volume (2.00 dm3) has 3 sig figs. Kc values expressed as dimensionless ratio per instructions."
   },
-  "method": "For the equilibrium N2O4(g) ⇌ 2NO2(g) (L56), calculate concentrations from moles and volume: [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3, [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3 (L57, L58). Using Kc expression from L20: Kc = [NO2]^2 / [N2O4] = (0.0900)^2 / 0.110 = 0.008100 / 0.110 = 0.0736. The equilibrium constant Kc is unitless as noted in L21. Comparing reactant and product concentrations confirms the equilibrium lies toward the reactant side (N2O4), which is consistent with the small Kc value.",
+  "method": "Calculate concentrations from equilibrium moles: [NO2] = moles / volume, [N2O4] = moles / volume where V = 2.00 dm3. [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Apply equilibrium constant expression: Kc = [NO2]^2 / [N2O4] for reaction N2O4(g) <-> 2NO2(g) from line 20. Kc = (0.0900)^2 / 0.110. Calculate numerator: (0.0900)^2 = 0.00810. Calculate Kc: 0.00810 / 0.110 = 0.0736. Alternative path using moles directly: Kc = (n(NO2)/V)^2 / (n(N2O4)/V) = (n(NO2))^2 / ((n(N2O4)) × V) = (0.180)^2 / (0.220 × 2.00) = 0.0324 / 0.440 = 0.0736. Verify calculation: 0.0324 / 0.44 = 0.0736. Result dimensionless as per line 21 instruction.",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4] (equilibrium constant from L20)",
-    "Concentration = moles / volume"
+    "c = n / V",
+    "Kc = [NO2]^2 / [N2O4] for N2O4(g) <-> 2NO2(g)",
+    "Alternative: Kc = (n(NO2))^2 / (n(N2O4) × V)"
   ],
   "line_refs": [
+    "L15",
     "L20",
     "L21",
     "L56",
     "L57",
-    "L58"
+    "L58",
+    "L59"
   ],
   "checks": [
-    "Concentration calculations verified: [NO2] = 0.180/2.00 = 0.0900, [N2O4] = 0.220/2.00 = 0.110",
-    "Kc expression correctly applied: (0.0900)^2 / 0.110 = 0.008100 / 0.110 = 0.0736",
-    "Result is dimensionless as required by L21",
-    "Result is reasonable: Kc < 1 indicates equilibrium favors reactants (N2O4), consistent with higher reactant moles"
+    "Concentration NO2: 0.180/2.00 = 0.0900 mol dm-3, concentration calculation verified",
+    "Concentration N2O4: 0.220/2.00 = 0.110 mol dm-3, concentration calculation verified",
+    "Kc calculation: (0.0900)^2 / 0.110 = 0.00810 / 0.110 = 0.0736, expression applied correctly",
+    "Alternative method: (0.180)^2 / (0.220 × 2.00) = 0.0324 / 0.440 = 0.0736, confirms result"
   ]
 }

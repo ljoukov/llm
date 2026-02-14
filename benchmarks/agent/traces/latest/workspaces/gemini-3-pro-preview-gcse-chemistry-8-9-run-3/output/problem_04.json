@@ -3,9 +3,9 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Bond energies are whole numbers. The result is an integer estimate."
+    "precision_note": "The result is an integer value derived from integer bond enthalpies."
   },
-  "method": "Calculate energy to break bonds: 4*(C-H) + 2*(O=O) = 4*413 + 2*498 = 1652 + 996 = 2648 kJ. Calculate energy released forming bonds: 2*(C=O) + 4*(O-H) = 2*805 + 4*463 = 1610 + 1852 = 3462 kJ. DeltaH = Broken - Formed = 2648 - 3462 = -814 kJ mol-1.",
+  "method": "Identify bonds broken in reactants: 4 C-H bonds in CH4 and 2 O=O bonds in 2O2. Identify bonds formed in products: 2 C=O bonds in CO2 and 4 O-H bonds in 2H2O. Calculate total energy to break bonds: (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ/mol. Calculate total energy released forming bonds: (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ/mol. Calculate enthalpy change: deltaH = 2648 - 3462 = -814 kJ/mol.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
@@ -15,6 +15,6 @@
     "L47"
   ],
   "checks": [
-    "Combustion is exothermic, so negative sign is expected."
+    "Re-summing reactants: 1652 + 996 = 2648. Re-summing products: 1610 + 1852 = 3462. Difference: 2648 - 3462 = -814. Calculation verified."
   ]
 }

@@ -3,22 +3,25 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "Given data has 3 significant figures; final answer reported to 3 significant figures as 1.85 g CO2."
+    "precision_note": "Calculated as 1.846 g; reported to 3 significant figures consistent with the limiting precision of input data (5.00 g, 84.0%)."
   },
-  "method": "First calculate the mass of pure CaCO3 in the sample: 5.00 g × 0.840 = 4.20 g CaCO3. Then calculate moles of CaCO3 using n = m/Mr with Mr(CaCO3) = 100.1: n = 4.20 g / 100.1 g/mol = 0.04196 mol. From the stoichiometric equation CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio of CaCO3 to CO2 is 1:1, so moles of CO2 = 0.04196 mol. Finally, calculate mass of CO2 using m = n × Mr with Mr(CO2) = 44.0: m = 0.04196 mol × 44.0 g/mol = 1.846 g, which rounds to 1.85 g to 3 significant figures.",
+  "method": "First calculate the mass of pure CaCO3 in the limestone sample: mass(CaCO3) = 5.00 g × 0.840 = 4.20 g. Then calculate moles of CaCO3 using n = m/Mr with Mr(CaCO3) = 100.1: n(CaCO3) = 4.20 g / 100.1 g mol-1 = 0.04196 mol. From the balanced equation CaCO3 + 2HCl → CaCl2 + CO2 + H2O, the mole ratio of CaCO3 to CO2 is 1:1. Therefore moles of CO2 produced = 0.04196 mol. Finally, calculate mass of CO2 using m = n × Mr with Mr(CO2) = 44.0: mass(CO2) = 0.04196 mol × 44.0 g mol-1 = 1.846 g ≈ 1.85 g (3 s.f.).",
   "key_equations": [
     "n = m / Mr",
-    "CaCO3 + 2HCl -> CaCl2 + CO2 + H2O"
+    "m = n × Mr"
   ],
   "line_refs": [
+    "L14",
     "L25",
     "L26",
     "L33",
-    "L34"
+    "L34",
+    "L36"
   ],
   "checks": [
-    "Mass of pure CaCO3 is less than total sample mass: 4.20 g < 5.00 g",
-    "Moles of CO2 equals moles of CaCO3 due to 1:1 stoichiometry",
-    "Final mass is reasonable: less than original sample mass"
+    "Purity check: 4.20 g CaCO3 is 84% of 5.00 g, correct",
+    "Moles CaCO3 ≈ 4.20/100 = 0.042, exact value 0.04196",
+    "1:1 stoichiometry gives same moles CO2 as CaCO3",
+    "Mass CO2 = 0.042 × 44 ≈ 1.85 g, reasonable order of magnitude"
   ]
 }

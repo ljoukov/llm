@@ -3,21 +3,18 @@
   "final_answer": {
     "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "3 significant figures based on input data precision (25.0 cm3, 0.200 mol dm-3, 250.0 cm3)"
+    "precision_note": "Calculated to 3 significant figures based on input data precision (0.200 and 25.0 have 3 sig figs; 250.0 has 4 sig figs)"
   },
-  "method": "Use the dilution equation c1V1 = c2V2. Convert volumes from cm3 to dm3: V1 = 25.0 cm3 = 0.0250 dm3, V2 = 250.0 cm3 = 0.250 dm3. Calculate moles of HCl initially: n = c × V = 0.200 × 0.0250 = 0.00500 mol. The total moles remain constant during dilution, so c2 = n / V2 = 0.00500 / 0.250 = 0.0200 mol dm-3.",
+  "method": "Using the dilution formula c₁V₁ = c₂V₂ where c₁ = 0.200 mol dm-3, V₁ = 25.0 cm³, and V₂ = 250.0 cm³. The new concentration c₂ is calculated as (c₁ × V₁) / V₂ = (0.200 × 25.0) / 250.0 = 0.0200 mol dm-3.",
   "key_equations": [
-    "Dilution: c1V1 = c2V2",
-    "Volume conversion: 1 dm3 = 1000 cm3"
+    "c₁V₁ = c₂V₂"
   ],
   "line_refs": [
     "L16",
-    "L29",
-    "L30"
+    "L29"
   ],
   "checks": [
-    "Final volume is 10× initial volume, so concentration should be 1/10 of original (0.0200 mol dm-3)",
-    "Moles are conserved: (0.200 mol/dm3 × 0.0250 dm3) = 0.00500 mol in both cases",
-    "Result matches dilution formula application"
+    "The dilution factor is 10x (250/25), so concentration should be 1/10th of original",
+    "0.200 / 10 = 0.0200, which matches the calculated result"
   ]
 }

@@ -3,24 +3,24 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "The answer is rounded to three significant figures, matching the precision of the current (1.50 A) and time (30.0 min)."
+    "precision_note": "The result is rounded to three significant figures, consistent with the precision of the current and time values provided."
   },
-  "method": "First, convert the time from minutes to seconds: 30.0 min * 60 s/min = 1800 s. Then, calculate the total charge (Q) passed through the circuit using Q = I * t, which is 1.50 A * 1800 s = 2700 C. Next, find the number of moles of electrons (n(e-)) using n(e-) = Q / F, where F is the Faraday constant (96,500 C mol-1), resulting in approximately 0.02798 moles of electrons. From the cathode half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of copper. Therefore, moles of Cu = 0.02798 / 2 = 0.01399 moles. Finally, calculate the mass of copper by multiplying the moles by the atomic mass of copper (63.55 g/mol), which gives 0.889 g.",
+  "method": "First, calculate the total electric charge (Q) passed through the circuit using Q = I * t. With a current of 1.50 A and a time of 30.0 minutes (1800 seconds), Q = 1.50 * 1800 = 2700 C. Next, find the number of moles of electrons using n(e-) = Q / F, where F is the Faraday constant (96,500 C mol-1). This gives 2700 / 96,500 = 0.027979 mol. From the cathode half-equation Cu2+ + 2e- -> Cu, the ratio of electrons to copper is 2:1, so the moles of Cu deposited is 0.027979 / 2 = 0.0139896 mol. Finally, the mass of copper is m = n * Ar(Cu) = 0.0139896 * 63.55 = 0.889 g.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
-    "m = n * Mr"
+    "Cu2+ + 2e- -> Cu",
+    "n = m / Mr"
   ],
   "line_refs": [
     "L51",
     "L52",
-    "L17",
-    "L18"
+    "L19",
+    "L24"
   ],
   "checks": [
-    "Convert time to seconds",
-    "Calculate charge in Coulombs",
-    "Use molar ratio from half-equation",
-    "Check units of final mass"
+    "Ensure time is converted from minutes to seconds (30.0 * 60 = 1800).",
+    "Confirm the 2:1 electron-to-copper ratio from the half-equation.",
+    "Recalculate: (1.50 * 1800 / 96500 / 2) * 63.55 = 0.88904."
   ]
 }

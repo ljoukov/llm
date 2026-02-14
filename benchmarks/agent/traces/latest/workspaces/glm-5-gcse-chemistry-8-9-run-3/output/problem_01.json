@@ -3,16 +3,17 @@
   "final_answer": {
     "value": 0.0200,
     "units": "mol dm-3",
-    "precision_note": "Result reported to 3 significant figures, matching the precision of the given concentration (0.200 mol dm-3) and volume (25.0 cm3)."
+    "precision_note": "Result given to 3 significant figures, matching the precision of the input concentration (0.200 mol dm-3)."
   },
-  "method": "This is a dilution problem. The technician transfers 25.0 cm3 of 0.200 mol dm-3 HCl and dilutes to a final volume of 250.0 cm3. Using the dilution formula c1V1 = c2V2, we rearrange to find c2 = (c1V1)/V2. Substituting: c2 = (0.200 mol dm-3 × 25.0 cm3) / 250.0 cm3 = 0.0200 mol dm-3. The concentration decreases by a factor of 10, consistent with a tenfold volume increase.",
+  "method": "Using the dilution formula c1V1 = c2V2, the initial concentration is 0.200 mol dm-3 and initial volume is 25.0 cm3. The final volume after dilution is 250.0 cm3. Rearranging the formula: c2 = (c1 x V1) / V2 = (0.200 x 25.0) / 250.0 = 5.00 / 250.0 = 0.0200 mol dm-3. The concentration decreases by a factor of 10, consistent with the 10-fold volume increase from 25.0 cm3 to 250.0 cm3.",
   "key_equations": [
-    "c1V1 = c2V2",
-    "c2 = (c1V1) / V2"
+    "c1V1 = c2V2"
   ],
-  "line_refs": ["L16", "L29"],
+  "line_refs": [
+    "L16",
+    "L29"
+  ],
   "checks": [
-    "Dilution factor is 250.0/25.0 = 10, so concentration should be 1/10 of original = 0.0200 mol dm-3",
-    "Units are consistent: volume units cancel, leaving mol dm-3"
+    "Dilution factor = 250.0 / 25.0 = 10, so final concentration should be 1/10 of initial: 0.200 / 10 = 0.0200 mol dm-3, which matches calculated result."
   ]
 }

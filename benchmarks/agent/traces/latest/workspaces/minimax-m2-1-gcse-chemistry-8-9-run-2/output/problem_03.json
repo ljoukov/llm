@@ -3,22 +3,22 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Using three significant figures from titration volumes and concentration data, result reported to three significant figures"
+    "precision_note": "Based on 25.00 cm3 acid volume (4 sf), 23.40 cm3 NaOH (4 sf), and 0.150 mol dm-3 concentration (3 sf)"
   },
-  "method": "Calculate moles of NaOH used in titration: moles(NaOH) = concentration × volume in dm3 = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.00351 mol. From the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the stoichiometric ratio shows 2 moles of NaOH react with 1 mole of H2SO4, so moles(H2SO4) = moles(NaOH) / 2 = 0.00351 / 2 = 0.001755 mol. Calculate concentration of H2SO4: concentration = moles / volume in dm3 = 0.001755 mol / (25.00/1000) dm3 = 0.0702 mol dm-3.",
+  "method": "Calculate moles of NaOH used: n(NaOH) = concentration × volume in dm3 = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.003510 mol. From the balanced reaction H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the stoichiometry shows 2 mol NaOH react with 1 mol H2SO4. Calculate moles of H2SO4: n(H2SO4) = n(NaOH) / 2 = 0.003510 / 2 = 0.001755 mol. Calculate concentration of H2SO4: c(H2SO4) = n(H2SO4) / volume in dm3 = 0.001755 mol / (25.00/1000) dm3 = 0.0702 mol dm-3.",
   "key_equations": [
-    "n = c × V (V in dm3)",
-    "Stoichiometry: H2SO4 + 2NaOH gives 1:2 ratio",
-    "Concentration calculation: c = n / V"
+    "n(NaOH) = c × V = 0.150 × (23.40/1000) = 0.003510 mol",
+    "n(H2SO4) = n(NaOH) / 2 = 0.003510 / 2 = 0.001755 mol (1:2 stoichiometry)",
+    "c(H2SO4) = n / V = 0.001755 / (25.00/1000) = 0.0702 mol dm-3"
   ],
   "line_refs": [
+    "L15",
     "L39",
     "L40",
-    "L15",
-    "L14"
+    "L41"
   ],
   "checks": [
-    "Moles NaOH calculated from 23.40 cm3 of 0.150 M equals 0.00351 mol, half of which gives moles H2SO4",
-    "Concentration calculation divides 0.001755 mol by 0.02500 dm3 giving 0.0702 mol dm-3"
+    "Double the moles of NaOH (0.003510) to match H2SO4 stoichiometry gives 0.001755 mol H2SO4, which when divided by 0.02500 dm3 yields 0.0702 mol dm-3",
+    "Concentration of acid (0.0702 mol dm-3) is approximately half the concentration of base (0.150 mol dm-3), consistent with the 1:2 acid-base stoichiometry"
   ]
 }

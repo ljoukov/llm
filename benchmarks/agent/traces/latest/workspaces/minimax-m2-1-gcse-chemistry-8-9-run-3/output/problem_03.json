@@ -3,23 +3,22 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "3 significant figures based on input data precision (25.00 cm3, 23.40 cm3, 0.150 mol dm-3)"
+    "precision_note": "Calculated to 3 significant figures based on input data precision (0.150 mol dm-3 has 3 sig figs; 23.40 and 25.00 have 4 sig figs)"
   },
-  "method": "Calculate moles of NaOH used: n(NaOH) = c × V = 0.150 × (23.40/1000) = 0.150 × 0.02340 = 0.003510 mol. From the balanced equation H2SO4 + 2NaOH → Na2SO4 + 2H2O, the mole ratio is 1 mole H2SO4 : 2 moles NaOH. Therefore moles of H2SO4 = n(NaOH) / 2 = 0.003510 / 2 = 0.001755 mol. Calculate concentration of H2SO4: c = n / V = 0.001755 / (25.00/1000) = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
+  "method": "First, calculate moles of NaOH used: n(NaOH) = concentration × volume (in dm³) = 0.150 mol dm-3 × (23.40/1000) dm³ = 0.003510 mol. From the balanced equation H₂SO₄ + 2NaOH -> Na₂SO₄ + 2H₂O, the stoichiometry shows 1 mole of H₂SO₄ reacts with 2 moles of NaOH, so n(H₂SO₄) = n(NaOH) / 2 = 0.003510 / 2 = 0.001755 mol. Finally, calculate concentration of H₂SO₄: c(H₂SO₄) = n(H₂SO₄) / V(H₂SO₄ in dm³) = 0.001755 mol / (25.00/1000) dm³ = 0.0702 mol dm-3.",
   "key_equations": [
-    "Moles: n = c × V",
-    "Stoichiometry: H2SO4 + 2NaOH -> Na2SO4 + 2H2O (1:2 mole ratio)",
-    "Concentration: c = n / V"
+    "c = n / V",
+    "H₂SO₄ + 2NaOH -> Na₂SO₄ + 2H₂O"
   ],
   "line_refs": [
     "L15",
-    "L39",
     "L40",
-    "L41"
+    "L39"
   ],
   "checks": [
-    "Moles NaOH = 0.003510, so moles H2SO4 = 0.003510/2 = 0.001755",
-    "Concentration = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3",
-    "Ratio check: (23.40 cm3 × 0.150)/2 = 1.755 mmol, divided by 25 mL = 0.0702 M"
+    "For diprotic acids, the acid volume should be approximately half the base volume for neutralization",
+    "Acid:Base volume ratio ≈ 25:23.4 ≈ 1.07, which is close to the expected 1:2 stoichiometric ratio",
+    "Concentration of diprotic acid should be roughly half the base concentration",
+    "0.0702 ≈ 0.150 / 2.14, which is close to the expected relationship"
   ]
 }

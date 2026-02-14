@@ -6,38 +6,37 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Does TRAPPIST-1 b retain any atmosphere under strong stellar irradiation, and can JWST phase-curve data provide evidence for or against an atmosphere-bearing scenario?",
+  "core_question": "TRAPPIST-1 b is an Earth-sized rocky planet on a very short, likely tidally locked orbit around an M dwarf. The key question is whether it retains any atmosphere under strong stellar irradiation.",
   "datasets_or_cohorts": [
     {
       "id": "observed-system",
-      "label": "TRAPPIST-1 b observed system",
+      "label": "Observed system",
       "sample_size_or_observations": "one rocky exoplanet with phase-resolved thermal spectra",
-      "description": "The observed target is a single Earth-sized rocky exoplanet on a short, tidally locked orbit around an M dwarf, observed with JWST MIRI phase-resolved spectroscopy."
+      "description": "TRAPPIST-1 b observed with JWST MIRI low-resolution spectroscopy over an orbital phase curve, measuring thermal phase variation and spectral structure around the 15 um CO2 band."
     },
     {
       "id": "null-scenario",
-      "label": "Bare-rock null scenario",
-      "sample_size_or_observations": "atmosphere-free model",
-      "description": "A theoretical comparison case representing a bare-rock planet with no atmosphere and minimal heat redistribution, serving as the baseline null hypothesis."
+      "label": "Null scenario",
+      "sample_size_or_observations": "bare-rock model",
+      "description": "Bare-rock, no-atmosphere model with minimal heat redistribution used as a comparison baseline to test against atmosphere-bearing scenarios."
     },
     {
-      "id": "co2-rich-scenario",
+      "id": "co2-rich-atmosphere",
       "label": "CO2-rich atmosphere scenario",
-      "sample_size_or_observations": "atmosphere-bearing model",
-      "description": "A theoretical comparison case representing an atmosphere with significant greenhouse gas absorption, particularly CO2, with preferred pressure scale 0.3-1.0 bar."
+      "sample_size_or_observations": "atmosphere model with preferred pressure scale 0.3-1.0 bar",
+      "description": "Atmosphere model with significant greenhouse gas absorption, specifically CO2-rich composition with moderate-pressure atmosphere family remaining plausible."
     },
     {
-      "id": "o2-rich-scenario",
+      "id": "o2-rich-atmosphere",
       "label": "O2-rich atmosphere scenario",
-      "sample_size_or_observations": "alternative atmosphere model",
-      "description": "A theoretical comparison case representing an oxidized atmospheric composition with weaker CO2 signature constraints, not fully ruled out by current data."
+      "sample_size_or_observations": "oxidized composition model",
+      "description": "Atmosphere model with oxidized composition and weaker CO2 signature constraints, not fully ruled out by current data but less constrained than CO2-rich cases."
     }
   ],
   "major_limitations": [
-    "Single-planet study that does not establish atmospheric prevalence across all M-dwarf rocky planets.",
-    "Retrieval assumptions including circulation patterns, opacity priors, and cloud treatment affect quantitative posteriors.",
+    "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets.",
+    "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors.",
     "Stellar variability and instrument systematics can bias weak spectral features.",
-    "Night-side constraints are weaker than day-side constraints in the current dataset.",
-    "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant."
+    "Night-side constraints are weaker than day-side constraints in the current dataset."
   ]
 }

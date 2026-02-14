@@ -3,22 +3,23 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Result rounded to 3 significant figures based on current (1.50 A) and time (30.0 min)."
+    "precision_note": "Calculated to 3 significant figures."
   },
-  "method": "Convert time to seconds: 30.0 min * 60 = 1800 s. Calculate charge Q = I * t = 1.50 A * 1800 s = 2700 C. Calculate moles of electrons n(e-) = Q / F = 2700 / 96500 = 0.027979 mol. From half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons produce 1 mole of Cu. So n(Cu) = 0.027979 / 2 = 0.01399 mol. Mass of Cu = n * Ar = 0.01399 * 63.55 = 0.889 g.",
+  "method": "Calculate charge passed: Q = I * t = 1.50 A * (30.0 * 60) s = 2700 C. Calculate moles of electrons: n(e-) = Q / F = 2700 / 96500 = 0.027979... mol. From the half-equation Cu2+ + 2e- -> Cu, moles of Cu is half moles of electrons: n(Cu) = n(e-) / 2 = 0.013989... mol. Calculate mass: m = n * Ar = 0.013989... * 63.55 = 0.889 g.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
+    "Cu2+ + 2e- -> Cu",
     "n = m / Mr"
   ],
   "line_refs": [
-    "L17",
-    "L18",
     "L51",
-    "L52"
+    "L52",
+    "L19",
+    "L24"
   ],
   "checks": [
-    "Mass seems reasonable for small current and short time.",
-    "Unit conversion for time was performed."
+    "Mass is reasonable for short electrolysis at low current.",
+    "Units are consistent."
   ]
 }

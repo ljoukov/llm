@@ -3,26 +3,24 @@
   "final_answer": {
     "value": 0.0736,
     "units": "",
-    "precision_note": "3 significant figures based on input data precision (0.180 mol, 0.220 mol, 2.00 dm3)"
+    "precision_note": "Calculated to 3 significant figures based on input data precision (0.180 mol and 0.220 mol have 3 sig figs; 2.00 dm³ has 3 sig figs)"
   },
-  "method": "Calculate concentrations from moles: Volume = 2.00 dm3. For NO2: [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. For N2O4: [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Calculate Kc using the equilibrium expression: Kc = [NO2]² / [N2O4] = (0.0900)² / 0.110 = 0.00810 / 0.110 = 0.0736. Report Kc as dimensionless (unitless) as specified.",
+  "method": "First, calculate concentrations from moles: [NO₂] = n(NO₂) / V = 0.180 mol / 2.00 dm³ = 0.0900 mol dm-3. [N₂O₄] = n(N₂O₄) / V = 0.220 mol / 2.00 dm³ = 0.110 mol dm-3. For the equilibrium N₂O₄(g) <-> 2NO₂(g), the equilibrium constant expression is Kc = [NO₂]² / [N₂O₄]. Calculate Kc: Kc = (0.0900)² / 0.110 = 0.00810 / 0.110 = 0.0736. The Kc is reported as dimensionless as specified.",
   "key_equations": [
-    "Kc = [NO2]² / [N2O4]",
-    "Concentration: c = n / V",
-    "Equilibrium: N2O4(g) <-> 2NO2(g)"
+    "Kc = [NO₂]² / [N₂O₄]",
+    "N₂O₄(g) <-> 2NO₂(g)"
   ],
   "line_refs": [
     "L20",
     "L21",
     "L56",
     "L57",
-    "L58",
-    "L59"
+    "L58"
   ],
   "checks": [
-    "Concentration NO2 = 0.180 / 2.00 = 0.0900 M",
-    "Concentration N2O4 = 0.220 / 2.00 = 0.110 M",
-    "Kc = (0.0900)² / 0.110 = 0.00810 / 0.110 = 0.0736",
-    "The reaction favors reactants (N2O4) as Kc < 1"
+    "Kc should be unitless as specified in line 21",
+    "0.0900² = 0.00810 and 0.00810 / 0.110 = 0.0736, calculation is correct",
+    "Since Kc < 1, the equilibrium favors reactants (N₂O₄)",
+    "Moles of N₂O₄ (0.220) > moles of NO₂ (0.180), which is consistent with Kc < 1 favoring N₂O₄"
   ]
 }

@@ -3,19 +3,23 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Given data has 3-4 significant figures; final answer reported to 3 significant figures as 0.0702 mol dm-3."
+    "precision_note": "Reported to 3 significant figures, matching the precision of the titration data (0.150 mol dm-3, 23.40 cm3)."
   },
-  "method": "First calculate moles of NaOH used: n(NaOH) = c × V = 0.150 mol dm-3 × (23.40/1000) dm3 = 0.00351 mol. From the equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the mole ratio of H2SO4 to NaOH is 1:2, so moles of H2SO4 = 0.00351 / 2 = 0.001755 mol. The concentration of H2SO4 is c = n/V = 0.001755 mol / (25.00/1000) dm3 = 0.0702 mol dm-3.",
+  "method": "First convert volumes to dm3: V(NaOH) = 23.40 cm3 = 0.02340 dm3, V(H2SO4) = 25.00 cm3 = 0.02500 dm3. Calculate moles of NaOH: n(NaOH) = c × V = 0.150 mol dm-3 × 0.02340 dm3 = 0.003510 mol. From the balanced equation H2SO4 + 2NaOH → Na2SO4 + 2H2O, the mole ratio of H2SO4 to NaOH is 1:2. Therefore moles of H2SO4 = 0.003510 / 2 = 0.001755 mol. Calculate concentration of H2SO4: c(H2SO4) = n / V = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
   "key_equations": [
-    "n = c × V",
-    "H2SO4 + 2NaOH -> Na2SO4 + 2H2O"
+    "c = n / V",
+    "n = c × V"
   ],
   "line_refs": [
+    "L15",
     "L39",
-    "L40"
+    "L40",
+    "L41"
   ],
   "checks": [
-    "H2SO4 is diprotic acid requiring 2 moles NaOH per mole acid",
-    "Calculated concentration is reasonable for acid neutralization"
+    "Moles NaOH = 0.150 × 0.0234 = 0.00351 mol, correct",
+    "2:1 ratio means acid moles are half base moles: 0.00351/2 = 0.001755",
+    "Concentration = 0.001755/0.025 = 0.0702 mol dm-3",
+    "Sulfuric acid is diprotic so concentration should be lower than NaOH, which matches"
   ]
 }

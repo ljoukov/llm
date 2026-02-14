@@ -2,13 +2,13 @@
   "problem_id": "P06",
   "final_answer": {
     "value": 0.0736,
-    "units": "dimensionless",
-    "precision_note": "Reported to 3 significant figures based on the given equilibrium amounts and 2.00 dm3 volume."
+    "units": "unitless",
+    "precision_note": "Moles are given to 3 s.f. and volume to 3 s.f.; Kc reported to 3 s.f."
   },
-  "method": "Find equilibrium concentrations in the 2.00 dm3 vessel by dividing moles by volume: [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3 and [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Substitute into Kc = [NO2]^2 / [N2O4]: Kc = (0.0900^2) / 0.110 = 0.00810 / 0.110 = 0.0736. Kc is reported as a unitless (dimensionless) value.",
+  "method": "Convert moles to equilibrium concentrations using the vessel volume V = 2.00 dm3. [NO2] = 0.180/2.00 = 0.0900 mol dm-3 and [N2O4] = 0.220/2.00 = 0.110 mol dm-3. Use Kc = [NO2]^2 / [N2O4] = (0.0900^2)/0.110 = 0.00810/0.110 = 0.0736 (dimensionless).",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4]",
-    "[X] = moles/volume"
+    "[X] = n / V",
+    "Kc = [NO2]^2 / [N2O4]"
   ],
   "line_refs": [
     "L20",
@@ -17,7 +17,7 @@
     "L58"
   ],
   "checks": [
-    "If all concentrations were scaled by the same factor, Kc should not depend on vessel size; using concentrations gives a consistent unitless result.",
-    "Sanity: [NO2] < [N2O4], so Kc should be less than 1; 0.0736 fits."
+    "Because [NO2] is smaller than [N2O4], and [NO2] is squared, Kc should be noticeably below 1; 0.0736 fits this expectation.",
+    "Recompute quickly: 0.09^2 = 0.0081; dividing by 0.11 gives ~0.074, consistent with 0.0736."
   ]
 }

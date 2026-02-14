@@ -8,10 +8,10 @@
   "schemaPass": false,
   "toolTracePass": false,
   "graderPass": false,
-  "durationMs": 693,
+  "durationMs": 6470,
   "agentCostUsd": 0,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0,
+  "graderCostUsd": 0.0086625,
+  "totalCostUsd": 0.0086625,
   "agentUsage": {
     "promptTokens": 0,
     "cachedTokens": 0,
@@ -20,22 +20,22 @@
     "totalTokens": 0
   },
   "graderUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1622,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 390,
+    "thinkingTokens": 26,
+    "totalTokens": 2038
   },
   "totalUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1622,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 390,
+    "thinkingTokens": 26,
+    "totalTokens": 2038
   },
   "modelVersions": [],
   "agentFinalText": "",
-  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
   "outputValidation": [
     {
       "outputFile": "output/study_overview.json",
@@ -111,7 +111,23 @@
     "calls": []
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 1,
+        "coverage": 1,
+        "usefulness": 1
+      },
+      "critical_issues": [
+        "All four output files are empty JSON objects (`{}`), so they fail the required schemas (as indicated by validationErrors) and are not usable for downstream review.",
+        "Coverage is effectively zero: none of the report’s main findings are represented (e.g., dayside brightness temperature 342±22 K [L27], heat transport efficiency epsilon 0.19(+0.23/-0.14) [L28], Bond albedo <0.08 [L29], CO2 band depth estimate 96 ppm [L30], likelihood ratio 7.4 favoring atmosphere models [L31], preferred pressure scale 0.3–1.0 bar in CO2-rich family [L32]).",
+        "Core study design context is missing (JWST MIRI low-resolution phase-curve spectroscopy; thermal phase variation + ~15 µm CO2 band; retrieval comparison of atmosphere-free vs atmosphere-bearing models [L14-L17]).",
+        "Key controls/null and conditional conclusions are absent: no-atmosphere model can’t match both phase amplitude and spectral band behavior [L35]; O2-rich not fully ruled out [L36]; important degeneracies remain [L37].",
+        "Major caveats/threats to validity are omitted (single-planet inference limits [L47]; retrieval assumption sensitivity [L48]; stellar variability/instrument systematics [L49]; weaker nightside constraints [L50]).",
+        "Because the outputs contain no claims and no line references, they cannot satisfy the requirement that claims be grounded with valid mappings to numbered report lines."
+      ],
+      "summary": "The generated outputs are empty and schema-invalid, providing none of the report’s findings, quantitative results, controls, or caveats. They are therefore neither faithful nor practically useful for review."
+    }
   }
 }
