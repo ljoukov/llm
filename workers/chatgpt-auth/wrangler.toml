@@ -6,6 +6,22 @@ compatibility_date = "2026-02-14"
 [triggers]
 crons = ["*/15 * * * *"]
 
+[observability]
+# Enable Workers Observability (logs + traces).
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1
+
 [[d1_databases]]
 binding = "CHATGPT_AUTH_DB"
 database_name = "chatgpt-auth"
