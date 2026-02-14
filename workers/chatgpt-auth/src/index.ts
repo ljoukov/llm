@@ -11,6 +11,8 @@ type Env = {
   CHATGPT_AUTH_API_KEY: string;
   CHATGPT_AUTH_DB: D1Database;
   CHATGPT_AUTH_KV: KVNamespace;
+  // Optional: set to "1"/"true" to log the full email from id_token (otherwise it's redacted).
+  CHATGPT_AUTH_LOG_EMAIL?: string;
 };
 
 const STATE_ID = "default";
@@ -126,11 +128,20 @@ function extractEmailFromJwt(token: string): string | undefined {
   return typeof email === "string" && email.includes("@") ? email : undefined;
 }
 
+function shouldLogFullEmail(env: Env): boolean {
+  const v = String(env.CHATGPT_AUTH_LOG_EMAIL ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 function redactEmail(email: string): string {
   const [local, domain] = email.split("@");
   if (!local || !domain) return "<redacted>";
   const prefix = local.slice(0, 2);
   return `${prefix}***@${domain}`;
+}
+
+function formatEmailForLogs(email: string, env: Env): string {
+  return shouldLogFullEmail(env) ? email : redactEmail(email);
 }
 
 async function readStateFromKv(env: Env): Promise<TokenState | null> {
@@ -314,7 +325,7 @@ async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: st
     const email = extractEmailFromJwt(idToken ?? "");
     console.log(
       `[refresh] ok reason=${options.reason} account_id=${newState.accountId}${
-        email ? ` email=${redactEmail(email)}` : ""
+        email ? ` email=${formatEmailForLogs(email, env)}` : ""
       } elapsed_ms=${elapsed}`,
     );
     return { state: newState, refreshed: true };
@@ -400,7 +411,7 @@ async function handleSeed(request: Request, env: Env): Promise<Response> {
 
   const email = extractEmailFromJwt(state.idToken ?? "");
   console.log(
-    `[seed] ok account_id=${state.accountId}${email ? ` email=${redactEmail(email)}` : ""} expires_at=${state.expiresAt}`,
+    `[seed] ok account_id=${state.accountId}${email ? ` email=${formatEmailForLogs(email, env)}` : ""} expires_at=${state.expiresAt}`,
   );
 
   return json({
