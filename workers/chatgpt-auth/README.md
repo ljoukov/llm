@@ -25,3 +25,11 @@ Note: some setups appear to strip `Authorization` on inbound requests. This Work
 ## Cron
 
 Cron runs every 15 minutes and refreshes if the token expires within the next hour.
+
+## Logging
+
+The Worker logs `account_id` on seed/refresh. If you want the full email (from `id_token`) in logs, set:
+
+- `CHATGPT_AUTH_LOG_EMAIL=1`
+
+Otherwise the email is redacted.
