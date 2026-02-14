@@ -81,6 +81,16 @@ jq -c . < path/to/service-account.json | wrangler secret put GOOGLE_SERVICE_ACCO
 This is a base64url-encoded JSON blob containing the ChatGPT OAuth tokens + account id (RFC 4648):
 https://www.rfc-editor.org/rfc/rfc4648
 
+Optional alternative (recommended for multi-deploy setups): use a centralized auth server (for example a Cloudflare
+Worker) that owns refresh-token rotation and serves short-lived access tokens over HTTPS.
+
+- `CHATGPT_AUTH_SERVER_URL` (example: `https://chatgpt-auth.<your-subdomain>.workers.dev`)
+- `CHATGPT_AUTH_API_KEY` (shared secret; sent as `Authorization: Bearer ...` and `x-chatgpt-auth: ...`)
+- `CHATGPT_AUTH_SERVER_STORE` (`kv` or `d1`, defaults to `kv`)
+
+If `CHATGPT_AUTH_SERVER_URL` + `CHATGPT_AUTH_API_KEY` are set, `chatgpt-*` models will fetch tokens from the auth
+server and ignore local `CHATGPT_AUTH_JSON_B64`.
+
 ## Usage
 
 `v2` uses OpenAI-style request fields:
