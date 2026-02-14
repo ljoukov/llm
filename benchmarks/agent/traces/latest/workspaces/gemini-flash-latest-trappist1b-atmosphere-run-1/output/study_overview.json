@@ -6,37 +6,37 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Does the Earth-sized, tidally locked exoplanet TRAPPIST-1 b retain any atmosphere under the strong stellar irradiation from its M dwarf host star?",
+  "core_question": "Does the Earth-sized rocky exoplanet TRAPPIST-1 b, which orbits an M dwarf under strong stellar irradiation, retain a discernible atmosphere?",
   "datasets_or_cohorts": [
     {
       "id": "observed-system",
       "label": "Observed System",
-      "sample_size_or_observations": "Phase-resolved thermal spectra",
-      "description": "The actual measurement data from JWST MIRI low-resolution spectroscopy capturing the thermal emission across the orbital phase of the exoplanet TRAPPIST-1 b."
+      "sample_size_or_observations": "JWST MIRI phase-curve observation",
+      "description": "The actual observational data of TRAPPIST-1 b using JWST MIRI low-resolution spectroscopy over an orbital phase curve."
     },
     {
-      "id": "null-scenario",
-      "label": "Bare-Rock Null Scenario",
-      "sample_size_or_observations": "One theoretical model",
-      "description": "A computational model of the planet assuming a completely airless, bare-rock surface with minimal heat redistribution, used as the baseline for comparison."
+      "id": "null-scenario-bare-rock",
+      "label": "Bare-rock Null Scenario",
+      "sample_size_or_observations": "Model (no free parameters)",
+      "description": "An atmosphere-free, bare-rock model used as a comparison baseline, which assumes minimal heat redistribution and no atmospheric greenhouse effect."
     },
     {
       "id": "co2-rich-atmosphere",
       "label": "CO2-rich Atmosphere Model",
-      "sample_size_or_observations": "One theoretical model",
-      "description": "Atmosphere retrieval model family with an assumed composition rich in carbon dioxide, predicting significant greenhouse gas absorption and heat transport."
+      "sample_size_or_observations": "Retrieval model",
+      "description": "An atmosphere retrieval model that includes a significant concentration of CO2 to test for the presence of a greenhouse gas absorption signature in the spectrum."
     },
     {
       "id": "o2-rich-atmosphere",
       "label": "O2-rich Atmosphere Model",
-      "sample_size_or_observations": "One theoretical model",
-      "description": "Atmosphere retrieval model family assuming an oxidized composition, used to test alternative atmospheric chemistry scenarios and constraints."
+      "sample_size_or_observations": "Retrieval model",
+      "description": "An atmosphere retrieval model with an oxidized composition, used to check if the data can constrain atmospheres where the CO2 signature is weaker or different."
     }
   ],
   "major_limitations": [
-    "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets.",
-    "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors.",
-    "Stellar variability and instrument systematics can bias weak spectral features.",
-    "Night-side constraints are weaker than day-side constraints in the current dataset."
+    "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets. (L47)",
+    "Retrieval assumptions (circulation, opacity priors, cloud treatment) significantly affect the resulting quantitative posteriors. (L48)",
+    "Stellar variability and instrument systematics can introduce bias into the measurement of weak spectral features. (L49)",
+    "Constraints derived from the night-side of the planet are considerably weaker compared to the day-side constraints in the current observational dataset. (L50)"
   ]
 }

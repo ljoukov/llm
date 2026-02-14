@@ -3,11 +3,11 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Answer is given to 3 significant figures, consistent with the least precise input concentration (0.150 mol dm-3)."
+    "precision_note": "The concentration of NaOH (0.150 mol dm-3) limits the calculation to 3 significant figures. The final answer is reported to 3 significant figures."
   },
-  "method": "First, calculate the moles of NaOH (nB) used in the titration by converting its volume to dm3 and using n = cV. VB = 23.40 cm3 = 0.02340 dm3. nB = 0.150 mol dm-3 * 0.02340 dm3 = 0.00351 mol. Second, use the stoichiometry from the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O (1:2 ratio) to find the moles of H2SO4 (nA). nA = nB / 2 = 0.00351 mol / 2 = 0.001755 mol. Third, calculate the concentration of H2SO4 (cA) by dividing the moles by its volume in dm3: VA = 25.00 cm3 = 0.02500 dm3. cA = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
+  "method": "First, calculate the moles of NaOH used: n(NaOH) = C(NaOH) \u00d7 V(NaOH) = 0.150 mol dm\u207b\u00b3 \u00d7 (23.40 / 1000) dm\u00b3 = 0.00351 mol. From the balanced equation (H2SO4 + 2NaOH -> Na2SO4 + 2H2O), the mole ratio is 1:2. Therefore, the moles of H2SO4 neutralized is n(H2SO4) = n(NaOH) / 2 = 0.00351 mol / 2 = 0.001755 mol. Finally, calculate the concentration of H2SO4: C(H2SO4) = n(H2SO4) / V(H2SO4) = 0.001755 mol / (25.00 / 1000) dm\u00b3 = 0.0702 mol dm\u207b\u00b3.",
   "key_equations": [
-    "c = n / V",
+    "c = n / V (V in dm3)",
     "H2SO4 + 2NaOH -> Na2SO4 + 2H2O"
   ],
   "line_refs": [
@@ -16,7 +16,8 @@
     "L40"
   ],
   "checks": [
-    "The H2SO4 concentration is lower than the NaOH concentration (0.0702 < 0.150), which is expected since sulfuric acid is diprotic, meaning one mole neutralizes two moles of sodium hydroxide.",
-    "Volume of acid (25.00 cm3) is slightly more than the volume of base (23.40 cm3). If the concentrations were equal, the volume of acid would have to be half the volume of base (23.40 / 2 = 11.70 cm3). Since the acid volume is about double the required 11.70 cm3, the acid concentration should be about half the base concentration, 0.150 / 2 = 0.075 mol dm-3, which is close to 0.0702 mol dm-3."
+    "The mole ratio of 1:2 for H2SO4:NaOH was correctly applied.",
+    "Volume conversions from cm\u00b3 to dm\u00b3 were correctly performed for both acid and base volumes.",
+    "The final concentration is less than the base concentration, which is chemically plausible as sulfuric acid is diprotic."
   ]
 }

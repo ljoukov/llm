@@ -3,9 +3,9 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Answer is an integer based on the integer values for mean bond energies provided."
+    "precision_note": "The input bond energies are given as integers with three significant figures. The final answer is reported to three significant figures."
   },
-  "method": "The enthalpy change (ΔH) is estimated using the formula ΔH = sum(bonds broken) - sum(bonds formed). The bonds broken are 4 C-H bonds (4 * 413 = 1652 kJ mol-1) and 2 O=O bonds (2 * 498 = 996 kJ mol-1), summing to 2648 kJ mol-1. The bonds formed are 2 C=O bonds (2 * 805 = 1610 kJ mol-1) and 4 O-H bonds (4 * 463 = 1852 kJ mol-1), summing to 3462 kJ mol-1. ΔH = 2648 kJ mol-1 - 3462 kJ mol-1 = -814 kJ mol-1.",
+  "method": "The enthalpy change (\u0394H) is calculated using the formula \u0394H = \u2211(bonds broken) - \u2211(bonds formed). \n1. Energy required to break bonds (Reactants: CH4 + 2O2): $E_{\\text{broken}} = [4 \\times (C-H)] + [2 \\times (O=O)] = [4 \\times 413] + [2 \\times 498] = 1652 + 996 = 2648 \\text{ kJ mol}^{-1}$.\n2. Energy released when forming bonds (Products: CO2 + 2H2O): $E_{\\text{formed}} = [2 \\times (C=O)] + [4 \\times (O-H)] = [2 \\times 805] + [4 \\times 463] = 1610 + 1852 = 3462 \\text{ kJ mol}^{-1}$.\n3. Calculate \u0394H: $\\Delta H = 2648 - 3462 = -814 \\text{ kJ mol}^{-1}$.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)",
     "CH4 + 2O2 -> CO2 + 2H2O"
@@ -16,7 +16,8 @@
     "L47"
   ],
   "checks": [
-    "Since the reaction is combustion, it should be highly exothermic, meaning a large negative ΔH. The calculated value of -814 kJ mol-1 is a large negative value.",
-    "The total energy of bonds formed (3462 kJ mol-1) is greater than the total energy of bonds broken (2648 kJ mol-1), indicating an exothermic process."
+    "The calculation correctly applied the stoichiometry of the reaction to determine the total number of each bond broken and formed.",
+    "The calculation yielded a negative \u0394H, which is consistent with the exothermic nature of combustion.",
+    "The bonds in CO2 (two C=O) and H2O (two O-H per molecule) were correctly accounted for."
   ]
 }

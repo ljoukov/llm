@@ -1,25 +1,40 @@
-
 {
     "claims": [
         {
             "claim_id": "C01",
-            "claim": "The thermal phase curve of TRAPPIST-1b indicates day-night energy redistribution, suggesting the presence of an atmosphere.",
+            "claim": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
             "strength": "moderate",
             "evidence": [
                 {
-                    "quote": "Thermal phase offsets and amplitudes probe day-night energy redistribution.",
-                    "line_ref": "L40"
+                    "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b",
+                    "line_ref": "L53"
                 },
                 {
-                    "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
-                    "line_ref": "L41"
+                    "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
+                    "line_ref": "L31"
                 }
             ],
-            "caveat": "The heat transport efficiency has large uncertainties, and degeneracies with other parameters exist."
+            "caveat": "Atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential."
         },
         {
             "claim_id": "C02",
-            "claim": "The 15 um spectral feature is consistent with a CO2-rich atmosphere.",
+            "claim": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+            "strength": "strong",
+            "evidence": [
+                {
+                    "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+                    "line_ref": "L41"
+                },
+                {
+                    "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit | Non-zero redistribution is favored",
+                    "line_ref": "L28"
+                }
+            ],
+            "caveat": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant."
+        },
+        {
+            "claim_id": "C03",
+            "claim": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
             "strength": "moderate",
             "evidence": [
                 {
@@ -31,11 +46,11 @@
                     "line_ref": "L30"
                 }
             ],
-            "caveat": "O2-rich atmospheres are not ruled out, and degeneracies with clouds/hazes can affect interpretation."
+            "caveat": "Stellar variability and instrument systematics can bias weak spectral features."
         },
         {
-            "claim_id": "C03",
-            "claim": "Joint analysis of the phase curve and spectrum provides stronger evidence for an atmosphere than either dataset alone.",
+            "claim_id": "C04",
+            "claim": "Joint constraints from phase curve and spectrum are stronger than either observable alone.",
             "strength": "strong",
             "evidence": [
                 {
@@ -43,27 +58,11 @@
                     "line_ref": "L43"
                 },
                 {
-                    "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
-                    "line_ref": "L31"
-                }
-            ],
-            "caveat": "The strength of the joint evidence is dependent on the specific models and priors used in the analysis."
-        },
-        {
-            "claim_id": "C04",
-            "claim": "The data provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
-            "strength": "strong",
-            "evidence": [
-                {
-                    "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b...",
-                    "line_ref": "L53"
-                },
-                {
                     "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
                     "line_ref": "L35"
                 }
             ],
-            "caveat": "While evidence is against a *strictly* airless body, the atmosphere could be very thin or have a composition not yet fully constrained."
+            "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors."
         }
     ]
 }

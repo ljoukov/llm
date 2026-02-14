@@ -2,75 +2,71 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "TRAPPIST-1 b's observational data provides meaningful evidence against a strictly airless, bare-rock surface.",
-      "strength": "moderate",
+      "claim": "TRAPPIST-1 b is unlikely to be a strictly airless, bare-rock planet.",
+      "strength": "strong",
       "evidence": [
-        {
-          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
-          "line_ref": "L35"
-        },
         {
           "quote": "Non-zero redistribution is favored",
           "line_ref": "L28"
         },
         {
-          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b, but atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential.",
-          "line_ref": "L53"
-        }
-      ],
-      "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors."
-    },
-    {
-      "claim_id": "C02",
-      "claim": "Atmosphere-bearing models, which include both thermal redistribution and spectral absorption, better explain the combined JWST data.",
-      "strength": "strong",
-      "evidence": [
-        {
           "quote": "Atmosphere-bearing models better explain combined data products",
           "line_ref": "L31"
         },
         {
-          "quote": "Joint constraints from phase curve and spectrum are stronger than either observable alone.",
-          "line_ref": "L43"
+          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
+          "line_ref": "L35"
         }
       ],
-      "caveat": "Night-side constraints are weaker than day-side constraints in the current dataset."
+      "caveat": "The existence of an atmosphere is favored, but the exact composition and surface pressure remain highly uncertain and degenerate with circulation and cloud assumptions."
+    },
+    {
+      "claim_id": "C02",
+      "claim": "There is evidence for non-zero day-to-night heat transport on TRAPPIST-1 b, suggesting a mechanism beyond simple reradiation.",
+      "strength": "moderate",
+      "evidence": [
+        {
+          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14)",
+          "line_ref": "L28"
+        },
+        {
+          "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+          "line_ref": "L41"
+        }
+      ],
+      "caveat": "The uncertainty on the heat transport efficiency (ε) is large, and the non-zero value, while favored, has large error bars relative to the central value."
     },
     {
       "claim_id": "C03",
-      "claim": "The data shows spectral structure consistent with a greenhouse gas, such as carbon dioxide, at moderate pressures.",
-      "strength": "tentative",
+      "claim": "Spectral analysis provides evidence of a feature consistent with absorption by an atmospheric component, likely CO2, around 15 µm.",
+      "strength": "moderate",
       "evidence": [
         {
-          "quote": "Spectral structure is consistent with atmospheric absorption",
+          "quote": "15 um CO2 spectral band depth estimate | 96 ppm",
           "line_ref": "L30"
         },
         {
-          "quote": "Preferred pressure scale in CO2-rich retrieval family: 0.3-1.0 bar",
-          "line_ref": "L32"
-        },
-        {
-          "quote": "CO2-rich atmosphere scenario: atmosphere model with significant greenhouse gas absorption.",
-          "line_ref": "L21"
+          "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
+          "line_ref": "L42"
         }
       ],
-      "caveat": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant."
+      "caveat": "The weak spectral features could be biased by stellar variability or instrument systematics, and are currently subject to degeneracy with other compositional models, such as O2-rich atmospheres."
     },
     {
       "claim_id": "C04",
-      "claim": "Follow-up spectroscopy is essential to fully constrain the composition and pressure of the exoplanet's atmosphere.",
+      "claim": "Thermal-energy balance calculations constrain the planet's Bond albedo to be very low.",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential.",
-          "line_ref": "L53"
+          "quote": "Bond albedo upper bound | <0.08",
+          "line_ref": "L29"
         },
         {
-          "quote": "Remaining degeneracies motivate broader wavelength coverage and repeated observations.",
-          "line_ref": "L44"
+          "quote": "Planet appears very dark in thermal-energy balance fits",
+          "line_ref": "L29"
         }
       ],
-      "caveat": "Stellar variability and instrument systematics can bias weak spectral features."
+      "caveat": "The low albedo value is a constraint from thermal-energy balance, but does not provide direct evidence about the composition or pressure of any retained atmosphere."
     }
   ]
 }

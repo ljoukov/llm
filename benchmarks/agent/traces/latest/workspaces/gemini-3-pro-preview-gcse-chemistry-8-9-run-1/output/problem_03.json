@@ -3,20 +3,20 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Concentration (0.150) is 3 s.f., volumes (25.00, 23.40) are 4 s.f. Result is limited to 3 significant figures."
+    "precision_note": "The volume of NaOH (23.40 cm3) and H2SO4 (25.00 cm3) are given to 4 significant figures. The concentration of NaOH is given to 3 s.f. The final answer should be rounded to 3 significant figures."
   },
-  "method": "First, calculate the moles of NaOH used in the titration. Convert volume to dm3: 23.40 cm3 = 0.02340 dm3. Moles NaOH = concentration * volume = 0.150 * 0.02340 = 0.00351 mol. From the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the ratio of H2SO4 to NaOH is 1:2. Therefore, moles H2SO4 = 0.5 * moles NaOH = 0.5 * 0.00351 = 0.001755 mol. Finally, calculate the concentration of H2SO4 using its volume (25.00 cm3 = 0.02500 dm3): Concentration = moles / volume = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
+  "method": "Calculate the moles of NaOH using the given volume (23.40 cm3) and concentration (0.150 mol dm-3). n(NaOH) = 0.150 * 0.02340 = 0.003510 mol. From the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, we see that 2 moles of NaOH react with 1 mole of H2SO4. Therefore, n(H2SO4) = n(NaOH) / 2 = 0.003510 / 2 = 0.001755 mol. Finally, calculate the concentration of H2SO4 by dividing the moles by the volume (25.00 cm3 = 0.02500 dm3). c(H2SO4) = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
   "key_equations": [
-    "c = n / V",
+    "c = n / V (V in dm3)",
     "H2SO4 + 2NaOH -> Na2SO4 + 2H2O"
   ],
   "line_refs": [
+    "L15",
     "L39",
-    "L40",
-    "L15"
+    "L40"
   ],
   "checks": [
-    "Stoichiometry 1:2 applied correctly",
-    "Volumes converted to dm3"
+    "Stoichiometry is 1:2 acid:base.",
+    "Rough check: 23.4 * 0.15 / 2 / 25 is approx 0.07."
   ]
 }

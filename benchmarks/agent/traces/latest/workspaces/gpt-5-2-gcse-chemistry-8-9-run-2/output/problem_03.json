@@ -1,1 +1,23 @@
-{}
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "Reported to 3 significant figures (limited by 0.150 mol dm-3 NaOH)."
+  },
+  "method": "Convert the NaOH titre volume to dm3: 23.40 cm3 = 0.02340 dm3. Use c = n/V rearranged to n = cV to find moles of NaOH: n(NaOH) = 0.150 × 0.02340 = 0.00351 mol. From H2SO4 + 2NaOH → Na2SO4 + 2H2O, 2 mol NaOH react with 1 mol H2SO4, so n(H2SO4) = 0.00351/2 = 0.001755 mol. Convert the acid volume to dm3: 25.00 cm3 = 0.02500 dm3, then c(H2SO4) = n/V = 0.001755/0.02500 = 0.0702 mol dm-3.",
+  "key_equations": [
+    "c = n/V (V in dm3)",
+    "n = cV",
+    "n(H2SO4) = n(NaOH)/2"
+  ],
+  "line_refs": [
+    "L15",
+    "L39",
+    "L40"
+  ],
+  "checks": [
+    "Because 2 mol NaOH are needed per 1 mol acid, the acid concentration should be roughly half the NaOH concentration adjusted for volume; 0.0702 mol dm-3 fits.",
+    "Units check: (mol dm-3) × (dm3) gives mol for moles, then mol/dm3 returns mol dm-3."
+  ]
+}

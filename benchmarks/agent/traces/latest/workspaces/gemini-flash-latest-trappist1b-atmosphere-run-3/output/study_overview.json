@@ -6,30 +6,31 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Whether TRAPPIST-1 b retains any atmosphere under strong stellar irradiation, a key question for Earth-sized rocky planets orbiting M dwarfs.",
+  "core_question": "Does the Earth-sized rocky exoplanet TRAPPIST-1 b retain a significant atmosphere despite its close, tidally locked orbit and strong stellar irradiation, and what are its properties?",
   "datasets_or_cohorts": [
     {
-      "id": "trappist1b-observed",
-      "label": "TRAPPIST-1 b (Observed)",
-      "sample_size_or_observations": "phase-resolved thermal spectra",
-      "description": "one rocky exoplanet (TRAPPIST-1 b) with phase-resolved thermal spectra."
+      "id": "observed-system",
+      "label": "Observed System",
+      "sample_size_or_observations": "Phase-resolved thermal spectra from JWST MIRI",
+      "description": "The primary dataset consisting of JWST MIRI low-resolution, phase-resolved thermal spectra for the rocky exoplanet TRAPPIST-1 b."
     },
     {
-      "id": "null-bare-rock",
-      "label": "Bare-Rock Null Model",
-      "sample_size_or_observations": "model",
-      "description": "bare-rock, no-atmosphere model with minimal heat redistribution."
+      "id": "null-scenario-bare-rock",
+      "label": "Null/Bare-rock Scenario",
+      "sample_size_or_observations": "Model",
+      "description": "A computational model of the planet assuming an atmosphere-free, bare-rock surface with minimal heat redistribution (epsilon = 0)."
     },
     {
-      "id": "co2-atmosphere-model",
+      "id": "co2-rich-model",
       "label": "CO2-rich Atmosphere Model",
-      "sample_size_or_observations": "model",
-      "description": "atmosphere model with significant greenhouse gas absorption."
+      "sample_size_or_observations": "Model",
+      "description": "An atmospheric retrieval model family featuring a moderate-pressure, CO2-rich composition to test for greenhouse gas absorption effects."
     }
   ],
   "major_limitations": [
-    "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets.",
-    "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors.",
-    "Stellar variability and instrument systematics can bias weak spectral features."
+    "This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets. (L47)",
+    "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect the quantitative posteriors derived for atmospheric properties. (L48)",
+    "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant, limiting definitive constraint on one single atmospheric model. (L37)",
+    "Night-side constraints are weaker than day-side constraints in the current JWST MIRI dataset. (L50)"
   ]
 }

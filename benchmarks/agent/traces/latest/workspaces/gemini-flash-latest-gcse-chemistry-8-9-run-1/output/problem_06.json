@@ -2,24 +2,25 @@
   "problem_id": "P06",
   "final_answer": {
     "value": 0.0736,
-    "units": "dimensionless",
-    "precision_note": "All input values (0.180 mol, 0.220 mol, 2.00 dm3) are given to three significant figures. The final result is therefore rounded to three significant figures."
+    "units": "(unitless)",
+    "precision_note": "All data (moles and volume) are given to three significant figures, which limits the final result to three significant figures."
   },
-  "method": "To calculate the equilibrium constant $K_c$, the concentrations of the reactants and products must first be determined. Concentration is calculated using $c = n / V$. The volume of the vessel is $V = 2.00 \\text{ dm}^3$. $[\\text{NO}_2] = 0.180 \\text{ mol} / 2.00 \\text{ dm}^3 = 0.0900 \\text{ mol dm}^{-3}$. $[\\text{N}_2\\text{O}_4] = 0.220 \\text{ mol} / 2.00 \\text{ dm}^3 = 0.110 \\text{ mol dm}^{-3}$. The $K_c$ expression for $\\text{N}_2\\text{O}_4(\\text{g}) \\leftrightharpoons 2\\text{NO}_2(\\text{g})$ is $K_c = [\\text{NO}_2]^2 / [\\text{N}_2\\text{O}_4]$. Substituting the concentrations: $K_c = (0.0900)^2 / (0.110) = 0.00810 / 0.110 \\approx 0.073636$. The result is reported to three significant figures as $0.0736$. The constant is dimensionless as per the instructions.",
+  "method": "The equilibrium constant (Kc) for the reaction N2O4(g) <-> 2NO2(g) is calculated using the expression Kc = [NO2]^2 / [N2O4]. First, calculate the concentration (c = n/V) for each species using the volume V = 2.00 dm3. [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Next, substitute the concentrations into the Kc expression: Kc = (0.0900)^2 / 0.110 = 0.00810 / 0.110 ≈ 0.073636. As Kc is reported as dimensionless, the final answer rounded to three significant figures is 0.0736.",
   "key_equations": [
-    "Kc = [NO2]^2 / [N2O4]",
-    "c = n / V"
+    "c = n / V",
+    "Kc = [NO2]^2 / [N2O4]"
   ],
   "line_refs": [
-    "L15",
-    "L20",
-    "L21",
     "L56",
     "L57",
     "L58",
-    "L59"
+    "L15",
+    "L20",
+    "L21"
   ],
   "checks": [
-    "Since the concentration of the reactant ([N2O4] = 0.110 mol dm-3) is higher than the concentration of the product ([NO2] = 0.0900 mol dm-3), and the exponent is 2 for the product, it is expected that Kc will be less than 1. (0.0900)^2 = 0.00810. 0.00810 / 0.110 = 0.0736. This is consistent with expectations."
+    "[NO2]: 0.180 / 2.00 = 0.0900 M.",
+    "[N2O4]: 0.220 / 2.00 = 0.110 M.",
+    "Kc: (0.0900)^2 / 0.110 = 0.073636. 0.0736 (3 s.f.) is consistent with the check."
   ]
 }

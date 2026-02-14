@@ -8,10 +8,10 @@
   "schemaPass": false,
   "toolTracePass": false,
   "graderPass": false,
-  "durationMs": 743,
+  "durationMs": 10614,
   "agentCostUsd": 0,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0,
+  "graderCostUsd": 0.0115115,
+  "totalCostUsd": 0.0115115,
   "agentUsage": {
     "promptTokens": 0,
     "cachedTokens": 0,
@@ -20,22 +20,22 @@
     "totalTokens": 0
   },
   "graderUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1690,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 568,
+    "thinkingTokens": 43,
+    "totalTokens": 2301
   },
   "totalUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1690,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 568,
+    "thinkingTokens": 43,
+    "totalTokens": 2301
   },
   "modelVersions": [],
   "agentFinalText": "",
-  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
   "outputValidation": [
     {
       "outputFile": "output/study_overview.json",
@@ -111,7 +111,24 @@
     "calls": []
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 5,
+        "coverage": 1,
+        "usefulness": 1
+      },
+      "critical_issues": [
+        "All output files are empty JSON objects (`{}`) and fail the required schemas (as shown by validation errors for missing required fields). This makes them not practically usable for downstream review, despite not fabricating claims.",
+        "Severe coverage failure: none of the report’s main elements are captured, including the core question/context (L10-L12), study design and arms (L13-L17), cohorts and sizes (L18-L24), quantitative findings (L25-L34), controls/null results (L35-L40), mechanistic chain (L41-L47), and caveats/limitations (L48-L56).",
+        "Grounding/line-referencing failure: no claims are provided, therefore no valid line references can exist or be checked against the report lines (requirement: 'Line references are valid and map to the numbered report lines').",
+        "Quantitative findings are entirely omitted: key numbers like immunopeptidome fractions (62.3% vs 37.3%, L28), MHC-I peptidome fractions (40.6% vs 20.6%, L29), p=0.01 survival comparison (L30), IFN score (3.1 vs 1.0, L31), PD-L1 fold-change (2.4x, L32), and CD8 density (1.8x, L33) are not reported.",
+        "Controls and conditional results are omitted: vaccine-only lack of durable control (L36), ICI-only limited activity (L37), lipid particle controls (L38), and IFNAR1 blockade eliminating benefit (L39) are not included, removing critical interpretation safeguards.",
+        "Caveats/limitations are omitted: the human analysis being retrospective/non-randomized with confounding (L49), timing variability (L50), heterogeneity (L51), mouse-to-human generalization limits (L52), and model-specificity of mechanistic readouts (L53) are not included, risking overconfidence if any summary were inferred.",
+        "No coherent public summary or claim audit can be performed because the outputs contain no content; this violates the usefulness and coherence criteria even though it avoids hallucination."
+      ],
+      "summary": "Fail because the generated outputs are empty (`{}`) across all required files, failing schema requirements and providing no study overview, findings, controls, mechanistic interpretation, or limitations. While there are no fabricated quantitative claims, the coverage and practical usefulness are effectively zero, and no line-referenced grounding is possible (key missing content spans L10-L56, including all quantitative results in L25-L34 and caveats in L48-L56)."
+    }
   }
 }

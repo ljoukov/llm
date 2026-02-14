@@ -1,8 +1,41 @@
+
 {
     "claims": [
         {
             "claim_id": "C01",
-            "claim": "The data suggests non-zero heat redistribution, which is a sign of an atmosphere.",
+            "claim": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
+            "strength": "moderate",
+            "evidence": [
+                {
+                    "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4",
+                    "line_ref": "L31"
+                },
+                {
+                    "quote": "Atmosphere-bearing models better explain combined data products",
+                    "line_ref": "L31"
+                }
+            ],
+            "caveat": "Atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential."
+        },
+        {
+            "claim_id": "C02",
+            "claim": "The planet's dayside is warm, but this alone does not prove a bare surface.",
+            "strength": "strong",
+            "evidence": [
+                {
+                    "quote": "Dayside brightness temperature | 342 +/- 22 K",
+                    "line_ref": "L27"
+                },
+                {
+                    "quote": "Day side is warm but not sufficient alone to prove a bare surface",
+                    "line_ref": "L27"
+                }
+            ],
+            "caveat": "Night-side constraints are weaker than day-side constraints in the current dataset."
+        },
+        {
+            "claim_id": "C03",
+            "claim": "Energy is redistributed from the day side to the night side of the planet.",
             "strength": "moderate",
             "evidence": [
                 {
@@ -14,55 +47,23 @@
                     "line_ref": "L28"
                 }
             ],
-            "caveat": "The uncertainty on the heat transport efficiency is large and consistent with zero at the lower end."
+            "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors."
         },
         {
-            "claim_id": "C02",
-            "claim": "The planet's atmosphere is likely to contain CO2.",
-            "strength": "moderate",
+            "claim_id": "C04",
+            "claim": "The planet's atmosphere likely contains CO2, but other compositions are not ruled out.",
+            "strength": "tentative",
             "evidence": [
                 {
                     "quote": "15 um CO2 spectral band depth estimate | 96 ppm",
                     "line_ref": "L30"
                 },
                 {
-                    "quote": "Spectral structure is consistent with atmospheric absorption",
-                    "line_ref": "L30"
+                    "quote": "O2-rich atmosphere cases are not fully ruled out by current data.",
+                    "line_ref": "L36"
                 }
             ],
-            "caveat": "O2-rich atmosphere cases are not fully ruled out by current data, and degeneracies with other atmospheric properties exist."
-        },
-        {
-            "claim_id": "C03",
-            "claim": "Atmosphere-bearing models provide a better explanation of the data than no-atmosphere models.",
-            "strength": "strong",
-            "evidence": [
-                {
-                    "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4",
-                    "line_ref": "L31"
-                },
-                {
-                    "quote": "Atmosphere-bearing models better explain combined data products",
-                    "line_ref": "L31"
-                }
-            ],
-            "caveat": "The likelihood ratio is a statistical preference and does not constitute definitive proof."
-        },
-        {
-            "claim_id": "C04",
-            "claim": "The planet has a very dark surface.",
-            "strength": "strong",
-            "evidence": [
-                {
-                    "quote": "Bond albedo upper bound | <0.08",
-                    "line_ref": "L29"
-                },
-                {
-                    "quote": "Planet appears very dark in thermal-energy balance fits",
-                    "line_ref": "L29"
-                }
-            ],
-            "caveat": "This is an upper bound, and the true albedo could be lower."
+            "caveat": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant."
         }
     ]
 }

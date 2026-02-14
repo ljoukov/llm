@@ -1,30 +1,27 @@
 {
   "problem_id": "P05",
   "final_answer": {
-    "value": 0.887,
+    "value": 0.889,
     "units": "g",
-    "precision_note": "3 significant figures based on input data precision (1.50 A, 30.0 min)"
+    "precision_note": "Calculated to 3 significant figures based on input data precision (1.50 A and 30.0 min have 3 sig figs; Faraday constant 96500 has 3 sig figs)"
   },
-  "method": "Convert time to seconds: 30.0 min × 60 = 1800 s. Calculate charge: Q = I × t = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons: n(e-) = Q / F = 2700 / 96500 = 0.02798 mol. From the half-equation Cu2+ + 2e- → Cu, 2 moles of electrons produce 1 mole of Cu. Therefore moles of Cu = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Calculate mass of Cu: m = n × Mr = 0.01399 × 63.55 = 0.889 g. Using more precise calculation: n(Cu) = (1.50 × 1800) / (2 × 96500) = 2700 / 193000 = 0.01399 mol. Mass = 0.01399 × 63.55 = 0.889 g.",
+  "method": "First, convert time to seconds: t = 30.0 min × 60 s/min = 1800 s. Calculate total charge: Q = I × t = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons: n(e⁻) = Q / F = 2700 C / 96500 C mol-1 = 0.02798 mol. From the half-equation Cu²⁺ + 2e⁻ -> Cu, 2 moles of electrons produce 1 mole of Cu, so n(Cu) = n(e⁻) / 2 = 0.02798 / 2 = 0.01399 mol. Finally, calculate mass of copper: m(Cu) = n(Cu) × M(Cu) = 0.01399 mol × 63.55 g mol-1 = 0.889 g.",
   "key_equations": [
-    "Charge: Q = I × t",
-    "Moles of electrons: n(e-) = Q / F",
-    "Faraday constant: F = 96,500 C mol-1",
-    "Half-equation: Cu2+ + 2e- -> Cu",
-    "Mass: m = n × Mr"
+    "Q = I × t",
+    "n(e⁻) = Q / F",
+    "Cu²⁺ + 2e⁻ -> Cu"
   ],
   "line_refs": [
     "L17",
     "L18",
     "L19",
-    "L51",
     "L52",
-    "L53"
+    "L51"
   ],
   "checks": [
-    "Charge = 1.50 × 1800 = 2700 C",
-    "Moles electrons = 2700 / 96500 = 0.02798 mol",
-    "Moles Cu = 0.02798 / 2 = 0.01399 mol",
-    "Mass Cu = 0.01399 × 63.55 = 0.889 g ≈ 0.887 g with rounding"
+    "Longer time and higher current should produce more copper",
+    "Q = 2700 C is reasonable for 1.5 A over 30 minutes",
+    "For Cu²⁺ + 2e⁻ -> Cu, 2 F produces 63.55 g Cu",
+    "1 F (96500 C) should produce 31.775 g Cu, so 2700 C should produce approximately 31.775 × 2700/96500 ≈ 0.889 g, which matches"
   ]
 }

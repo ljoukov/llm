@@ -8,10 +8,10 @@
   "schemaPass": false,
   "toolTracePass": false,
   "graderPass": false,
-  "durationMs": 688,
+  "durationMs": 10017,
   "agentCostUsd": 0,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0,
+  "graderCostUsd": 0.00768425,
+  "totalCostUsd": 0.00768425,
   "agentUsage": {
     "promptTokens": 0,
     "cachedTokens": 0,
@@ -20,22 +20,22 @@
     "totalTokens": 0
   },
   "graderUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1983,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 273,
+    "thinkingTokens": 28,
+    "totalTokens": 2284
   },
   "totalUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1983,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 273,
+    "thinkingTokens": 28,
+    "totalTokens": 2284
   },
   "modelVersions": [],
   "agentFinalText": "",
-  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
   "outputValidation": [
     {
       "outputFile": "output/problem_01.json",
@@ -156,7 +156,22 @@
     "calls": []
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 1,
+        "coverage": 1,
+        "usefulness": 1
+      },
+      "critical_issues": [
+        "All six output files contain only `{}` and therefore provide no answers, methods, equations, checks, or line references. This fails practical usefulness and downstream review requirements.",
+        "Schema non-compliance is total: required fields are missing (problem_id, final_answer, method, key_equations, line_refs, checks), matching the provided validation errors for every file.",
+        "Grounding/line-referencing cannot be valid because there are no line_refs at all; thus nothing can be mapped to report lines L1–L60 as required.",
+        "Main findings are entirely absent: none of the six quantitative problems (P01–P06; L28–L59) are solved or even addressed.",
+        "While there are no fabricated quantitative claims (because there are no claims), the outputs still fail because they omit all core outcomes and caveats and are unusable for review."
+      ],
+      "summary": "Fail. Every generated JSON output is an empty object, missing all required schema fields, containing no computed results for P01–P06, and providing no valid line references to the report (L28–L59). These outputs are not practically useful and cannot be evaluated for faithfulness beyond noting total omission."
+    }
   }
 }

@@ -1,1 +1,24 @@
-{}
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.89,
+    "units": "g",
+    "precision_note": "Reported to 2 decimal places (≈3 significant figures) based on input data."
+  },
+  "method": "Convert the electrolysis time to seconds: 30.0 min × 60 = 1800 s. Use the definition of current (A = C s-1) to get the charge passed: Q = I×t = 1.50 × 1800 = 2700 C. The Faraday constant is 96,500 C mol-1 (of electrons), so the moles of electrons transferred are n(e-) = Q/96500 = 2700/96500 = 0.02798 mol e-. From the cathode half-equation Cu2+ + 2e- → Cu, 2 mol e- deposit 1 mol Cu, so n(Cu) = 0.02798/2 = 0.01399 mol. Convert to mass using Ar(Cu) = 63.55 g mol-1: m(Cu) = 0.01399 × 63.55 = 0.890 g, which rounds to 0.89 g.",
+  "key_equations": [
+    "F = 96,500 C mol-1",
+    "Cu2+ + 2e- -> Cu",
+    "m = n × Ar"
+  ],
+  "line_refs": [
+    "L19",
+    "L24",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "If current or time were zero, charge and mass would be zero; here both are positive so a positive mass is expected.",
+    "Order of magnitude: 2700 C corresponds to 2700/96500 ≈ 0.028 mol e-, giving ≈0.014 mol Cu, i.e. under 1 g, consistent with 0.89 g."
+  ]
+}

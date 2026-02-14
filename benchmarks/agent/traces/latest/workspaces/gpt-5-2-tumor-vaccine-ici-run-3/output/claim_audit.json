@@ -2,39 +2,23 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "In preclinical mouse tumor models, an intratumoral mRNA vaccine combined with anti-PD-L1 is reported to improve tumor control compared with control conditions.",
+      "claim": "Intratumoral mRNA vaccination induces a strong local type I interferon response in tumors.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "- Preclinical arm: multiple murine tumor models with intratumoral mRNA vaccine and anti-PD-L1 combinations.",
-          "line_ref": "L14"
+          "quote": "| Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors |",
+          "line_ref": "L31"
         },
         {
-          "quote": "5. Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
-          "line_ref": "L46"
+          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
+          "line_ref": "L42"
         }
       ],
-      "caveat": "Mouse model effects may not map one-to-one to all human tumors, so efficacy in mice does not guarantee clinical benefit." 
+      "caveat": "The report summarizes normalized scores, but does not specify timing, assay details, or variability across models in this excerpt."
     },
     {
       "claim_id": "C02",
-      "claim": "In a retrospective metastatic patient cohort treated with immune checkpoint inhibitors, prior SARS-CoV-2 mRNA vaccination status is associated with better survival.",
-      "strength": "tentative",
-      "evidence": [
-        {
-          "quote": "- Translational arm: a retrospective cohort of metastatic patients receiving ICI treatment, compared by prior SARS-CoV-2 mRNA vaccination status.",
-          "line_ref": "L15"
-        },
-        {
-          "quote": "| Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment |",
-          "line_ref": "L30"
-        }
-      ],
-      "caveat": "Because the human analysis is retrospective and non-randomized and vaccination timing varied, the association cannot be interpreted as a definitive causal effect." 
-    },
-    {
-      "claim_id": "C03",
-      "claim": "Intratumoral mRNA vaccination is reported to broaden tumor antigen presentation, increasing the fraction of tumor proteins observed in immunopeptidomics and in the MHC-I peptidome.",
+      "claim": "Intratumoral mRNA vaccination broadens tumor antigen presentation, including an expanded MHC-I peptidome.",
       "strength": "moderate",
       "evidence": [
         {
@@ -44,41 +28,61 @@
         {
           "quote": "| Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6% | Strong expansion of MHC-I-presented landscape |",
           "line_ref": "L29"
+        },
+        {
+          "quote": "A broader peptide repertoire appears on MHC-I, improving tumor visibility to T cells.",
+          "line_ref": "L44"
         }
       ],
-      "caveat": "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings." 
+      "caveat": "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
+    },
+    {
+      "claim_id": "C03",
+      "claim": "The intervention increases PD-L1 pathway activity in tumor tissue, supporting combination with checkpoint blockade.",
+      "strength": "moderate",
+      "evidence": [
+        {
+          "quote": "| PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x | Checkpoint axis became more targetable |",
+          "line_ref": "L32"
+        },
+        {
+          "quote": "PD-L1 pathway activity also increases, creating a rationale for combining with checkpoint blockade.",
+          "line_ref": "L45"
+        }
+      ],
+      "caveat": "An increase in PD-L1 expression can have multiple biological interpretations, and the excerpt does not provide effect sizes across all tumor models."
     },
     {
       "claim_id": "C04",
-      "claim": "The authors propose that intratumoral mRNA vaccination triggers type I interferon signaling in tumors, contributing to improved immune priming for checkpoint blockade.",
-      "strength": "moderate",
+      "claim": "Combination therapy improves tumor control in mice and is consistent with improved survival in a retrospective vaccinated human subgroup receiving ICI.",
+      "strength": "tentative",
       "evidence": [
         {
-          "quote": "1. Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-          "line_ref": "L42"
+          "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
+          "line_ref": "L46"
         },
         {
-          "quote": "| Type I interferon response score (normalized units) | 3.1 | 1.0 | Marked induction after mRNA vaccination in tumors |",
-          "line_ref": "L31"
+          "quote": "| Retrospective human survival comparison p-value | p=0.01 | N/A | Vaccinated subgroup had improved survival under ICI treatment |",
+          "line_ref": "L30"
         }
       ],
-      "caveat": "The report summarizes a proposed mechanistic chain; without full experimental detail here, the magnitude and generality of interferon induction across models could vary." 
+      "caveat": "The human analysis is retrospective and non-randomized; residual confounding is likely, and vaccination timing relative to ICI initiation varied across patients."
     },
     {
       "claim_id": "C05",
-      "claim": "Type I interferon signaling appears necessary for the sensitization effect, because IFNAR1 blockade is reported to eliminate the benefit.",
+      "claim": "The sensitization benefit depends on type I interferon signaling, because IFNAR1 blockade eliminates the effect.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "- Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
+          "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
           "line_ref": "L39"
         },
         {
-          "quote": "1. Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
+          "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
           "line_ref": "L42"
         }
       ],
-      "caveat": "This necessity claim is based on a specific perturbation (anti-IFNAR1) described in summary form, and may depend on tumor model context and experimental conditions." 
+      "caveat": "These results are described at a summary level here, and the excerpt does not specify which tumor models or endpoints were used for the IFNAR1 perturbation." 
     }
   ]
 }

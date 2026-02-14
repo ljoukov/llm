@@ -2,9 +2,13 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "The combined phase-curve and spectral data provide evidence against a strictly airless (bare-rock only) interpretation for TRAPPIST-1 b.",
+      "claim": "Jointly fitting the phase curve and spectrum favors atmosphere-bearing models over a strictly airless (bare-rock) interpretation for TRAPPIST-1 b.",
       "strength": "moderate",
       "evidence": [
+        {
+          "quote": "| Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products |",
+          "line_ref": "L31"
+        },
         {
           "quote": "- A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
           "line_ref": "L35"
@@ -14,11 +18,11 @@
           "line_ref": "L53"
         }
       ],
-      "caveat": "The report notes that composition and pressure are still uncertain and that follow-up spectroscopy is essential."
+      "caveat": "Model assumptions and parameter degeneracies mean that the preferred explanation is not unique, and follow-up spectroscopy is needed to reduce uncertainty."
     },
     {
       "claim_id": "C02",
-      "claim": "Non-zero day-night heat redistribution is favored, inconsistent with the perfect no-atmosphere limit of epsilon = 0.",
+      "claim": "The retrieved heat redistribution implies non-zero day-to-night transport, inconsistent with the perfect no-atmosphere limit.",
       "strength": "moderate",
       "evidence": [
         {
@@ -30,43 +34,43 @@
           "line_ref": "L41"
         }
       ],
-      "caveat": "Night-side constraints are weaker than day-side constraints, and retrieval assumptions can change the inferred redistribution."
+      "caveat": "Quantitative posteriors for redistribution depend on retrieval assumptions, including circulation and opacity priors, and may shift with different modeling choices."
     },
     {
       "claim_id": "C03",
-      "claim": "Spectral structure near 15 um is consistent with CO2-related atmospheric absorption in the phase-curve spectroscopy.",
+      "claim": "Spectral structure around 15 um, including an estimated CO2-band depth, is consistent with atmospheric absorption rather than a flat-spectrum null.",
       "strength": "tentative",
       "evidence": [
-        {
-          "quote": "- Observables: thermal phase variation and spectral structure around the 15 um CO2 band.",
-          "line_ref": "L15"
-        },
         {
           "quote": "| 15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null | Spectral structure is consistent with atmospheric absorption |",
           "line_ref": "L30"
         },
         {
-          "quote": "- Stellar variability and instrument systematics can bias weak spectral features.",
-          "line_ref": "L49"
+          "quote": "3. Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
+          "line_ref": "L42"
         }
       ],
-      "caveat": "The report highlights that weak spectral features can be biased by stellar variability and instrument systematics."
+      "caveat": "Weak spectral features can be biased by stellar variability and instrument systematics, so the inferred band structure requires cautious interpretation."
     },
     {
       "claim_id": "C04",
-      "claim": "Atmosphere-bearing models outperform no-atmosphere models in a joint fit to the phase curve and spectral information.",
-      "strength": "moderate",
+      "claim": "Atmospheric composition and pressure are not yet well constrained, and further observations are needed to resolve degeneracies and strengthen night-side constraints.",
+      "strength": "strong",
       "evidence": [
         {
-          "quote": "| Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products |",
-          "line_ref": "L31"
+          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b, but atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential.",
+          "line_ref": "L53"
         },
         {
-          "quote": "4. Joint constraints from phase curve and spectrum are stronger than either observable alone.",
-          "line_ref": "L43"
+          "quote": "- Night-side constraints are weaker than day-side constraints in the current dataset.",
+          "line_ref": "L50"
+        },
+        {
+          "quote": "5. Remaining degeneracies motivate broader wavelength coverage and repeated observations.",
+          "line_ref": "L44"
         }
       ],
-      "caveat": "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant, limiting uniqueness of the interpretation."
+      "caveat": "Because multiple atmospheric scenarios (including O2-rich cases) are not fully ruled out and modeling degeneracies remain significant, conclusions about specific compositions should be treated as provisional."
     }
   ]
 }

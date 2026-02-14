@@ -1,21 +1,22 @@
 {
   "problem_id": "P01",
   "final_answer": {
-    "value": 0.0200,
+    "value": 0.02,
     "units": "mol dm-3",
-    "precision_note": "3 significant figures matching the input data (25.0 cm3, 0.200 mol dm-3, 250.0 cm3)"
+    "precision_note": "Given to 3 significant figures (0.0200 mol dm-3)."
   },
-  "method": "Using the dilution equation c1V1 = c2V2, where c1 is the initial concentration, V1 is the initial volume, and V2 is the final volume. The initial HCl solution has concentration 0.200 mol dm-3 and volume 25.0 cm3. After dilution to 250.0 cm3, the new concentration is calculated as c2 = (c1 × V1) / V2 = (0.200 mol dm-3 × 25.0 cm3) / 250.0 cm3 = 0.0200 mol dm-3. Since all given values have 3 significant figures, the answer is reported to 3 significant figures.",
+  "method": "Using the dilution equation c1V1 = c2V2. The initial concentration is 0.200 mol dm-3 and the initial volume is 25.0 cm3. The final volume is 250.0 cm3. Rearranging gives c2 = (c1 × V1) / V2 = (0.200 × 25.0) / 250.0 = 0.0200 mol dm-3. The concentration decreases by a factor of 10 because the volume increases by a factor of 10.",
   "key_equations": [
     "c1V1 = c2V2"
   ],
   "line_refs": [
     "L16",
-    "L29"
+    "L29",
+    "L30"
   ],
   "checks": [
-    "Dilution reduces concentration by factor of 10 (250/25), so 0.200/10 = 0.0200 is reasonable",
-    "Units are consistent: cm3 cancels leaving mol dm-3",
-    "Final concentration is lower than initial, as expected for dilution"
+    "Dilution factor = 250.0/25.0 = 10, so concentration should decrease by factor of 10",
+    "0.200/10 = 0.0200 which matches calculated value",
+    "Units are correct: mol dm-3 is the standard unit for concentration"
   ]
 }

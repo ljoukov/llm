@@ -3,25 +3,22 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "3 significant figures matching the input data (1.50 A, 30.0 min, Cu = 63.55)"
+    "precision_note": "Reported to 3 significant figures matching the precision of input measurements."
   },
-  "method": "First convert time to seconds: t = 30.0 min × 60 s min-1 = 1800 s. Calculate charge using Q = I × t = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons using n(e-) = Q / F = 2700 C / 96500 C mol-1 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of copper, so n(Cu) = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper using m = n × Ar = 0.01399 mol × 63.55 g mol-1 = 0.889 g. The answer is reported to 3 significant figures.",
+  "method": "First convert time to seconds: 30.0 min = 30.0 × 60 = 1800 s. Calculate charge using Q = I × t: Q = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons: n(e-) = Q / F = 2700 / 96500 = 0.02798 mol. From the half-equation Cu2+ + 2e- → Cu, 2 moles of electrons produce 1 mole of copper. So moles of Cu = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper: mass = n × Ar = 0.01399 mol × 63.55 g mol-1 = 0.889 g.",
   "key_equations": [
     "Q = I × t",
-    "n(e-) = Q / F",
-    "m = n × Ar"
+    "n(e-) = Q / F"
   ],
   "line_refs": [
     "L17",
     "L18",
     "L19",
-    "L24",
-    "L51",
     "L52"
   ],
   "checks": [
-    "Time correctly converted from minutes to seconds (30.0 × 60 = 1800 s)",
-    "Stoichiometry factor of 2 correctly applied for Cu2+ + 2e- -> Cu",
-    "Mass of copper is reasonable for 30 minutes at 1.50 A current"
+    "Time conversion correct: 30 minutes = 1800 seconds",
+    "Stoichiometry correct: 2 electrons per Cu2+ ion reduced",
+    "Final mass is reasonable for 30 minutes of electrolysis at 1.5 A"
   ]
 }

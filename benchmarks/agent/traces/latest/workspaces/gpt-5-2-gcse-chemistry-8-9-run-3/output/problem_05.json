@@ -3,23 +3,22 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Mass to 3 s.f., limited by 1.50 A and 30.0 min (both 3 s.f.)."
+    "precision_note": "Reported to 3 s.f. (limited by 1.50 A, 30.0 min, and F = 96,500 C mol-1)."
   },
-  "method": "Convert time to seconds: 30.0 min × 60 = 1800 s. Calculate charge passed using Q = I×t: Q = 1.50 A × 1800 s = 2700 C. The Faraday constant is F = 96,500 C mol-1, so moles of electrons transferred is n(e−) = Q/F = 2700/96500 = 0.02798 mol e−. Copper(II) ions require 2 electrons per Cu atom deposited, so n(Cu) = 0.02798/2 = 0.01399 mol. Using the molar mass of Cu (63.55 g mol-1), mass deposited = n×Mr = 0.01399 × 63.55 = 0.8889 g ≈ 0.889 g.",
+  "method": "Convert time to seconds: 30.0 min = 30.0×60 = 1800 s. Charge passed is current × time, so Q = 1.50 A × 1800 s = 2700 C. The Faraday constant is 96,500 C mol-1, meaning 96,500 C corresponds to 1 mol of electrons, so moles of electrons transferred are n(e−) = Q/F = 2700/96500 = 0.02798 mol e−. From the cathode half-equation Cu2+ + 2e− → Cu, 2 mol e− produce 1 mol Cu, so n(Cu) = 0.02798/2 = 0.01399 mol. Using Ar(Cu) = 63.55 g mol-1, the mass deposited is m = n×Ar = 0.01399×63.55 = 0.8886 g, which rounds to 0.889 g (3 s.f.).",
   "key_equations": [
-    "Q = I × t",
-    "n(e−) = Q / F (from F in C mol−1)",
-    "n(Cu) = n(e−)/2",
-    "m = n × Mr"
+    "F = 96,500 C mol-1",
+    "Cu2+ + 2e- -> Cu",
+    "m = n × Ar"
   ],
   "line_refs": [
-    "L51",
-    "L17",
     "L19",
-    "L24"
+    "L24",
+    "L51",
+    "L52"
   ],
   "checks": [
-    "If current or time increased, Q would increase and more Cu would be deposited; the direct proportionality matches Q = It.",
-    "Order-of-magnitude: 2700 C is ~0.028 mol e−; halving gives ~0.014 mol Cu; at ~64 g/mol this is just under 1 g, consistent with 0.889 g."
+    "If charge were much smaller, mass would be much smaller; 2700 C is a moderate charge so <1 g Cu is reasonable.",
+    "n(e−) ≈ 2700/96500 ≈ 0.028 mol; dividing by 2 gives ≈ 0.014 mol Cu; 0.014×64 ≈ 0.9 g."
   ]
 }

@@ -3,11 +3,12 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Integer precision derived from the provided integer bond energies."
+    "precision_note": "Based on integer bond energies provided."
   },
-  "method": "Calculate energy required to break bonds in reactants: 4*(C-H) + 2*(O=O) = 4*413 + 2*498 = 1652 + 996 = 2648 kJ. Calculate energy released forming bonds in products: 2*(C=O) + 4*(O-H) = 2*805 + 4*463 = 1610 + 1852 = 3462 kJ. Apply formula deltaH = broken - formed = 2648 - 3462 = -814 kJ mol-1.",
+  "method": "Identify bonds broken in reactants: 4 x C-H (in CH4) and 2 x O=O (in 2O2). Energy = (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ mol-1. Identify bonds formed in products: 2 x C=O (in CO2) and 4 x O-H (in 2H2O). Energy = (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ mol-1. Calculate deltaH = Energy(broken) - Energy(formed) = 2648 - 3462 = -814 kJ mol-1.",
   "key_equations": [
-    "deltaH = sum(bonds broken) - sum(bonds formed)"
+    "deltaH = sum(bonds broken) - sum(bonds formed)",
+    "CH4 + 2O2 -> CO2 + 2H2O"
   ],
   "line_refs": [
     "L45",
@@ -15,7 +16,7 @@
     "L47"
   ],
   "checks": [
-    "Combustion is exothermic, so result must be negative. -814 is negative.",
-    "Stoichiometry factors (4 C-H, 2 O=O, 2 C=O, 4 O-H) correctly applied."
+    "Exothermic reaction (negative deltaH) expected for combustion.",
+    "Values summed correctly."
   ]
 }

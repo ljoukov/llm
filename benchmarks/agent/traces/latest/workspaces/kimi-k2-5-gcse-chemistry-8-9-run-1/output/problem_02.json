@@ -3,12 +3,12 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "3 significant figures, matching the least precise input mass value (5.00 g has 3 s.f.)"
+    "precision_note": "Reported to 3 significant figures, consistent with given mass data"
   },
-  "method": "First calculate mass of pure CaCO3: 5.00 g × 0.840 = 4.20 g. Then calculate moles of CaCO3 using n = m/Mr: 4.20 g / 100.1 g mol-1 = 0.04196 mol. From the stoichiometric equation CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio of CaCO3 to CO2 is 1:1, so moles of CO2 = 0.04196 mol. Finally, calculate mass of CO2: m = n × Mr = 0.04196 mol × 44.0 g mol-1 = 1.846 g. Rounded to 3 significant figures: 1.85 g.",
+  "method": "First calculate the mass of pure CaCO3 in the sample: mass(CaCO3) = 5.00 g × 84.0/100 = 4.20 g. Then calculate moles of CaCO3 using n = m/Mr: n(CaCO3) = 4.20 g / 100.1 g mol-1 = 0.04196 mol. From the reaction stoichiometry (1:1 ratio), moles of CO2 produced = moles of CaCO3 reacted = 0.04196 mol. Finally, calculate mass of CO2: mass = n × Mr = 0.04196 mol × 44.0 g mol-1 = 1.846 g, which rounds to 1.85 g to 3 significant figures.",
   "key_equations": [
     "n = m / Mr",
-    "m = n × Mr"
+    "mass(CaCO3) = total mass × percentage purity"
   ],
   "line_refs": [
     "L25",
@@ -17,8 +17,9 @@
     "L34"
   ],
   "checks": [
-    "Mass check: CO2 (44.0) is less than CaCO3 (100.1), so mass CO2 should be less than mass CaCO3 - verified (1.85 < 4.20)",
-    "Stoichiometry check: 1:1 mole ratio means moles CO2 equals moles CaCO3 - verified",
-    "Significant figures: inputs have 3 s.f., answer has 3 s.f. - verified"
+    "Mass of pure CaCO3 (4.20 g) is less than total sample mass (5.00 g), consistent with 84% purity",
+    "Molar mass check: CaCO3 = 40.1 + 12.0 + 3(16.0) = 100.1 g mol-1 matches given value",
+    "Stoichiometry is 1:1 for CaCO3:CO2, so equal moles expected",
+    "Final mass (1.85 g) is reasonable for CO2 produced from ~4.2 g carbonate"
   ]
 }

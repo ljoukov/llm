@@ -8,10 +8,10 @@
   "schemaPass": false,
   "toolTracePass": false,
   "graderPass": false,
-  "durationMs": 719,
+  "durationMs": 9307,
   "agentCostUsd": 0,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0,
+  "graderCostUsd": 0.00817425,
+  "totalCostUsd": 0.00817425,
   "agentUsage": {
     "promptTokens": 0,
     "cachedTokens": 0,
@@ -20,22 +20,22 @@
     "totalTokens": 0
   },
   "graderUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1983,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 302,
+    "thinkingTokens": 34,
+    "totalTokens": 2319
   },
   "totalUsage": {
-    "promptTokens": 0,
+    "promptTokens": 1983,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 302,
+    "thinkingTokens": 34,
+    "totalTokens": 2319
   },
   "modelVersions": [],
   "agentFinalText": "",
-  "agentError": "Failed to extract chatgpt_account_id from access token.",
+  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
   "outputValidation": [
     {
       "outputFile": "output/problem_01.json",
@@ -156,7 +156,21 @@
     "calls": []
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 1,
+        "coverage": 1,
+        "usefulness": 1
+      },
+      "critical_issues": [
+        "All six output JSON files are empty objects (`{}`), containing none of the required fields (problem_id, final_answer, method, key_equations, line_refs, checks). This matches the reported schema validation failures and makes the outputs unusable for downstream review.",
+        "No solutions, calculations, or final numerical answers are provided for any problem (P01–P06). Therefore, none of the report’s required main findings (the computed concentrations, mass of CO2, titration concentration, ΔH estimate, deposited Cu mass, and Kc) are covered (L28–L60).",
+        "No line references are provided at all, so grounding cannot be verified and the requirement that line references “map to the numbered report lines” is not satisfied (entire report; especially L28–L60 for each problem statement and L13–L22 for equations/constants).",
+        "Because there are no claims, there are no fabricated quantitative claims; however, the absence of any content is a hard failure under the pass criteria requiring coverage and practical usefulness."
+      ],
+      "summary": "The generated outputs are empty JSON objects for every problem, failing schema requirements and providing no answers, methods, equations, checks, or valid line references. As a result, they do not cover the report’s core outcomes and are not practically useful for review."
+    }
   }
 }
