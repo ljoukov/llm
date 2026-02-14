@@ -1,16 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { generateJson, loadLocalEnv, streamText } from "../src/index.js";
 
 loadLocalEnv();
 
 const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
 const hasGemini = Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
-const hasChatGpt = Boolean(
-  process.env.CHATGPT_AUTH_JSON_B64?.trim() ||
-    (process.env.CHATGPT_AUTH_SERVER_URL?.trim() && process.env.CHATGPT_AUTH_API_KEY?.trim()),
-);
+const tokenProviderUrl =
+  process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim() ||
+  process.env.CHATGPT_AUTH_SERVER_URL?.trim();
+const tokenProviderKey =
+  process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY?.trim() ||
+  process.env.CHATGPT_AUTH_API_KEY?.trim();
+
+function hasCodexStore(): boolean {
+  const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
+  const authPath = path.join(codexHome, "auth.json");
+  try {
+    const raw = fs.readFileSync(authPath, "utf8");
+    const doc = JSON.parse(raw) as any;
+    const tokens = doc?.tokens;
+    return Boolean(tokens?.access_token && tokens?.refresh_token);
+  } catch {
+    return false;
+  }
+}
+
+const hasChatGpt = Boolean((tokenProviderUrl && tokenProviderKey) || hasCodexStore());
 
 const openAiIt = hasOpenAi ? it : it.skip;
 const geminiIt = hasGemini ? it : it.skip;
