@@ -7,7 +7,10 @@ loadLocalEnv();
 
 const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
 const hasGemini = Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
-const hasChatGpt = Boolean(process.env.CHATGPT_AUTH_JSON_B64?.trim());
+const hasChatGpt = Boolean(
+  process.env.CHATGPT_AUTH_JSON_B64?.trim() ||
+    (process.env.CHATGPT_AUTH_SERVER_URL?.trim() && process.env.CHATGPT_AUTH_API_KEY?.trim()),
+);
 
 const openAiIt = hasOpenAi ? it : it.skip;
 const geminiIt = hasGemini ? it : it.skip;
