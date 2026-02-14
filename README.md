@@ -10,7 +10,7 @@ Unified TypeScript wrapper over:
 - **OpenAI Responses API** (`openai`)
 - **Google Gemini via Vertex AI** (`@google/genai`)
 - **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`, `minimax-m2.1`)
-- **ChatGPT subscription models** via `chatgpt-*` model ids (requires `CHATGPT_AUTH_JSON_B64`)
+- **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
 
 Designed around a single streaming API that yields:
 
@@ -76,20 +76,21 @@ jq -c . < path/to/service-account.json | wrangler secret put GOOGLE_SERVICE_ACCO
 
 ### ChatGPT subscription models
 
-- `CHATGPT_AUTH_JSON_B64`
+By default, `chatgpt-*` models reuse the ChatGPT OAuth tokens stored by the Codex CLI:
 
-This is a base64url-encoded JSON blob containing the ChatGPT OAuth tokens + account id (RFC 4648):
-https://www.rfc-editor.org/rfc/rfc4648
+- `${CODEX_HOME:-~/.codex}/auth.json`
 
-Optional alternative (recommended for multi-deploy setups): use a centralized auth server (for example a Cloudflare
-Worker) that owns refresh-token rotation and serves short-lived access tokens over HTTPS.
+If you deploy to multiple environments (Vercel, GCP, local dev, etc.), use a centralized HTTPS token provider that owns
+refresh-token rotation and serves short-lived access tokens.
 
-- `CHATGPT_AUTH_SERVER_URL` (example: `https://chatgpt-auth.<your-subdomain>.workers.dev`)
+- `CHATGPT_AUTH_TOKEN_PROVIDER_URL` (example: `https://chatgpt-auth.<your-domain>`)
 - `CHATGPT_AUTH_API_KEY` (shared secret; sent as `Authorization: Bearer ...` and `x-chatgpt-auth: ...`)
-- `CHATGPT_AUTH_SERVER_STORE` (`kv` or `d1`, defaults to `kv`)
+- `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (`kv` or `d1`, defaults to `kv`)
 
-If `CHATGPT_AUTH_SERVER_URL` + `CHATGPT_AUTH_API_KEY` are set, `chatgpt-*` models will fetch tokens from the auth
-server and ignore local `CHATGPT_AUTH_JSON_B64`.
+This repo includes a Cloudflare Workers token provider implementation in `workers/chatgpt-auth/`.
+
+If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` + `CHATGPT_AUTH_API_KEY` are set, `chatgpt-*` models will fetch tokens from the
+token provider and will not read the local Codex auth store.
 
 ## Usage
 

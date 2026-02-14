@@ -119,6 +119,20 @@ function extractChatGptAccountIdFromJwt(token: string): string | undefined {
   return undefined;
 }
 
+function extractEmailFromJwt(token: string): string | undefined {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload !== "object") return undefined;
+  const email = (payload as any).email;
+  return typeof email === "string" && email.includes("@") ? email : undefined;
+}
+
+function redactEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "<redacted>";
+  const prefix = local.slice(0, 2);
+  return `${prefix}***@${domain}`;
+}
+
 async function readStateFromKv(env: Env): Promise<TokenState | null> {
   const raw = await env.CHATGPT_AUTH_KV.get(KV_KEY, { type: "json" });
   if (!raw || typeof raw !== "object") return null;
@@ -277,15 +291,16 @@ async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: st
 
     const refreshed = await oauthRefresh(latest.refreshToken);
     const expiresAt = now + refreshed.expiresIn * 1000;
+    const idToken = refreshed.idToken ?? latest.idToken;
     const accountId =
-      extractChatGptAccountIdFromJwt(refreshed.idToken ?? "") ??
+      extractChatGptAccountIdFromJwt(idToken ?? "") ??
       extractChatGptAccountIdFromJwt(refreshed.accessToken) ??
       latest.accountId;
 
     const newState: TokenState = {
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
-      idToken: refreshed.idToken,
+      idToken,
       expiresAt,
       accountId,
       updatedAt: now,
@@ -296,7 +311,12 @@ async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: st
     memoryCache = { state: newState, cachedAt: now };
 
     const elapsed = Math.round(performance.now() - start);
-    console.log(`[refresh] ok reason=${options.reason} elapsed_ms=${elapsed}`);
+    const email = extractEmailFromJwt(idToken ?? "");
+    console.log(
+      `[refresh] ok reason=${options.reason} account_id=${newState.accountId}${
+        email ? ` email=${redactEmail(email)}` : ""
+      } elapsed_ms=${elapsed}`,
+    );
     return { state: newState, refreshed: true };
   } finally {
     await releaseRefreshLock(env);
@@ -377,6 +397,11 @@ async function handleSeed(request: Request, env: Env): Promise<Response> {
   await upsertStateToD1(env, { ...state, lockUntil: null });
   await writeStateToKv(env, state);
   memoryCache = { state, cachedAt: nowMs() };
+
+  const email = extractEmailFromJwt(state.idToken ?? "");
+  console.log(
+    `[seed] ok account_id=${state.accountId}${email ? ` email=${redactEmail(email)}` : ""} expires_at=${state.expiresAt}`,
+  );
 
   return json({
     ok: true,
