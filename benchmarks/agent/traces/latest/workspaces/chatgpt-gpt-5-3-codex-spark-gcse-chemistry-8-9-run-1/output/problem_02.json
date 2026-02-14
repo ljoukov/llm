@@ -1,1 +1,20 @@
-{}
+{
+  "problem_id": "P02",
+  "final_answer": {
+    "value": 1.85,
+    "units": "g",
+    "precision_note": "3 s.f. from reported sample purity and molecular masses given in the report."
+  },
+  "method": "First take the mass of pure CaCO3: 5.00 g × 0.840 = 4.20 g. Convert to moles using n = m/Mr: n(CaCO3) = 4.20 / 100.1 = 4.20×10^-2 mol. From the reaction one mole CaCO3 produces one mole CO2, so n(CO2) = 4.20×10^-2 mol. Multiply by Mr(CO2): mass(CO2)=n×44.0 = 1.85 g.",
+  "key_equations": [
+    "m(CaCO3) = m(sample) × purity",
+    "n = m / Mr",
+    "n(CO2) = n(CaCO3)",
+    "m = n × Mr"
+  ],
+  "line_refs": ["L24", "L25", "L26", "L33"],
+  "checks": [
+    "Maximum CO2 moles cannot exceed reactant CaCO3 moles, which is ~4.2×10^-2 mol.",
+    "1:1 stoichiometry means mass should be well below initial sample mass (yes 1.85 g < 4.20 g)."
+  ]
+}

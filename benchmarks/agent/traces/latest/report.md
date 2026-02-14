@@ -1,23 +1,23 @@
 # Filesystem Agent Benchmark Report
 
-- Run id: agent-fs-2026-02-14T12-57-06-825Z
-- Generated at: 2026-02-14T13:25:57.915Z
+- Run id: agent-fs-2026-02-14T14-45-27-017Z
+- Generated at: 2026-02-14T14:53:49.274Z
 - Models: chatgpt-gpt-5.3-codex-spark, gpt-5.2, kimi-k2.5, glm-5, minimax-m2.1, gemini-2.5-pro, gemini-flash-latest, gemini-3-pro-preview, gemini-3-flash-preview
 - Grader model: gpt-5.2
 - Reasoning effort: medium
 - Tasks: tumor-vaccine-ici, trappist1b-atmosphere, gcse-chemistry-8-9
 - Runs per model/task: 3
 - Cases: 81
-- Overall success: 20/81
-- Schema pass: 37/81
-- Tool trace pass: 72/81
-- Grader pass: 20/81
-- Observed total latency: 8291.20s
-- Observed avg latency/case: 102.36s
-- Observed total cost: $6.346483
-- Observed tokens (in/cached/out): 4,320,552/1,886,749/328,547
-- Observed thinking tokens: 260,209
-- Observed total tokens: 4,909,308
+- Overall success: 22/81
+- Schema pass: 43/81
+- Tool trace pass: 81/81
+- Grader pass: 22/81
+- Observed total latency: 8711.49s
+- Observed avg latency/case: 107.55s
+- Observed total cost: $6.795905
+- Observed tokens (in/cached/out): 5,929,775/3,288,221/375,934
+- Observed thinking tokens: 359,466
+- Observed total tokens: 6,665,175
 
 ## Source Papers
 
@@ -39,7 +39,7 @@
 
 | Model | Success | Schema pass | Tool pass | Grader pass | Avg latency (s) | Total latency (s) | Tool calls | Total cost (USD) | In tokens | Cached tokens | Out tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| chatgpt-gpt-5.3-codex-spark | 0/9 | 0/9 | 0/9 | 0/9 | 9.09 | 81.83 | 0 | 0.074819 | 15,885 | 3,328 | 3,406 |
+| chatgpt-gpt-5.3-codex-spark | 2/9 | 6/9 | 9/9 | 2/9 | 55.79 | 502.12 | 460 | 0.524241 | 1,625,108 | 1,404,800 | 50,793 |
 | gpt-5.2 | 6/9 | 7/9 | 9/9 | 6/9 | 152.04 | 1368.34 | 312 | 1.400333 | 480,902 | 294,400 | 36,951 |
 | kimi-k2.5 | 0/9 | 0/9 | 9/9 | 0/9 | 42.55 | 382.93 | 258 | 0.368985 | 311,033 | 129,076 | 46,306 |
 | glm-5 | 4/9 | 7/9 | 9/9 | 4/9 | 148.44 | 1335.94 | 380 | 1.106094 | 904,502 | 131,424 | 62,346 |
@@ -53,9 +53,9 @@
 
 | Model | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls |
 |---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 9.92 | 10.61 | 0.009408 | 0.011511 | 0.00 | 0 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 6.89 | 6.49 | 0.008462 | 0.007893 | 0.00 | 0 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 10.47 | 9.31 | 0.007070 | 0.008174 | 0.00 | 0 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | PASS (run 2) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 85.54 | 55.66 | 0.085095 | 0.062287 | 82.67 | 64 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | FAIL (run 2) | 0/3 (0.0%) | 2/3 (66.7%) | 3/3 (100.0%) | 0/3 (0.0%) | 42.75 | 52.06 | 0.048243 | 0.057958 | 35.33 | 42 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | PASS (run 1) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 39.09 | 43.32 | 0.041409 | 0.049301 | 35.33 | 36 |
 | gpt-5.2 | tumor-vaccine-ici | 3 | PASS (run 2) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 129.69 | 109.16 | 0.156963 | 0.123976 | 32.67 | 34 |
 | gpt-5.2 | trappist1b-atmosphere | 3 | PASS (run 3) | 2/3 (66.7%) | 2/3 (66.7%) | 3/3 (100.0%) | 2/3 (66.7%) | 128.63 | 130.04 | 0.135775 | 0.135960 | 34.00 | 32 |
 | gpt-5.2 | gcse-chemistry-8-9 | 3 | PASS (run 1) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 197.79 | 199.29 | 0.174040 | 0.175918 | 37.33 | 32 |
@@ -85,15 +85,15 @@
 
 | Model | Task | Run | Reasoning | Status | Schema | Tool trace | Grader | Latency (s) | Tool calls | Cost (USD) | In tokens | Cached tokens | Out tokens |
 |---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 1 | medium | FAIL | fail | fail | fail | 9.29 | 0 | 0.009090 | 1,690 | 0 | 404 |
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 2 | medium | FAIL | fail | fail | fail | 10.61 | 0 | 0.011511 | 1,690 | 0 | 568 |
-| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | medium | FAIL | fail | fail | fail | 9.85 | 0 | 0.007622 | 1,690 | 1,536 | 458 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 1 | medium | FAIL | fail | fail | fail | 7.72 | 0 | 0.008830 | 1,622 | 0 | 392 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 2 | medium | FAIL | fail | fail | fail | 6.47 | 0 | 0.008663 | 1,622 | 0 | 390 |
-| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | medium | FAIL | fail | fail | fail | 6.49 | 0 | 0.007893 | 1,622 | 0 | 323 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 1 | medium | FAIL | fail | fail | fail | 9.31 | 0 | 0.008174 | 1,983 | 0 | 302 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | fail | fail | 10.02 | 0 | 0.007684 | 1,983 | 0 | 273 |
-| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | fail | fail | 12.07 | 0 | 0.005352 | 1,983 | 1,792 | 296 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 123.16 | 112 | 0.117519 | 700,606 | 652,032 | 11,443 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 2 | medium | PASS | pass | pass | pass | 55.66 | 64 | 0.062287 | 215,472 | 180,480 | 8,590 |
+| chatgpt-gpt-5.3-codex-spark | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 77.80 | 72 | 0.075478 | 355,625 | 319,360 | 7,274 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 48.55 | 40 | 0.051094 | 123,840 | 102,656 | 5,463 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 52.06 | 42 | 0.057958 | 117,926 | 95,360 | 5,374 |
+| chatgpt-gpt-5.3-codex-spark | trappist1b-atmosphere | 3 | medium | FAIL | fail | pass | fail | 27.63 | 24 | 0.035675 | 24,957 | 10,240 | 3,798 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 1 | medium | PASS | pass | pass | pass | 43.32 | 36 | 0.049301 | 21,231 | 7,680 | 2,850 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 31.47 | 36 | 0.034468 | 27,237 | 12,800 | 3,329 |
+| chatgpt-gpt-5.3-codex-spark | gcse-chemistry-8-9 | 3 | medium | FAIL | pass | pass | fail | 42.47 | 34 | 0.040459 | 38,214 | 24,192 | 2,672 |
 | gpt-5.2 | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 105.95 | 24 | 0.121099 | 27,345 | 5,504 | 3,816 |
 | gpt-5.2 | tumor-vaccine-ici | 2 | medium | PASS | pass | pass | pass | 109.16 | 34 | 0.123976 | 43,696 | 23,552 | 4,140 |
 | gpt-5.2 | tumor-vaccine-ici | 3 | medium | FAIL | fail | pass | fail | 173.97 | 40 | 0.225813 | 107,473 | 57,472 | 5,293 |
@@ -169,78 +169,13 @@
 
 ## Failures
 
-- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 1: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 2: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 3: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 1: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 2: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 3: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 1: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 2: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
-- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 3: agent_error=ChatGPT OAuth refresh failed (401): {
-  "error": {
-    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "refresh_token_reused"
-  }
-} | schema_or_grounding_failed | tool_trace=Expected at least 3 tool calls, observed 0.; No successful read/list/search tool call observed.; No successful write tool call observed (write_file/replace/apply_patch). | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 1: grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 1: grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 2: grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / trappist1b-atmosphere / run 3: schema_or_grounding_failed | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_verdict=fail
+- chatgpt-gpt-5.3-codex-spark / gcse-chemistry-8-9 / run 3: grader_verdict=fail
 - gpt-5.2 / tumor-vaccine-ici / run 1: grader_verdict=fail
 - gpt-5.2 / tumor-vaccine-ici / run 3: schema_or_grounding_failed | grader_verdict=fail
 - gpt-5.2 / trappist1b-atmosphere / run 1: schema_or_grounding_failed | grader_verdict=fail
