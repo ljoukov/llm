@@ -3,21 +3,21 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Inputs 1.50 A and 30.0 min have 3 s.f. Result is rounded to 0.889 g."
+    "precision_note": "The result is given to 3 significant figures, consistent with the current and time measurements."
   },
-  "method": "Convert time to seconds: 30.0 * 60 = 1800 s. Calculate charge: Q = I * t = 1.50 * 1800 = 2700 C. Calculate moles of electrons: n(e-) = 2700 / 96500 = 0.02798 mol. Moles of Cu = n(e-) / 2 = 0.01399 mol. Mass of Cu = 0.01399 * 63.55 = 0.889 g.",
+  "method": "First, convert time to seconds: 30.0 min * 60 = 1800 s. Calculate total charge: Q = I * t = 1.50 A * 1800 s = 2700 C. Calculate moles of electrons: n(e-) = Q / F = 2700 / 96500 = 0.02798 mol. From the half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons deposit 1 mole of copper. So n(Cu) = 0.02798 / 2 = 0.01399 mol. Finally, calculate mass: m = n * Ar = 0.01399 * 63.55 = 0.889 g.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
     "n = m / Mr"
   ],
   "line_refs": [
+    "L19",
+    "L24",
     "L51",
-    "L52",
-    "L17",
-    "L18"
+    "L52"
   ],
   "checks": [
-    "Roughly 0.028 mol e- -> 0.014 mol Cu. 0.014 * 64 ~ 0.9 g. Matches."
+    "Re-calculating charge: 1800 * 1.5 = 2700. Mass: 0.014 * 63.55 approx 0.89. Calculation verified."
   ]
 }

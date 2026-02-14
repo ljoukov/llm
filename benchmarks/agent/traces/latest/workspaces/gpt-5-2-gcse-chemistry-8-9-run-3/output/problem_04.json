@@ -3,22 +3,19 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "Reported to 3 s.f.; value is an estimate because mean bond energies are used."
+    "precision_note": "Mean bond energies give an estimate; value given to nearest kJ mol-1 from the provided integers."
   },
-  "method": "Use ΔH = Σ(bonds broken) − Σ(bonds formed). For CH4 + 2O2 → CO2 + 2H2O: bonds broken are 4×(C–H) from CH4 and 2×(O=O) from 2O2. Broken energy = 4×413 + 2×498 = 1652 + 996 = 2648 kJ mol-1. Bonds formed are 2×(C=O in CO2) in CO2 and 4×(O–H) in 2H2O (each H2O has two O–H bonds). Formed energy = 2×805 + 4×463 = 1610 + 1852 = 3462 kJ mol-1. Therefore ΔH = 2648 − 3462 = −814 kJ mol-1 (exothermic, as expected for combustion).",
+  "method": "Use the bond energy method: ΔH = Σ(bonds broken) − Σ(bonds formed). For CH4 + 2O2 → CO2 + 2H2O, bonds broken are 4 × C–H (in CH4) and 2 × O=O (because there are 2 O2 molecules). Using the given mean bond energies: broken = 4×413 + 2×498 = 1652 + 996 = 2648 kJ mol-1. Bonds formed are 2 × C=O (in CO2) and 4 × O–H (because 2 H2O contains 4 O–H bonds): formed = 2×805 + 4×463 = 1610 + 1852 = 3462 kJ mol-1. Therefore ΔH = 2648 − 3462 = −814 kJ mol-1 (exothermic).",
   "key_equations": [
-    "ΔH = Σ(bonds broken) − Σ(bonds formed)",
-    "Bonds broken: 4(C–H) + 2(O=O)",
-    "Bonds formed: 2(C=O) + 4(O–H)"
+    "ΔH = ΣE(bonds broken) − ΣE(bonds formed)"
   ],
   "line_refs": [
-    "L44",
     "L45",
     "L46",
     "L47"
   ],
   "checks": [
-    "Combustion should be exothermic, so ΔH should be negative; −814 kJ mol-1 satisfies this.",
-    "Bond counting check: CH4 has 4 C–H bonds; 2O2 contains 2 O=O bonds; products form 2 C=O and 4 O–H bonds."
+    "Combustion reactions should be exothermic, so a negative ΔH is expected.",
+    "Magnitude (~8×10^2 kJ mol-1) is plausible for methane combustion using mean bond energies."
   ]
 }

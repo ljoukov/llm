@@ -6,36 +6,36 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Does TRAPPIST-1 b retain an atmosphere, as inferred from JWST MIRI thermal phase-curve spectroscopy and spectral structure around the 15 um CO2 band, and what does the dataset imply about day-night heat transport and plausible atmospheric composition?",
+  "core_question": "Does TRAPPIST-1 b retain an atmosphere (versus being a bare rock), as inferred from JWST MIRI thermal phase-curve spectroscopy including structure near the 15 um CO2 band?",
   "datasets_or_cohorts": [
     {
-      "id": "jwst-miri-phase-curve",
-      "label": "JWST MIRI LRS phase-curve spectroscopy",
-      "sample_size_or_observations": "One orbital phase curve of TRAPPIST-1 b",
-      "description": "Low-resolution JWST MIRI spectroscopy taken over an orbital phase curve, providing phase-resolved thermal spectra used to measure thermal phase variation and spectral structure around the 15 um CO2 band."
+      "id": "observed-system",
+      "label": "Observed TRAPPIST-1 b phase curve",
+      "sample_size_or_observations": "1 planet; JWST MIRI low-resolution spectroscopy over an orbital phase curve",
+      "description": "Phase-resolved thermal spectra and phase-dependent brightness of TRAPPIST-1 b used to constrain day-night heat transport and spectral features."
     },
     {
-      "id": "bare-rock-null",
-      "label": "Bare-rock (no-atmosphere) null scenario",
-      "sample_size_or_observations": "Model scenario used as a comparator",
-      "description": "A no-atmosphere, bare-rock model with minimal heat redistribution used as the baseline comparator against which phase amplitude and spectral band behavior are evaluated."
+      "id": "null-bare-rock",
+      "label": "Null scenario: no atmosphere",
+      "sample_size_or_observations": "Model comparison against the observed phase-curve and spectral structure",
+      "description": "Bare-rock, no-atmosphere model intended to represent minimal heat redistribution and a flat/featureless spectrum baseline."
     },
     {
-      "id": "co2-rich-retrieval",
-      "label": "CO2-rich atmosphere retrieval family",
-      "sample_size_or_observations": "Model retrieval family fit to the phase curve + spectrum",
-      "description": "Atmosphere-bearing retrieval models that include significant greenhouse-gas absorption (including the 15 um CO2 band) to jointly constrain heat transport and atmospheric pressure/composition."
+      "id": "co2-rich-atmosphere",
+      "label": "CO2-rich atmosphere scenario",
+      "sample_size_or_observations": "Retrieval family evaluated against the same phase-curve + spectrum",
+      "description": "Atmosphere-bearing retrieval family with significant greenhouse gas absorption, targeting a detectable feature near the 15 um CO2 band."
     },
     {
-      "id": "o2-rich-retrieval",
-      "label": "O2-rich atmosphere retrieval family",
-      "sample_size_or_observations": "Alternative model retrieval family",
-      "description": "Oxidized (O2-rich) atmosphere scenarios explored as an alternative to CO2-rich cases, with current data providing weaker constraints on CO2 spectral signatures and not fully ruling these cases out."
+      "id": "o2-rich-atmosphere",
+      "label": "O2-rich atmosphere scenario",
+      "sample_size_or_observations": "Alternative oxidized-composition retrieval family",
+      "description": "Atmosphere scenario with oxidized composition in which CO2 constraints are weaker, explored as a viable alternative given current data."
     }
   ],
   "major_limitations": [
-    "Single-planet study; does not establish prevalence across M-dwarf rocky planets.",
-    "Retrieval assumptions (circulation, opacity priors, clouds) affect quantitative posteriors.",
+    "Single-planet target; results do not establish prevalence across M-dwarf rocky planets.",
+    "Retrieval assumptions about circulation, opacity priors, and clouds affect quantitative posteriors.",
     "Stellar variability and instrument systematics can bias weak spectral features.",
     "Night-side constraints are weaker than day-side constraints in the current dataset.",
     "Degeneracies between composition, clouds/hazes, and circulation assumptions remain significant."

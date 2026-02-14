@@ -1,12 +1,11 @@
-
 {
     "problem_id": "P04",
     "final_answer": {
         "value": -814,
         "units": "kJ mol-1",
-        "precision_note": "The final answer is an integer, as it is derived from integer bond energy values."
+        "precision_note": "The final answer is an integer, reflecting the precision of the bond energy values provided."
     },
-    "method": "The enthalpy change (deltaH) of the reaction is estimated by calculating the difference between the total energy of bonds broken and the total energy of bonds formed. First, identify all the bonds broken in the reactants (CH4 and 2O2): four C-H bonds and two O=O bonds. Calculate the total energy absorbed to break these bonds using the provided bond energies. Next, identify all the bonds formed in the products (CO2 and 2H2O): two C=O bonds and four O-H bonds. Calculate the total energy released when these bonds are formed. Finally, subtract the total energy of bonds formed from the total energy of bonds broken to find deltaH.",
+    "method": "The enthalpy change (deltaH) is calculated using the formula: deltaH = sum(bonds broken) - sum(bonds formed). First, calculate the energy required to break the bonds in the reactants. In one mole of CH4, there are 4 C-H bonds, so 4 * 413 kJ is required. In two moles of O2, there are 2 O=O bonds, so 2 * 498 kJ is required. Total energy for bond breaking = (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ. Next, calculate the energy released when forming bonds in the products. In one mole of CO2, there are 2 C=O bonds, so 2 * 805 kJ is released. In two moles of H2O, there are 4 O-H bonds (2 per molecule), so 4 * 463 kJ is released. Total energy from bond formation = (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ. Finally, deltaH = 2648 - 3462 = -814 kJ mol-1.",
     "key_equations": [
         "deltaH = sum(bonds broken) - sum(bonds formed)"
     ],
@@ -16,8 +15,7 @@
         "L47"
     ],
     "checks": [
-        "The number and types of bonds broken and formed were correctly identified from the balanced equation.",
-        "The arithmetic calculation is correct.",
-        "The negative sign of the final answer correctly indicates an exothermic reaction, which is expected for combustion."
+        "The number of each type of bond in both reactants and products has been correctly identified.",
+        "The calculation correctly subtracts the energy of bonds formed from the energy of bonds broken."
     ]
 }

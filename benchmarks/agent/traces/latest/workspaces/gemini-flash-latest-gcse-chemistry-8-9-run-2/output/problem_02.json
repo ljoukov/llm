@@ -3,13 +3,12 @@
   "final_answer": {
     "value": 1.85,
     "units": "g",
-    "precision_note": "Answer is given to 3 significant figures, matching the least number of significant figures in the input data (5.00 g, 84.0%, 44.0)."
+    "precision_note": "Calculated to 3 significant figures, dictated by the purity (84.0%), sample mass (5.00 g), and Mr(CO2) (44.0)."
   },
-  "method": "First, the actual mass of pure CaCO3 in the limestone sample is calculated using the purity percentage: 5.00 g * 0.840 = 4.20 g. Next, the moles of CaCO3 are determined using its molar mass (Mr=100.1 g mol-1) and the formula n = m/Mr: 4.20 g / 100.1 g mol-1 \u2248 0.04196 mol. Based on the balanced chemical equation (L34), the mole ratio of CaCO3 to CO2 is 1:1, so the moles of CO2 produced is the same as the moles of CaCO3. Finally, the mass of CO2 is calculated using its molar mass (Mr=44.0 g mol-1): 0.04196 mol * 44.0 g mol-1 \u2248 1.846 g. This is rounded to 3 significant figures.",
+  "method": "First, calculate the mass of pure CaCO3 in the 5.00 g sample at 84.0% purity: 5.00 g * 0.840 = 4.20 g. Next, use the molar mass Mr(CaCO3) = 100.1 to find the moles of CaCO3: n(CaCO3) = 4.20 g / 100.1 g mol-1 = 0.041958... mol. The reaction equation (L34) shows a 1:1 mole ratio between CaCO3 and CO2, so n(CO2) = 0.041958... mol. Finally, calculate the mass of CO2 using Mr(CO2) = 44.0: m(CO2) = 0.041958... mol * 44.0 g mol-1 = 1.8461... g. Rounded to 3 significant figures, the mass is 1.85 g.",
   "key_equations": [
-    "Mass(CaCO3) = Sample Mass * Purity",
     "n = m / Mr",
-    "CaCO3 : CO2 mole ratio is 1:1"
+    "CaCO3 + 2HCl -> CaCl2 + CO2 + H2O"
   ],
   "line_refs": [
     "L14",
@@ -19,9 +18,7 @@
     "L34"
   ],
   "checks": [
-    "Purity is applied before converting mass to moles.",
-    "The stoichiometric ratio of 1:1 between CaCO3 and CO2 is used.",
-    "The final answer is rounded to 3 significant figures.",
-    "The calculation uses the correct molar masses for CaCO3 and CO2."
+    "The mass of CO2 (1.85 g) is less than the mass of pure CaCO3 (4.20 g), which is consistent with the lower molar mass of CO2 (44.0) compared to CaCO3 (100.1).",
+    "The moles of CaCO3 used is approximately 4.2 / 100 = 0.042 mol, and the mass of CO2 produced is approximately 0.042 * 44 = 1.85 g, which confirms the result."
   ]
 }

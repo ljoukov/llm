@@ -1,12 +1,11 @@
-
 {
     "problem_id": "P01",
     "final_answer": {
         "value": 0.0200,
         "units": "mol dm-3",
-        "precision_note": "The final answer is given to three significant figures to match the precision of the input data (0.200 mol dm-3 and 25.0 cm3)."
+        "precision_note": "The final answer is given to three significant figures to match the precision of the input values provided in the report (25.0 cm3, 0.200 mol dm-3, and 250.0 cm3)."
     },
-    "method": "First, convert the initial and final volumes from cm3 to dm3 by dividing by 1000. Then, apply the dilution formula c1V1 = c2V2, where c1 and V1 are the initial concentration and volume, and c2 and V2 are the final concentration and volume. Rearrange the formula to solve for the final concentration, c2 = (c1 * V1) / V2. Substitute the given values to calculate the final concentration of HCl.",
+    "method": "The dilution equation c1V1 = c2V2 is used. The initial volume V1 is 25.0 cm3, which is 0.0250 dm3. The initial concentration c1 is 0.200 mol dm-3. The final volume V2 is 250.0 cm3 or 0.250 dm3. The equation is rearranged to solve for the final concentration c2: c2 = (c1 * V1) / V2. Substituting the values: c2 = (0.200 * 0.0250) / 0.250 = 0.0200 mol dm-3.",
     "key_equations": [
         "c1V1 = c2V2"
     ],
@@ -15,9 +14,7 @@
         "L29"
     ],
     "checks": [
-        "The units of volume were consistently used (dm3).",
-        "The dilution leads to a decrease in concentration, as expected.",
-        "The calculation was verified to be arithmetically correct.",
-        "The final answer is presented to the correct number of significant figures."
+        "The units of volume were converted from cm3 to dm3 before calculation.",
+        "The number of significant figures in the final answer is consistent with the input data."
     ]
 }

@@ -6,38 +6,38 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Does TRAPPIST-1 b retain an atmosphere despite strong stellar irradiation from its M dwarf host star, and what are the constraints on its composition?",
+  "core_question": "Does TRAPPIST-1 b retain an atmosphere under strong stellar irradiation from its M dwarf host star, and what are the constraints on its atmospheric composition and thermal properties?",
   "datasets_or_cohorts": [
     {
-      "id": "trappist-1-b",
-      "label": "TRAPPIST-1 b Observation",
-      "sample_size_or_observations": "JWST MIRI low-resolution spectroscopy across full orbital phase curve",
-      "description": "Earth-sized rocky exoplanet on tidally locked orbit around M dwarf star, observed with JWST MIRI to capture thermal phase variations and spectral structure."
+      "id": "trappist1b-observation",
+      "label": "TRAPPIST-1 b JWST MIRI observation",
+      "sample_size_or_observations": "Phase-resolved thermal spectra across full orbital cycle",
+      "description": "JWST MIRI low-resolution spectroscopy measuring thermal emission from TRAPPIST-1 b throughout its orbit, capturing both day-side and night-side thermal emission variations."
     },
     {
-      "id": "no-atmosphere-scenario",
-      "label": "Bare-rock No-atmosphere Model",
-      "sample_size_or_observations": "Null hypothesis model for comparison",
-      "description": "Theoretical model assuming a bare rocky surface with no atmospheric layer, minimal heat redistribution, and immediate reradiation of stellar flux."
+      "id": "bare-rock-model",
+      "label": "No-atmosphere bare-rock scenario",
+      "sample_size_or_observations": "Model comparison baseline",
+      "description": "Theoretical model representing an airless rocky planet with minimal heat redistribution between day and night sides."
     },
     {
       "id": "co2-rich-atmosphere",
-      "label": "CO2-rich Atmosphere Scenario",
-      "sample_size_or_observations": "Retrieval model with greenhouse gas absorption",
-      "description": "Atmosphere model incorporating significant carbon dioxide absorption, testing whether the 15 um spectral band indicates presence of CO2-rich atmosphere."
+      "label": "CO2-rich atmosphere retrieval family",
+      "sample_size_or_observations": "Atmospheric retrieval scenario",
+      "description": "Atmosphere model incorporating greenhouse gas absorption, particularly targeting the 15 um CO2 spectral band signature."
     },
     {
       "id": "o2-rich-atmosphere",
-      "label": "O2-rich Atmosphere Scenario",
-      "sample_size_or_observations": "Alternative composition retrieval",
-      "description": "Atmospheric model assuming oxidized composition with weaker CO2 signature constraints, representing an alternative plausible atmospheric state."
+      "label": "O2-rich atmosphere retrieval family",
+      "sample_size_or_observations": "Alternative atmospheric composition scenario",
+      "description": "Alternative oxidized atmospheric composition scenario with weaker CO2 signature constraints for comparison."
     }
   ],
   "major_limitations": [
-    "Single-planet study does not establish atmospheric prevalence across all M-dwarf rocky planets",
-    "Retrieval assumptions regarding circulation, opacity priors, and cloud treatment affect quantitative posteriors",
-    "Stellar variability and instrument systematics may bias weak spectral feature detection",
-    "Night-side observational constraints are weaker than day-side constraints in current dataset",
-    "Degeneracies remain between atmospheric composition, cloud/haze properties, and circulation assumptions"
+    "Single-planet study does not establish atmospheric prevalence across M-dwarf rocky planets generally",
+    "Retrieval assumptions including circulation patterns, opacity priors, and cloud treatment affect quantitative posteriors",
+    "Stellar variability and instrument systematics can potentially bias weak spectral feature detection",
+    "Night-side thermal constraints are weaker than day-side constraints in the current dataset",
+    "Degeneracies between atmospheric composition, cloud/haze properties, and circulation assumptions remain significant"
   ]
 }

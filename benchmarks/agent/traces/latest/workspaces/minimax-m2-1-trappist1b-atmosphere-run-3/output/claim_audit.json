@@ -2,111 +2,71 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "TRAPPIST-1 b is an Earth-sized rocky planet on a very short, likely tidally locked orbit around an M dwarf star",
-      "strength": "strong",
-      "evidence": [
-        {
-          "quote": "TRAPPIST-1 b is an Earth-sized rocky planet on a very short, likely tidally locked orbit around an M dwarf.",
-          "line_ref": "L11"
-        }
-      ],
-      "caveat": "This is established by prior observations and orbital dynamics; the current study assumes this as a starting condition rather than discovering this characteristic"
-    },
-    {
-      "claim_id": "C02",
-      "claim": "JWST MIRI phase-curve spectroscopy can jointly constrain day-night heat transport and atmospheric composition for TRAPPIST-1 b",
-      "strength": "strong",
-      "evidence": [
-        {
-          "quote": "The study uses JWST MIRI phase-curve spectroscopy to jointly constrain day-night heat transport and atmospheric composition.",
-          "line_ref": "L11"
-        },
-        {
-          "quote": "Instrument: JWST MIRI low-resolution spectroscopy over an orbital phase curve. Observables: thermal phase variation and spectral structure around the 15 um CO2 band.",
-          "line_ref": "L14-L15"
-        }
-      ],
-      "caveat": "While the methodology is sound, the constraints are limited by observational sensitivity and model degeneracies"
-    },
-    {
-      "claim_id": "C03",
-      "claim": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior",
-      "strength": "strong",
-      "evidence": [
-        {
-          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
-          "line_ref": "L35"
-        }
-      ],
-      "caveat": "This conclusion depends on the specific parameterization of the bare-rock model and the range of alternatives considered in the retrieval framework"
-    },
-    {
-      "claim_id": "C04",
-      "claim": "The heat transport efficiency parameter (epsilon = 0.19 +0.23/-0.14) indicates non-zero redistribution is favored over an airless scenario",
+      "claim": "TRAPPIST-1 b shows evidence for heat redistribution beyond the bare-rock reradiation limit, indicating the presence of an atmosphere",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Heat transport efficiency (epsilon) 0.19 (+0.23 / -0.14) - 0.0 for perfect no-atmosphere limit - Non-zero redistribution is favored",
+          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit | Non-zero redistribution is favored",
           "line_ref": "L28"
         },
         {
-          "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+          "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit",
           "line_ref": "L41"
+        },
+        {
+          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b",
+          "line_ref": "L52"
         }
       ],
-      "caveat": "The uncertainty range is relatively large, and the non-zero value is only modestly significant given the posterior distribution"
+      "caveat": "The heat transport efficiency measurement has substantial uncertainty and the non-zero value, while favored, overlaps with the no-atmosphere boundary within error bounds"
     },
     {
-      "claim_id": "C05",
-      "claim": "The 15 um CO2 spectral band structure provides composition-sensitive evidence supporting atmospheric absorption",
+      "claim_id": "C02",
+      "claim": "Spectral structure near the 15 um CO2 absorption feature is consistent with the presence of a CO2-rich atmosphere",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "15 um CO2 spectral band depth estimate - 96 ppm - Flat-spectrum null - Spectral structure is consistent with atmospheric absorption",
+          "quote": "15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null | Spectral structure is consistent with atmospheric absorption",
           "line_ref": "L30"
         },
         {
-          "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
+          "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios",
           "line_ref": "L42"
         }
       ],
-      "caveat": "The 96 ppm detection is weak and could potentially be explained by alternative mechanisms or systematic effects"
+      "caveat": "The spectral band detection is weak and could be affected by stellar variability or instrument systematics; degeneracies exist between composition and cloud/haze properties"
     },
     {
-      "claim_id": "C06",
-      "claim": "Atmosphere-bearing models provide a better fit to the combined data products (likelihood ratio = 7.4)",
-      "strength": "moderate",
+      "claim_id": "C03",
+      "claim": "Atmosphere-bearing models provide a statistically better fit to the combined phase-curve and spectral data than no-atmosphere models",
+      "strength": "strong",
       "evidence": [
         {
-          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) 7.4 - 1.0 baseline ratio - Atmosphere-bearing models better explain combined data products",
+          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio | Atmosphere-bearing models better explain combined data products",
           "line_ref": "L31"
-        }
-      ],
-      "caveat": "A likelihood ratio of 7.4 provides moderate evidence but falls short of conventional thresholds for strong statistical significance; alternative atmospheric compositions also fit the data"
-    },
-    {
-      "claim_id": "C07",
-      "claim": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b",
-      "strength": "moderate",
-      "evidence": [
+        },
         {
-          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b, but atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential.",
-          "line_ref": "L53"
+          "quote": "Joint constraints from phase curve and spectrum are stronger than either observable alone",
+          "line_ref": "L43"
+        },
+        {
+          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior",
+          "line_ref": "L35"
         }
       ],
-      "caveat": "The evidence is suggestive but not definitive; atmospheric composition and pressure remain sufficiently uncertain that follow-up observations are essential"
+      "caveat": "The likelihood ratio of 7.4, while favoring atmosphere models, does not represent a definitive detection; model assumptions and prior choices significantly influence this comparison"
     },
     {
-      "claim_id": "C08",
-      "claim": "O2-rich atmosphere cases are not fully ruled out by current data",
+      "claim_id": "C04",
+      "claim": "TRAPPIST-1 b appears very dark with a Bond albedo upper bound of less than 0.08, suggesting rock-like surface properties",
       "strength": "tentative",
       "evidence": [
         {
-          "quote": "O2-rich atmosphere cases are not fully ruled out by current data.",
-          "line_ref": "L36"
+          "quote": "Bond albedo upper bound | <0.08 | Higher-albedo reflective cases | Planet appears very dark in thermal-energy balance fits",
+          "line_ref": "L29"
         }
       ],
-      "caveat": "This conclusion is limited by degeneracies between composition and other atmospheric properties; more data is needed to distinguish between different atmospheric compositions"
+      "caveat": "This albedo constraint depends on the atmospheric and circulation models assumed; without confirmed atmosphere properties, surface albedo interpretation remains uncertain"
     }
   ]
 }

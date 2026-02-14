@@ -3,16 +3,17 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Answer is given to 3 significant figures, matching the least number of significant figures in the input current (1.50 A) and time (30.0 min)."
+    "precision_note": "Calculated to 3 significant figures, limited by the precision of current (1.50 A), time (30.0 min), and Faraday constant (96,500 C mol-1)."
   },
-  "method": "This is a Faraday's law calculation. First, the time is converted to seconds: $30.0 \\text{ min} \\times 60 \\text{ s/min} = 1800 \\text{ s}$. Second, the total charge (Q) passed is calculated using $Q = I \\times t$: $Q = 1.50 \\text{ A} \\times 1800 \\text{ s} = 2700 \\text{ C}$. Third, the moles of electrons ($n(e^-)$) are calculated using the Faraday constant ($F=96,500 \\text{ C mol}^{-1}$): $n(e^-) = 2700 \\text{ C} / 96500 \\text{ C mol}^{-1} \\approx 0.02798 \\text{ mol}$. Fourth, the moles of copper (Cu) deposited are found from the half-equation (L52), which has a 2:1 mole ratio of electrons to copper: $n(Cu) = 0.02798 \\text{ mol} / 2 \\approx 0.01399 \\text{ mol}$. Finally, the mass of copper is calculated using its molar mass (63.55 g mol-1): $m(\\text{Cu}) = 0.01399 \\text{ mol} \\times 63.55 \\text{ g mol}^{-1} \\approx 0.889 \\text{ g}$.",
+  "method": "First, convert the time to seconds: t = 30.0 min * 60 = 1800 s. Calculate the total charge (Q) passed using Q = I * t: Q = 1.50 A * 1800 s = 2700 C. Next, calculate the moles of electrons (n(e-)) using the Faraday constant (F = 96,500 C mol-1): n(e-) = Q / F = 2700 C / 96500 C mol-1 = 0.027979... mol. From the half-equation Cu2+ + 2e- -> Cu, the mole ratio is 2:1. So, n(Cu) = n(e-) / 2 = 0.013989... mol. Finally, calculate the mass of Cu using Mr(Cu) = 63.55: m(Cu) = 0.013989... mol * 63.55 g mol-1 = 0.8890... g. Rounded to 3 significant figures, the mass is 0.889 g.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
-    "n(Cu) = n(e-) / 2",
-    "m = n * Mr"
+    "n = m / Mr",
+    "Cu2+ + 2e- -> Cu"
   ],
   "line_refs": [
+    "L14",
     "L17",
     "L18",
     "L19",
@@ -21,9 +22,7 @@
     "L52"
   ],
   "checks": [
-    "Time is correctly converted to seconds (1800 s).",
-    "The 2:1 mole ratio between electrons and Cu2+ is correctly applied.",
-    "The correct Faraday constant (96,500 C mol-1) and molar mass of Cu (63.55) are used.",
-    "The final mass is reported to 3 significant figures."
+    "The total charge is 2700 C. The required charge to deposit 1 mol of Cu is 2 * F = 193000 C. The mass deposited should be (2700 / 193000) * 63.55 = 0.889 g, confirming the result.",
+    "The calculated moles of electrons (0.028 mol) is consistent with the short duration (30 min) and low current (1.50 A)."
   ]
 }

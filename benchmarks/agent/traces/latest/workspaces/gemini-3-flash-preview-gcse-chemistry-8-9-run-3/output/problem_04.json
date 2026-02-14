@@ -3,9 +3,9 @@
   "final_answer": {
     "value": -814,
     "units": "kJ mol-1",
-    "precision_note": "The result is an exact integer value based on the mean bond energy values provided in the report."
+    "precision_note": "The enthalpy change is an integer based on the provided bond energies, which are given as whole numbers or three significant figures."
   },
-  "method": "DeltaH is calculated using the formula deltaH = sum(bonds broken) - sum(bonds formed). Bonds broken: 4 C-H bonds (4 * 413 = 1652 kJ/mol) and 2 O=O bonds (2 * 498 = 996 kJ/mol), totaling 2648 kJ/mol. Bonds formed: 2 C=O bonds in CO2 (2 * 805 = 1610 kJ/mol) and 4 O-H bonds in 2H2O (4 * 463 = 1852 kJ/mol), totaling 3462 kJ/mol. Subtracting the bonds formed from the bonds broken: deltaH = 2648 - 3462 = -814 kJ mol-1. The negative sign indicates an exothermic reaction.",
+  "method": "Determine the energy required to break all bonds in the reactants and the energy released when bonds are formed in the products using the formula deltaH = sum(bonds broken) - sum(bonds formed). Reactants: 1 mole of CH4 contains 4 moles of C-H bonds (4 * 413 = 1652 kJ) and 2 moles of O2 contain 2 moles of O=O bonds (2 * 498 = 996 kJ). Total energy to break bonds = 1652 + 996 = 2648 kJ. Products: 1 mole of CO2 contains 2 moles of C=O bonds (2 * 805 = 1610 kJ) and 2 moles of H2O contain 4 moles of O-H bonds (4 * 463 = 1852 kJ). Total energy released by forming bonds = 1610 + 1852 = 3462 kJ. Net enthalpy change deltaH = 2648 - 3462 = -814 kJ/mol.",
   "key_equations": [
     "deltaH = sum(bonds broken) - sum(bonds formed)"
   ],
@@ -15,7 +15,7 @@
     "L47"
   ],
   "checks": [
-    "Verified the structure of reactants and products to correctly count bond types.",
-    "Checked that the energy for two moles of water (4 O-H bonds) was included."
+    "Net deltaH is negative, consistent with an exothermic combustion reaction.",
+    "Correct count of 4 C-H and 4 O-H bonds used."
   ]
 }

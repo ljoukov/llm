@@ -2,7 +2,7 @@
     "claims": [
         {
             "claim_id": "C01",
-            "claim": "Intratumoral mRNA vaccination enhances the diversity of antigens presented on tumor cells.",
+            "claim": "Intratumoral mRNA vaccination triggers a local type I interferon response, leading to broader antigen presentation.",
             "strength": "strong",
             "evidence": [
                 {
@@ -10,48 +10,36 @@
                     "line_ref": "L28"
                 },
                 {
-                    "quote": "Fraction of proteins represented in MHC-I peptidome | 40.6% | 20.6%",
-                    "line_ref": "L29"
-                }
-            ],
-            "caveat": "The effect is demonstrated in mouse models and the breadth of applicability to human tumors is not fully established."
-        },
-        {
-            "claim_id": "C02",
-            "claim": "mRNA vaccination in tumors induces a type I interferon response, a key step in immune activation.",
-            "strength": "strong",
-            "evidence": [
-                {
                     "quote": "Type I interferon response score (normalized units) | 3.1 | 1.0",
                     "line_ref": "L31"
                 },
                 {
-                    "quote": "Intratumoral mRNA vaccination triggers local innate sensing and type I interferon signaling.",
-                    "line_ref": "L42"
+                    "quote": "Blocking type I interferon signaling with anti-IFNAR1 eliminated the observed sensitization benefit.",
+                    "line_ref": "L39"
                 }
             ],
-            "caveat": "The magnitude of the interferon response may vary between different tumor types and microenvironments."
+            "caveat": "The direct linkage between the interferon response and the broadened antigen presentation is an inference, though strongly supported by the data."
         },
         {
-            "claim_id": "C03",
-            "claim": "The combination of intratumoral mRNA vaccination and anti-PD-L1 therapy improves tumor control in preclinical models.",
+            "claim_id": "C02",
+            "claim": "The vaccination-induced changes render tumors more susceptible to immune checkpoint blockade.",
             "strength": "strong",
             "evidence": [
                 {
-                    "quote": "Intratumoral CD8+ T-cell density fold-change | 1.8x | 1.0x",
-                    "line_ref": "L33"
+                    "quote": "PD-L1 expression fold-change in tumor tissue | 2.4x | 1.0x",
+                    "line_ref": "L32"
                 },
                 {
-                    "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
-                    "line_ref": "L46"
+                    "quote": "Intratumoral CD8+ T-cell density fold-change | 1.8x | 1.0x",
+                    "line_ref": "L33"
                 }
             ],
-            "caveat": "These are preclinical results in mice, and may not directly translate to human clinical outcomes."
+            "caveat": "This is a mechanistic claim primarily supported by preclinical models."
         },
         {
-            "claim_id": "C04",
-            "claim": "Prior mRNA vaccination is associated with improved survival in metastatic patients treated with ICIs.",
-            "strength": "tentative",
+            "claim_id": "C03",
+            "claim": "Prior SARS-CoV-2 mRNA vaccination is associated with improved survival in human patients treated with ICIs.",
+            "strength": "moderate",
             "evidence": [
                 {
                     "quote": "Retrospective human survival comparison p-value | p=0.01 | N/A",
@@ -62,7 +50,27 @@
                     "line_ref": "L49"
                 }
             ],
-            "caveat": "This is a retrospective, non-randomized analysis, so the association may be due to confounding variables rather than a causal effect of the vaccine."
+            "caveat": "This is a retrospective, non-randomized finding and may be subject to confounding."
+        },
+        {
+            "claim_id": "C04",
+            "claim": "The combination of intratumoral mRNA vaccine and anti-PD-L1 therapy leads to improved tumor control in mice.",
+            "strength": "strong",
+            "evidence": [
+                {
+                    "quote": "Combined intervention improves tumor control in mice and aligns with better outcomes in the retrospective human cohort.",
+                    "line_ref": "L46"
+                },
+                {
+                    "quote": "Vaccine-only treatment did not produce durable tumor control in non-immunogenic models.",
+                    "line_ref": "L36"
+                },
+                {
+                    "quote": "ICI-only treatment had limited activity in low-immunogenic baseline settings.",
+                    "line_ref": "L37"
+                }
+            ],
+            "caveat": "These are preclinical results in murine models, which may not fully translate to human cancers."
         }
     ]
 }

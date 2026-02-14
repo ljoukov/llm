@@ -3,24 +3,23 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Answer is given to 3 significant figures, consistent with the least precise inputs (1.50 A and 30.0 min)."
+    "precision_note": "The minimum number of significant figures in the input data (current 1.50 A and time 30.0 min) is three. The final answer is reported to three significant figures."
   },
-  "method": "First, calculate the total electric charge (Q) passed using Q = I * t. The time must be converted to seconds: 30.0 min = 1800 s. Q = 1.50 A * 1800 s = 2700 C. Second, calculate the moles of electrons (n(e-)) using the Faraday constant (F = 96,500 C mol-1) in n(e-) = Q / F. n(e-) = 2700 C / 96500 C mol-1 ≈ 0.027979 mol. Third, use the half-equation Cu2+ + 2e- -> Cu to find the moles of Cu deposited (n(Cu)), which is half the moles of electrons: n(Cu) = 0.027979 mol / 2 ≈ 0.0139895 mol. Finally, calculate the mass of copper deposited using m = n * Mr with Mr(Cu) = 63.55. m(Cu) = 0.0139895 mol * 63.55 g mol-1 ≈ 0.889 g.",
+  "method": "First, calculate the total charge passed (Q) by converting time to seconds: $t = 30.0 \\text{ min} \\times 60 \\text{ s/min} = 1800 \\text{ s}$. $Q = I \\times t = 1.50 \\text{ A} \\times 1800 \\text{ s} = 2700 \\text{ C}$. Next, calculate the moles of electrons ($n_{e^\\text{-}}$) using the Faraday constant ($F = 96500 \\text{ C mol}^{-1}$): $n_{e^\\text{-}} = Q / F = 2700 \\text{ C} / 96500 \\text{ C mol}^{-1} \\approx 0.027979 \\text{ mol}$. From the half-equation $\\text{Cu}^{2+} + 2e^\\text{-} \\to \\text{Cu}$, the mole ratio is $2e^\\text{-} : 1\\text{ Cu}$. Moles of $\\text{Cu}$ deposited is $n_{Cu} = n_{e^\\text{-}} / 2 \\approx 0.013989 \\text{ mol}$. Finally, calculate the mass of $\\text{Cu}$ using its atomic mass ($63.55$): $m_{Cu} = n_{Cu} \\times A_r(Cu) \\approx 0.013989 \\text{ mol} \\times 63.55 \\text{ g mol}^{-1} \\approx 0.889 \\text{ g}$ (3 SF).",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
-    "n = m / Mr",
     "Cu2+ + 2e- -> Cu"
   ],
   "line_refs": [
     "L17",
-    "L18",
     "L19",
-    "L24",
     "L51",
     "L52"
   ],
   "checks": [
-    "A current of 1.50 A for 30 minutes deposits a mass of copper less than 1 g, which is a physically plausible result for a small-scale laboratory electrolysis."
+    "Time was correctly converted from minutes to seconds.",
+    "The 2:1 mole ratio of electrons to copper from the half-equation was correctly applied.",
+    "The final units are mass (g) as required."
   ]
 }

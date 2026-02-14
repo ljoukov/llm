@@ -8,30 +8,30 @@
   "schemaPass": false,
   "toolTracePass": true,
   "graderPass": false,
-  "durationMs": 193541,
-  "agentCostUsd": 0.108768125,
-  "graderCostUsd": 0,
-  "totalCostUsd": 0.108768125,
+  "durationMs": 100691,
+  "agentCostUsd": 0.12308187500000002,
+  "graderCostUsd": 0.0140875,
+  "totalCostUsd": 0.137169375,
   "agentUsage": {
-    "promptTokens": 89656,
-    "cachedTokens": 53735,
-    "responseTokens": 2397,
-    "thinkingTokens": 3318,
-    "totalTokens": 95371
+    "promptTokens": 91557,
+    "cachedTokens": 42635,
+    "responseTokens": 2856,
+    "thinkingTokens": 2804,
+    "totalTokens": 97217
   },
   "graderUsage": {
-    "promptTokens": 0,
+    "promptTokens": 3722,
     "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "responseTokens": 327,
+    "thinkingTokens": 214,
+    "totalTokens": 4263
   },
   "totalUsage": {
-    "promptTokens": 89656,
-    "cachedTokens": 53735,
-    "responseTokens": 2397,
-    "thinkingTokens": 3318,
-    "totalTokens": 95371
+    "promptTokens": 95279,
+    "cachedTokens": 42635,
+    "responseTokens": 3183,
+    "thinkingTokens": 3018,
+    "totalTokens": 101480
   },
   "modelVersions": [
     "gemini-2.5-pro"
@@ -46,19 +46,17 @@
       "schemaValid": true,
       "groundingValid": true,
       "errors": [],
-      "content": "\n{\n    \"problem_id\": \"P01\",\n    \"final_answer\": {\n        \"value\": 0.0200,\n        \"units\": \"mol dm-3\",\n        \"precision_note\": \"The final answer is given to three significant figures to match the precision of the input data (0.200 mol dm-3 and 25.0 cm3).\"\n    },\n    \"method\": \"First, convert the initial and final volumes from cm3 to dm3 by dividing by 1000. Then, apply the dilution formula c1V1 = c2V2, where c1 and V1 are the initial concentration and volume, and c2 and V2 are the final concentration and volume. Rearrange the formula to solve for the final concentration, c2 = (c1 * V1) / V2. Substitute the given values to calculate the final concentration of HCl.\",\n    \"key_equations\": [\n        \"c1V1 = c2V2\"\n    ],\n    \"line_refs\": [\n        \"L16\",\n        \"L29\"\n    ],\n    \"checks\": [\n        \"The units of volume were consistently used (dm3).\",\n        \"The dilution leads to a decrease in concentration, as expected.\",\n        \"The calculation was verified to be arithmetically correct.\",\n        \"The final answer is presented to the correct number of significant figures.\"\n    ]\n}\n"
+      "content": "{\n    \"problem_id\": \"P01\",\n    \"final_answer\": {\n        \"value\": 0.0200,\n        \"units\": \"mol dm-3\",\n        \"precision_note\": \"The final answer is given to three significant figures to match the precision of the input values provided in the report (25.0 cm3, 0.200 mol dm-3, and 250.0 cm3).\"\n    },\n    \"method\": \"The dilution equation c1V1 = c2V2 is used. The initial volume V1 is 25.0 cm3, which is 0.0250 dm3. The initial concentration c1 is 0.200 mol dm-3. The final volume V2 is 250.0 cm3 or 0.250 dm3. The equation is rearranged to solve for the final concentration c2: c2 = (c1 * V1) / V2. Substituting the values: c2 = (0.200 * 0.0250) / 0.250 = 0.0200 mol dm-3.\",\n    \"key_equations\": [\n        \"c1V1 = c2V2\"\n    ],\n    \"line_refs\": [\n        \"L16\",\n        \"L29\"\n    ],\n    \"checks\": [\n        \"The units of volume were converted from cm3 to dm3 before calculation.\",\n        \"The number of significant figures in the final answer is consistent with the input data.\"\n    ]\n}"
     },
     {
       "outputFile": "output/problem_02.json",
       "schemaFile": "schemas/problem_02.schema.json",
       "exists": true,
       "jsonValid": true,
-      "schemaValid": false,
-      "groundingValid": false,
-      "errors": [
-        "line_refs: Too big: expected array to have <=4 items"
-      ],
-      "content": "\n{\n    \"problem_id\": \"P02\",\n    \"final_answer\": {\n        \"value\": 1.85,\n        \"units\": \"g\",\n        \"precision_note\": \"The final answer is given to three significant figures, consistent with the precision of the input mass (5.00 g) and purity (84.0%).\"\n    },\n    \"method\": \"First, calculate the mass of pure CaCO3 in the limestone sample by multiplying the total mass by the percentage of purity. Then, use the formula n = m / Mr to find the number of moles of CaCO3, using the molar mass of CaCO3. According to the stoichiometry of the balanced reaction equation, the mole ratio of CaCO3 to CO2 is 1:1, so the moles of CO2 produced are equal to the moles of CaCO3 reacted. Finally, calculate the mass of CO2 produced by multiplying the moles of CO2 by its molar mass.\",\n    \"key_equations\": [\n        \"n = m / Mr\"\n    ],\n    \"line_refs\": [\n        \"L14\",\n        \"L25\",\n        \"L26\",\n        \"L33\",\n        \"L34\"\n    ],\n    \"checks\": [\n        \"The mass of pure reactant was correctly calculated from the given purity percentage.\",\n        \"Molar masses were correctly used in the calculations.\",\n        \"The 1:1 stoichiometric ratio between CaCO3 and CO2 was correctly applied.\",\n        \"The final mass is calculated correctly and rounded to the appropriate number of significant figures.\"\n    ]\n}\n"
+      "schemaValid": true,
+      "groundingValid": true,
+      "errors": [],
+      "content": "{\n    \"problem_id\": \"P02\",\n    \"final_answer\": {\n        \"value\": 1.85,\n        \"units\": \"g\",\n        \"precision_note\": \"The final answer is given to three significant figures, which is consistent with the precision of the input mass (5.00 g) and percentage purity (84.0%).\"\n    },\n    \"method\": \"First, calculate the mass of pure CaCO3 in the sample: 5.00 g * (84.0 / 100) = 4.20 g. Then, calculate the moles of CaCO3 using the formula n = m / Mr: 4.20 g / 100.1 g/mol = 0.041958 mol. According to the stoichiometry of the reaction CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio of CaCO3 to CO2 is 1:1, so the moles of CO2 produced are also 0.041958 mol. Finally, calculate the mass of CO2 by multiplying the moles by its molar mass (Mr = 44.0): 0.041958 mol * 44.0 g/mol = 1.846 g. This is rounded to 1.85 g for three significant figures.\",\n    \"key_equations\": [\n        \"n = m / Mr\"\n    ],\n    \"line_refs\": [\n        \"L14\",\n        \"L25\",\n        \"L26\",\n        \"L33\"\n    ],\n    \"checks\": [\n        \"The mass of CaCO3 was adjusted for purity before calculating moles.\",\n        \"The stoichiometric ratio between CaCO3 and CO2 is 1:1.\",\n        \"The final answer is presented to an appropriate number of significant figures.\"\n    ]\n}"
     },
     {
       "outputFile": "output/problem_03.json",
@@ -68,7 +66,7 @@
       "schemaValid": true,
       "groundingValid": true,
       "errors": [],
-      "content": "\n{\n    \"problem_id\": \"P03\",\n    \"final_answer\": {\n        \"value\": 0.0702,\n        \"units\": \"mol dm-3\",\n        \"precision_note\": \"The final answer is given to three significant figures, which is consistent with the limiting precision of the input concentration of NaOH (0.150 mol dm-3).\"\n    },\n    \"method\": \"First, calculate the number of moles of NaOH used in the titration by multiplying its concentration by the volume used (converted to dm3). Then, use the stoichiometry of the balanced reaction equation (H2SO4 + 2NaOH -> Na2SO4 + 2H2O) to determine the number of moles of H2SO4 that reacted; the mole ratio of H2SO4 to NaOH is 1:2. Finally, calculate the concentration of the H2SO4 solution by dividing the moles of H2SO4 by its volume (converted to dm3).\",\n    \"key_equations\": [\n        \"c = n / V\"\n    ],\n    \"line_refs\": [\n        \"L15\",\n        \"L39\",\n        \"L40\"\n    ],\n    \"checks\": [\n        \"The 1:2 mole ratio between H2SO4 and NaOH was correctly applied.\",\n        \"Volumes were correctly converted from cm3 to dm3.\",\n        \"The calculation was verified to be arithmetically correct.\",\n        \"The final answer is presented to the correct number of significant figures.\"\n    ]\n}\n"
+      "content": "{\n    \"problem_id\": \"P03\",\n    \"final_answer\": {\n        \"value\": 0.0702,\n        \"units\": \"mol dm-3\",\n        \"precision_note\": \"The final answer is given to three significant figures, limited by the precision of the sodium hydroxide solution's concentration (0.150 mol dm-3).\"\n    },\n    \"method\": \"First, calculate the moles of NaOH used in the titration: n(NaOH) = c * V = 0.150 mol/dm3 * (23.40 cm3 / 1000) = 0.00351 mol. From the balanced equation, the stoichiometric ratio of H2SO4 to NaOH is 1:2. Therefore, the moles of H2SO4 are half the moles of NaOH: 0.00351 mol / 2 = 0.001755 mol. Finally, calculate the concentration of H2SO4 by dividing the moles of H2SO4 by its volume in dm3: c(H2SO4) = 0.001755 mol / (25.00 cm3 / 1000) = 0.0702 mol dm-3.\",\n    \"key_equations\": [\n        \"c = n / V\"\n    ],\n    \"line_refs\": [\n        \"L15\",\n        \"L39\",\n        \"L40\"\n    ],\n    \"checks\": [\n        \"Volumes were converted from cm3 to dm3.\",\n        \"The stoichiometric ratio from the balanced equation was correctly applied.\",\n        \"The final concentration is reported to an appropriate number of significant figures.\"\n    ]\n}"
     },
     {
       "outputFile": "output/problem_04.json",
@@ -78,7 +76,7 @@
       "schemaValid": true,
       "groundingValid": true,
       "errors": [],
-      "content": "\n{\n    \"problem_id\": \"P04\",\n    \"final_answer\": {\n        \"value\": -814,\n        \"units\": \"kJ mol-1\",\n        \"precision_note\": \"The final answer is an integer, as it is derived from integer bond energy values.\"\n    },\n    \"method\": \"The enthalpy change (deltaH) of the reaction is estimated by calculating the difference between the total energy of bonds broken and the total energy of bonds formed. First, identify all the bonds broken in the reactants (CH4 and 2O2): four C-H bonds and two O=O bonds. Calculate the total energy absorbed to break these bonds using the provided bond energies. Next, identify all the bonds formed in the products (CO2 and 2H2O): two C=O bonds and four O-H bonds. Calculate the total energy released when these bonds are formed. Finally, subtract the total energy of bonds formed from the total energy of bonds broken to find deltaH.\",\n    \"key_equations\": [\n        \"deltaH = sum(bonds broken) - sum(bonds formed)\"\n    ],\n    \"line_refs\": [\n        \"L45\",\n        \"L46\",\n        \"L47\"\n    ],\n    \"checks\": [\n        \"The number and types of bonds broken and formed were correctly identified from the balanced equation.\",\n        \"The arithmetic calculation is correct.\",\n        \"The negative sign of the final answer correctly indicates an exothermic reaction, which is expected for combustion.\"\n    ]\n}\n"
+      "content": "{\n    \"problem_id\": \"P04\",\n    \"final_answer\": {\n        \"value\": -814,\n        \"units\": \"kJ mol-1\",\n        \"precision_note\": \"The final answer is an integer, reflecting the precision of the bond energy values provided.\"\n    },\n    \"method\": \"The enthalpy change (deltaH) is calculated using the formula: deltaH = sum(bonds broken) - sum(bonds formed). First, calculate the energy required to break the bonds in the reactants. In one mole of CH4, there are 4 C-H bonds, so 4 * 413 kJ is required. In two moles of O2, there are 2 O=O bonds, so 2 * 498 kJ is required. Total energy for bond breaking = (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ. Next, calculate the energy released when forming bonds in the products. In one mole of CO2, there are 2 C=O bonds, so 2 * 805 kJ is released. In two moles of H2O, there are 4 O-H bonds (2 per molecule), so 4 * 463 kJ is released. Total energy from bond formation = (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ. Finally, deltaH = 2648 - 3462 = -814 kJ mol-1.\",\n    \"key_equations\": [\n        \"deltaH = sum(bonds broken) - sum(bonds formed)\"\n    ],\n    \"line_refs\": [\n        \"L45\",\n        \"L46\",\n        \"L47\"\n    ],\n    \"checks\": [\n        \"The number of each type of bond in both reactants and products has been correctly identified.\",\n        \"The calculation correctly subtracts the energy of bonds formed from the energy of bonds broken.\"\n    ]\n}"
     },
     {
       "outputFile": "output/problem_05.json",
@@ -90,19 +88,17 @@
       "errors": [
         "line_refs: Too big: expected array to have <=4 items"
       ],
-      "content": "\n{\n    \"problem_id\": \"P05\",\n    \"final_answer\": {\n        \"value\": 0.889,\n        \"units\": \"g\",\n        \"precision_note\": \"The final answer is given to three significant figures, which is consistent with the precision of the input current (1.50 A) and time (30.0 min).\"\n    },\n    \"method\": \"First, convert the time from minutes to seconds. Then, calculate the total electric charge (Q) passed using the formula Q = I * t. Next, use the Faraday constant (F) to find the moles of electrons (n(e-)) by the formula n(e-) = Q / F. From the cathode half-equation (Cu2+ + 2e- -> Cu), determine the moles of copper deposited, noting the 2:1 mole ratio of electrons to copper. Finally, calculate the mass of copper deposited by multiplying the moles of copper by its atomic mass (Ar).\",\n    \"key_equations\": [\n        \"Q = I * t\",\n        \"n(e-) = Q / F\",\n        \"m = n * Ar\"\n    ],\n    \"line_refs\": [\n        \"L14\",\n        \"L17\",\n        \"L18\",\n        \"L19\",\n        \"L24\",\n        \"L51\",\n        \"L52\"\n    ],\n    \"checks\": [\n        \"The time was correctly converted from minutes to seconds.\",\n        \"The 2:1 mole ratio between electrons and copper was correctly applied.\",\n        \"The Faraday constant and atomic mass of copper were correctly used.\",\n        \"The final mass is calculated correctly and rounded to the appropriate number of significant figures.\"\n    ]\n}\n"
+      "content": "{\n    \"problem_id\": \"P05\",\n    \"final_answer\": {\n        \"value\": 0.889,\n        \"units\": \"g\",\n        \"precision_note\": \"The final answer is given to three significant figures, consistent with the precision of the input current (1.50 A) and time (30.0 min).\"\n    },\n    \"method\": \"First, calculate the total charge passed using the equation Q = I * t. The time must be in seconds, so 30.0 min * 60 s/min = 1800 s. Q = 1.50 A * 1800 s = 2700 C. Next, calculate the moles of electrons using the Faraday constant: n(e-) = Q / F = 2700 C / 96,500 C mol-1 = 0.027979 mol. According to the half-equation Cu2+ + 2e- -> Cu, two moles of electrons are required to deposit one mole of copper. Therefore, the moles of copper deposited are n(Cu) = n(e-) / 2 = 0.027979 / 2 = 0.0139895 mol. Finally, calculate the mass of copper deposited by multiplying the moles of copper by its atomic mass (63.55): 0.0139895 mol * 63.55 g/mol = 0.88903 g, which is rounded to 0.889 g.\",\n    \"key_equations\": [\n        \"Q = I * t\",\n        \"n(e-) = Q / F\",\n        \"n = m / Mr\"\n    ],\n    \"line_refs\": [\n        \"L17\",\n        \"L18\",\n        \"L19\",\n        \"L24\",\n        \"L51\",\n        \"L52\"\n    ],\n    \"checks\": [\n        \"Time was converted from minutes to seconds.\",\n        \"The stoichiometric ratio from the half-equation was correctly applied.\",\n        \"The final answer is presented to an appropriate number of significant figures.\"\n    ]\n}"
     },
     {
       "outputFile": "output/problem_06.json",
       "schemaFile": "schemas/problem_06.schema.json",
       "exists": true,
       "jsonValid": true,
-      "schemaValid": false,
-      "groundingValid": false,
-      "errors": [
-        "line_refs: Too big: expected array to have <=4 items"
-      ],
-      "content": "\n{\n    \"problem_id\": \"P06\",\n    \"final_answer\": {\n        \"value\": 0.0736,\n        \"units\": \"unitless\",\n        \"precision_note\": \"The final answer is given to three significant figures to match the precision of the input mole and volume data.\"\n    },\n    \"method\": \"First, calculate the equilibrium concentrations of the reactant (N2O4) and the product (NO2) by dividing their given mole amounts by the volume of the vessel in dm3. Then, substitute these concentrations into the equilibrium constant expression for the reaction, Kc = [NO2]^2 / [N2O4]. The concentration of NO2 is squared due to its stoichiometric coefficient of 2 in the balanced equation. The final value of Kc is reported as a unitless quantity as specified.\",\n    \"key_equations\": [\n        \"c = n / V\",\n        \"Kc = [NO2]^2 / [N2O4]\"\n    ],\n    \"line_refs\": [\n        \"L15\",\n        \"L20\",\n        \"L21\",\n        \"L56\",\n        \"L57\",\n        \"L58\"\n    ],\n    \"checks\": [\n        \"The equilibrium concentrations were calculated correctly.\",\n        \"The Kc expression was correctly formulated with the product concentration squared.\",\n        \"The calculation was verified to be arithmetically correct.\",\n        \"The final answer is presented as unitless and to the correct number of significant figures.\"\n    ]\n}\n"
+      "schemaValid": true,
+      "groundingValid": true,
+      "errors": [],
+      "content": "{\n    \"problem_id\": \"P06\",\n    \"final_answer\": {\n        \"value\": 0.0736,\n        \"units\": \"dimensionless\",\n        \"precision_note\": \"The final answer is given to three significant figures, which is consistent with the precision of the input data (moles and volume).\"\n    },\n    \"method\": \"First, the concentrations of the gases at equilibrium are calculated by dividing the number of moles by the volume of the vessel (2.00 dm3). [NO2] = 0.180 mol / 2.00 dm3 = 0.0900 mol dm-3. [N2O4] = 0.220 mol / 2.00 dm3 = 0.110 mol dm-3. Then, these concentrations are substituted into the equilibrium constant expression, Kc = [NO2]^2 / [N2O4]. Kc = (0.0900)^2 / 0.110 = 0.0081 / 0.110 = 0.073636... Rounding to three significant figures gives Kc = 0.0736.\",\n    \"key_equations\": [\n        \"c = n / V\",\n        \"Kc = [NO2]^2 / [N2O4]\"\n    ],\n    \"line_refs\": [\n        \"L20\",\n        \"L56\",\n        \"L57\",\n        \"L58\"\n    ],\n    \"checks\": [\n        \"Concentrations were calculated from moles and volume before being used in the Kc expression.\",\n        \"The stoichiometry of the balanced equation is correctly reflected in the powers of the Kc expression.\",\n        \"The final answer is dimensionless as required.\"\n    ]\n}"
     }
   ],
   "toolTrace": {
@@ -204,117 +200,130 @@
         "toolName": "read_file",
         "action": "read",
         "path": "TASK.md",
-        "timestamp": "2026-02-13T17:57:02.839Z"
+        "timestamp": "2026-02-14T13:09:58.891Z"
       },
       {
         "source": "fs",
         "toolName": "list_directory",
         "action": "list",
         "path": "schemas",
-        "timestamp": "2026-02-13T17:57:13.116Z"
+        "timestamp": "2026-02-14T13:10:01.964Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "schemas/problem_01.schema.json",
-        "timestamp": "2026-02-13T17:57:15.760Z"
+        "timestamp": "2026-02-14T13:10:07.941Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "schemas/problem_02.schema.json",
-        "timestamp": "2026-02-13T17:57:21.793Z"
+        "timestamp": "2026-02-14T13:10:10.108Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "schemas/problem_03.schema.json",
-        "timestamp": "2026-02-13T17:57:26.479Z"
+        "timestamp": "2026-02-14T13:10:12.568Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "schemas/problem_04.schema.json",
-        "timestamp": "2026-02-13T17:57:39.682Z"
+        "timestamp": "2026-02-14T13:10:15.098Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "schemas/problem_05.schema.json",
-        "timestamp": "2026-02-13T17:57:57.625Z"
+        "timestamp": "2026-02-14T13:10:17.230Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "schemas/problem_06.schema.json",
-        "timestamp": "2026-02-13T17:58:01.640Z"
+        "timestamp": "2026-02-14T13:10:20.713Z"
       },
       {
         "source": "fs",
         "toolName": "read_file",
         "action": "read",
         "path": "input/report.md",
-        "timestamp": "2026-02-13T17:58:12.971Z"
+        "timestamp": "2026-02-14T13:10:22.757Z"
       },
       {
         "source": "fs",
         "toolName": "write_file",
         "action": "write",
         "path": "output/problem_01.json",
-        "timestamp": "2026-02-13T17:59:05.445Z"
+        "timestamp": "2026-02-14T13:10:30.493Z"
       },
       {
         "source": "fs",
         "toolName": "write_file",
         "action": "write",
         "path": "output/problem_02.json",
-        "timestamp": "2026-02-13T17:59:10.563Z"
+        "timestamp": "2026-02-14T13:10:37.090Z"
       },
       {
         "source": "fs",
         "toolName": "write_file",
         "action": "write",
         "path": "output/problem_03.json",
-        "timestamp": "2026-02-13T17:59:38.644Z"
+        "timestamp": "2026-02-14T13:10:45.643Z"
       },
       {
         "source": "fs",
         "toolName": "write_file",
         "action": "write",
         "path": "output/problem_04.json",
-        "timestamp": "2026-02-13T17:59:45.737Z"
+        "timestamp": "2026-02-14T13:10:56.224Z"
       },
       {
         "source": "fs",
         "toolName": "write_file",
         "action": "write",
         "path": "output/problem_05.json",
-        "timestamp": "2026-02-13T17:59:53.726Z"
+        "timestamp": "2026-02-14T13:11:06.096Z"
       },
       {
         "source": "fs",
         "toolName": "write_file",
         "action": "write",
         "path": "output/problem_06.json",
-        "timestamp": "2026-02-13T17:59:59.969Z"
+        "timestamp": "2026-02-14T13:11:15.881Z"
       },
       {
         "source": "fs",
         "toolName": "list_directory",
         "action": "list",
         "path": "output",
-        "timestamp": "2026-02-13T18:00:09.636Z"
+        "timestamp": "2026-02-14T13:11:18.253Z"
       }
     ]
   },
   "grader": {
-    "model": "chatgpt-gpt-5.2",
-    "error": "LLM JSON call failed after 2 attempt(s)"
+    "model": "gpt-5.2",
+    "value": {
+      "verdict": "fail",
+      "scores": {
+        "faithfulness": 5,
+        "coverage": 5,
+        "usefulness": 4
+      },
+      "critical_issues": [
+        "output/problem_05.json is explicitly reported as schemaValid=false and groundingValid=false, so it cannot be relied on for downstream review even if the arithmetic appears correct.",
+        "output/problem_05.json line_refs violates the stated validation constraint (\"Too big: expected array to have <=4 items\") by providing 6 references (L17, L18, L19, L24, L51, L52). This fails the requirement that line references be valid and usable against the numbered report lines.",
+        "Because at least one required output is not schema/grounding valid (P05), the overall set does not meet the pass criteria for coherent, practically useful downstream review."
+      ],
+      "summary": "Problems P01, P02, P03, P04, and P06 are numerically consistent with the report data and cite plausible report lines (e.g., dilution L16/L29; titration L39–L40 with c=n/V from L15; bond energies L45–L47; Kc expression and equilibrium amounts L20/L56–L58). However, P05 fails structural/grounding requirements: it is flagged schemaValid=false and groundingValid=false, and its line_refs list exceeds the allowed maximum length. Given the grading rules (conservative; valid line references; usefulness/"
+    }
   }
 }

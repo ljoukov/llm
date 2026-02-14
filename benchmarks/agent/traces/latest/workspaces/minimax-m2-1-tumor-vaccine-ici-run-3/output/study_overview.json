@@ -6,39 +6,44 @@
     "domain": "oncology-immunology",
     "study_type": "preclinical+retrospective"
   },
-  "core_question": "Can intratumoral delivery of SARS-CoV-2 mRNA vaccines create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 immune checkpoint therapy in tumors?",
+  "core_question": "Can intratumoral delivery of SARS-CoV-2 mRNA vaccines create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 immune checkpoint therapy in cancer patients?",
   "datasets_or_cohorts": [
     {
       "id": "mouse-efficacy-cohort",
       "label": "Mouse efficacy cohort (combination therapy)",
-      "sample_size_or_observations": "78 tumor-bearing mice",
-      "description": "Pooled across repeat experiments testing the combination of intratumoral mRNA vaccine with anti-PD-L1 therapy in multiple murine tumor models."
+      "sample_size_or_observations": "78 tumor-bearing mice pooled across repeat experiments",
+      "description": "Preclinical mouse models receiving intratumoral mRNA vaccine combined with anti-PD-L1 therapy to assess tumor control efficacy."
     },
     {
       "id": "mouse-control-cohort",
-      "label": "Mouse control cohort (monotherapies and vehicle)",
-      "sample_size_or_observations": "84 tumor-bearing mice",
-      "description": "Pooled across matched control groups receiving vaccine-only treatment, ICI-only treatment, or vehicle control."
+      "label": "Mouse control cohort",
+      "sample_size_or_observations": "84 tumor-bearing mice pooled across matched controls",
+      "description": "Matched control groups including vaccine-only, ICI-only, and vehicle treatment arms to establish baseline effects."
     },
     {
-      "id": "human-retrospective-cohort",
-      "label": "Human retrospective metastatic cohort",
-      "sample_size_or_observations": "130 patients",
-      "description": "Retrospective cohort of metastatic patients receiving ICI treatment, analyzed by prior SARS-CoV-2 mRNA vaccination status."
+      "id": "human-metastatic-cohort",
+      "label": "Human metastatic cohort (total)",
+      "sample_size_or_observations": "130 patients total",
+      "description": "Retrospective cohort of metastatic cancer patients receiving immune checkpoint inhibitor treatment, analyzed by vaccination status."
     },
     {
-      "id": "human-vaccination-subgroups",
-      "label": "Human vaccination subgroups",
-      "sample_size_or_observations": "43 vaccinated and 87 unvaccinated patients",
-      "description": "Subgroup analysis comparing outcomes between patients with prior SARS-CoV-2 mRNA vaccination and those without, within the metastatic cohort receiving ICI."
+      "id": "human-vaccinated-subgroup",
+      "label": "Human vaccinated subgroup",
+      "sample_size_or_observations": "43 patients",
+      "description": "Subset of patients from the metastatic cohort who had prior SARS-CoV-2 mRNA vaccination before ICI treatment."
+    },
+    {
+      "id": "human-unvaccinated-subgroup",
+      "label": "Human unvaccinated subgroup",
+      "sample_size_or_observations": "87 patients",
+      "description": "Subset of patients from the metastatic cohort who did not receive SARS-CoV-2 mRNA vaccination before ICI treatment."
     }
   ],
   "major_limitations": [
-    "The human analysis is retrospective and non-randomized; residual confounding is likely.",
-    "Vaccination timing relative to ICI initiation varied across patients, introducing heterogeneity.",
-    "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation.",
-    "Mouse model effects may not map one-to-one to all human tumors.",
-    "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings.",
-    "The study does not include prospective randomized clinical trial data to validate clinical protocols."
+    "The human analysis is retrospective and non-randomized; residual confounding is likely and prevents definitive causal conclusions.",
+    "Vaccination timing relative to ICI initiation varied across patients, introducing heterogeneity that may affect outcome comparisons.",
+    "Tumor-type mix and treatment-history heterogeneity across the patient cohort limit direct causal interpretation of results.",
+    "Mouse model effects may not map one-to-one to all human tumors due to species differences in immune biology.",
+    "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
   ]
 }

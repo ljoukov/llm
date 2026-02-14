@@ -2,8 +2,8 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "TRAPPIST-1 b retains an atmosphere, as suggested by the joint analysis of its thermal phase curve and spectral features.",
-      "strength": "strong",
+      "claim": "TRAPPIST-1 b provides meaningful evidence against a strictly airless interpretation, suggesting it retains some form of atmosphere.",
+      "strength": "moderate",
       "evidence": [
         {
           "quote": "Atmosphere-bearing models better explain combined data products",
@@ -14,15 +14,31 @@
           "line_ref": "L53"
         }
       ],
-      "caveat": "The specific composition and pressure of the atmosphere are highly uncertain, with current models suggesting plausible moderate-pressure, CO2-rich compositions that are not uniquely constrained."
+      "caveat": "Atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential."
     },
     {
       "claim_id": "C02",
-      "claim": "The planet exhibits significant heat redistribution from the day side to the night side, inconsistent with a completely bare, airless rock.",
-      "strength": "moderate",
+      "claim": "Joint constraints from the phase curve and spectrum are significantly stronger than utilizing either observable alone to determine atmospheric properties.",
+      "strength": "strong",
       "evidence": [
         {
-          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit | Non-zero redistribution is favored",
+          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
+          "line_ref": "L35"
+        },
+        {
+          "quote": "Joint constraints from phase curve and spectrum are stronger than either observable alone.",
+          "line_ref": "L43"
+        }
+      ],
+      "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors and could still mask the true atmospheric state."
+    },
+    {
+      "claim_id": "C03",
+      "claim": "TRAPPIST-1 b exhibits non-negligible day-to-night heat transport, inconsistent with an immediate bare-rock reradiation limit.",
+      "strength": "strong",
+      "evidence": [
+        {
+          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14)",
           "line_ref": "L28"
         },
         {
@@ -30,39 +46,23 @@
           "line_ref": "L41"
         }
       ],
-      "caveat": "While non-zero heat transport is favored, the mechanism is not uniquely identified as an atmosphere; other possibilities like magma ocean circulation cannot be fully ruled out without further data."
-    },
-    {
-      "claim_id": "C03",
-      "claim": "The observed spectral structure near 15 um is consistent with atmospheric absorption, specifically pointing towards the presence of CO2.",
-      "strength": "moderate",
-      "evidence": [
-        {
-          "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
-          "line_ref": "L42"
-        },
-        {
-          "quote": "15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null | Spectral structure is consistent with atmospheric absorption",
-          "line_ref": "L30"
-        }
-      ],
-      "caveat": "The spectral feature is weak, and stellar variability or instrumental biases could potentially mimic or mask the actual atmospheric signal, requiring validation from subsequent observations."
+      "caveat": "The dayside is still warm (342 +/- 22 K), and the temperature alone is not sufficient to prove the existence of an atmosphere."
     },
     {
       "claim_id": "C04",
-      "claim": "Combining thermal phase curve and spectral data provides stronger constraints on the planetary environment than either observation type alone.",
+      "claim": "The planet appears very dark, with a highly constrained upper bound on its reflectivity (Bond albedo).",
       "strength": "strong",
       "evidence": [
         {
-          "quote": "Joint constraints from phase curve and spectrum are stronger than either observable alone.",
-          "line_ref": "L43"
+          "quote": "Bond albedo upper bound | <0.08",
+          "line_ref": "L29"
         },
         {
-          "quote": "A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.",
-          "line_ref": "L35"
+          "quote": "Planet appears very dark in thermal-energy balance fits",
+          "line_ref": "L29"
         }
       ],
-      "caveat": "The reliance on joint fitting means that the strength of the final conclusion is highly dependent on the accuracy and validity of the underlying atmospheric retrieval models used for the combination."
+      "caveat": "Night-side constraints are weaker than day-side constraints in the current dataset, limiting full thermal-energy budget analysis."
     }
   ]
 }

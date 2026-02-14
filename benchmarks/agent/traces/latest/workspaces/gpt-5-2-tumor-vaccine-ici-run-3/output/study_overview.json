@@ -6,44 +6,44 @@
     "domain": "oncology-immunology",
     "study_type": "preclinical+retrospective"
   },
-  "core_question": "Can intratumoral delivery of an mRNA vaccine create an interferon-rich inflammatory tumor state that improves sensitivity to anti-PD-L1 immune checkpoint blockade?",
+  "core_question": "Whether intratumoral delivery of an mRNA vaccine can create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 immune checkpoint therapy.",
   "datasets_or_cohorts": [
     {
       "id": "mouse-efficacy-combo",
       "label": "Mouse efficacy cohort (combination therapy)",
-      "sample_size_or_observations": "78 tumor-bearing mice (pooled across repeat experiments)",
-      "description": "Preclinical efficacy set of tumor-bearing mice treated with an intratumoral mRNA vaccine in combination with anti-PD-L1, pooled across repeated experiments to evaluate tumor control." 
+      "sample_size_or_observations": "78 tumor-bearing mice",
+      "description": "Preclinical pooled mouse experiments testing intratumoral mRNA vaccine together with anti-PD-L1 combination therapy for tumor control." 
     },
     {
-      "id": "mouse-controls",
+      "id": "mouse-matched-controls",
       "label": "Mouse control cohort (vaccine only, ICI only, vehicle)",
-      "sample_size_or_observations": "84 tumor-bearing mice (matched controls, pooled)",
-      "description": "Matched preclinical control mice receiving vaccine-only, ICI-only, or vehicle conditions, used to benchmark whether the combination effect exceeds single-agent activity." 
+      "sample_size_or_observations": "84 tumor-bearing mice",
+      "description": "Matched preclinical control arms in mice receiving vaccine-only, immune checkpoint inhibitor (ICI)-only, or vehicle control conditions." 
     },
     {
-      "id": "human-retrospective",
+      "id": "human-retrospective-metastatic",
       "label": "Human retrospective metastatic cohort",
-      "sample_size_or_observations": "130 patients total",
-      "description": "Retrospective, non-randomized translational cohort of metastatic patients receiving immune checkpoint inhibitor treatment, compared by prior SARS-CoV-2 mRNA vaccination status." 
+      "sample_size_or_observations": "130 patients",
+      "description": "Translational retrospective cohort of metastatic patients receiving immune checkpoint inhibitor treatment, stratified by prior SARS-CoV-2 mRNA vaccination status." 
     },
     {
       "id": "human-vaccinated",
       "label": "Human vaccinated subgroup",
       "sample_size_or_observations": "43 patients",
-      "description": "Subset of the retrospective metastatic cohort with prior SARS-CoV-2 mRNA vaccination, used for survival comparison under ICI treatment." 
+      "description": "Subset of the retrospective metastatic cohort categorized as vaccinated prior to or around ICI treatment, used for survival comparison." 
     },
     {
       "id": "human-unvaccinated",
       "label": "Human unvaccinated subgroup",
       "sample_size_or_observations": "87 patients",
-      "description": "Subset of the retrospective metastatic cohort without prior SARS-CoV-2 mRNA vaccination, serving as the comparator group for outcomes under ICI therapy." 
+      "description": "Subset of the retrospective metastatic cohort categorized as unvaccinated, serving as the comparator group for survival under ICI treatment." 
     }
   ],
   "major_limitations": [
-    "The human analysis was retrospective and non-randomized, so residual confounding is likely.",
-    "Vaccination timing relative to ICI initiation varied across patients, complicating interpretation.",
+    "The human analysis is retrospective and non-randomized; residual confounding is likely.",
+    "Vaccination timing relative to ICI initiation varied across patients.",
     "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation.",
     "Mouse model effects may not map one-to-one to all human tumors.",
-    "Some mechanistic readouts were strongest in specific model systems rather than uniformly across settings."
+    "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
   ]
 }

@@ -1,14 +1,13 @@
 {
   "problem_id": "P04",
   "final_answer": {
-    "value": -814,
+    "value": -812,
     "units": "kJ mol-1",
-    "precision_note": "Calculated using whole number bond energies; answer reported to 3 significant figures as -814 kJ mol-1."
+    "precision_note": "Calculated as -812 kJ mol-1; reported to 3 significant figures matching bond energy data precision (all given as 3 s.f.)."
   },
-  "method": "For the combustion CH4 + 2O2 -> CO2 + 2H2O, calculate energy for bonds broken and formed. Bonds broken in reactants: 4 C-H bonds (4 × 413 = 1652 kJ/mol) and 2 O=O bonds (2 × 498 = 996 kJ/mol), total = 2648 kJ/mol. Bonds formed in products: 2 C=O bonds in CO2 (2 × 805 = 1610 kJ/mol) and 4 O-H bonds in 2H2O (4 × 463 = 1852 kJ/mol), total = 3462 kJ/mol. Using deltaH = sum(bonds broken) - sum(bonds formed): deltaH = 2648 - 3462 = -814 kJ/mol. The negative value indicates an exothermic reaction.",
+  "method": "Apply the bond energy formula ΔH = Σ(bonds broken) - Σ(bonds formed). For the reaction CH4 + 2O2 → CO2 + 2H2O: Bonds broken are 4 C-H bonds (4 × 413 = 1652 kJ) and 2 O=O bonds (2 × 498 = 996 kJ), giving total broken = 2650 kJ. Bonds formed are 2 C=O bonds in CO2 (2 × 805 = 1610 kJ) and 4 O-H bonds in 2H2O (4 × 463 = 1852 kJ), giving total formed = 3462 kJ. Therefore ΔH = 2650 - 3462 = -812 kJ mol-1. The negative value indicates an exothermic reaction, consistent with combustion.",
   "key_equations": [
-    "deltaH = sum(bonds broken) - sum(bonds formed)",
-    "CH4 + 2O2 -> CO2 + 2H2O"
+    "ΔH = Σ(bonds broken) - Σ(bonds formed)"
   ],
   "line_refs": [
     "L45",
@@ -16,7 +15,9 @@
     "L47"
   ],
   "checks": [
-    "Combustion reactions are exothermic, so deltaH should be negative",
-    "More energy released forming bonds than required breaking bonds"
+    "Bonds broken: 4×413 + 2×498 = 1652 + 996 = 2650 kJ, correct",
+    "Bonds formed: 2×805 + 4×463 = 1610 + 1852 = 3462 kJ, correct",
+    "ΔH = 2650 - 3462 = -812 kJ mol-1",
+    "Negative value indicates exothermic reaction, expected for combustion"
   ]
 }

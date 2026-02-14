@@ -3,25 +3,27 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Using three significant figures from current (1.50 A) and time (30.0 min) values, result reported to three significant figures"
+    "precision_note": "Based on current 1.50 A (3 sf), time 30.0 min (3 sf), Faraday constant 96,500 C mol-1 (3 sf), and atomic mass Cu 63.55 (4 sf)"
   },
-  "method": "Calculate total charge passed through the solution: Q = current × time = 1.50 A × (30.0 min × 60 s/min) = 1.50 × 1800 = 2700 C. Calculate moles of electrons using Faraday constant: moles(e-) = Q / F = 2700 / 96500 = 0.02798 mol. From the cathode half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons produce 1 mole of Cu, so moles(Cu) = moles(e-) / 2 = 0.01399 mol. Calculate mass of copper deposited: mass = moles × atomic mass = 0.01399 × 63.55 = 0.889 g.",
+  "method": "First convert time to seconds for charge calculation: time = 30.0 min × 60 = 1800 s. Calculate total charge passed: Q = I × t = 1.50 A × 1800 s = 2700 C. Calculate moles of electrons using Faraday constant: n(e-) = Q / F = 2700 C / 96500 C mol-1 = 0.02798 mol. From the cathode half-equation Cu²⁺ + 2e⁻ → Cu, 2 moles of electrons produce 1 mole of copper. Calculate moles of copper: n(Cu) = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol. Calculate mass of copper: mass(Cu) = n(Cu) × atomic mass(Cu) = 0.01399 mol × 63.55 g/mol = 0.889 g.",
   "key_equations": [
-    "Q = I × t",
-    "n(e-) = Q / F",
-    "Mole ratio from half-equation: Cu2+ + 2e- -> Cu"
+    "Q = I × t = 1.50 × 1800 = 2700 C",
+    "n(e-) = Q / F = 2700 / 96500 = 0.02798 mol",
+    "n(Cu) = n(e-) / 2 = 0.02798 / 2 = 0.01399 mol (2:1 ratio with electrons)",
+    "mass(Cu) = n(Cu) × 63.55 = 0.01399 × 63.55 = 0.889 g"
   ],
   "line_refs": [
-    "L51",
-    "L52",
     "L17",
     "L18",
     "L19",
-    "L24"
+    "L24",
+    "L50",
+    "L51",
+    "L52",
+    "L53"
   ],
   "checks": [
-    "Charge Q = 2700 C divided by Faraday constant 96500 C mol-1 gives moles e- (0.02798)",
-    "Half the moles of electrons gives moles of Cu (0.01399), multiplied by atomic mass 63.55 gives 0.889 g",
-    "The 2:1 electron-to-copper ratio correctly applied from cathode half-equation"
+    "Charge of 2700 C divided by Faraday constant 96500 gives 0.0280 mol electrons (3 sf), half of which gives 0.0140 mol Cu",
+    "Moles of copper multiplied by atomic mass 63.55 yields 0.889 g, which is consistent with the 1.50 A current over 30 minutes"
   ]
 }

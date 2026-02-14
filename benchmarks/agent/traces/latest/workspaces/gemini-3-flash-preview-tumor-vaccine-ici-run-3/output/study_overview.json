@@ -6,31 +6,44 @@
     "domain": "oncology-immunology",
     "study_type": "preclinical+retrospective"
   },
-  "core_question": "Can intratumoral delivery of an mRNA vaccine create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 therapy?",
+  "core_question": "The paper investigates whether intratumoral delivery of an mRNA vaccine can create an interferon-rich inflammatory state that improves sensitivity to anti-PD-L1 therapy.",
   "datasets_or_cohorts": [
     {
       "id": "mouse-efficacy-cohort",
       "label": "Mouse efficacy cohort (combination therapy)",
       "sample_size_or_observations": "78 tumor-bearing mice",
-      "description": "Multiple murine tumor models with intratumoral mRNA vaccine and anti-PD-L1 combinations pooled across repeat experiments."
+      "description": "Preclinical models receiving combination therapy pooled across repeat experiments."
     },
     {
       "id": "mouse-control-cohort",
       "label": "Mouse control cohort",
       "sample_size_or_observations": "84 tumor-bearing mice",
-      "description": "Pooled matched controls including vaccine only, ICI only, and vehicle treatments."
+      "description": "Pooled controls receiving vaccine only, ICI only, or vehicle."
     },
     {
       "id": "human-retrospective-cohort",
       "label": "Human retrospective metastatic cohort",
-      "sample_size_or_observations": "130 patients total",
-      "description": "Retrospective cohort of metastatic patients receiving ICI treatment, compared by prior SARS-CoV-2 mRNA vaccination status."
+      "sample_size_or_observations": "130 patients",
+      "description": "Metastatic patients receiving ICI treatment, compared by prior SARS-CoV-2 mRNA vaccination status."
+    },
+    {
+      "id": "human-vaccinated-subgroup",
+      "label": "Human vaccinated subgroup",
+      "sample_size_or_observations": "43 patients",
+      "description": "Subgroup of patients who received SARS-CoV-2 mRNA vaccination prior to ICI treatment."
+    },
+    {
+      "id": "human-unvaccinated-subgroup",
+      "label": "Human unvaccinated subgroup",
+      "sample_size_or_observations": "87 patients",
+      "description": "Subgroup of patients who did not receive SARS-CoV-2 mRNA vaccination prior to ICI treatment."
     }
   ],
   "major_limitations": [
     "The human analysis is retrospective and non-randomized; residual confounding is likely.",
     "Vaccination timing relative to ICI initiation varied across patients.",
     "Tumor-type mix and treatment-history heterogeneity limit direct causal interpretation.",
-    "Mouse model effects may not map one-to-one to all human tumors."
+    "Mouse model effects may not map one-to-one to all human tumors.",
+    "Some mechanistic readouts were strongest in specific model systems rather than uniformly across all tested settings."
   ]
 }

@@ -2,43 +2,59 @@
   "claims": [
     {
       "claim_id": "C01",
-      "claim": "TRAPPIST-1 b likely retains an atmosphere based on phase-curve evidence.",
+      "claim": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b",
-          "line_ref": "L53"
+          "quote": "Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4",
+          "line_ref": "L31"
         },
         {
-          "quote": "Atmosphere-bearing models better explain combined data products",
-          "line_ref": "L31"
+          "quote": "The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b",
+          "line_ref": "L53"
         }
       ],
-      "caveat": "Atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential."
+      "caveat": "atmospheric composition and pressure remain uncertain enough that follow-up spectroscopy is essential."
     },
     {
       "claim_id": "C02",
-      "claim": "Heat is being transported from the day side to the night side of the planet.",
-      "strength": "tentative",
+      "claim": "Non-zero heat redistribution is favored, suggesting some form of atmospheric transport.",
+      "strength": "moderate",
       "evidence": [
         {
-          "quote": "Heat transport efficiency (epsilon) 0.19 (+0.23 / -0.14)",
+          "quote": "Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14)",
           "line_ref": "L28"
         },
         {
-          "quote": "Non-zero redistribution is favored",
-          "line_ref": "L28"
+          "quote": "A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.",
+          "line_ref": "L41"
         }
       ],
       "caveat": "Night-side constraints are weaker than day-side constraints in the current dataset."
     },
     {
       "claim_id": "C03",
-      "claim": "The planet's surface is likely very dark.",
+      "claim": "Spectral structure is consistent with CO2 atmospheric absorption.",
       "strength": "moderate",
       "evidence": [
         {
-          "quote": "Bond albedo upper bound <0.08",
+          "quote": "15 um CO2 spectral band depth estimate | 96 ppm",
+          "line_ref": "L30"
+        },
+        {
+          "quote": "Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.",
+          "line_ref": "L42"
+        }
+      ],
+      "caveat": "Stellar variability and instrument systematics can bias weak spectral features."
+    },
+    {
+      "claim_id": "C04",
+      "claim": "The planet appears to have a very low Bond albedo.",
+      "strength": "strong",
+      "evidence": [
+        {
+          "quote": "Bond albedo upper bound | <0.08",
           "line_ref": "L29"
         },
         {
@@ -47,22 +63,6 @@
         }
       ],
       "caveat": "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect quantitative posteriors."
-    },
-    {
-      "claim_id": "C04",
-      "claim": "The 15 um spectral feature suggests the presence of CO2.",
-      "strength": "tentative",
-      "evidence": [
-        {
-          "quote": "15 um CO2 spectral band depth estimate 96 ppm",
-          "line_ref": "L30"
-        },
-        {
-          "quote": "Spectral structure is consistent with atmospheric absorption",
-          "line_ref": "L30"
-        }
-      ],
-      "caveat": "Stellar variability and instrument systematics can bias weak spectral features."
     }
   ]
 }

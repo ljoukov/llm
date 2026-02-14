@@ -3,20 +3,21 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "The input values have three or four significant figures. The result 0.0702 is provided to three significant figures."
+    "precision_note": "3 significant figures as per input concentration."
   },
-  "method": "In this titration calculation, we determine the concentration of H2SO4 by neutralizing it with a known concentration and volume of NaOH. We are given 23.40 cm3 of 0.150 mol dm-3 NaOH. Using the formula n = c * V, the moles of NaOH = 0.150 mol dm-3 * (23.40 / 1000) dm3 = 0.00351 mol. The balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O indicates that 1 mole of sulfuric acid reacts with 2 moles of sodium hydroxide. Thus, the moles of H2SO4 required for neutralization is 0.00351 mol / 2 = 0.001755 mol. Finally, the concentration of H2SO4 is calculated using c = n / V, where V is 25.00 cm3 (or 0.02500 dm3). This gives a concentration of 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
+  "method": "Calculate moles of NaOH used: 0.150 mol dm-3 * 0.02340 dm3 = 0.00351 mol. Using the 1:2 stoichiometry from the balanced equation, moles of H2SO4 = 0.00351 / 2 = 0.001755 mol. Concentration of H2SO4 = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3.",
   "key_equations": [
-    "c = n / V"
+    "n = c * V",
+    "Ratio H2SO4:NaOH = 1:2"
   ],
   "line_refs": [
     "L15",
     "L39",
-    "L40"
+    "L40",
+    "L41"
   ],
   "checks": [
-    "Moles NaOH = 0.0234 * 0.15 = 0.00351",
-    "Moles H2SO4 = 0.00351 / 2 = 0.001755",
-    "Conc H2SO4 = 0.001755 / 0.025 = 0.0702"
+    "Stoichiometry 1:2 correctly applied (half the moles of NaOH).",
+    "Volume converted from cm3 to dm3."
   ]
 }
