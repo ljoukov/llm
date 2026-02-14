@@ -2,27 +2,27 @@
 
 This file is auto-generated from the latest benchmark run.
 
-- Run id: `agent-fs-2026-02-14T12-57-06-825Z`
-- Generated at: `2026-02-14T13:25:57.915Z`
+- Run id: `agent-fs-2026-02-14T14-45-27-017Z`
+- Generated at: `2026-02-14T14:53:49.274Z`
 - Tasks: `tumor-vaccine-ici`, `trappist1b-atmosphere`, `gcse-chemistry-8-9`
 - Models: `chatgpt-gpt-5.3-codex-spark`, `gpt-5.2`, `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-3-pro-preview`, `gemini-3-flash-preview`
 - Grader: `gpt-5.2`
 
 ## Aggregate
 
-- Cases: 20/81 pass (37/81 schema, 72/81 tool trace, 20/81 grader)
-- Total latency: 8291.20s
-- Avg latency per case: 102.36s
-- Total cost: $6.346483
-- Tokens (in/cached/out): 4,320,552/1,886,749/328,547
-- Thinking tokens: 260,209
-- Total tokens: 4,909,308
+- Cases: 22/81 pass (43/81 schema, 81/81 tool trace, 22/81 grader)
+- Total latency: 8711.49s
+- Avg latency per case: 107.55s
+- Total cost: $6.795905
+- Tokens (in/cached/out): 5,929,775/3,288,221/375,934
+- Thinking tokens: 359,466
+- Total tokens: 6,665,175
 
 ## Outcome
 
 | Model | Overall | Schema | Tool Trace | Grader | Tool Calls | Avg latency (s) | Total latency (s) | Cost (USD) | In tokens | Cached tokens | Out tokens |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| `chatgpt-gpt-5.3-codex-spark` | FAIL | 0/9 | 0/9 | 0/9 | 0 | 9.09 | 81.83 | 0.074819 | 15,885 | 3,328 | 3,406 |
+| `chatgpt-gpt-5.3-codex-spark` | FAIL | 6/9 | 9/9 | 2/9 | 460 | 55.79 | 502.12 | 0.524241 | 1,625,108 | 1,404,800 | 50,793 |
 | `gpt-5.2` | FAIL | 7/9 | 9/9 | 6/9 | 312 | 152.04 | 1368.34 | 1.400333 | 480,902 | 294,400 | 36,951 |
 | `kimi-k2.5` | FAIL | 0/9 | 9/9 | 0/9 | 258 | 42.55 | 382.93 | 0.368985 | 311,033 | 129,076 | 46,306 |
 | `glm-5` | FAIL | 7/9 | 9/9 | 4/9 | 380 | 148.44 | 1335.94 | 1.106094 | 904,502 | 131,424 | 62,346 |
@@ -36,9 +36,9 @@ This file is auto-generated from the latest benchmark run.
 
 | Model | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls |
 |---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|
-| `chatgpt-gpt-5.3-codex-spark` | `tumor-vaccine-ici` | 3 | FAIL (run 2) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 9.92 | 10.61 | 0.009408 | 0.011511 | 0.00 | 0 |
-| `chatgpt-gpt-5.3-codex-spark` | `trappist1b-atmosphere` | 3 | FAIL (run 3) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 6.89 | 6.49 | 0.008462 | 0.007893 | 0.00 | 0 |
-| `chatgpt-gpt-5.3-codex-spark` | `gcse-chemistry-8-9` | 3 | FAIL (run 1) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 0/3 (0.0%) | 10.47 | 9.31 | 0.007070 | 0.008174 | 0.00 | 0 |
+| `chatgpt-gpt-5.3-codex-spark` | `tumor-vaccine-ici` | 3 | PASS (run 2) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 85.54 | 55.66 | 0.085095 | 0.062287 | 82.67 | 64 |
+| `chatgpt-gpt-5.3-codex-spark` | `trappist1b-atmosphere` | 3 | FAIL (run 2) | 0/3 (0.0%) | 2/3 (66.7%) | 3/3 (100.0%) | 0/3 (0.0%) | 42.75 | 52.06 | 0.048243 | 0.057958 | 35.33 | 42 |
+| `chatgpt-gpt-5.3-codex-spark` | `gcse-chemistry-8-9` | 3 | PASS (run 1) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 39.09 | 43.32 | 0.041409 | 0.049301 | 35.33 | 36 |
 | `gpt-5.2` | `tumor-vaccine-ici` | 3 | PASS (run 2) | 1/3 (33.3%) | 2/3 (66.7%) | 3/3 (100.0%) | 1/3 (33.3%) | 129.69 | 109.16 | 0.156963 | 0.123976 | 32.67 | 34 |
 | `gpt-5.2` | `trappist1b-atmosphere` | 3 | PASS (run 3) | 2/3 (66.7%) | 2/3 (66.7%) | 3/3 (100.0%) | 2/3 (66.7%) | 128.63 | 130.04 | 0.135775 | 0.135960 | 34.00 | 32 |
 | `gpt-5.2` | `gcse-chemistry-8-9` | 3 | PASS (run 1) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 197.79 | 199.29 | 0.174040 | 0.175918 | 37.33 | 32 |

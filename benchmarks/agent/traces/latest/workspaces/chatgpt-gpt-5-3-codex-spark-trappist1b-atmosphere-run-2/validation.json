@@ -5,129 +5,363 @@
   "runIndex": 2,
   "workspacePath": "workspaces/chatgpt-gpt-5-3-codex-spark-trappist1b-atmosphere-run-2",
   "success": false,
-  "schemaPass": false,
-  "toolTracePass": false,
+  "schemaPass": true,
+  "toolTracePass": true,
   "graderPass": false,
-  "durationMs": 6470,
-  "agentCostUsd": 0,
-  "graderCostUsd": 0.0086625,
-  "totalCostUsd": 0.0086625,
+  "durationMs": 52063,
+  "agentCostUsd": 0.041302,
+  "graderCostUsd": 0.016656499999999998,
+  "totalCostUsd": 0.057958499999999996,
   "agentUsage": {
-    "promptTokens": 0,
-    "cachedTokens": 0,
-    "responseTokens": 0,
-    "thinkingTokens": 0,
-    "totalTokens": 0
+    "promptTokens": 113768,
+    "cachedTokens": 95360,
+    "responseTokens": 4927,
+    "thinkingTokens": 12231,
+    "totalTokens": 130926
   },
   "graderUsage": {
-    "promptTokens": 1622,
+    "promptTokens": 4158,
     "cachedTokens": 0,
-    "responseTokens": 390,
-    "thinkingTokens": 26,
-    "totalTokens": 2038
+    "responseTokens": 447,
+    "thinkingTokens": 223,
+    "totalTokens": 4828
   },
   "totalUsage": {
-    "promptTokens": 1622,
-    "cachedTokens": 0,
-    "responseTokens": 390,
-    "thinkingTokens": 26,
-    "totalTokens": 2038
+    "promptTokens": 117926,
+    "cachedTokens": 95360,
+    "responseTokens": 5374,
+    "thinkingTokens": 12454,
+    "totalTokens": 135754
   },
-  "modelVersions": [],
-  "agentFinalText": "",
-  "agentError": "ChatGPT OAuth refresh failed (401): {\n  \"error\": {\n    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": \"refresh_token_reused\"\n  }\n}",
+  "modelVersions": [
+    "chatgpt-gpt-5.3-codex-spark"
+  ],
+  "agentFinalText": "- [x] `output/study_overview.json`\n- [x] `output/quantitative_findings.json`\n- [x] `output/claim_audit.json`\n- [x] `output/public_summary.json`",
   "outputValidation": [
     {
       "outputFile": "output/study_overview.json",
       "schemaFile": "schemas/study_overview.schema.json",
       "exists": true,
       "jsonValid": true,
-      "schemaValid": false,
-      "groundingValid": false,
-      "errors": [
-        "paper: Invalid input: expected object, received undefined",
-        "core_question: Invalid input: expected string, received undefined",
-        "datasets_or_cohorts: Invalid input: expected array, received undefined",
-        "major_limitations: Invalid input: expected array, received undefined"
-      ],
-      "content": "{}\n"
+      "schemaValid": true,
+      "groundingValid": true,
+      "errors": [],
+      "content": "{\n  \"paper\": {\n    \"title\": \"Phase-curve Evidence for an Atmosphere on TRAPPIST-1 b\",\n    \"doi\": \"10.48550/arXiv.2409.13036\",\n    \"publication_year\": 2024,\n    \"domain\": \"exoplanet-atmospheres\",\n    \"study_type\": \"observational-astronomy\"\n  },\n  \"core_question\": \"Does JWST MIRI phase-curve data for TRAPPIST-1 b require an atmosphere instead of a bare-rock no-atmosphere interpretation?\",\n  \"datasets_or_cohorts\": [\n    {\n      \"id\": \"trappist1b-observed-system\",\n      \"label\": \"Observed TRAPPIST-1 b phase-curve system\",\n      \"sample_size_or_observations\": \"phase-resolved JWST MIRI thermal spectra from one rocky exoplanet\",\n      \"description\": \"One-rocky planet dataset comprising orbital phase-curve thermal spectroscopy used to infer day-night temperature structure and spectral structure.\"\n    },\n    {\n      \"id\": \"no-atmosphere-null-scenario\",\n      \"label\": \"Null no-atmosphere model\",\n      \"sample_size_or_observations\": \"model comparison against the observed phase curve and spectrum\",\n      \"description\": \"Bare-rock hypothesis with minimal heat redistribution used as a baseline model to test whether a vacuum-like planet can fit both observables together.\"\n    },\n    {\n      \"id\": \"co2-rich-atmosphere-scenario\",\n      \"label\": \"CO2-rich atmospheric retrieval\",\n      \"sample_size_or_observations\": \"same observed dataset interpreted under CO2-dominated atmospheric priors\",\n      \"description\": \"Atmospheric model emphasizing strong 15 um CO2 absorption features and moderate-pressure structure to explain phase and spectral behavior.\"\n    },\n    {\n      \"id\": \"o2-rich-atmosphere-scenario\",\n      \"label\": \"O2-rich atmospheric retrieval\",\n      \"sample_size_or_observations\": \"same observed dataset interpreted under oxidized-atmosphere priors\",\n      \"description\": \"Alternative atmospheric family with weaker CO2 constraints, retained as viable because current data do not fully exclude this composition family.\"\n    }\n  ],\n  \"major_limitations\": [\n    \"This is a single-planet study and does not establish atmospheric prevalence across all M-dwarf rocky planets.\",\n    \"Retrieval assumptions for circulation, opacity priors, and cloud treatment materially affect quantitative posterior interpretations.\",\n    \"Stellar variability and instrument systematics can bias weak spectral features in the reported data.\",\n    \"Night-side constraints are weaker than day-side constraints in the current dataset.\"\n  ]\n}"
     },
     {
       "outputFile": "output/quantitative_findings.json",
       "schemaFile": "schemas/quantitative_findings.schema.json",
       "exists": true,
       "jsonValid": true,
-      "schemaValid": false,
-      "groundingValid": false,
-      "errors": [
-        "findings: Invalid input: expected array, received undefined",
-        "controls_or_null_results: Invalid input: expected array, received undefined"
-      ],
-      "content": "{}\n"
+      "schemaValid": true,
+      "groundingValid": true,
+      "errors": [],
+      "content": "{\n  \"findings\": [\n    {\n      \"id\": \"Q01\",\n      \"metric\": \"Dayside brightness temperature\",\n      \"value\": \"342 +/- 22 K\",\n      \"comparator_or_baseline\": \"Bare-rock expectation from no-redistribution model\",\n      \"interpretation\": \"Day side is warm, supporting strong insolation heating but not alone sufficient to require an atmosphere.\",\n      \"evidence_line_refs\": [\"L27\"]\n    },\n    {\n      \"id\": \"Q02\",\n      \"metric\": \"Heat transport efficiency (epsilon)\",\n      \"value\": \"0.19 (+0.23 / -0.14)\",\n      \"comparator_or_baseline\": \"0.0 for perfect no-atmosphere limit\",\n      \"interpretation\": \"Retrieved redistribution is positive, which is interpreted as support for non-zero day-night heat transport.\",\n      \"evidence_line_refs\": [\"L28\"]\n    },\n    {\n      \"id\": \"Q03\",\n      \"metric\": \"Bond albedo upper bound\",\n      \"value\": \"<0.08\",\n      \"comparator_or_baseline\": \"Higher-albedo reflective cases\",\n      \"interpretation\": \"Fits imply TRAPPIST-1 b is very dark in thermal-energy balance, not dominated by high-reflectivity surfaces or clouds.\",\n      \"evidence_line_refs\": [\"L29\"]\n    },\n    {\n      \"id\": \"Q04\",\n      \"metric\": \"15 um CO2 spectral band depth\",\n      \"value\": \"96 ppm\",\n      \"comparator_or_baseline\": \"Flat-spectrum null\",\n      \"interpretation\": \"Observed spectral structure is consistent with atmospheric absorption rather than a featureless thermal continuum.\",\n      \"evidence_line_refs\": [\"L30\"]\n    },\n    {\n      \"id\": \"Q05\",\n      \"metric\": \"Joint fit likelihood ratio\",\n      \"value\": \"7.4\",\n      \"comparator_or_baseline\": \"1.0 baseline ratio\",\n      \"interpretation\": \"Combined phase-curve and spectrum favor atmosphere-bearing models over no-atmosphere models.\",\n      \"evidence_line_refs\": [\"L31\"]\n    },\n    {\n      \"id\": \"Q06\",\n      \"metric\": \"Preferred pressure scale in CO2-rich retrieval\",\n      \"value\": \"0.3-1.0 bar\",\n      \"comparator_or_baseline\": \"Near-vacuum branch\",\n      \"interpretation\": \"A moderate-pressure CO2 atmosphere remains plausible and is favored over a near-vacuum interpretation.\",\n      \"evidence_line_refs\": [\"L32\"]\n    }\n  ],\n  \"controls_or_null_results\": [\n    {\n      \"statement\": \"A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.\",\n      \"evidence_line_ref\": \"L35\"\n    },\n    {\n      \"statement\": \"O2-rich atmosphere cases are not fully ruled out by the current dataset.\",\n      \"evidence_line_ref\": \"L36\"\n    },\n    {\n      \"statement\": \"Degeneracies remain significant among composition, clouds/hazes, and circulation assumptions.\",\n      \"evidence_line_ref\": \"L37\"\n    }\n  ]\n}"
     },
     {
       "outputFile": "output/claim_audit.json",
       "schemaFile": "schemas/claim_audit.schema.json",
       "exists": true,
       "jsonValid": true,
-      "schemaValid": false,
-      "groundingValid": false,
-      "errors": [
-        "claims: Invalid input: expected array, received undefined"
-      ],
-      "content": "{}\n"
+      "schemaValid": true,
+      "groundingValid": true,
+      "errors": [],
+      "content": "{\n  \"claims\": [\n    {\n      \"claim_id\": \"C01\",\n      \"claim\": \"TRAPPIST-1 b is likely not a strictly airless planet, with multiple observables favoring atmospheric interpretation.\",\n      \"strength\": \"moderate\",\n      \"evidence\": [\n        {\n          \"quote\": \"The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b\",\n          \"line_ref\": \"L52\"\n        },\n        {\n          \"quote\": \"A pure no-atmosphere model cannot simultaneously match both phase amplitude and spectral band behavior.\",\n          \"line_ref\": \"L35\"\n        }\n      ],\n      \"caveat\": \"This evidence is based on one planet and admits remaining model degeneracies and uncertainties in weak spectral features.\"\n    },\n    {\n      \"claim_id\": \"C02\",\n      \"claim\": \"The preferred interpretation includes non-zero heat transport beyond the perfect no-atmosphere limit.\",\n      \"strength\": \"moderate\",\n      \"evidence\": [\n        {\n          \"quote\": \"Heat transport efficiency (epsilon) | 0.19 (+0.23 / -0.14) | 0.0 for perfect no-atmosphere limit\",\n          \"line_ref\": \"L28\"\n        },\n        {\n          \"quote\": \"A non-zero redistribution parameter implies transport beyond an immediate bare-rock reradiation limit.\",\n          \"line_ref\": \"L41\"\n        }\n      ],\n      \"caveat\": \"Retrieved epsilon has asymmetric uncertainty and is interpreted through assumed circulation parameterizations.\"\n    },\n    {\n      \"claim_id\": \"C03\",\n      \"claim\": \"CO2-related spectral structure in the 15 um region is central evidence for an atmosphere in this study.\",\n      \"strength\": \"strong\",\n      \"evidence\": [\n        {\n          \"quote\": \"15 um CO2 spectral band depth estimate | 96 ppm | Flat-spectrum null\",\n          \"line_ref\": \"L30\"\n        },\n        {\n          \"quote\": \"Spectral structure near 15 um provides composition-sensitive evidence, especially for CO2-rich scenarios.\",\n          \"line_ref\": \"L42\"\n        }\n      ],\n      \"caveat\": \"The significance of this signature is contingent on low-level biases from instrument systematics and stellar variability.\"\n    },\n    {\n      \"claim_id\": \"C04\",\n      \"claim\": \"Atmosphere-bearing models as a group outperform no-atmosphere models when both phase and spectral data are fit jointly.\",\n      \"strength\": \"strong\",\n      \"evidence\": [\n        {\n          \"quote\": \"Joint fit likelihood ratio (atmosphere vs no atmosphere) | 7.4 | 1.0 baseline ratio\",\n          \"line_ref\": \"L31\"\n        },\n        {\n          \"quote\": \"Joint constraints from phase curve and spectrum are stronger than either observable alone.\",\n          \"line_ref\": \"L43\"\n        }\n      ],\n      \"caveat\": \"Relative likelihood ranking does not fully remove degeneracies with clouds, hazes, and circulation assumptions.\"\n    },\n    {\n      \"claim_id\": \"C05\",\n      \"claim\": \"Atmospheric composition and pressure remain uncertain, with CO2-rich and O2-rich scenarios both not yet excluded.\",\n      \"strength\": \"tentative\",\n      \"evidence\": [\n        {\n          \"quote\": \"O2-rich atmosphere cases are not fully ruled out by current data.\",\n          \"line_ref\": \"L36\"\n        },\n        {\n          \"quote\": \"Preferred pressure scale in CO2-rich retrieval family | 0.3-1.0 bar | Near-vacuum branch\",\n          \"line_ref\": \"L32\"\n        }\n      ],\n      \"caveat\": \"The study notes significant degeneracies between composition, clouds/hazes, and circulation assumptions.\"\n    }\n  ]\n}"
     },
     {
       "outputFile": "output/public_summary.json",
       "schemaFile": "schemas/public_summary.schema.json",
       "exists": true,
       "jsonValid": true,
-      "schemaValid": false,
-      "groundingValid": false,
-      "errors": [
-        "headline: Invalid input: expected string, received undefined",
-        "plain_language_summary: Invalid input: expected string, received undefined",
-        "what_is_new: Invalid input: expected array, received undefined",
-        "why_caution_is_needed: Invalid input: expected array, received undefined",
-        "glossary: Invalid input: expected array, received undefined",
-        "open_questions: Invalid input: expected array, received undefined"
-      ],
-      "content": "{}\n"
+      "schemaValid": true,
+      "groundingValid": true,
+      "errors": [],
+      "content": "{\n  \"headline\": \"JWST phase-curve observations provide evidence for an atmosphere on TRAPPIST-1 b\",\n  \"plain_language_summary\": \"The study uses JWST MIRI phase-curve spectroscopy of the ultra-hot, tidally locked planet TRAPPIST-1 b to test whether it is airless. The retrieved dayside temperature is 342 +/- 22 K, and the heat transport parameter is reported as 0.19 (+0.23/-0.14), which they interpret as non-zero energy transport rather than instant re-radiation from the dayside only. They also find a 15 um CO2 spectral feature depth of about 96 ppm and a joint fit likelihood ratio of 7.4 that favors atmosphere-bearing models over bare-rock models. Even so, the preferred pressure range in CO2-rich retrievals is moderate (0.3-1.0 bar), and O2-rich cases remain a viable alternative under current data, so composition and pressure are still not pinned down. The authors therefore argue the evidence is meaningful but not yet final and call for follow-up observations.\",\n  \"what_is_new\": [\n    \"This is a joint test using both thermal phase variation and spectral shape, rather than relying on either phase curve or spectrum alone.\",\n    \"The analysis reports non-zero heat transport (epsilon 0.19) and a moderate CO2-band signal, both supporting atmospheric behavior over a strict bare-rock limit.\",\n    \"A quantitative model-comparison measure is provided (7.4 likelihood ratio), explicitly favoring atmosphere-bearing scenarios over no-atmosphere cases.\"\n  ],\n  \"why_caution_is_needed\": [\n    \"The study explicitly notes that O2-rich atmospheric cases are not fully ruled out, so composition is not uniquely fixed to CO2-rich atmospheres.\",\n    \"Degeneracies remain among composition, clouds/hazes, and circulation assumptions, which can shift inferred pressures and transport properties.\",\n    \"They describe weaker constraints on the night side than day side, reducing certainty about full longitudinal energy transport.\",\n    \"Stellar variability and instrument systematics are highlighted as possible biases for weak spectral features.\",\n    \"This is a single-planet study, so it does not establish how common such atmospheres are across all M-dwarf rocky worlds.\"\n  ],\n  \"glossary\": [\n    {\n      \"term\": \"Phase curve\",\n      \"definition\": \"The change in observed light from a planet as it moves around its star, showing day-side and night-side differences.\"\n    },\n    {\n      \"term\": \"Brightness temperature\",\n      \"definition\": \"A temperature inferred from emitted thermal radiation, useful for comparing how warm a planet appears at different times or wavelengths.\"\n    },\n    {\n      \"term\": \"Bond albedo\",\n      \"definition\": \"The fraction of incoming energy the planet reflects back to space across all wavelengths, affecting thermal balance.\"\n    },\n    {\n      \"term\": \"Heat transport efficiency (epsilon)\",\n      \"definition\": \"A parameter describing how effectively energy moves from day side to night side; zero indicates little redistribution.\"\n    },\n    {\n      \"term\": \"Likelihood ratio\",\n      \"definition\": \"A model comparison statistic where values above 1 indicate one class of models explains the data better than another.\"\n    }\n  ],\n  \"open_questions\": [\n    \"Can broader-wavelength follow-up spectroscopy reduce degeneracies and separate composition assumptions from circulation assumptions?\",\n    \"What is the true atmospheric composition of TRAPPIST-1 b: CO2-rich, O2-rich, or another mixture?\",\n    \"Can repeated observations better constrain the night-side temperatures and verify the inferred non-zero heat transport.\"\n  ]\n}"
     }
   ],
   "toolTrace": {
-    "pass": false,
-    "totalCalls": 0,
+    "pass": true,
+    "totalCalls": 42,
     "failedCalls": 0,
-    "toolsUsed": [],
-    "hasSuccessfulRead": false,
-    "hasSuccessfulWrite": false,
-    "pathPolicyViolations": [],
-    "notes": [
-      "Expected at least 3 tool calls, observed 0.",
-      "No successful read/list/search tool call observed.",
-      "No successful write tool call observed (write_file/replace/apply_patch)."
+    "toolsUsed": [
+      "list_directory",
+      "read_file",
+      "write_file"
     ],
-    "calls": []
+    "hasSuccessfulRead": true,
+    "hasSuccessfulWrite": true,
+    "pathPolicyViolations": [],
+    "notes": [],
+    "calls": [
+      {
+        "source": "llm",
+        "step": 1,
+        "toolName": "list_directory"
+      },
+      {
+        "source": "llm",
+        "step": 2,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 3,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 4,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 4,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 4,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 4,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 5,
+        "toolName": "write_file"
+      },
+      {
+        "source": "llm",
+        "step": 6,
+        "toolName": "write_file"
+      },
+      {
+        "source": "llm",
+        "step": 7,
+        "toolName": "write_file"
+      },
+      {
+        "source": "llm",
+        "step": 8,
+        "toolName": "write_file"
+      },
+      {
+        "source": "llm",
+        "step": 9,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 10,
+        "toolName": "list_directory"
+      },
+      {
+        "source": "llm",
+        "step": 11,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 12,
+        "toolName": "write_file"
+      },
+      {
+        "source": "llm",
+        "step": 13,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 13,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 13,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 13,
+        "toolName": "read_file"
+      },
+      {
+        "source": "llm",
+        "step": 14,
+        "toolName": "write_file"
+      },
+      {
+        "source": "llm",
+        "step": 15,
+        "toolName": "read_file"
+      },
+      {
+        "source": "fs",
+        "toolName": "list_directory",
+        "action": "list",
+        "path": ".",
+        "timestamp": "2026-02-14T14:50:33.254Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "TASK.md",
+        "timestamp": "2026-02-14T14:50:34.633Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "input/report.md",
+        "timestamp": "2026-02-14T14:50:35.427Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "schemas/study_overview.schema.json",
+        "timestamp": "2026-02-14T14:50:38.333Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "schemas/quantitative_findings.schema.json",
+        "timestamp": "2026-02-14T14:50:38.334Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "schemas/claim_audit.schema.json",
+        "timestamp": "2026-02-14T14:50:38.334Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "schemas/public_summary.schema.json",
+        "timestamp": "2026-02-14T14:50:38.334Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "write_file",
+        "action": "write",
+        "path": "output/study_overview.json",
+        "timestamp": "2026-02-14T14:50:42.747Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "write_file",
+        "action": "write",
+        "path": "output/study_overview.json",
+        "timestamp": "2026-02-14T14:50:46.291Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "write_file",
+        "action": "write",
+        "path": "output/quantitative_findings.json",
+        "timestamp": "2026-02-14T14:50:48.993Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "write_file",
+        "action": "write",
+        "path": "output/claim_audit.json",
+        "timestamp": "2026-02-14T14:50:50.524Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/claim_audit.json",
+        "timestamp": "2026-02-14T14:50:51.372Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "list_directory",
+        "action": "list",
+        "path": "output",
+        "timestamp": "2026-02-14T14:50:53.421Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/public_summary.json",
+        "timestamp": "2026-02-14T14:50:54.469Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "write_file",
+        "action": "write",
+        "path": "output/claim_audit.json",
+        "timestamp": "2026-02-14T14:50:57.449Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/study_overview.json",
+        "timestamp": "2026-02-14T14:50:59.587Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/quantitative_findings.json",
+        "timestamp": "2026-02-14T14:50:59.587Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/claim_audit.json",
+        "timestamp": "2026-02-14T14:50:59.587Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/public_summary.json",
+        "timestamp": "2026-02-14T14:50:59.587Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "write_file",
+        "action": "write",
+        "path": "output/public_summary.json",
+        "timestamp": "2026-02-14T14:51:02.742Z"
+      },
+      {
+        "source": "fs",
+        "toolName": "read_file",
+        "action": "read",
+        "path": "output/public_summary.json",
+        "timestamp": "2026-02-14T14:51:08.413Z"
+      }
+    ]
   },
   "grader": {
     "model": "gpt-5.2",
     "value": {
       "verdict": "fail",
       "scores": {
-        "faithfulness": 1,
-        "coverage": 1,
-        "usefulness": 1
+        "faithfulness": 3,
+        "coverage": 5,
+        "usefulness": 5
       },
       "critical_issues": [
-        "All four output files are empty JSON objects (`{}`), so they fail the required schemas (as indicated by validationErrors) and are not usable for downstream review.",
-        "Coverage is effectively zero: none of the report’s main findings are represented (e.g., dayside brightness temperature 342±22 K [L27], heat transport efficiency epsilon 0.19(+0.23/-0.14) [L28], Bond albedo <0.08 [L29], CO2 band depth estimate 96 ppm [L30], likelihood ratio 7.4 favoring atmosphere models [L31], preferred pressure scale 0.3–1.0 bar in CO2-rich family [L32]).",
-        "Core study design context is missing (JWST MIRI low-resolution phase-curve spectroscopy; thermal phase variation + ~15 µm CO2 band; retrieval comparison of atmosphere-free vs atmosphere-bearing models [L14-L17]).",
-        "Key controls/null and conditional conclusions are absent: no-atmosphere model can’t match both phase amplitude and spectral band behavior [L35]; O2-rich not fully ruled out [L36]; important degeneracies remain [L37].",
-        "Major caveats/threats to validity are omitted (single-planet inference limits [L47]; retrieval assumption sensitivity [L48]; stellar variability/instrument systematics [L49]; weaker nightside constraints [L50]).",
-        "Because the outputs contain no claims and no line references, they cannot satisfy the requirement that claims be grounded with valid mappings to numbered report lines."
+        "Invalid line reference in claim_audit.json: Claim C01 cites line_ref \"L52\" for the quote \"The dataset provides meaningful evidence against a strictly airless interpretation for TRAPPIST-1 b\". In the provided report, L52 is only the section header \"## Practical Takeaway\"; the quoted sentence appears on L53. This violates the requirement that line references be valid and map to numbered report lines.",
+        "Overstated calibration in claim_audit.json: Claims C03 and C04 are labeled with strength \"strong\" even though the report emphasizes substantial remaining degeneracies (L37) and multiple caveats/threats to validity (L46-L51) and concludes the evidence is \"meaningful\" but \"not yet final\" / follow-up is essential (L53). Marking these as \"strong\" risks overstating the evidence strength relative to the report’s cautious framing.",
+        "Public_summary.json introduces potentially misleading characterization: it describes TRAPPIST-1 b as an \"ultra-hot\" planet. The report describes it as strongly irradiated and short-period/tidally locked (L10-L11) with dayside brightness temperature 342 ± 22 K (L27), which is not consistent with the common meaning of \"ultra-hot\" and may mislead downstream users about the thermal regime."
       ],
-      "summary": "The generated outputs are empty and schema-invalid, providing none of the report’s findings, quantitative results, controls, or caveats. They are therefore neither faithful nor practically useful for review."
+      "summary": "The JSON outputs largely track the report’s main quantitative results and stated caveats (e.g., dayside temperature, epsilon, low albedo bound, CO2-band structure, likelihood ratio, and uncertainties/degeneracies). However, at least one line reference is incorrect (C01 uses L52 instead of L53), which fails the explicit requirement for valid line mapping. Additionally, the claim strength labels \"strong\" are not well-calibrated to the report’s cautious conclusions and caveats, and the public write"
     }
   }
 }
