@@ -1,1 +1,19 @@
-{}
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "4 s.f. from 0.150 M NaOH and 23.40 cm3 / 25.00 cm3 volume data."
+  },
+  "method": "Use n = cV for NaOH: n(NaOH) = 0.150 × 0.02340 = 3.51×10^-3 mol. From H2SO4 + 2NaOH, one H2SO4 consumes 2 moles NaOH, so n(H2SO4) = 3.51×10^-3 / 2 = 1.755×10^-3 mol. Divide by acid volume 25.00 cm3 (0.02500 dm3): c(H2SO4) = 1.755×10^-3 / 0.02500 = 0.0702 mol dm-3.",
+  "key_equations": [
+    "n = cV",
+    "n(H2SO4)= n(NaOH)/2",
+    "c = n / V"
+  ],
+  "line_refs": ["L14", "L15", "L39", "L41"],
+  "checks": [
+    "H2SO4 moles are half the NaOH moles due to 1:2 stoichiometry.",
+    "Concentration is much smaller than NaOH concentration, as expected after dilution in 25.00 cm3 sample."
+  ]
+}

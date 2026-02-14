@@ -1,1 +1,23 @@
-{}
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Three significant figures using given mean bond energies."
+  },
+  "method": "Apply a Hess-style bond-energy estimate: ΔH = Σ(bonds broken) – Σ(bonds formed). For CH4 + 2O2 -> CO2 + 2H2O, bonds broken are 4 C–H bonds and 2 O=O bonds: 4×413 + 2×498 = 2648 kJ mol-1. Bonds formed are in CO2 and 2H2O: 2×C=O and 4×O−H, so 2×805 + 4×463 = 3462 kJ mol-1. Therefore ΔH = 2648 – 3462 = −814 kJ mol-1 (exothermic combustion).",
+  "key_equations": [
+    "ΔH = Σ(bonds broken) - Σ(bonds formed)",
+    "CH4 + 2O2 -> CO2 + 2H2O"
+  ],
+  "line_refs": [
+    "L44",
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "Combustion of methane should be strongly exothermic; negative ΔH sign is chemically reasonable.",
+    "If only one wrong bond count were used (e.g., 1 C=O), the sign or magnitude would become much less plausible."
+  ]
+}
