@@ -16,4 +16,7 @@ This file tracks follow-up work for `@ljoukov/llm`.
 
 ## Testing Ergonomics
 
-- Document recommended mocking patterns for unit tests (for example mocking `@google/genai` / `openai`) and bundler configuration when deps are pre-bundled.
+- Document recommended mocking patterns for unit tests:
+- Consumer/app tests: mock `@ljoukov/llm` exports (`streamText`, `generateText`, `generateJson`, `runToolLoop`, `runAgentLoop`).
+- Library/internal tests that must validate provider request shaping: mock provider SDK modules (`@google/genai`, `openai`) to capture/inspect outbound calls. Mocking `streamText()` would bypass the logic under test.
+- Add Vitest/Vite notes: when deps are pre-bundled, `vi.mock()` may not intercept unless the deps are inlined (for example `test.server.deps.inline`).
