@@ -1,0 +1,20 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Calculated using provided mean bond energies; integer value reflects given data precision."
+  },
+  "method": "Bond energies for bonds broken in the reactants (4 C–H and 2 O=O) were summed and subtracted from the total energy of bonds formed in the products (2 C=O and 4 O–H). The calculation follows ΔH = ΣE(broken) − ΣE(formed) using the supplied kJ·mol⁻¹ values.",
+  "key_equations": [
+    "ΔH = ΣE_{broken} − ΣE_{formed}",
+    "E_{broken} = 4·E_{C-H} + 2·E_{O=O}",
+    "E_{formed} = 2·E_{C=O} + 4·E_{O-H}"
+  ],
+  "line_refs": ["L44","L45","L46","L47"],
+  "checks": [
+    "Broken: 4×413 + 2×498 = 2648 kJ mol⁻¹",
+    "Formed: 2×805 + 4×463 = 3462 kJ mol⁻¹",
+    "ΔH = 2648 − 3462 = -814 kJ mol⁻¹"
+  ]
+}
