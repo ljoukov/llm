@@ -142,6 +142,7 @@ export { configureGemini, isGeminiModelId } from "./google/gemini.js";
 export type { GeminiModelId } from "./google/gemini.js";
 
 export {
+  FIREWORKS_DEFAULT_GPT_OSS_120B_MODEL,
   FIREWORKS_DEFAULT_GLM_MODEL,
   FIREWORKS_DEFAULT_KIMI_MODEL,
   FIREWORKS_DEFAULT_MINIMAX_MODEL,

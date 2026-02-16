@@ -1,0 +1,20 @@
+{
+  "problem_id": "P03",
+  "final_answer": {
+    "value": 0.0702,
+    "units": "mol dm-3",
+    "precision_note": "Result to 3 significant figures, based on supplied volumes and NaOH concentration."
+  },
+  "method": "The titration data give the volume of NaOH (23.40 cm³) and its concentration (0.150 mol dm⁻³). Converting the volume to dm³ (0.02340 dm³) yields moles of NaOH as c·V = 0.150 × 0.02340 = 0.00351 mol. The balanced equation shows a 2:1 stoichiometry between NaOH and H₂SO₄, so the moles of H₂SO₄ present are half the moles of NaOH: 0.00351 / 2 = 0.001755 mol. Dividing this by the volume of the acid sample (25.00 cm³ = 0.02500 dm³) gives the concentration of H₂SO₄: 0.001755 / 0.02500 = 0.0702 mol dm⁻³. All calculations retain the three‑significant‑figure precision of the input data.",
+  "key_equations": [
+    "n(NaOH) = c(NaOH) × V(NaOH)",
+    "n(H2SO4) = n(NaOH) / 2",
+    "c(H2SO4) = n(H2SO4) / V(H2SO4)"
+  ],
+  "line_refs": ["L39", "L40"],
+  "checks": [
+    "Verify moles NaOH = 0.150 mol dm-3 × 0.02340 dm3 = 0.00351 mol.",
+    "Confirm moles H2SO4 = 0.00351 / 2 = 0.001755 mol.",
+    "Check concentration = 0.001755 mol / 0.02500 dm3 = 0.0702 mol dm-3."
+  ]
+}

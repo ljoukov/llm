@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "schemas-public_summary",
+  "type": "object",
+  "properties": {
+    "headline": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 120
+    },
+    "plain_language_summary": {
+      "type": "string",
+      "minLength": 180,
+      "maxLength": 1200
+    },
+    "what_is_new": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 20
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "why_caution_is_needed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 20
+      },
+      "minItems": 3,
+      "maxItems": 5
+    },
+    "glossary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "term": {
+            "type": "string",
+            "minLength": 2
+          },
+          "definition": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 220
+          }
+        },
+        "required": [
+          "term",
+          "definition"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 4,
+      "maxItems": 8
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 20
+      },
+      "minItems": 3,
+      "maxItems": 6
+    }
+  },
+  "required": [
+    "headline",
+    "plain_language_summary",
+    "what_is_new",
+    "why_caution_is_needed",
+    "glossary",
+    "open_questions"
+  ],
+  "additionalProperties": false
+}
