@@ -1,0 +1,23 @@
+{
+  "problem_id": "P05",
+  "final_answer": {
+    "value": 0.889,
+    "units": "g",
+    "precision_note": "Reported to 3 significant figures, matching the precision of 1.50 A and 30.0 min."
+  },
+  "method": "First, convert the time to seconds: 30.0 minutes = 1800 seconds. Calculate the total charge (Q) passed during electrolysis using Q = I * t: 1.50 A * 1800 s = 2700 C. Next, determine the moles of electrons by dividing the charge by the Faraday constant (F = 96,500 C mol-1): n(e-) = 2700 / 96500 = 0.027979 mol. According to the half-equation at the cathode (Cu2+ + 2e- -> Cu), 2 moles of electrons are required to deposit 1 mole of copper. Therefore, the moles of copper deposited is 0.027979 / 2 = 0.01399 mol. Finally, multiply the moles of copper by its atomic mass (63.55) to find the mass: 0.01399 * 63.55 = 0.8890 g. Round to 3 significant figures to get 0.889 g.",
+  "key_equations": [
+    "Q = I * t",
+    "n(e-) = Q / F",
+    "n = m / Mr"
+  ],
+  "line_refs": [
+    "L19",
+    "L24",
+    "L51",
+    "L52"
+  ],
+  "checks": [
+    "2700 C / 96500 = 0.02798 moles of electrons. Half of this is 0.01399 moles of Cu. 0.01399 * 63.55 = 0.889 g."
+  ]
+}

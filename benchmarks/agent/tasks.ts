@@ -269,5 +269,6 @@ export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
   "gemini-2.5-pro",
   "gemini-flash-latest",
   "gemini-3-pro-preview",
+  "gemini-3.1-pro-preview",
   "gemini-3-flash-preview",
 ];

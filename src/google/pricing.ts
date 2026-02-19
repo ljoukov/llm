@@ -58,7 +58,7 @@ export function getGeminiProPricing(modelId: string): GeminiProPricing | undefin
   if (modelId.includes("gemini-2.5-pro")) {
     return GEMINI_2_5_PRO_PRICING;
   }
-  if (modelId.includes("gemini-3-pro")) {
+  if (modelId.includes("gemini-3-pro") || modelId.includes("gemini-3.1-pro")) {
     return GEMINI_3_PRO_PREVIEW_PRICING;
   }
   return undefined;
