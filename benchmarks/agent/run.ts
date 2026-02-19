@@ -1910,6 +1910,10 @@ function sortCaseResultsForReporting(params: {
   });
 }
 
+function hasGraderInfrastructureError(result: CaseResult): boolean {
+  return Boolean(result.grader.error) || result.grader.value === undefined;
+}
+
 async function mergeWorkspaceArtifacts(params: {
   tracesLatestRoot: string;
   runRoot: string;
@@ -2064,6 +2068,7 @@ async function main(): Promise<void> {
   );
 
   const caseResults = modelCaseGroups.flat();
+  const graderInfrastructureFailures = caseResults.filter(hasGraderInfrastructureError);
   const generatedAt = new Date().toISOString();
   const taskSummaries = tasks.map(toBenchmarkTaskSummary);
   const orderedRunCaseResults = sortCaseResultsForReporting({
@@ -2268,6 +2273,18 @@ async function main(): Promise<void> {
   }
   if (values["prune-traces"]) {
     console.log("Pruned benchmark traces to keep only traces/latest and traces/README.md");
+  }
+
+  if (graderInfrastructureFailures.length > 0) {
+    const details = graderInfrastructureFailures
+      .map(
+        (result) =>
+          `${result.model}/${result.taskId}/run ${result.runIndex}: ${result.grader.error ?? "missing grader JSON verdict"}`,
+      )
+      .join(" | ");
+    throw new Error(
+      `Grader infrastructure error: failed to produce valid JSON for ${graderInfrastructureFailures.length} case(s). ${details}`,
+    );
   }
 }
 
