@@ -3,18 +3,22 @@
   "final_answer": {
     "value": 0.0702,
     "units": "mol dm-3",
-    "precision_note": "Output is given to 3 significant figures."
+    "precision_note": "Given to 3 significant figures to match the lowest precision input value, the NaOH concentration (0.150 mol dm-3)."
   },
-  "method": "First, determine the moles of sodium hydroxide (NaOH) used in the titration by applying the formula n = c * V. Using the given concentration (0.150 mol dm-3) and volume converted to dm3 (23.40 / 1000 = 0.0234 dm3), we get 0.150 * 0.0234 = 0.00351 moles of NaOH. According to the balanced equation H2SO4 + 2NaOH -> Na2SO4 + 2H2O, the molar ratio of H2SO4 to NaOH is 1:2. Thus, the moles of sulfuric acid (H2SO4) is half that of NaOH, which equals 0.00351 / 2 = 0.001755 moles. Lastly, find the concentration of H2SO4 by dividing its moles by its volume in dm3 (25.00 / 1000 = 0.02500 dm3). The result is c = 0.001755 / 0.02500 = 0.0702 mol dm-3.",
+  "method": "To find the concentration of H2SO4, we first calculate the moles of NaOH used in the titration. Using the formula c = n / V and converting the volume to dm3, the moles of NaOH is 0.150 mol dm-3 * 0.02340 dm3 = 0.00351 mol. The balanced chemical equation shows that 1 mole of H2SO4 reacts with 2 moles of NaOH, so the moles of H2SO4 is half that of NaOH, which is 0.001755 mol. Finally, the concentration of H2SO4 is calculated by dividing its moles by its volume in dm3 (0.02500 dm3), resulting in 0.0702 mol dm-3.",
   "key_equations": [
+    "n = c * V",
     "c = n / V"
   ],
   "line_refs": [
     "L15",
     "L39",
-    "L40"
+    "L40",
+    "L41"
   ],
   "checks": [
-    "Mole ratio of NaOH to H2SO4 is 2:1 from the balanced equation."
+    "Volumes were properly converted from cm3 to dm3 before calculating moles.",
+    "The 1:2 molar ratio from the balanced equation was correctly applied to find the moles of acid.",
+    "Final concentration was rounded to 3 significant figures, matching the precision of the NaOH concentration."
   ]
 }

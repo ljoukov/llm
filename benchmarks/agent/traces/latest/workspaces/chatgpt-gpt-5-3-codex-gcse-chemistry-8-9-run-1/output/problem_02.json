@@ -2,14 +2,14 @@
   "problem_id": "P02",
   "final_answer": {
     "value": 1.85,
-    "units": "g",
-    "precision_note": "Mass inputs are 3 s.f., so report CO2 mass to 3 s.f."
+    "units": "g CO2",
+    "precision_note": "Rounded to 3 significant figures to match given mass and purity data."
   },
-  "method": "Mass of pure calcium carbonate in the limestone is 84.0% of 5.00 g: m(CaCO3) = 5.00×0.840 = 4.20 g. Use n = m/Mr. From the given atomic/formula data, Mr(CaCO3) = 40.1 + 12.0 + 3×16.0 = 100.1, so n(CaCO3) = 4.20/100.1 = 0.04196 mol. The reaction CaCO3 + 2HCl → CaCl2 + CO2 + H2O shows a 1:1 mol ratio CaCO3:CO2, so n(CO2) = 0.04196 mol. Mr(CO2) = 12.0 + 2×16.0 = 44.0, so mass of CO2 is m = nMr = 0.04196×44.0 = 1.85 g (3 s.f.).",
+  "method": "First find pure CaCO3 mass: 5.00 g x 0.840 = 4.20 g. Convert to moles using n = m/Mr with Mr(CaCO3) = 100.1, so n(CaCO3) = 4.20/100.1 = 0.04196 mol. From CaCO3 + 2HCl -> CaCl2 + CO2 + H2O, the mole ratio CaCO3:CO2 is 1:1, so n(CO2) = 0.04196 mol. Then m(CO2) = n x Mr(CO2), and from atomic data Mr(CO2) = 12.0 + 2x16.0 = 44.0. Therefore m(CO2) = 0.04196 x 44.0 = 1.846 g, giving 1.85 g.",
   "key_equations": [
     "n = m / Mr",
-    "CaCO3 : CO2 = 1 : 1",
-    "m = nMr"
+    "CaCO3 + 2HCl -> CaCl2 + CO2 + H2O",
+    "m = n x Mr"
   ],
   "line_refs": [
     "L14",
@@ -18,7 +18,7 @@
     "L34"
   ],
   "checks": [
-    "Only 4.20 g of CaCO3 can react; getting ~1.85 g CO2 is plausible because CO2 has lower Mr than CaCO3.",
-    "Acid is in excess, so CaCO3 amount is the limiting factor as assumed."
+    "Acid is stated to be in excess, so CaCO3 limits yield.",
+    "CO2 mass is below pure CaCO3 mass, chemically reasonable."
   ]
 }

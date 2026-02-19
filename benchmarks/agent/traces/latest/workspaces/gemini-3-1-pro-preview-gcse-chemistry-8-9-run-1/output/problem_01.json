@@ -1,19 +1,22 @@
 {
   "problem_id": "P01",
   "final_answer": {
-    "value": 0.0200,
+    "value": 0.02,
     "units": "mol dm-3",
-    "precision_note": "Calculated to 3 significant figures based on the provided inputs."
+    "precision_note": "Given to 3 significant figures matching the precision of 0.200 mol dm-3 and 25.0 cm3."
   },
-  "method": "Using the dilution formula c1V1 = c2V2. The initial concentration c1 is 0.200 mol dm-3 and the initial volume V1 is 25.0 cm3. The final volume V2 is 250.0 cm3. Substituting the values into the equation gives 0.200 * 25.0 = c2 * 250.0. Solving for c2 yields c2 = (0.200 * 25.0) / 250.0 = 5.00 / 250.0 = 0.0200 mol dm-3.",
+  "method": "To calculate the new concentration of HCl, we use the dilution equation c1V1 = c2V2. The initial concentration (c1) is 0.200 mol dm-3 and the initial volume (V1) is 25.0 cm3. The final volume (V2) after dilution with water is 250.0 cm3. Rearranging the formula to solve for the final concentration gives c2 = (c1 * V1) / V2. Substituting the provided values: c2 = (0.200 mol dm-3 * 25.0 cm3) / 250.0 cm3. The volumes can be kept in cm3 as their units cancel out. The calculation yields c2 = 0.0200 mol dm-3.",
   "key_equations": [
     "c1V1 = c2V2"
   ],
   "line_refs": [
     "L16",
-    "L29"
+    "L29",
+    "L30"
   ],
   "checks": [
-    "Volume increased by a factor of 10, so concentration must decrease by a factor of 10."
+    "Volumes were kept in cm3 as the ratio V1/V2 is dimensionless.",
+    "The answer is given to 3 significant figures to match the input precision of 0.200.",
+    "The concentration correctly decreased by a factor of 10 since the volume increased by a factor of 10."
   ]
 }
