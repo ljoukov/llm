@@ -8,12 +8,8 @@ import { z } from "zod";
 import { loadLocalEnv } from "../utils/env.js";
 
 // Optional: fetch access tokens from a centralized token provider over HTTPS (for example a Cloudflare Worker).
-// New name: CHATGPT_AUTH_TOKEN_PROVIDER_URL/STORE
-// Back-compat: CHATGPT_AUTH_SERVER_URL/STORE
 const CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_URL";
 const CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_STORE";
-const CHATGPT_AUTH_SERVER_URL_ENV = "CHATGPT_AUTH_SERVER_URL";
-const CHATGPT_AUTH_SERVER_STORE_ENV = "CHATGPT_AUTH_SERVER_STORE";
 
 // Used both for local storage and as the shared secret for `CHATGPT_AUTH_TOKEN_PROVIDER_URL`.
 const CHATGPT_AUTH_API_KEY_ENV = "CHATGPT_AUTH_API_KEY";
@@ -194,8 +190,7 @@ export async function refreshChatGptOauthToken(
 export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
   loadLocalEnv();
 
-  const tokenProviderUrl =
-    process.env[CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV] ?? process.env[CHATGPT_AUTH_SERVER_URL_ENV];
+  const tokenProviderUrl = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV];
   const tokenProviderKey =
     process.env[CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV] ?? process.env[CHATGPT_AUTH_API_KEY_ENV];
   if (
@@ -212,9 +207,7 @@ export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
     }
     refreshPromise = (async () => {
       try {
-        const store =
-          process.env[CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV] ??
-          process.env[CHATGPT_AUTH_SERVER_STORE_ENV];
+        const store = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV];
         const profile = await fetchChatGptAuthProfileFromTokenProvider({
           baseUrl: tokenProviderUrl,
           apiKey: tokenProviderKey,
