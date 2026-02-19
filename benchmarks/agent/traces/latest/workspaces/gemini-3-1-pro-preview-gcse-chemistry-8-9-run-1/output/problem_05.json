@@ -3,22 +3,23 @@
   "final_answer": {
     "value": 0.889,
     "units": "g",
-    "precision_note": "Final result is rounded to 3 significant figures."
+    "precision_note": "Given to 3 significant figures, matching the precision of the current (1.50 A) and time (30.0 min)."
   },
-  "method": "First, find the total charge (Q) passed through the cell by multiplying the current (I = 1.50 A) by the time in seconds (t = 30.0 * 60 = 1800 s), which gives Q = 1.50 * 1800 = 2700 C. Next, calculate the moles of electrons transferred by dividing the total charge by the Faraday constant (F = 96,500 C mol-1): n(e-) = 2700 / 96500 = 0.027979 moles of electrons. According to the cathodic half-equation Cu2+ + 2e- -> Cu, 2 moles of electrons are needed to deposit 1 mole of copper. Therefore, the moles of copper produced is 0.027979 / 2 = 0.013989 moles. Finally, convert this to mass using the molar mass of copper (63.55 g mol-1): m = 0.013989 * 63.55 = 0.889 g.",
+  "method": "To calculate the mass of copper deposited, the total electric charge (Q) is first determined using the formula Q = I * t. The time is converted to seconds (30.0 min * 60 s/min = 1800 s), and multiplied by the current (1.50 A) to give 2700 C. The moles of electrons are then calculated using n(e-) = Q / F, yielding 2700 / 96500 = 0.02798 mol. The half-equation Cu2+ + 2e- -> Cu indicates that 2 moles of electrons are required to deposit 1 mole of copper, meaning 0.01399 moles of Cu are formed. Finally, the mass is found by multiplying the moles by the atomic mass of copper (63.55), resulting in 0.889 g.",
   "key_equations": [
     "Q = I * t",
     "n(e-) = Q / F",
-    "n = m / Mr"
+    "m = n * Ar"
   ],
   "line_refs": [
-    "L19",
-    "L24",
+    "L17",
+    "L18",
     "L51",
     "L52"
   ],
   "checks": [
-    "Time must be converted from minutes to seconds before multiplying by current.",
-    "The stoichiometry requires dividing the moles of electrons by 2 for Cu2+."
+    "Time was correctly converted from minutes to seconds before calculating the total charge.",
+    "The 2:1 molar ratio of electrons to copper atoms derived from the half-equation was applied correctly.",
+    "Final mass was rounded to 3 significant figures to align with the precision of the input current and time."
   ]
 }

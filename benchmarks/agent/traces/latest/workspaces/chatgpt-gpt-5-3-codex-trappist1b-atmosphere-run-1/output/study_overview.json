@@ -6,36 +6,36 @@
     "domain": "exoplanet-atmospheres",
     "study_type": "observational-astronomy"
   },
-  "core_question": "Does TRAPPIST-1 b retain an atmosphere, as inferred from JWST MIRI thermal phase-curve spectroscopy and spectral structure near the 15 um CO2 band?",
+  "core_question": "Does TRAPPIST-1 b retain an atmosphere, and can JWST phase-curve plus spectral data distinguish atmosphere-bearing from bare-rock scenarios?",
   "datasets_or_cohorts": [
     {
-      "id": "jwst-miri-phasecurve",
-      "label": "JWST MIRI orbital phase-curve spectroscopy",
-      "sample_size_or_observations": "One orbital phase curve with phase-resolved thermal spectra",
-      "description": "Low-resolution JWST MIRI spectroscopy over an orbital phase curve, measuring thermal phase variation and spectral structure around the 15 um CO2 band for TRAPPIST-1 b."
+      "id": "observed-system",
+      "label": "Observed TRAPPIST-1 b phase-curve dataset",
+      "sample_size_or_observations": "One rocky exoplanet observed with phase-resolved thermal spectra",
+      "description": "JWST MIRI low-resolution spectroscopy across orbital phase was used to measure thermal phase variation and spectral structure near 15 um."
     },
     {
-      "id": "bare-rock-null",
-      "label": "No-atmosphere (bare-rock) null scenario",
-      "sample_size_or_observations": "One modeled scenario compared against the observed phase curve and spectrum",
-      "description": "An atmosphere-free, bare-rock model with minimal heat redistribution used as a null scenario in retrieval comparisons against phase amplitude and spectral band behavior."
+      "id": "null-no-atmosphere",
+      "label": "Bare-rock null scenario",
+      "sample_size_or_observations": "Model comparator scenario",
+      "description": "A no-atmosphere, minimal-redistribution case representing the bare-rock limit was used as a null model against atmospheric retrievals."
     },
     {
-      "id": "co2-rich-retrieval",
-      "label": "CO2-rich atmosphere retrieval family",
-      "sample_size_or_observations": "One atmosphere-bearing retrieval family",
-      "description": "Atmosphere model family emphasizing greenhouse-gas absorption and the 15 um CO2 band, used to interpret spectral structure and joint constraints from phase curve plus spectrum."
+      "id": "co2-rich-atmosphere",
+      "label": "CO2-rich atmosphere scenario",
+      "sample_size_or_observations": "Model comparator scenario",
+      "description": "Atmosphere-bearing retrieval models with significant greenhouse absorption were evaluated, including constraints from the 15 um CO2 region."
     },
     {
-      "id": "o2-rich-retrieval",
-      "label": "O2-rich atmosphere retrieval family",
-      "sample_size_or_observations": "One oxidized-composition retrieval family",
-      "description": "Atmosphere model family with oxidized composition and weaker CO2 signature constraints, evaluated as an alternative that is not fully ruled out by the current dataset."
+      "id": "o2-rich-atmosphere",
+      "label": "O2-rich atmosphere scenario",
+      "sample_size_or_observations": "Model comparator scenario",
+      "description": "An oxidized-composition atmospheric branch with weaker CO2 signature constraints was considered and not fully excluded by the current data."
     }
   ],
   "major_limitations": [
-    "Single-planet study; does not establish prevalence across M-dwarf rocky planets.",
-    "Retrieval assumptions (circulation, opacity priors, cloud treatment) affect posteriors.",
+    "This is a single-planet study and does not establish prevalence across rocky M-dwarf planets.",
+    "Retrieval assumptions such as circulation, opacity priors, and cloud treatment affect posterior estimates.",
     "Stellar variability and instrument systematics can bias weak spectral features.",
     "Night-side constraints are weaker than day-side constraints in the current dataset."
   ]
