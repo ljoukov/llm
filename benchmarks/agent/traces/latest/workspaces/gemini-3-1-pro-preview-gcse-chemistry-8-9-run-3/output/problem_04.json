@@ -1,0 +1,20 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Exact integer value derived from summing the provided integer bond energies."
+  },
+  "method": "Calculate the total energy required to break the bonds in the reactants (CH4 and 2O2). There are 4 C-H bonds (4 * 413 = 1652 kJ mol-1) and 2 O=O bonds (2 * 498 = 996 kJ mol-1), totaling 1652 + 996 = 2648 kJ mol-1. Next, calculate the total energy released when forming the bonds in the products (CO2 and 2H2O). There are 2 C=O bonds (2 * 805 = 1610 kJ mol-1) and 4 O-H bonds (4 * 463 = 1852 kJ mol-1), totaling 1610 + 1852 = 3462 kJ mol-1. Use the provided formula: deltaH = sum(bonds broken) - sum(bonds formed) = 2648 - 3462 = -814 kJ mol-1.",
+  "key_equations": [
+    "deltaH = sum(bonds broken) - sum(bonds formed)"
+  ],
+  "line_refs": [
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "Reactants energy: 1652 + 996 = 2648. Products energy: 1610 + 1852 = 3462. 2648 - 3462 = -814. Correct."
+  ]
+}

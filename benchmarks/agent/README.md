@@ -14,7 +14,7 @@ It runs the agent with (default model set):
 - ChatGPT Codex (Spark): `chatgpt-gpt-5.3-codex-spark`
 - OpenAI Responses: `gpt-5.2`
 - Fireworks: `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`
-- Gemini Pro: `gemini-2.5-pro`, `gemini-3-pro-preview`
+- Gemini Pro: `gemini-2.5-pro`, `gemini-3-pro-preview`, `gemini-3.1-pro-preview`
 - Gemini Flash: `gemini-flash-latest`, `gemini-3-flash-preview`
 
 The tasks are adapted from real science papers and stored under `benchmarks/agent/input/`.
@@ -50,7 +50,7 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-5.3-codex,chatgpt-gpt-5.3-codex-spark,gpt-5.2,kimi-k2.5,glm-5,minimax-m2.1,gpt-oss-120b,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3-flash-preview \
+  --models chatgpt-gpt-5.3-codex,chatgpt-gpt-5.3-codex-spark,gpt-5.2,kimi-k2.5,glm-5,minimax-m2.1,gpt-oss-120b,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3.1-pro-preview,gemini-3-flash-preview \
   --tasks all \
   --runs 3 \
   --reasoning medium \

@@ -2144,6 +2144,7 @@ function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[
 function resolveGeminiThinkingConfig(modelId: string): GenerateContentConfig["thinkingConfig"] {
   switch (modelId) {
     case "gemini-3-pro-preview":
+    case "gemini-3.1-pro-preview":
       return { includeThoughts: true } as const;
     case "gemini-3-flash-preview":
       return { includeThoughts: true, thinkingBudget: 16_384 } as const;
