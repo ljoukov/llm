@@ -1,0 +1,21 @@
+{
+  "problem_id": "P04",
+  "final_answer": {
+    "value": -814,
+    "units": "kJ mol-1",
+    "precision_note": "Calculated as an exact integer since the input bond energies are provided as exact integers."
+  },
+  "method": "To estimate the enthalpy change (deltaH) for the combustion of methane, use the formula: deltaH = sum(bonds broken) - sum(bonds formed). First, calculate the energy required to break the bonds in the reactants (CH4 and 2O2). This involves breaking 4 C-H bonds and 2 O=O bonds, which equals (4 * 413) + (2 * 498) = 1652 + 996 = 2648 kJ mol-1. Next, calculate the energy released when forming the bonds in the products (CO2 and 2H2O). This involves forming 2 C=O bonds and 4 O-H bonds, which equates to (2 * 805) + (4 * 463) = 1610 + 1852 = 3462 kJ mol-1. Finally, subtract the energy of the bonds formed from the bonds broken: 2648 - 3462 = -814 kJ mol-1.",
+  "key_equations": [
+    "deltaH = sum(bonds broken) - sum(bonds formed)"
+  ],
+  "line_refs": [
+    "L45",
+    "L46",
+    "L47"
+  ],
+  "checks": [
+    "Energy of bonds broken is endothermic and positive.",
+    "Energy of bonds formed is exothermic, thus subtracted from broken bonds."
+  ]
+}

@@ -19,6 +19,7 @@ describe("filesystemTools profiles", () => {
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex")).toBe("codex");
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex-spark")).toBe("codex");
     expect(resolveFilesystemToolProfile("gemini-2.5-pro")).toBe("gemini");
+    expect(resolveFilesystemToolProfile("gemini-3.1-pro-preview")).toBe("gemini");
     expect(resolveFilesystemToolProfile("gpt-5.2")).toBe("model-agnostic");
   });
 

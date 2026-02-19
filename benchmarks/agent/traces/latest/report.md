@@ -1,23 +1,23 @@
 # Filesystem Agent Benchmark Report
 
-- Run id: agent-fs-2026-02-16T12-52-56-157Z
-- Generated at: 2026-02-16T13:20:24.235Z
-- Models: chatgpt-gpt-5.3-codex-spark, gpt-5.2, kimi-k2.5, glm-5, minimax-m2.1, gemini-2.5-pro, gemini-flash-latest, gemini-3-pro-preview, gemini-3-flash-preview, chatgpt-gpt-5.3-codex, gpt-oss-120b
+- Run id: agent-fs-2026-02-19T17-19-54-650Z
+- Generated at: 2026-02-19T17:35:26.602Z
+- Models: chatgpt-gpt-5.3-codex-spark, gpt-5.2, kimi-k2.5, glm-5, minimax-m2.1, gemini-2.5-pro, gemini-flash-latest, gemini-3-pro-preview, gemini-3-flash-preview, chatgpt-gpt-5.3-codex, gpt-oss-120b, gemini-3.1-pro-preview
 - Grader model: gpt-5.2
 - Reasoning effort: medium
 - Tasks: tumor-vaccine-ici, trappist1b-atmosphere, gcse-chemistry-8-9
 - Runs per model/task: 3
-- Cases: 99
-- Overall success: 29/99
-- Schema pass: 55/99
-- Tool trace pass: 99/99
-- Grader pass: 30/99
-- Observed total latency: 13255.62s
-- Observed avg latency/case: 133.90s
-- Observed total cost: $8.907078
-- Observed tokens (in/cached/out): 7,398,374/3,963,678/506,952
-- Observed thinking tokens: 425,520
-- Observed total tokens: 8,330,846
+- Cases: 108
+- Overall success: 29/108
+- Schema pass: 63/108
+- Tool trace pass: 108/108
+- Grader pass: 30/108
+- Observed total latency: 14187.40s
+- Observed avg latency/case: 131.36s
+- Observed total cost: $10.473290
+- Observed tokens (in/cached/out): 7,588,476/3,985,518/532,041
+- Observed thinking tokens: 502,541
+- Observed total tokens: 8,623,058
 
 ## Source Papers
 
@@ -31,9 +31,9 @@
 - Agent response tokens per call: 900
 - Grader prompt tokens per call: 5200
 - Grader response tokens per call: 350
-- Estimated agent cost total: $0.766260
-- Estimated grader cost total: $1.386000
-- Estimated grand total: $2.152260
+- Estimated agent cost total: $0.939060
+- Estimated grader cost total: $1.512000
+- Estimated grand total: $2.451060
 
 ## Per-Model Summary
 
@@ -50,6 +50,7 @@
 | gemini-3-flash-preview | 4/9 | 9/9 | 9/9 | 4/9 | 116.65 | 1049.85 | 232 | 0.159815 | 586,504 | 233,324 | 28,528 |
 | chatgpt-gpt-5.3-codex | 7/9 | 9/9 | 9/9 | 8/9 | 321.80 | 2896.18 | 403 | 1.947805 | 772,956 | 543,872 | 41,147 |
 | gpt-oss-120b | 0/9 | 3/9 | 9/9 | 0/9 | 183.11 | 1647.95 | 258 | 0.163368 | 695,643 | 131,585 | 89,871 |
+| gemini-3.1-pro-preview | 0/9 | 8/9 | 9/9 | 0/9 | 103.53 | 931.78 | 212 | 1.566212 | 190,102 | 21,840 | 25,089 |
 
 ## Per-Task Across Runs (Best + Average)
 
@@ -88,6 +89,9 @@
 | gpt-oss-120b | tumor-vaccine-ici | 3 | FAIL (run 1) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 165.07 | 167.91 | 0.016109 | 0.015535 | 31.00 | 26 |
 | gpt-oss-120b | trappist1b-atmosphere | 3 | FAIL (run 3) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 148.71 | 144.73 | 0.019160 | 0.019747 | 23.67 | 22 |
 | gpt-oss-120b | gcse-chemistry-8-9 | 3 | FAIL (run 1) | 0/3 (0.0%) | 1/3 (33.3%) | 3/3 (100.0%) | 0/3 (0.0%) | 235.53 | 223.28 | 0.019188 | 0.013393 | 31.33 | 32 |
+| gemini-3.1-pro-preview | tumor-vaccine-ici | 3 | FAIL (run 3) | 0/3 (0.0%) | 2/3 (66.7%) | 3/3 (100.0%) | 0/3 (0.0%) | 98.78 | 92.81 | 0.154406 | 0.170542 | 20.67 | 22 |
+| gemini-3.1-pro-preview | trappist1b-atmosphere | 3 | FAIL (run 2) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 92.45 | 87.68 | 0.164356 | 0.155418 | 21.33 | 20 |
+| gemini-3.1-pro-preview | gcse-chemistry-8-9 | 3 | FAIL (run 2) | 0/3 (0.0%) | 3/3 (100.0%) | 3/3 (100.0%) | 0/3 (0.0%) | 119.37 | 79.17 | 0.203308 | 0.147872 | 28.67 | 30 |
 
 ## Case Matrix
 
@@ -192,6 +196,15 @@
 | gpt-oss-120b | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 223.28 | 32 | 0.013393 | 93,456 | 20,062 | 12,908 |
 | gpt-oss-120b | gcse-chemistry-8-9 | 2 | medium | FAIL | fail | pass | fail | 258.60 | 31 | 0.018287 | 81,176 | 16,351 | 13,542 |
 | gpt-oss-120b | gcse-chemistry-8-9 | 3 | medium | FAIL | fail | pass | fail | 224.72 | 31 | 0.025882 | 83,941 | 16,787 | 11,330 |
+| gemini-3.1-pro-preview | tumor-vaccine-ici | 1 | medium | FAIL | pass | pass | fail | 138.34 | 20 | 0.162052 | 14,834 | 0 | 2,897 |
+| gemini-3.1-pro-preview | tumor-vaccine-ici | 2 | medium | FAIL | fail | pass | fail | 65.19 | 20 | 0.130624 | 34,719 | 5,341 | 2,566 |
+| gemini-3.1-pro-preview | tumor-vaccine-ici | 3 | medium | FAIL | pass | pass | fail | 92.81 | 22 | 0.170542 | 16,679 | 0 | 2,722 |
+| gemini-3.1-pro-preview | trappist1b-atmosphere | 1 | medium | FAIL | pass | pass | fail | 101.21 | 22 | 0.179161 | 16,498 | 1,764 | 2,771 |
+| gemini-3.1-pro-preview | trappist1b-atmosphere | 2 | medium | FAIL | pass | pass | fail | 87.68 | 20 | 0.155418 | 35,002 | 12,841 | 2,905 |
+| gemini-3.1-pro-preview | trappist1b-atmosphere | 3 | medium | FAIL | pass | pass | fail | 88.46 | 22 | 0.158490 | 16,527 | 0 | 2,735 |
+| gemini-3.1-pro-preview | gcse-chemistry-8-9 | 1 | medium | FAIL | pass | pass | fail | 111.39 | 28 | 0.188337 | 19,157 | 1,894 | 2,768 |
+| gemini-3.1-pro-preview | gcse-chemistry-8-9 | 2 | medium | FAIL | pass | pass | fail | 79.17 | 30 | 0.147872 | 19,288 | 0 | 2,816 |
+| gemini-3.1-pro-preview | gcse-chemistry-8-9 | 3 | medium | FAIL | pass | pass | fail | 167.56 | 28 | 0.273716 | 17,398 | 0 | 2,909 |
 
 ## Failures
 
@@ -265,3 +278,12 @@
 - gpt-oss-120b / gcse-chemistry-8-9 / run 1: grader_verdict=fail
 - gpt-oss-120b / gcse-chemistry-8-9 / run 2: schema_or_grounding_failed | grader_verdict=fail
 - gpt-oss-120b / gcse-chemistry-8-9 / run 3: schema_or_grounding_failed | grader_verdict=fail
+- gemini-3.1-pro-preview / tumor-vaccine-ici / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / tumor-vaccine-ici / run 2: schema_or_grounding_failed | grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / tumor-vaccine-ici / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / trappist1b-atmosphere / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / trappist1b-atmosphere / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / trappist1b-atmosphere / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / gcse-chemistry-8-9 / run 1: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / gcse-chemistry-8-9 / run 2: grader_error=LLM JSON call failed after 2 attempt(s)
+- gemini-3.1-pro-preview / gcse-chemistry-8-9 / run 3: grader_error=LLM JSON call failed after 2 attempt(s)
