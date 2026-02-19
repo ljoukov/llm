@@ -7,8 +7,8 @@ import http from "node:http";
 import readline from "node:readline";
 import { URL } from "node:url";
 
-import { exchangeChatGptOauthCode } from "../../src/openai/chatgpt-auth.ts";
-import { loadLocalEnv } from "../../src/utils/env.ts";
+import { exchangeChatGptOauthCode } from "../../src/openai/chatgpt-auth.js";
+import { loadLocalEnv } from "../../src/utils/env.js";
 
 const CHATGPT_OAUTH_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
 const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -293,9 +293,7 @@ async function waitForOauthCode(options: {
   const listenPort =
     redirect.port.length > 0
       ? Number.parseInt(redirect.port, 10)
-      : redirect.protocol === "https:"
-        ? 443
-        : 80;
+      : 80;
   if (!Number.isFinite(listenPort) || listenPort <= 0) {
     throw new Error(`Invalid redirect URI port: ${redirect.port || "<none>"}`);
   }
@@ -599,7 +597,7 @@ async function runPostSeedSmokeCheck(options: {
   process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY = options.apiKey;
   process.env.CHATGPT_AUTH_API_KEY = options.apiKey;
 
-  const { generateText } = await import("../../src/index.ts");
+  const { generateText } = await import("../../src/index.js");
   const result = await generateText({
     model: options.model,
     input: options.input,
