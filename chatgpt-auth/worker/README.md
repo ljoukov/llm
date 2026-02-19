@@ -5,6 +5,12 @@ Centralized storage + refresh for ChatGPT OAuth tokens, exposed via a small bear
 This is intended to back the `chatgpt-*` provider in this repo so multiple deployments (local, Vercel, GCP, etc.)
 share the same token store and only the Worker performs refresh.
 
+Companion seed CLI lives in `chatgpt-auth/seed/` and can seed this worker by running:
+
+```bash
+npm run chatgpt-auth:seed -- --worker-url https://chatgpt-auth.<your-domain>
+```
+
 ## Endpoints
 
 - `GET /v1/health`
