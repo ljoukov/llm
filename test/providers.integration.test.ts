@@ -11,9 +11,7 @@ loadLocalEnv();
 
 const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
 const hasGemini = Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
-const tokenProviderUrl =
-  process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim() ||
-  process.env.CHATGPT_AUTH_SERVER_URL?.trim();
+const tokenProviderUrl = process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim();
 const tokenProviderKey =
   process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY?.trim() ||
   process.env.CHATGPT_AUTH_API_KEY?.trim();

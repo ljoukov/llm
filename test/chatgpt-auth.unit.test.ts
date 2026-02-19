@@ -35,7 +35,6 @@ describe("chatgpt-auth", () => {
     vi.resetModules();
 
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "";
-    process.env.CHATGPT_AUTH_SERVER_URL = "";
     process.env.CHATGPT_AUTH_API_KEY = "";
 
     const expSeconds = Math.floor(Date.now() / 1000) + 3600;
@@ -60,9 +59,7 @@ describe("chatgpt-auth", () => {
     vi.resetModules();
 
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "";
-    process.env.CHATGPT_AUTH_SERVER_URL = "";
     process.env.CHATGPT_AUTH_API_KEY = "";
-    process.env.CHATGPT_AUTH_SERVER_STORE = "";
 
     const expiredExpSeconds = Math.floor(Date.now() / 1000) - 60;
     const { dir, authPath } = makeTempCodexHome();
@@ -119,7 +116,6 @@ describe("chatgpt-auth", () => {
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "https://example.invalid";
     process.env.CHATGPT_AUTH_API_KEY = "k_test";
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_STORE = "kv";
-    process.env.CHATGPT_AUTH_SERVER_URL = "";
 
     const { dir, authPath } = makeTempCodexHome();
     process.env.CODEX_HOME = dir;
