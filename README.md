@@ -87,7 +87,16 @@ refresh-token rotation and serves short-lived access tokens.
 - `CHATGPT_AUTH_API_KEY` (shared secret; sent as `Authorization: Bearer ...` and `x-chatgpt-auth: ...`)
 - `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (`kv` or `d1`, defaults to `kv`)
 
-This repo includes a Cloudflare Workers token provider implementation in `workers/chatgpt-auth/`.
+This repo includes a Cloudflare Workers token provider implementation in `chatgpt-auth/worker/`.
+
+To seed the worker with a fresh OAuth token set via browser login:
+
+```bash
+npm run chatgpt-auth:seed -- --worker-url https://chatgpt-auth.<your-domain>
+```
+
+The CLI opens `auth.openai.com`, captures the localhost OAuth callback, exchanges the code, calls `POST /v1/seed`,
+then resolves a smoke model from `GET /backend-api/codex/models` and runs a post-seed inference check (disable with `--skip-smoke-check`).
 
 If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` + `CHATGPT_AUTH_API_KEY` are set, `chatgpt-*` models will fetch tokens from the
 token provider and will not read the local Codex auth store.

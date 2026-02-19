@@ -23,14 +23,12 @@ const OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const ACCESS_TOKEN_EXPIRY_SAFETY_MS = 30_000;
 const CRON_REFRESH_WITHIN_MS = 60 * 60 * 1000;
 
-const LOCK_TTL_MS = 2 * 60 * 1000;
+const LOCK_TTL_MS = 5 * 60 * 1000;
 
-let memoryCache:
-  | {
-      state: TokenState;
-      cachedAt: number;
-    }
-  | null = null;
+let memoryCache: {
+  state: TokenState;
+  cachedAt: number;
+} | null = null;
 
 function json(
   value: unknown,
@@ -85,7 +83,11 @@ function isExpired(state: Pick<TokenState, "expiresAt">, now: number): boolean {
   return now + ACCESS_TOKEN_EXPIRY_SAFETY_MS >= state.expiresAt;
 }
 
-function shouldRefreshWithin(state: Pick<TokenState, "expiresAt">, now: number, withinMs: number): boolean {
+function shouldRefreshWithin(
+  state: Pick<TokenState, "expiresAt">,
+  now: number,
+  withinMs: number,
+): boolean {
   return now + withinMs >= state.expiresAt;
 }
 
@@ -129,7 +131,9 @@ function extractEmailFromJwt(token: string): string | undefined {
 }
 
 function shouldLogFullEmail(env: Env): boolean {
-  const v = String(env.CHATGPT_AUTH_LOG_EMAIL ?? "").trim().toLowerCase();
+  const v = String(env.CHATGPT_AUTH_LOG_EMAIL ?? "")
+    .trim()
+    .toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
@@ -170,7 +174,9 @@ async function writeStateToKv(env: Env, state: TokenState): Promise<void> {
   await env.CHATGPT_AUTH_KV.put(KV_KEY, JSON.stringify(state));
 }
 
-async function readStateFromD1(env: Env): Promise<(TokenState & { lockUntil: number | null }) | null> {
+async function readStateFromD1(
+  env: Env,
+): Promise<(TokenState & { lockUntil: number | null }) | null> {
   const row = (await env.CHATGPT_AUTH_DB.prepare(
     "SELECT access_token, refresh_token, id_token, expires_at, account_id, updated_at, lock_until FROM chatgpt_auth_state WHERE id = ?1",
   )
@@ -185,11 +191,15 @@ async function readStateFromD1(env: Env): Promise<(TokenState & { lockUntil: num
     expiresAt: Number(row.expires_at ?? 0),
     accountId: String(row.account_id ?? ""),
     updatedAt: Number(row.updated_at ?? 0),
-    lockUntil: row.lock_until === null || row.lock_until === undefined ? null : Number(row.lock_until),
+    lockUntil:
+      row.lock_until === null || row.lock_until === undefined ? null : Number(row.lock_until),
   };
 }
 
-async function upsertStateToD1(env: Env, state: TokenState & { lockUntil?: number | null }): Promise<void> {
+async function upsertStateToD1(
+  env: Env,
+  state: TokenState & { lockUntil?: number | null },
+): Promise<void> {
   await env.CHATGPT_AUTH_DB.prepare(
     `INSERT INTO chatgpt_auth_state (id, access_token, refresh_token, id_token, expires_at, account_id, updated_at, lock_until)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -215,20 +225,41 @@ async function upsertStateToD1(env: Env, state: TokenState & { lockUntil?: numbe
     .run();
 }
 
-async function tryAcquireRefreshLock(env: Env, now: number): Promise<boolean> {
+async function tryAcquireRefreshLock(env: Env, now: number): Promise<number | null> {
   const lockUntil = now + LOCK_TTL_MS;
   const result = await env.CHATGPT_AUTH_DB.prepare(
     "UPDATE chatgpt_auth_state SET lock_until = ?1 WHERE id = ?2 AND (lock_until IS NULL OR lock_until < ?3)",
   )
     .bind(lockUntil, STATE_ID, now)
     .run();
-  return Number((result as any)?.meta?.changes ?? 0) > 0;
+  return Number((result as any)?.meta?.changes ?? 0) > 0 ? lockUntil : null;
 }
 
-async function releaseRefreshLock(env: Env): Promise<void> {
-  await env.CHATGPT_AUTH_DB.prepare("UPDATE chatgpt_auth_state SET lock_until = NULL WHERE id = ?1")
-    .bind(STATE_ID)
+async function releaseRefreshLock(env: Env, lockUntil: number): Promise<void> {
+  await env.CHATGPT_AUTH_DB.prepare(
+    "UPDATE chatgpt_auth_state SET lock_until = NULL WHERE id = ?1 AND lock_until = ?2",
+  )
+    .bind(STATE_ID, lockUntil)
     .run();
+}
+
+function isRefreshTokenReusedError(error: unknown): boolean {
+  const message = String((error as Error)?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("refresh_token_reused") ||
+    message.includes("already been used to generate a new access token")
+  );
+}
+
+function didStateAdvance(
+  previous: Pick<TokenState, "updatedAt" | "accessToken" | "refreshToken">,
+  next: Pick<TokenState, "updatedAt" | "accessToken" | "refreshToken">,
+): boolean {
+  return (
+    next.updatedAt > previous.updatedAt ||
+    next.accessToken !== previous.accessToken ||
+    next.refreshToken !== previous.refreshToken
+  );
 }
 
 async function oauthRefresh(refreshToken: string): Promise<{
@@ -255,7 +286,10 @@ async function oauthRefresh(refreshToken: string): Promise<{
   const access = typeof payload.access_token === "string" ? payload.access_token : "";
   const refresh = typeof payload.refresh_token === "string" ? payload.refresh_token : "";
   const expiresInRaw = payload.expires_in;
-  const expiresIn = typeof expiresInRaw === "number" ? expiresInRaw : Number.parseFloat(String(expiresInRaw ?? "NaN"));
+  const expiresIn =
+    typeof expiresInRaw === "number"
+      ? expiresInRaw
+      : Number.parseFloat(String(expiresInRaw ?? "NaN"));
   const idToken = typeof payload.id_token === "string" ? payload.id_token : undefined;
 
   if (!access || !refresh || !Number.isFinite(expiresIn) || expiresIn <= 0) {
@@ -264,7 +298,10 @@ async function oauthRefresh(refreshToken: string): Promise<{
   return { accessToken: access, refreshToken: refresh, expiresIn, idToken };
 }
 
-async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: string }): Promise<{
+async function refreshIfNeeded(
+  env: Env,
+  options: { withinMs: number; reason: string },
+): Promise<{
   state: TokenState;
   refreshed: boolean;
 }> {
@@ -282,11 +319,16 @@ async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: st
     return { state: current, refreshed: false };
   }
 
-  const locked = await tryAcquireRefreshLock(env, now);
-  if (!locked) {
-    // Someone else is refreshing; return what we have (still likely valid for some time).
-    memoryCache = { state: current, cachedAt: now };
-    return { state: current, refreshed: false };
+  const lockUntil = await tryAcquireRefreshLock(env, now);
+  if (lockUntil === null) {
+    // Someone else is refreshing; prefer newest D1 state in case they already rotated refresh tokens.
+    const latest = await readStateFromD1(env);
+    const state = latest ?? current;
+    memoryCache = { state, cachedAt: nowMs() };
+    if (isExpired(state, nowMs())) {
+      throw new Error("Refresh already in progress and current token is expired.");
+    }
+    return { state, refreshed: false };
   }
 
   try {
@@ -300,7 +342,26 @@ async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: st
       return { state: latest, refreshed: false };
     }
 
-    const refreshed = await oauthRefresh(latest.refreshToken);
+    let refreshed: Awaited<ReturnType<typeof oauthRefresh>>;
+    try {
+      refreshed = await oauthRefresh(latest.refreshToken);
+    } catch (error) {
+      if (isRefreshTokenReusedError(error)) {
+        // Recovery path for one-time refresh token rotation races:
+        // another request may have already refreshed and persisted new tokens.
+        const recovered = await readStateFromD1(env);
+        if (recovered && didStateAdvance(latest, recovered) && !isExpired(recovered, nowMs())) {
+          memoryCache = { state: recovered, cachedAt: nowMs() };
+          void writeStateToKv(env, recovered);
+          const elapsed = Math.round(performance.now() - start);
+          console.log(
+            `[refresh] recovered reason=${options.reason} account_id=${recovered.accountId} elapsed_ms=${elapsed}`,
+          );
+          return { state: recovered, refreshed: false };
+        }
+      }
+      throw error;
+    }
     const expiresAt = now + refreshed.expiresIn * 1000;
     const idToken = refreshed.idToken ?? latest.idToken;
     const accountId =
@@ -330,7 +391,7 @@ async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: st
     );
     return { state: newState, refreshed: true };
   } finally {
-    await releaseRefreshLock(env);
+    await releaseRefreshLock(env, lockUntil);
   }
 }
 
@@ -346,7 +407,10 @@ function normalizeSeedInput(input: any): TokenState {
   const accountId = input.accountId ?? input.account_id ?? "";
   const expiresAtRaw = input.expiresAt ?? input.expires_at ?? input.expires ?? undefined;
 
-  const expiresAt = typeof expiresAtRaw === "number" ? expiresAtRaw : Number.parseFloat(String(expiresAtRaw ?? "NaN"));
+  const expiresAt =
+    typeof expiresAtRaw === "number"
+      ? expiresAtRaw
+      : Number.parseFloat(String(expiresAtRaw ?? "NaN"));
   const now = nowMs();
   const exp = Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : now + 5 * 60_000;
 
@@ -497,10 +561,7 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
       console.log(`[refresh] failed: ${(e as Error).message}`);
       // If we still have a (possibly valid) token, serve it; otherwise fail.
       if (isExpired(state, now)) {
-        return json(
-          { error: "refresh_failed", message: (e as Error).message },
-          { status: 503 },
-        );
+        return json({ error: "refresh_failed", message: (e as Error).message }, { status: 503 });
       }
     }
   }
@@ -526,7 +587,10 @@ async function handleToken(request: Request, env: Env): Promise<Response> {
 async function handleForceRefresh(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return methodNotAllowed();
   try {
-    const result = await refreshIfNeeded(env, { withinMs: Number.POSITIVE_INFINITY, reason: "force" });
+    const result = await refreshIfNeeded(env, {
+      withinMs: Number.POSITIVE_INFINITY,
+      reason: "force",
+    });
     return json({
       ok: true,
       refreshed: result.refreshed,
