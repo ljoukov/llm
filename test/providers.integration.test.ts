@@ -1,39 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { generateJson, streamText } from "../src/index.js";
+import { getIntegrationProviderAvailability } from "./integration-env.js";
 
-import { generateJson, loadLocalEnv, streamText } from "../src/index.js";
+const availability = getIntegrationProviderAvailability();
 
-loadLocalEnv();
-
-const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
-const hasGemini = Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
-const tokenProviderUrl = process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim();
-const tokenProviderKey =
-  process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY?.trim() ||
-  process.env.CHATGPT_AUTH_API_KEY?.trim();
-
-function hasCodexStore(): boolean {
-  const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
-  const authPath = path.join(codexHome, "auth.json");
-  try {
-    const raw = fs.readFileSync(authPath, "utf8");
-    const doc = JSON.parse(raw) as any;
-    const tokens = doc?.tokens;
-    return Boolean(tokens?.access_token && tokens?.refresh_token);
-  } catch {
-    return false;
-  }
-}
-
-const hasChatGpt = Boolean((tokenProviderUrl && tokenProviderKey) || hasCodexStore());
-
-const openAiIt = hasOpenAi ? it : it.skip;
-const geminiIt = hasGemini ? it : it.skip;
-const chatGptIt = hasChatGpt ? it : it.skip;
+const openAiIt = availability.openAi ? it : it.skip;
+const geminiIt = availability.gemini ? it : it.skip;
+const chatGptIt = availability.chatGpt ? it : it.skip;
 
 async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
   response: string;
