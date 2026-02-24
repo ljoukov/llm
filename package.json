@@ -1,6 +1,6 @@
 {
   "name": "@ljoukov/llm",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Unified wrapper over OpenAI Responses API and Google Gemini (@google/genai), with streaming + usage/cost metrics.",
   "license": "MIT",
   "repository": {
@@ -49,7 +49,10 @@
     "bench:agent:latest:estimate": "tsx benchmarks/agent/run.ts --tasks all --estimate-only",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "npm run test:integration:node",
+    "test:integration:node": "vitest run --config vitest.integration.config.ts",
+    "test:integration:bun": "bunx vitest run --config vitest.integration.config.ts",
+    "test:integration:runtimes": "npm run test:integration:node && npm run test:integration:bun",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build",
     "prepack": "npm run verify"

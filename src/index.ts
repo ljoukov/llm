@@ -8,6 +8,12 @@ export {
   generateJson,
   generateText,
   getCurrentToolCallContext,
+  LLM_IMAGE_MODEL_IDS,
+  LLM_MODEL_IDS,
+  LLM_TEXT_MODEL_IDS,
+  isLlmImageModelId,
+  isLlmModelId,
+  isLlmTextModelId,
   LlmJsonCallError,
   parseJsonFromLlmText,
   runToolLoop,
@@ -30,6 +36,7 @@ export type {
   LlmExecutableTool,
   LlmFunctionTool,
   LlmImageData,
+  LlmImageModelId,
   LlmImageSize,
   LlmInput,
   LlmInputMessage,
@@ -38,9 +45,11 @@ export type {
   LlmJsonStreamEvent,
   LlmJsonStreamRequest,
   LlmModelEvent,
+  LlmModelId,
   LlmProvider,
   LlmStreamEvent,
   LlmTextDeltaEvent,
+  LlmTextModelId,
   LlmTextRequest,
   LlmTextResult,
   LlmTextStream,
@@ -138,8 +147,24 @@ export {
 } from "./openai/chatgpt-auth.js";
 export type { ChatGptAuthProfile } from "./openai/chatgpt-auth.js";
 
-export { configureGemini, isGeminiModelId } from "./google/gemini.js";
-export type { GeminiModelId } from "./google/gemini.js";
+export {
+  CHATGPT_MODEL_IDS,
+  OPENAI_MODEL_IDS,
+  isChatGptModelId,
+  isOpenAiModelId,
+} from "./openai/models.js";
+export type { ChatGptModelId, OpenAiModelId } from "./openai/models.js";
+
+export {
+  configureGemini,
+  GEMINI_IMAGE_MODEL_IDS,
+  GEMINI_MODEL_IDS,
+  GEMINI_TEXT_MODEL_IDS,
+  isGeminiImageModelId,
+  isGeminiModelId,
+  isGeminiTextModelId,
+} from "./google/gemini.js";
+export type { GeminiImageModelId, GeminiModelId, GeminiTextModelId } from "./google/gemini.js";
 
 export {
   FIREWORKS_DEFAULT_GPT_OSS_120B_MODEL,

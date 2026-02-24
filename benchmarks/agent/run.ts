@@ -10,7 +10,10 @@ import {
   type AgentFilesystemToolAccessContext,
   estimateCallCostUsd,
   generateJson,
+  isLlmTextModelId,
+  LLM_TEXT_MODEL_IDS,
   runAgentLoop,
+  type LlmTextModelId,
   type LlmToolLoopStep,
 } from "../../src/index.js";
 import {
@@ -165,7 +168,7 @@ type PromptTemplates = {
   readonly graderPrompt: string;
 };
 
-const DEFAULT_GRADER_MODEL = "chatgpt-gpt-5.2";
+const DEFAULT_GRADER_MODEL: LlmTextModelId = "chatgpt-gpt-5.2";
 const DEFAULT_MAX_STEPS = 100;
 const DEFAULT_AGENT_TIMEOUT_MS = 12 * 60_000;
 const DEFAULT_GRADER_TIMEOUT_MS = 4 * 60_000;
@@ -255,6 +258,19 @@ function parseCsvList(raw: string): readonly string[] {
     throw new Error("Expected a non-empty comma-separated list.");
   }
   return deduped;
+}
+
+function parseModelId(raw: string, optionName: string): LlmTextModelId {
+  if (isLlmTextModelId(raw)) {
+    return raw;
+  }
+  throw new Error(
+    `Invalid ${optionName} value: ${raw}. Supported models: ${LLM_TEXT_MODEL_IDS.join(", ")}`,
+  );
+}
+
+function parseModelList(raw: string): readonly LlmTextModelId[] {
+  return parseCsvList(raw).map((entry) => parseModelId(entry, "--models"));
 }
 
 function selectTasks(taskArg: string | undefined): readonly AgentBenchmarkTask[] {
@@ -1010,7 +1026,7 @@ function buildGraderPrompt(params: {
 }
 
 async function gradeOutputs(params: {
-  graderModel: string;
+  graderModel: LlmTextModelId;
   task: AgentBenchmarkTask;
   layout: WorkspaceLayout;
   validations: readonly OutputValidation[];
@@ -1058,14 +1074,14 @@ async function gradeOutputs(params: {
 }
 
 async function runCase(params: {
-  model: string;
+  model: LlmTextModelId;
   agentReasoning: ReasoningEffort;
   task: AgentBenchmarkTask;
   runIndex: number;
   outRoot: string;
   benchmarkRoot: string;
   reasoning: ReasoningEffort;
-  graderModel: string;
+  graderModel: LlmTextModelId;
   maxSteps: number;
   promptTemplates: PromptTemplates;
 }): Promise<CaseResult> {
@@ -1956,14 +1972,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const models = parseCsvList(values.models ?? DEFAULT_BENCHMARK_MODELS.join(","));
+  const models = parseModelList(values.models ?? DEFAULT_BENCHMARK_MODELS.join(","));
   const tasks = selectTasks(values.tasks);
   const runs = parsePositiveInt(values.runs ?? "1", "--runs");
   const reasoning = parseReasoningEffort(values.reasoning ?? "medium");
-  const graderModel = (values["grader-model"] ?? DEFAULT_GRADER_MODEL).trim();
-  if (!graderModel) {
-    throw new Error("--grader-model must not be empty");
-  }
+  const graderModel = parseModelId(
+    (values["grader-model"] ?? DEFAULT_GRADER_MODEL).trim(),
+    "--grader-model",
+  );
   const maxSteps = parsePositiveInt(
     values["max-steps"] ?? String(DEFAULT_MAX_STEPS),
     "--max-steps",
@@ -2166,7 +2182,9 @@ async function main(): Promise<void> {
         existingSnapshot.runs,
         ...latestCaseResults.map((entry) => entry.runIndex),
       );
-      latestGraderModel = existingSnapshot.graderModel || graderModel;
+      latestGraderModel = isLlmTextModelId(existingSnapshot.graderModel)
+        ? existingSnapshot.graderModel
+        : graderModel;
       latestReasoning = existingSnapshot.reasoning;
       console.log("Merged this run with existing traces/latest summary.");
     } else {
