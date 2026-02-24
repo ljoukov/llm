@@ -39,6 +39,25 @@ export class ResponsesWebSocketHttpError extends Error {
   }
 }
 
+const UNSUPPORTED_WEBSOCKET_STATUS_CODES = new Set([400, 404, 405, 406, 426, 501]);
+const WEBSOCKET_CONNECT_TIMEOUT_MS = 30_000;
+
+function parseUnexpectedServerResponseStatus(message: string): number | null {
+  const match = /unexpected server response:\s*(\d+)/i.exec(message);
+  if (!match) {
+    return null;
+  }
+  const status = Number(match[1]);
+  if (!Number.isFinite(status) || status <= 0) {
+    return null;
+  }
+  return status;
+}
+
+function supportsUnexpectedResponseEvent(): boolean {
+  return !("bun" in process.versions);
+}
+
 export function resolveResponsesWebSocketMode(
   raw: string | undefined,
   fallback: ResponsesWebSocketMode = "auto",
@@ -79,9 +98,13 @@ export function toWebSocketUrl(httpOrHttpsUrl: string): string {
 
 export function isResponsesWebSocketUnsupportedError(error: unknown): boolean {
   if (error instanceof ResponsesWebSocketHttpError) {
-    return [400, 404, 405, 406, 426, 501].includes(error.status);
+    return UNSUPPORTED_WEBSOCKET_STATUS_CODES.has(error.status);
   }
   const message = error instanceof Error ? error.message.toLowerCase() : "";
+  const status = parseUnexpectedServerResponseStatus(message);
+  if (status !== null) {
+    return UNSUPPORTED_WEBSOCKET_STATUS_CODES.has(status);
+  }
   return message.includes("unexpected server response: 426");
 }
 
@@ -374,13 +397,21 @@ async function connectWebSocket(options: {
   signal?: AbortSignal;
 }): Promise<ConnectWebSocketResult> {
   return await new Promise<ConnectWebSocketResult>((resolve, reject) => {
+    const shouldListenForUnexpectedResponse = supportsUnexpectedResponseEvent();
     const socket = new WebSocket(options.url, {
       headers: options.headers,
-      handshakeTimeout: 30_000,
+      handshakeTimeout: WEBSOCKET_CONNECT_TIMEOUT_MS,
     });
 
     let settled = false;
     let responseBody = "";
+    let connectTimeout: NodeJS.Timeout | null = setTimeout(() => {
+      rejectOnce(
+        new Error(
+          `Responses WebSocket connection timed out after ${WEBSOCKET_CONNECT_TIMEOUT_MS}ms.`,
+        ),
+      );
+    }, WEBSOCKET_CONNECT_TIMEOUT_MS);
 
     const rejectOnce = (error: Error) => {
       if (settled) {
@@ -410,9 +441,15 @@ async function connectWebSocket(options: {
     };
 
     const cleanup = (removeAbortListener = true) => {
+      if (connectTimeout) {
+        clearTimeout(connectTimeout);
+        connectTimeout = null;
+      }
       socket.removeListener("open", onOpen);
       socket.removeListener("error", onError);
-      socket.removeListener("unexpected-response", onUnexpectedResponse);
+      if (shouldListenForUnexpectedResponse) {
+        socket.removeListener("unexpected-response", onUnexpectedResponse);
+      }
       if (removeAbortListener && options.signal) {
         options.signal.removeEventListener("abort", onAbort);
       }
@@ -474,7 +511,9 @@ async function connectWebSocket(options: {
 
     socket.once("open", onOpen);
     socket.once("error", onError);
-    socket.once("unexpected-response", onUnexpectedResponse);
+    if (shouldListenForUnexpectedResponse) {
+      socket.once("unexpected-response", onUnexpectedResponse);
+    }
     if (options.signal) {
       if (options.signal.aborted) {
         onAbort();

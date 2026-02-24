@@ -2,7 +2,7 @@ import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
 
 import { getGoogleAuthOptions, getGoogleServiceAccount } from "./auth.js";
 
-export const GEMINI_MODEL_IDS = [
+export const GEMINI_TEXT_MODEL_IDS = [
   "gemini-3-pro-preview",
   "gemini-3.1-pro-preview",
   "gemini-3-flash-preview",
@@ -11,10 +11,24 @@ export const GEMINI_MODEL_IDS = [
   "gemini-flash-lite-latest",
 ] as const;
 
+export const GEMINI_IMAGE_MODEL_IDS = ["gemini-3-pro-image-preview"] as const;
+
+export const GEMINI_MODEL_IDS = [...GEMINI_TEXT_MODEL_IDS, ...GEMINI_IMAGE_MODEL_IDS] as const;
+
 export type GeminiModelId = (typeof GEMINI_MODEL_IDS)[number];
+export type GeminiTextModelId = (typeof GEMINI_TEXT_MODEL_IDS)[number];
+export type GeminiImageModelId = (typeof GEMINI_IMAGE_MODEL_IDS)[number];
 
 export function isGeminiModelId(value: string): value is GeminiModelId {
   return (GEMINI_MODEL_IDS as readonly string[]).includes(value);
+}
+
+export function isGeminiTextModelId(value: string): value is GeminiTextModelId {
+  return (GEMINI_TEXT_MODEL_IDS as readonly string[]).includes(value);
+}
+
+export function isGeminiImageModelId(value: string): value is GeminiImageModelId {
+  return (GEMINI_IMAGE_MODEL_IDS as readonly string[]).includes(value);
 }
 
 const CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform";

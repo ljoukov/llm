@@ -13,7 +13,6 @@ const OPENAI_GPT_52_PRICING: OpenAiPricing = {
   outputRate: 14 / 1_000_000,
 };
 
-// https://platform.openai.com/docs/models/gpt-5-codex
 // gpt-5.3-codex-spark is priced as the GPT-5 mini tier in this library.
 const OPENAI_GPT_53_CODEX_PRICING: OpenAiPricing = {
   inputRate: 1.25 / 1_000_000,
@@ -32,9 +31,6 @@ export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
     return OPENAI_GPT_5_MINI_PRICING;
   }
   if (modelId.includes("gpt-5.3-codex")) {
-    return OPENAI_GPT_53_CODEX_PRICING;
-  }
-  if (modelId.includes("gpt-5-codex")) {
     return OPENAI_GPT_53_CODEX_PRICING;
   }
   if (modelId.includes("gpt-5.2")) {

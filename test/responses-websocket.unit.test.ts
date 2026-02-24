@@ -70,6 +70,22 @@ describe("responses-websocket helpers", () => {
         }),
       ),
     ).toBe(false);
+
+    expect(
+      isResponsesWebSocketUnsupportedError(
+        new Error("Responses WebSocket connection failed: Unexpected server response: 426"),
+      ),
+    ).toBe(true);
+    expect(
+      isResponsesWebSocketUnsupportedError(
+        new Error("Responses WebSocket connection failed: Unexpected server response: 404"),
+      ),
+    ).toBe(true);
+    expect(
+      isResponsesWebSocketUnsupportedError(
+        new Error("Responses WebSocket connection failed: Unexpected server response: 500"),
+      ),
+    ).toBe(false);
   });
 });
 

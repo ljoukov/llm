@@ -19,13 +19,30 @@ import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
 import { estimateCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
 import { collectChatGptCodexResponse, type ChatGptInputItem } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
-import { resolveFireworksModelId } from "./fireworks/models.js";
+import {
+  FIREWORKS_MODEL_IDS,
+  isFireworksModelId,
+  resolveFireworksModelId,
+} from "./fireworks/models.js";
 import { runGeminiCall } from "./google/calls.js";
+import {
+  GEMINI_IMAGE_MODEL_IDS,
+  GEMINI_TEXT_MODEL_IDS,
+  isGeminiImageModelId,
+  isGeminiTextModelId,
+} from "./google/client.js";
 import {
   runOpenAiCall,
   type OpenAiReasoningEffort,
   DEFAULT_OPENAI_REASONING_EFFORT,
 } from "./openai/calls.js";
+import {
+  CHATGPT_MODEL_IDS,
+  OPENAI_MODEL_IDS,
+  stripChatGptPrefix,
+  isChatGptModelId,
+  isOpenAiModelId,
+} from "./openai/models.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
 export { estimateCallCostUsd } from "./utils/cost.js";
@@ -94,10 +111,40 @@ export type LlmBlockedEvent = {
 export type LlmStreamEvent = LlmTextDeltaEvent | LlmUsageEvent | LlmModelEvent | LlmBlockedEvent;
 
 export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks";
+export const LLM_TEXT_MODEL_IDS = [
+  ...OPENAI_MODEL_IDS,
+  ...CHATGPT_MODEL_IDS,
+  ...FIREWORKS_MODEL_IDS,
+  ...GEMINI_TEXT_MODEL_IDS,
+] as const;
+export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number];
+
+export const LLM_IMAGE_MODEL_IDS = [...GEMINI_IMAGE_MODEL_IDS] as const;
+export type LlmImageModelId = (typeof LLM_IMAGE_MODEL_IDS)[number];
+
+export const LLM_MODEL_IDS = [...LLM_TEXT_MODEL_IDS, ...LLM_IMAGE_MODEL_IDS] as const;
+export type LlmModelId = (typeof LLM_MODEL_IDS)[number];
+
+export function isLlmTextModelId(value: string): value is LlmTextModelId {
+  return (
+    isOpenAiModelId(value) ||
+    isChatGptModelId(value) ||
+    isFireworksModelId(value) ||
+    isGeminiTextModelId(value)
+  );
+}
+
+export function isLlmImageModelId(value: string): value is LlmImageModelId {
+  return isGeminiImageModelId(value);
+}
+
+export function isLlmModelId(value: string): value is LlmModelId {
+  return isLlmTextModelId(value) || isLlmImageModelId(value);
+}
 
 export type LlmTextResult = {
   readonly provider: LlmProvider;
-  readonly model: string;
+  readonly model: LlmModelId;
   readonly modelVersion: string;
   readonly content?: LlmContent;
   readonly text: string;
@@ -167,7 +214,7 @@ export type LlmInput = {
 };
 
 export type LlmBaseRequest = {
-  readonly model: string;
+  readonly model: LlmModelId;
   readonly tools?: readonly LlmToolConfig[];
   readonly responseMimeType?: string;
   readonly responseJsonSchema?: JsonSchema;
@@ -181,8 +228,12 @@ export type LlmBaseRequest = {
 
 export type LlmTextRequest = LlmInput & LlmBaseRequest;
 
+type LlmStructuredRequestBase = Omit<LlmBaseRequest, "model"> & {
+  readonly model: LlmTextModelId;
+};
+
 export type LlmJsonRequest<T> = LlmInput &
-  LlmBaseRequest & {
+  LlmStructuredRequestBase & {
     readonly schema: z.ZodType<T>;
     readonly openAiSchemaName?: string;
     readonly maxAttempts?: number;
@@ -222,7 +273,7 @@ export type LlmImageData = {
 };
 
 export type LlmGenerateImagesRequest = {
-  readonly model: string; // e.g. "gemini-3-pro-image-preview"
+  readonly model: LlmImageModelId; // e.g. "gemini-3-pro-image-preview"
   readonly stylePrompt: string;
   readonly styleImages?: readonly LlmImageData[];
   readonly imagePrompts: readonly string[];
@@ -309,7 +360,7 @@ export type LlmToolLoopResult = {
 };
 
 export type LlmToolLoopRequest = LlmInput & {
-  readonly model: string;
+  readonly model: LlmTextModelId;
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
@@ -692,20 +743,23 @@ function convertLlmContentToGeminiContent(content: LlmContent): GeminiContent {
   };
 }
 
-function resolveProvider(model: string): { provider: LlmProvider; model: string } {
-  if (model.startsWith("chatgpt-")) {
-    return { provider: "chatgpt", model: model.slice("chatgpt-".length) };
+function resolveProvider(model: LlmModelId): { provider: LlmProvider; model: string } {
+  if (isChatGptModelId(model)) {
+    return { provider: "chatgpt", model: stripChatGptPrefix(model) };
   }
-  if (model.startsWith("gemini-")) {
+  if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {
     return { provider: "gemini", model };
   }
-
-  const fireworksModel = resolveFireworksModelId(model);
-  if (fireworksModel) {
-    return { provider: "fireworks", model: fireworksModel };
+  if (isFireworksModelId(model)) {
+    const fireworksModel = resolveFireworksModelId(model);
+    if (fireworksModel) {
+      return { provider: "fireworks", model: fireworksModel };
+    }
   }
-
-  return { provider: "openai", model };
+  if (isOpenAiModelId(model)) {
+    return { provider: "openai", model };
+  }
+  throw new Error(`Unsupported text model: ${model}`);
 }
 
 function isOpenAiCodexModel(modelId: string): boolean {
@@ -2195,7 +2249,7 @@ async function runTextCall(params: {
     throw new Error("LLM call received an empty prompt.");
   }
 
-  let modelVersion = request.model;
+  let modelVersion: string = request.model;
   let blocked = false;
   let grounding: GroundingMetadata | undefined;
   const responseParts: LlmContentPart[] = [];
@@ -2972,7 +3026,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       }
 
       const onEvent = request.onEvent;
-      let modelVersion = request.model;
+      let modelVersion: string = request.model;
       let usageTokens: LlmUsageTokens | undefined;
 
       const emitEvent = (ev: LlmStreamEvent) => {
@@ -3678,7 +3732,7 @@ async function gradeGeneratedImage(params: {
   gradingPrompt: string;
   imagePrompt: string;
   image: LlmImageData;
-  model: string;
+  model: LlmTextModelId;
 }): Promise<z.infer<typeof IMAGE_GRADE_SCHEMA>> {
   const parts: LlmContentPart[] = [
     {
