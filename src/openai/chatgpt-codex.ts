@@ -2,8 +2,22 @@ import os from "node:os";
 import { TextDecoder } from "node:util";
 
 import { getChatGptAuthProfile } from "./chatgpt-auth.js";
+import {
+  OPENAI_BETA_RESPONSES_WEBSOCKETS_V2,
+  createAdaptiveResponsesStream,
+  createResponsesWebSocketStream,
+  mergeOpenAiBetaHeader,
+  resolveResponsesWebSocketMode,
+  toWebSocketUrl,
+  type ResponsesStreamWithFinal,
+  type ResponsesWebSocketMode,
+} from "./responses-websocket.js";
 
 const CHATGPT_CODEX_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
+const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
+
+let cachedResponsesWebSocketMode: ResponsesWebSocketMode | null = null;
+let chatGptResponsesWebSocketDisabled = false;
 
 export type ChatGptInputTextPart = {
   type: "input_text";
@@ -163,18 +177,77 @@ export async function streamChatGptCodexResponse(options: {
   signal?: AbortSignal;
 }): Promise<AsyncIterable<ChatGptCodexStreamEvent>> {
   const { access, accountId } = await getChatGptAuthProfile();
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${access}`,
-    "chatgpt-account-id": accountId,
-    "OpenAI-Beta": "responses=experimental",
-    originator: "llm",
-    "User-Agent": buildUserAgent(),
-    Accept: "text/event-stream",
-    "Content-Type": "application/json",
+  const mode = resolveChatGptResponsesWebSocketMode();
+
+  const fallbackStreamFactory = (): ResponsesStreamWithFinal<
+    ChatGptCodexStreamEvent,
+    Record<string, unknown>
+  > => {
+    const streamPromise = streamChatGptCodexResponseSse({
+      request: options.request,
+      access,
+      accountId,
+      sessionId: options.sessionId,
+      signal: options.signal,
+    });
+    return {
+      async *[Symbol.asyncIterator](): AsyncIterator<ChatGptCodexStreamEvent> {
+        const stream = await streamPromise;
+        for await (const event of stream) {
+          yield event;
+        }
+      },
+      async finalResponse(): Promise<Record<string, unknown>> {
+        return {};
+      },
+      close(): void {
+        // SSE stream lifecycle is managed by fetch/AbortSignal.
+      },
+    };
   };
-  if (options.sessionId) {
-    headers.session_id = options.sessionId;
+
+  if (mode === "off" || chatGptResponsesWebSocketDisabled) {
+    return fallbackStreamFactory();
   }
+
+  const websocketHeaders = buildChatGptCodexHeaders({
+    access,
+    accountId,
+    sessionId: options.sessionId,
+    useWebSocket: true,
+  });
+  return createAdaptiveResponsesStream({
+    mode,
+    createWebSocketStream: async () =>
+      await createResponsesWebSocketStream({
+        url: toWebSocketUrl(CHATGPT_CODEX_ENDPOINT),
+        headers: websocketHeaders,
+        request: options.request,
+        signal: options.signal,
+      }),
+    createFallbackStream: fallbackStreamFactory,
+    onWebSocketFallback: () => {
+      chatGptResponsesWebSocketDisabled = true;
+    },
+  });
+}
+
+async function streamChatGptCodexResponseSse(options: {
+  request: ChatGptCodexRequest;
+  access: string;
+  accountId: string;
+  sessionId?: string;
+  signal?: AbortSignal;
+}): Promise<AsyncIterable<ChatGptCodexStreamEvent>> {
+  const headers = buildChatGptCodexHeaders({
+    access: options.access,
+    accountId: options.accountId,
+    sessionId: options.sessionId,
+    useWebSocket: false,
+  });
+  headers.Accept = "text/event-stream";
+  headers["Content-Type"] = "application/json";
+
   const response = await fetch(CHATGPT_CODEX_ENDPOINT, {
     method: "POST",
     headers,
@@ -192,25 +265,94 @@ export async function streamChatGptCodexResponse(options: {
   return parseEventStream(body);
 }
 
+function resolveChatGptResponsesWebSocketMode(): ResponsesWebSocketMode {
+  if (cachedResponsesWebSocketMode) {
+    return cachedResponsesWebSocketMode;
+  }
+  cachedResponsesWebSocketMode = resolveResponsesWebSocketMode(
+    process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE ?? process.env.OPENAI_RESPONSES_WEBSOCKET_MODE,
+    "auto",
+  );
+  return cachedResponsesWebSocketMode;
+}
+
+function buildChatGptCodexHeaders(options: {
+  access: string;
+  accountId: string;
+  sessionId?: string;
+  useWebSocket: boolean;
+}): Record<string, string> {
+  const openAiBeta = options.useWebSocket
+    ? mergeOpenAiBetaHeader(
+        CHATGPT_RESPONSES_EXPERIMENTAL_HEADER,
+        OPENAI_BETA_RESPONSES_WEBSOCKETS_V2,
+      )
+    : CHATGPT_RESPONSES_EXPERIMENTAL_HEADER;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${options.access}`,
+    "chatgpt-account-id": options.accountId,
+    "OpenAI-Beta": openAiBeta,
+    originator: "llm",
+    "User-Agent": buildUserAgent(),
+  };
+  if (options.sessionId) {
+    headers.session_id = options.sessionId;
+  }
+  return headers;
+}
+
 export async function collectChatGptCodexResponse(options: {
   request: ChatGptCodexRequest;
   sessionId?: string;
   signal?: AbortSignal;
   onDelta?: (delta: ChatGptCodexDelta) => void;
 }): Promise<ChatGptCodexCollectedResponse> {
-  let stream: AsyncIterable<ChatGptCodexStreamEvent>;
-  try {
-    stream = await streamChatGptCodexResponse(options);
-  } catch (error) {
-    if (shouldRetryWithoutReasoningSummary(options.request, error)) {
-      stream = await streamChatGptCodexResponse({
+  let requestForAttempt = options.request;
+  let retriedWithoutReasoningSummary = false;
+  let retriedViaSseFallback = false;
+
+  while (true) {
+    let sawAnyDelta = false;
+    try {
+      const stream = await streamChatGptCodexResponse({
         ...options,
-        request: removeReasoningSummary(options.request),
+        request: requestForAttempt,
       });
-    } else {
+      return await collectChatGptCodexStream({
+        stream,
+        onDelta: (delta) => {
+          sawAnyDelta = true;
+          options.onDelta?.(delta);
+        },
+      });
+    } catch (error) {
+      if (
+        !sawAnyDelta &&
+        !retriedViaSseFallback &&
+        shouldRetryViaSseFallback(error) &&
+        !chatGptResponsesWebSocketDisabled
+      ) {
+        chatGptResponsesWebSocketDisabled = true;
+        retriedViaSseFallback = true;
+        continue;
+      }
+      if (
+        !retriedWithoutReasoningSummary &&
+        shouldRetryWithoutReasoningSummary(requestForAttempt, error)
+      ) {
+        requestForAttempt = removeReasoningSummary(requestForAttempt);
+        retriedWithoutReasoningSummary = true;
+        continue;
+      }
       throw error;
     }
   }
+}
+
+async function collectChatGptCodexStream(options: {
+  stream: AsyncIterable<ChatGptCodexStreamEvent>;
+  onDelta?: (delta: ChatGptCodexDelta) => void;
+}): Promise<ChatGptCodexCollectedResponse> {
   const toolCalls = new Map<string, ChatGptCodexToolCall>();
   const toolCallOrder: string[] = [];
   const webSearchCalls = new Map<string, ChatGptCodexWebSearchCall>();
@@ -223,7 +365,7 @@ export async function collectChatGptCodexResponse(options: {
   let model: string | undefined;
   let status: string | undefined;
   let blocked = false;
-  for await (const event of stream) {
+  for await (const event of options.stream) {
     const type = typeof event.type === "string" ? event.type : undefined;
     if (type === "response.output_text.delta") {
       const delta = typeof event.delta === "string" ? event.delta : "";
@@ -359,6 +501,17 @@ function shouldRetryWithoutReasoningSummary(request: ChatGptCodexRequest, error:
   }
   const message = error.message.toLowerCase();
   return message.includes("unsupported parameter") && message.includes("reasoning.summary");
+}
+
+function shouldRetryViaSseFallback(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (error.name === "AbortError") {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("responses websocket");
 }
 
 function removeReasoningSummary(request: ChatGptCodexRequest): ChatGptCodexRequest {

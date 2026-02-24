@@ -34,6 +34,8 @@ See Node.js docs on environment variables and dotenv files: https://nodejs.org/a
 ### OpenAI
 
 - `OPENAI_API_KEY`
+- `OPENAI_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
+- `OPENAI_BASE_URL` (optional; defaults to `https://api.openai.com/v1`)
 
 ### Gemini (Vertex AI)
 
@@ -86,11 +88,24 @@ refresh-token rotation and serves short-lived access tokens.
 - `CHATGPT_AUTH_TOKEN_PROVIDER_URL` (example: `https://chatgpt-auth.<your-domain>`)
 - `CHATGPT_AUTH_API_KEY` (shared secret; sent as `Authorization: Bearer ...` and `x-chatgpt-auth: ...`)
 - `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (`kv` or `d1`, defaults to `kv`)
+- `CHATGPT_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
 
 This repo includes a Cloudflare Workers token provider implementation in `workers/chatgpt-auth/`.
 
 If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` + `CHATGPT_AUTH_API_KEY` are set, `chatgpt-*` models will fetch tokens from the
 token provider and will not read the local Codex auth store.
+
+### Responses transport
+
+For OpenAI and `chatgpt-*` model paths, this library now tries **Responses WebSocket transport first** and falls back
+to HTTP/SSE automatically when needed.
+
+- `auto` (default): try WebSocket first, then fall back to SSE
+- `off`: use SSE only
+- `only`: require WebSocket (no fallback)
+
+When fallback is triggered by an unsupported WebSocket upgrade response (for example `426`), the library keeps using
+SSE for the rest of the process to avoid repeated failing upgrade attempts.
 
 ## Usage
 
