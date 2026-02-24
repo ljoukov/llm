@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/openai/chatgpt-auth.js", () => {
   return {
@@ -22,7 +22,18 @@ function buildSseResponse(events: readonly unknown[]): Response {
 }
 
 describe("collectChatGptCodexResponse", () => {
+  const originalChatGptWebSocketMode = process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE;
+
+  beforeEach(() => {
+    process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE = "off";
+  });
+
   afterEach(() => {
+    if (originalChatGptWebSocketMode === undefined) {
+      delete process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE;
+    } else {
+      process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE = originalChatGptWebSocketMode;
+    }
     vi.unstubAllGlobals();
   });
 
