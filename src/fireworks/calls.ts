@@ -1,7 +1,11 @@
 import type OpenAI from "openai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
-import { createCallScheduler, type CallScheduler } from "../utils/scheduler.js";
+import {
+  createCallScheduler,
+  type CallScheduler,
+  type CallSchedulerRunOptions,
+} from "../utils/scheduler.js";
 
 import { getFireworksClient } from "./client.js";
 
@@ -31,6 +35,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
 export async function runFireworksCall<T>(
   fn: (client: OpenAI) => Promise<T>,
   modelId?: string,
+  runOptions?: CallSchedulerRunOptions,
 ): Promise<T> {
-  return getSchedulerForModel(modelId).run(async () => fn(getFireworksClient()));
+  return getSchedulerForModel(modelId).run(async () => fn(getFireworksClient()), runOptions);
 }

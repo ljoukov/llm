@@ -17,6 +17,7 @@ import type { ResponseTextConfig } from "openai/resources/responses/responses";
 
 import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
 import { estimateCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
+import type { CallSchedulerRunMetrics } from "./utils/scheduler.js";
 import { collectChatGptCodexResponse, type ChatGptInputItem } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
 import {
@@ -340,6 +341,24 @@ export type LlmToolCallResult = {
   readonly output: unknown;
   readonly error?: string;
   readonly callId?: string;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+  readonly durationMs?: number;
+  readonly metrics?: Record<string, unknown>;
+};
+
+export type LlmToolLoopStepTiming = {
+  readonly startedAt: string;
+  readonly completedAt: string;
+  readonly totalMs: number;
+  readonly queueWaitMs: number;
+  readonly connectionSetupMs: number;
+  readonly activeGenerationMs: number;
+  readonly toolExecutionMs: number;
+  readonly waitToolMs: number;
+  readonly schedulerDelayMs: number;
+  readonly providerRetryDelayMs: number;
+  readonly providerAttempts: number;
 };
 
 export type LlmToolLoopStep = {
@@ -350,6 +369,7 @@ export type LlmToolLoopStep = {
   readonly toolCalls: readonly LlmToolCallResult[];
   readonly usage?: LlmUsageTokens;
   readonly costUsd: number;
+  readonly timing?: LlmToolLoopStepTiming;
 };
 
 export type LlmToolLoopResult = {
@@ -1880,6 +1900,98 @@ function buildToolErrorOutput(
   return output;
 }
 
+const SUBAGENT_WAIT_TOOL_NAME = "wait";
+
+function toIsoTimestamp(ms: number): string {
+  return new Date(ms).toISOString();
+}
+
+function toToolResultDuration(result: LlmToolCallResult): number {
+  return typeof result.durationMs === "number" && Number.isFinite(result.durationMs)
+    ? Math.max(0, result.durationMs)
+    : 0;
+}
+
+function schedulerMetricsOrDefault(metrics: CallSchedulerRunMetrics | undefined): {
+  queueWaitMs: number;
+  schedulerDelayMs: number;
+  providerRetryDelayMs: number;
+  providerAttempts: number;
+  modelCallStartedAtMs?: number;
+} {
+  if (!metrics) {
+    return {
+      queueWaitMs: 0,
+      schedulerDelayMs: 0,
+      providerRetryDelayMs: 0,
+      providerAttempts: 1,
+    };
+  }
+  return {
+    queueWaitMs: Math.max(0, metrics.queueWaitMs),
+    schedulerDelayMs: Math.max(0, metrics.schedulerDelayMs),
+    providerRetryDelayMs: Math.max(0, metrics.retryDelayMs),
+    providerAttempts: Math.max(1, metrics.attempts),
+    modelCallStartedAtMs: metrics.startedAtMs,
+  };
+}
+
+function buildStepTiming(params: {
+  stepStartedAtMs: number;
+  stepCompletedAtMs: number;
+  modelCompletedAtMs: number;
+  firstModelEventAtMs?: number;
+  schedulerMetrics?: CallSchedulerRunMetrics;
+  toolExecutionMs: number;
+  waitToolMs: number;
+}): LlmToolLoopStepTiming {
+  const scheduler = schedulerMetricsOrDefault(params.schedulerMetrics);
+  const modelCallStartedAtMs = scheduler.modelCallStartedAtMs ?? params.stepStartedAtMs;
+  const firstModelEventAtMs = params.firstModelEventAtMs;
+  const effectiveFirstEventAtMs =
+    firstModelEventAtMs !== undefined
+      ? Math.max(modelCallStartedAtMs, firstModelEventAtMs)
+      : params.modelCompletedAtMs;
+  const connectionSetupMs = Math.max(0, effectiveFirstEventAtMs - modelCallStartedAtMs);
+  const activeGenerationMs = Math.max(0, params.modelCompletedAtMs - effectiveFirstEventAtMs);
+  return {
+    startedAt: toIsoTimestamp(params.stepStartedAtMs),
+    completedAt: toIsoTimestamp(params.stepCompletedAtMs),
+    totalMs: Math.max(0, params.stepCompletedAtMs - params.stepStartedAtMs),
+    queueWaitMs: scheduler.queueWaitMs,
+    connectionSetupMs,
+    activeGenerationMs,
+    toolExecutionMs: Math.max(0, params.toolExecutionMs),
+    waitToolMs: Math.max(0, params.waitToolMs),
+    schedulerDelayMs: scheduler.schedulerDelayMs,
+    providerRetryDelayMs: scheduler.providerRetryDelayMs,
+    providerAttempts: scheduler.providerAttempts,
+  };
+}
+
+function extractSpawnStartupMetrics(outputPayload: unknown): Record<string, unknown> | undefined {
+  if (!outputPayload || typeof outputPayload !== "object") {
+    return undefined;
+  }
+  const outputRecord = outputPayload as Record<string, unknown>;
+  const notification = typeof outputRecord.notification === "string" ? outputRecord.notification : "";
+  if (notification !== "spawned") {
+    return undefined;
+  }
+  const agent = outputRecord.agent;
+  if (!agent || typeof agent !== "object") {
+    return undefined;
+  }
+  const agentRecord = agent as Record<string, unknown>;
+  const startupLatencyMs = agentRecord.spawn_startup_latency_ms;
+  if (typeof startupLatencyMs !== "number" || !Number.isFinite(startupLatencyMs)) {
+    return undefined;
+  }
+  return {
+    spawnStartupLatencyMs: Math.max(0, startupLatencyMs),
+  };
+}
+
 async function executeToolCall(params: {
   callKind: "function" | "custom";
   toolName: string;
@@ -1888,75 +2000,70 @@ async function executeToolCall(params: {
   parseError?: string;
 }): Promise<{ result: LlmToolCallResult; outputPayload: unknown }> {
   const { callKind, toolName, tool, rawInput, parseError } = params;
+  const startedAtMs = Date.now();
+  const finalize = (
+    base: Omit<LlmToolCallResult, "startedAt" | "completedAt" | "durationMs" | "metrics">,
+    outputPayload: unknown,
+    metrics?: Record<string, unknown>,
+  ): { result: LlmToolCallResult; outputPayload: unknown } => {
+    const completedAtMs = Date.now();
+    return {
+      result: {
+        ...base,
+        startedAt: toIsoTimestamp(startedAtMs),
+        completedAt: toIsoTimestamp(completedAtMs),
+        durationMs: Math.max(0, completedAtMs - startedAtMs),
+        ...(metrics ? { metrics } : {}),
+      },
+      outputPayload,
+    };
+  };
   if (!tool) {
     const message = `Unknown tool: ${toolName}`;
-    return {
-      result: { toolName, input: rawInput, output: { error: message }, error: message },
-      outputPayload: buildToolErrorOutput(message),
-    };
+    const outputPayload = buildToolErrorOutput(message);
+    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
   }
   if (callKind === "custom") {
     if (!isCustomTool(tool)) {
       const message = `Tool ${toolName} was called as custom_tool_call but is declared as function.`;
       const outputPayload = buildToolErrorOutput(message);
-      return {
-        result: { toolName, input: rawInput, output: outputPayload, error: message },
-        outputPayload,
-      };
+      return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
     }
     const input = typeof rawInput === "string" ? rawInput : String(rawInput ?? "");
     try {
       const output = await tool.execute(input);
-      return {
-        result: { toolName, input, output },
-        outputPayload: output,
-      };
+      const metrics = toolName === "spawn_agent" ? extractSpawnStartupMetrics(output) : undefined;
+      return finalize({ toolName, input, output }, output, metrics);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const outputPayload = buildToolErrorOutput(`Tool ${toolName} failed: ${message}`);
-      return {
-        result: { toolName, input, output: outputPayload, error: message },
-        outputPayload,
-      };
+      return finalize({ toolName, input, output: outputPayload, error: message }, outputPayload);
     }
   }
   if (isCustomTool(tool)) {
     const message = `Tool ${toolName} was called as function_call but is declared as custom.`;
     const outputPayload = buildToolErrorOutput(message);
-    return {
-      result: { toolName, input: rawInput, output: outputPayload, error: message },
-      outputPayload,
-    };
+    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
   }
   if (parseError) {
     const message = `Invalid JSON for tool ${toolName}: ${parseError}`;
-    return {
-      result: { toolName, input: rawInput, output: { error: message }, error: message },
-      outputPayload: buildToolErrorOutput(message),
-    };
+    const outputPayload = buildToolErrorOutput(message);
+    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
   }
   const parsed = tool.inputSchema.safeParse(rawInput);
   if (!parsed.success) {
     const message = `Invalid tool arguments for ${toolName}: ${formatZodIssues(parsed.error.issues)}`;
     const outputPayload = buildToolErrorOutput(message, parsed.error.issues);
-    return {
-      result: { toolName, input: rawInput, output: outputPayload, error: message },
-      outputPayload,
-    };
+    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
   }
   try {
     const output = await tool.execute(parsed.data);
-    return {
-      result: { toolName, input: parsed.data, output },
-      outputPayload: output,
-    };
+    const metrics = toolName === "spawn_agent" ? extractSpawnStartupMetrics(output) : undefined;
+    return finalize({ toolName, input: parsed.data, output }, output, metrics);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const outputPayload = buildToolErrorOutput(`Tool ${toolName} failed: ${message}`);
-    return {
-      result: { toolName, input: parsed.data, output: outputPayload, error: message },
-      outputPayload,
-    };
+    return finalize({ toolName, input: parsed.data, output: outputPayload, error: message }, outputPayload);
   }
 }
 
@@ -3013,6 +3120,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
+      const stepStartedAtMs = Date.now();
+      let firstModelEventAtMs: number | undefined;
+      let schedulerMetrics: CallSchedulerRunMetrics | undefined;
       const abortController = new AbortController();
       if (request.signal) {
         if (request.signal.aborted) {
@@ -3034,6 +3144,12 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         onEvent?.(ev);
       };
 
+      const markFirstModelEvent = () => {
+        if (firstModelEventAtMs === undefined) {
+          firstModelEventAtMs = Date.now();
+        }
+      };
+
       const finalResponse = await runOpenAiCall(async (client) => {
         const stream = client.responses.stream(
           {
@@ -3050,6 +3166,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         );
 
         for await (const event of stream as any) {
+          markFirstModelEvent();
           switch (event.type) {
             case "response.output_text.delta":
               emitEvent({
@@ -3073,7 +3190,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
         }
         return await (stream as any).finalResponse();
-      }, providerInfo.model);
+      }, providerInfo.model, {
+        onSettled: (metrics) => {
+          schedulerMetrics = metrics;
+        },
+      });
 
       modelVersion =
         typeof (finalResponse as any).model === "string"
@@ -3095,6 +3216,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         .join("")
         .trim();
       const reasoningSummary = extractOpenAiReasoningSummary(finalResponse).trim();
+      const modelCompletedAtMs = Date.now();
 
       const stepCostUsd = estimateCallCostUsd({
         modelId: modelVersion,
@@ -3113,6 +3235,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       if (responseToolCalls.length === 0) {
         finalText = responseText;
         finalThoughts = reasoningSummary;
+        const stepCompletedAtMs = Date.now();
+        const timing = buildStepTiming({
+          stepStartedAtMs,
+          stepCompletedAtMs,
+          modelCompletedAtMs,
+          firstModelEventAtMs,
+          schedulerMetrics,
+          toolExecutionMs: 0,
+          waitToolMs: 0,
+        });
         steps.push({
           step: steps.length + 1,
           modelVersion,
@@ -3121,6 +3253,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           toolCalls: [],
           usage: usageTokens,
           costUsd: stepCostUsd,
+          timing,
         });
         return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
       }
@@ -3168,8 +3301,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       );
 
       const toolOutputs: any[] = [];
+      let toolExecutionMs = 0;
+      let waitToolMs = 0;
       for (const { entry, result, outputPayload } of callResults) {
         stepToolCalls.push({ ...result, callId: entry.call.call_id });
+        const callDurationMs = toToolResultDuration(result);
+        toolExecutionMs += callDurationMs;
+        if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+          waitToolMs += callDurationMs;
+        }
         if (entry.call.kind === "custom") {
           toolOutputs.push({
             type: "custom_tool_call_output",
@@ -3185,6 +3325,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }
       }
 
+      const stepCompletedAtMs = Date.now();
+      const timing = buildStepTiming({
+        stepStartedAtMs,
+        stepCompletedAtMs,
+        modelCompletedAtMs,
+        firstModelEventAtMs,
+        schedulerMetrics,
+        toolExecutionMs,
+        waitToolMs,
+      });
       steps.push({
         step: steps.length + 1,
         modelVersion,
@@ -3193,6 +3343,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         toolCalls: stepToolCalls,
         usage: usageTokens,
         costUsd: stepCostUsd,
+        timing,
       });
 
       previousResponseId = (finalResponse as any).id;
@@ -3221,6 +3372,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
+      const stepStartedAtMs = Date.now();
+      let firstModelEventAtMs: number | undefined;
+      const markFirstModelEvent = () => {
+        if (firstModelEventAtMs === undefined) {
+          firstModelEventAtMs = Date.now();
+        }
+      };
       const response = await collectChatGptCodexResponseWithRetry({
         sessionId: conversationId,
         request: {
@@ -3243,13 +3401,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         signal: request.signal,
         onDelta: (delta) => {
           if (delta.thoughtDelta) {
+            markFirstModelEvent();
             request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
           }
           if (delta.textDelta) {
+            markFirstModelEvent();
             request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
           }
         },
       });
+      const modelCompletedAtMs = Date.now();
 
       const modelVersion = response.model ? `chatgpt-${response.model}` : request.model;
       const usageTokens = extractChatGptUsageTokens(response.usage);
@@ -3267,6 +3428,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       if (responseToolCalls.length === 0) {
         finalText = responseText;
         finalThoughts = reasoningSummaryText;
+        const stepCompletedAtMs = Date.now();
+        const timing = buildStepTiming({
+          stepStartedAtMs,
+          stepCompletedAtMs,
+          modelCompletedAtMs,
+          firstModelEventAtMs,
+          toolExecutionMs: 0,
+          waitToolMs: 0,
+        });
         steps.push({
           step: steps.length + 1,
           modelVersion,
@@ -3275,6 +3445,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           toolCalls: [],
           usage: usageTokens,
           costUsd: stepCostUsd,
+          timing,
         });
         return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
       }
@@ -3320,8 +3491,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }),
       );
 
+      let toolExecutionMs = 0;
+      let waitToolMs = 0;
       for (const { entry, result, outputPayload } of callResults) {
         toolCalls.push({ ...result, callId: entry.ids.callId });
+        const callDurationMs = toToolResultDuration(result);
+        toolExecutionMs += callDurationMs;
+        if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+          waitToolMs += callDurationMs;
+        }
         if (entry.call.kind === "custom") {
           toolOutputs.push({
             type: "custom_tool_call",
@@ -3353,6 +3531,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }
       }
 
+      const stepCompletedAtMs = Date.now();
+      const timing = buildStepTiming({
+        stepStartedAtMs,
+        stepCompletedAtMs,
+        modelCompletedAtMs,
+        firstModelEventAtMs,
+        toolExecutionMs,
+        waitToolMs,
+      });
       steps.push({
         step: steps.length + 1,
         modelVersion,
@@ -3361,6 +3548,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         toolCalls,
         usage: usageTokens,
         costUsd: stepCostUsd,
+        timing,
       });
 
       input = input.concat(toolOutputs);
@@ -3381,6 +3569,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
+      const stepStartedAtMs = Date.now();
+      let schedulerMetrics: CallSchedulerRunMetrics | undefined;
       const response = await runFireworksCall(async (client) => {
         return await client.chat.completions.create(
           {
@@ -3392,7 +3582,12 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           } as any,
           { signal: request.signal } as any,
         );
-      }, providerInfo.model);
+      }, providerInfo.model, {
+        onSettled: (metrics) => {
+          schedulerMetrics = metrics;
+        },
+      });
+      const modelCompletedAtMs = Date.now();
 
       const modelVersion = typeof response.model === "string" ? response.model : request.model;
       request.onEvent?.({ type: "model", modelVersion });
@@ -3428,6 +3623,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       if (responseToolCalls.length === 0) {
         finalText = responseText;
         finalThoughts = "";
+        const stepCompletedAtMs = Date.now();
+        const timing = buildStepTiming({
+          stepStartedAtMs,
+          stepCompletedAtMs,
+          modelCompletedAtMs,
+          schedulerMetrics,
+          toolExecutionMs: 0,
+          waitToolMs: 0,
+        });
         steps.push({
           step: steps.length + 1,
           modelVersion,
@@ -3436,6 +3640,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           toolCalls: [],
           usage: usageTokens,
           costUsd: stepCostUsd,
+          timing,
         });
         return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
       }
@@ -3473,8 +3678,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
       const assistantToolCalls: Array<Record<string, unknown>> = [];
       const toolMessages: Array<Record<string, unknown>> = [];
+      let toolExecutionMs = 0;
+      let waitToolMs = 0;
       for (const { entry, result, outputPayload } of callResults) {
         stepToolCalls.push({ ...result, callId: entry.call.id });
+        const callDurationMs = toToolResultDuration(result);
+        toolExecutionMs += callDurationMs;
+        if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+          waitToolMs += callDurationMs;
+        }
         assistantToolCalls.push({
           id: entry.call.id,
           type: "function",
@@ -3490,6 +3702,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         });
       }
 
+      const stepCompletedAtMs = Date.now();
+      const timing = buildStepTiming({
+        stepStartedAtMs,
+        stepCompletedAtMs,
+        modelCompletedAtMs,
+        schedulerMetrics,
+        toolExecutionMs,
+        waitToolMs,
+      });
       steps.push({
         step: steps.length + 1,
         modelVersion,
@@ -3498,6 +3719,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         toolCalls: stepToolCalls,
         usage: usageTokens,
         costUsd: stepCostUsd,
+        timing,
       });
 
       messages.push({
@@ -3520,6 +3742,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   const geminiContents = contents.map(convertLlmContentToGeminiContent);
 
   for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+    const stepStartedAtMs = Date.now();
+    let firstModelEventAtMs: number | undefined;
+    let schedulerMetrics: CallSchedulerRunMetrics | undefined;
+    const markFirstModelEvent = () => {
+      if (firstModelEventAtMs === undefined) {
+        firstModelEventAtMs = Date.now();
+      }
+    };
     const config: GenerateContentConfig = {
       maxOutputTokens: 32_000,
       tools: geminiTools,
@@ -3558,6 +3788,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       let resolvedModelVersion: string | undefined;
 
       for await (const chunk of stream) {
+        markFirstModelEvent();
         if (chunk.modelVersion) {
           resolvedModelVersion = chunk.modelVersion;
           onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
@@ -3619,7 +3850,12 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         usageMetadata: latestUsageMetadata,
         modelVersion: resolvedModelVersion ?? request.model,
       };
-    }, request.model);
+    }, request.model, {
+      onSettled: (metrics) => {
+        schedulerMetrics = metrics;
+      },
+    });
+    const modelCompletedAtMs = Date.now();
 
     const usageTokens = extractGeminiUsageTokens(response.usageMetadata);
     const modelVersion = response.modelVersion ?? request.model;
@@ -3633,6 +3869,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     if (response.functionCalls.length === 0) {
       finalText = response.responseText.trim();
       finalThoughts = response.thoughtsText.trim();
+      const stepCompletedAtMs = Date.now();
+      const timing = buildStepTiming({
+        stepStartedAtMs,
+        stepCompletedAtMs,
+        modelCompletedAtMs,
+        firstModelEventAtMs,
+        schedulerMetrics,
+        toolExecutionMs: 0,
+        waitToolMs: 0,
+      });
       steps.push({
         step: steps.length + 1,
         modelVersion,
@@ -3641,6 +3887,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         toolCalls: [],
         usage: usageTokens,
         costUsd: stepCostUsd,
+        timing,
       });
       return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
     }
@@ -3695,8 +3942,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       }),
     );
 
+    let toolExecutionMs = 0;
+    let waitToolMs = 0;
     for (const { entry, result, outputPayload } of callResults) {
       toolCalls.push({ ...result, callId: entry.call.id });
+      const callDurationMs = toToolResultDuration(result);
+      toolExecutionMs += callDurationMs;
+      if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+        waitToolMs += callDurationMs;
+      }
       const responsePayload = isPlainRecord(outputPayload)
         ? outputPayload
         : { output: outputPayload };
@@ -3709,6 +3963,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       });
     }
 
+    const stepCompletedAtMs = Date.now();
+    const timing = buildStepTiming({
+      stepStartedAtMs,
+      stepCompletedAtMs,
+      modelCompletedAtMs,
+      firstModelEventAtMs,
+      schedulerMetrics,
+      toolExecutionMs,
+      waitToolMs,
+    });
     steps.push({
       step: steps.length + 1,
       modelVersion,
@@ -3717,6 +3981,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       toolCalls,
       usage: usageTokens,
       costUsd: stepCostUsd,
+      timing,
     });
 
     geminiContents.push({ role: "user", parts: responseParts });

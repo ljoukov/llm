@@ -1,7 +1,11 @@
 import type { GoogleGenAI } from "@google/genai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
-import { createCallScheduler, type CallScheduler } from "../utils/scheduler.js";
+import {
+  createCallScheduler,
+  type CallScheduler,
+  type CallSchedulerRunOptions,
+} from "../utils/scheduler.js";
 
 import { getGeminiClient } from "./client.js";
 
@@ -275,6 +279,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
 export async function runGeminiCall<T>(
   fn: (client: GoogleGenAI) => Promise<T>,
   modelId?: string,
+  runOptions?: CallSchedulerRunOptions,
 ): Promise<T> {
-  return getSchedulerForModel(modelId).run(async () => fn(await getGeminiClient()));
+  return getSchedulerForModel(modelId).run(async () => fn(await getGeminiClient()), runOptions);
 }
