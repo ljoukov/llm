@@ -107,6 +107,20 @@ to HTTP/SSE automatically when needed.
 When fallback is triggered by an unsupported WebSocket upgrade response (for example `426`), the library keeps using
 SSE for the rest of the process to avoid repeated failing upgrade attempts.
 
+### Adaptive per-model concurrency
+
+Provider calls use adaptive, overload-aware concurrency (with retry/backoff where supported). Configure hard caps per
+model/per binary with env vars (clamped to `1..64`, default `3`):
+
+- global cap: `LLM_MAX_PARALLEL_REQUESTS_PER_MODEL`
+- provider caps: `OPENAI_MAX_PARALLEL_REQUESTS_PER_MODEL`, `GOOGLE_MAX_PARALLEL_REQUESTS_PER_MODEL`,
+  `FIREWORKS_MAX_PARALLEL_REQUESTS_PER_MODEL`
+- model overrides:
+  - `LLM_MAX_PARALLEL_REQUESTS_MODEL_<MODEL>`
+  - `<PROVIDER>_MAX_PARALLEL_REQUESTS_MODEL_<MODEL>`
+
+`<MODEL>` is uppercased and non-alphanumeric characters become `_` (for example `gpt-5.2` -> `GPT_5_2`).
+
 ## Usage
 
 `v2` uses OpenAI-style request fields:
@@ -464,6 +478,11 @@ Confinement/policy is set through `filesystemTool.options`:
 
 Detailed reference: `docs/agent-filesystem-tools.md`.
 
+Subagent delegation can be enabled via `subagentTool` (Codex-style control tools):
+
+- `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent`
+- Optional limits: `maxAgents`, `maxDepth`, wait timeouts.
+
 ```ts
 import { createInMemoryAgentFilesystem, runAgentLoop } from "@ljoukov/llm";
 
@@ -480,6 +499,11 @@ const result = await runAgentLoop({
       cwd: "/repo",
       fs,
     },
+  },
+  subagentTool: {
+    enabled: true,
+    maxAgents: 4,
+    maxDepth: 2,
   },
 });
 

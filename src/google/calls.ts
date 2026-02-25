@@ -1,6 +1,7 @@
 import type { GoogleGenAI } from "@google/genai";
 
-import { createCallScheduler } from "../utils/scheduler.js";
+import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { createCallScheduler, type CallScheduler } from "../utils/scheduler.js";
 
 import { getGeminiClient } from "./client.js";
 
@@ -209,6 +210,26 @@ function shouldRetry(error: unknown): boolean {
   return false;
 }
 
+function isOverloadError(error: unknown): boolean {
+  const status = getStatus(error);
+  if (status === 429 || status === 503 || status === 529) {
+    return true;
+  }
+
+  const reason = getErrorReason(error);
+  if (reason && RATE_LIMIT_REASONS.has(reason)) {
+    return true;
+  }
+
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("resource exhausted") ||
+    message.includes("resource_exhausted")
+  );
+}
+
 function retryDelayMs(attempt: number): number {
   const baseRetryDelayMs = 500;
   const maxRetryDelayMs = 4000;
@@ -217,22 +238,43 @@ function retryDelayMs(attempt: number): number {
   return base + jitter;
 }
 
-const scheduler = createCallScheduler({
-  maxParallelRequests: 3,
-  minIntervalBetweenStartMs: 200,
-  startJitterMs: 200,
-  retry: {
-    maxAttempts: 3,
-    getDelayMs: (attempt, error) => {
-      if (!shouldRetry(error)) {
-        return null;
-      }
-      const hintedDelay = getRetryAfterMs(error);
-      return hintedDelay ?? retryDelayMs(attempt);
-    },
-  },
-});
+const DEFAULT_SCHEDULER_KEY = "__default__";
+const schedulerByModel = new Map<string, CallScheduler>();
 
-export async function runGeminiCall<T>(fn: (client: GoogleGenAI) => Promise<T>): Promise<T> {
-  return scheduler.run(async () => fn(await getGeminiClient()));
+function getSchedulerForModel(modelId?: string): CallScheduler {
+  const normalizedModelId = modelId?.trim();
+  const schedulerKey =
+    normalizedModelId && normalizedModelId.length > 0 ? normalizedModelId : DEFAULT_SCHEDULER_KEY;
+  const existing = schedulerByModel.get(schedulerKey);
+  if (existing) {
+    return existing;
+  }
+  const created = createCallScheduler({
+    maxParallelRequests: resolveModelConcurrencyCap({
+      providerEnvPrefix: "GOOGLE",
+      modelId: normalizedModelId,
+    }),
+    minIntervalBetweenStartMs: 200,
+    startJitterMs: 200,
+    isOverloadError,
+    retry: {
+      maxAttempts: 3,
+      getDelayMs: (attempt, error) => {
+        if (!shouldRetry(error)) {
+          return null;
+        }
+        const hintedDelay = getRetryAfterMs(error);
+        return hintedDelay ?? retryDelayMs(attempt);
+      },
+    },
+  });
+  schedulerByModel.set(schedulerKey, created);
+  return created;
+}
+
+export async function runGeminiCall<T>(
+  fn: (client: GoogleGenAI) => Promise<T>,
+  modelId?: string,
+): Promise<T> {
+  return getSchedulerForModel(modelId).run(async () => fn(await getGeminiClient()));
 }

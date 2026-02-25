@@ -99,6 +99,57 @@ describe("runAgentLoop", () => {
     ]);
   });
 
+  it("adds codex-style subagent tools when enabled", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "gpt-5.2",
+      input: "delegate",
+      subagentTool: true,
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+      instructions?: string;
+    };
+    expect(Object.keys(call.tools).sort()).toEqual([
+      "close_agent",
+      "resume_agent",
+      "send_input",
+      "spawn_agent",
+      "wait",
+    ]);
+    expect(call.instructions).toContain("spawn_agent");
+    expect(call.instructions).toContain("wait");
+  });
+
+  it("accepts subagent_tool alias and supports disabling codex prompt pattern", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "gpt-5.2",
+      input: "delegate",
+      subagent_tool: {
+        promptPattern: "none",
+      },
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+      instructions?: string;
+    };
+    expect(Object.keys(call.tools).sort()).toEqual([
+      "close_agent",
+      "resume_agent",
+      "send_input",
+      "spawn_agent",
+      "wait",
+    ]);
+    expect(call.instructions).toBeUndefined();
+  });
+
   it("rejects duplicate tool names", async () => {
     runToolLoopMock.mockClear();
     const { runAgentLoop } = await import("../src/agent.js");
@@ -116,6 +167,25 @@ describe("runAgentLoop", () => {
         },
       }),
     ).rejects.toThrow('Duplicate tool name "read_file"');
+  });
+
+  it("rejects duplicate subagent tool names", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await expect(
+      runAgentLoop({
+        model: "gpt-5.2",
+        input: "test",
+        subagentTool: true,
+        tools: {
+          wait: {
+            inputSchema: z.object({}),
+            execute: async () => "shadowed",
+          },
+        },
+      }),
+    ).rejects.toThrow('Duplicate tool name "wait"');
   });
 
   it("requires at least one tool when filesystem tools are disabled", async () => {

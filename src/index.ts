@@ -70,6 +70,9 @@ export { runAgentLoop } from "./agent.js";
 export type {
   AgentFilesystemToolConfig,
   AgentFilesystemToolSelection,
+  AgentSubagentToolConfig,
+  AgentSubagentToolPromptPattern,
+  AgentSubagentToolSelection,
   RunAgentLoopRequest,
 } from "./agent.js";
 export {

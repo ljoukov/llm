@@ -19,7 +19,9 @@ It runs the agent with (default model set):
 
 The tasks are adapted from real science papers and stored under `benchmarks/agent/input/`.
 Default run uses one shared task (`tumor-vaccine-ici`) across all models so Codex vs Gemini is directly comparable.
-Runs execute models in parallel and tasks/runs sequentially per model.
+Each case runs in one of two variants: `baseline` (subagents disabled) and `subagents` (subagents enabled).
+By default the harness runs both variants for fair side-by-side comparison.
+Runs execute models in parallel and tasks/variants/runs sequentially per model.
 
 ## Run
 
@@ -52,10 +54,17 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 npx tsx benchmarks/agent/run.ts \
   --models chatgpt-gpt-5.3-codex,chatgpt-gpt-5.3-codex-spark,gpt-5.2,kimi-k2.5,glm-5,minimax-m2.1,gpt-oss-120b,gemini-2.5-pro,gemini-flash-latest,gemini-3-pro-preview,gemini-3.1-pro-preview,gemini-3-flash-preview \
   --tasks all \
+  --variants baseline,subagents \
   --runs 3 \
   --reasoning medium \
   --grader-model chatgpt-gpt-5.2 \
   --max-steps 100
+```
+
+Run only one variant:
+
+```bash
+npx tsx benchmarks/agent/run.ts --variant baseline
 ```
 
 Patch `traces/latest` with only newly rerun cases (keep older model/task results):
@@ -90,7 +99,7 @@ Each benchmark run writes a dedicated folder:
 
 - `benchmarks/agent/results/agent-fs-<timestamp>/summary.json`
 - `benchmarks/agent/results/agent-fs-<timestamp>/report.md`
-- `benchmarks/agent/results/agent-fs-<timestamp>/workspaces/<model-task-run>/...`
+- `benchmarks/agent/results/agent-fs-<timestamp>/workspaces/<model-task-variant-run>/...`
 
 Workspace folders include:
 
@@ -105,3 +114,4 @@ Workspace folders include:
 A committed high-level snapshot is kept in `benchmarks/agent/LATEST_RESULTS.md`.
 Committed per-model traces/workspaces are kept in `benchmarks/agent/traces/latest/`.
 Reports include a "Per-Task Across Runs (Best + Average)" section that summarizes each model/task pair across repeated runs.
+Reports also include per-variant subagent usage metrics and baseline-vs-subagents speedup (`baseline avg latency / subagents avg latency`) per model/task.

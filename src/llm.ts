@@ -2379,7 +2379,7 @@ async function runTextCall(params: {
           }
         }
       }
-    });
+    }, modelForProvider);
   } else if (provider === "chatgpt") {
     const chatGptInput = toChatGptInput(contents);
     const reasoningEffort = resolveOpenAiReasoningEffort(
@@ -2494,7 +2494,7 @@ async function runTextCall(params: {
       }
 
       latestUsage = extractFireworksUsageTokens(response.usage);
-    });
+    }, modelForProvider);
   } else {
     const geminiContents = contents.map(convertLlmContentToGeminiContent);
     const config: GenerateContentConfig = {
@@ -2567,7 +2567,7 @@ async function runTextCall(params: {
         }
       }
       grounding = latestGrounding;
-    });
+    }, modelForProvider);
   }
 
   const mergedParts = mergeConsecutiveTextParts(responseParts);
@@ -3072,7 +3072,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
         }
         return await (stream as any).finalResponse();
-      });
+      }, providerInfo.model);
 
       modelVersion =
         typeof (finalResponse as any).model === "string"
@@ -3391,7 +3391,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           } as any,
           { signal: request.signal } as any,
         );
-      });
+      }, providerInfo.model);
 
       const modelVersion = typeof response.model === "string" ? response.model : request.model;
       request.onEvent?.({ type: "model", modelVersion });
@@ -3618,7 +3618,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         usageMetadata: latestUsageMetadata,
         modelVersion: resolvedModelVersion ?? request.model,
       };
-    });
+    }, request.model);
 
     const usageTokens = extractGeminiUsageTokens(response.usageMetadata);
     const modelVersion = response.modelVersion ?? request.model;
