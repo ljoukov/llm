@@ -807,13 +807,14 @@ function isRetryableChatGptTransportError(error: unknown): boolean {
     message === "terminated" ||
     message.includes("socket hang up") ||
     message.includes("fetch failed") ||
-    message.includes("network")
+    message.includes("network") ||
+    message.includes("responses websocket")
   );
 }
 
 async function collectChatGptCodexResponseWithRetry(
   options: CollectChatGptCodexResponseOptions,
-  maxAttempts = 2,
+  maxAttempts = 3,
 ): Promise<CollectChatGptCodexResponseResult> {
   let attempt = 1;
   while (true) {
