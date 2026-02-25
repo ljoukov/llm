@@ -29,7 +29,23 @@ export type CallSchedulerOptions = {
 };
 
 export type CallScheduler = {
-  run: <T>(fn: () => Promise<T>) => Promise<T>;
+  run: <T>(fn: () => Promise<T>, options?: CallSchedulerRunOptions) => Promise<T>;
+};
+
+export type CallSchedulerRunMetrics = {
+  readonly enqueuedAtMs: number;
+  readonly dequeuedAtMs: number;
+  readonly startedAtMs: number;
+  readonly completedAtMs: number;
+  readonly queueWaitMs: number;
+  readonly schedulerDelayMs: number;
+  readonly retryDelayMs: number;
+  readonly attempts: number;
+  readonly overloadCount: number;
+};
+
+export type CallSchedulerRunOptions = {
+  readonly onSettled?: (metrics: CallSchedulerRunMetrics) => void;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -156,12 +172,35 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
     }
   }
 
-  async function attemptWithRetries<T>(fn: () => Promise<T>, attempt: number): Promise<T> {
+  type RunState = {
+    enqueuedAtMs: number;
+    dequeuedAtMs: number;
+    startedAtMs?: number;
+    completedAtMs?: number;
+    schedulerDelayMs: number;
+    retryDelayMs: number;
+    attempts: number;
+    overloadCount: number;
+  };
+
+  async function attemptWithRetries<T>(
+    fn: () => Promise<T>,
+    attempt: number,
+    state: RunState,
+  ): Promise<T> {
     try {
+      const spacingStartedAtMs = Date.now();
       await applyStartSpacing();
+      const callStartedAtMs = Date.now();
+      state.schedulerDelayMs += Math.max(0, callStartedAtMs - spacingStartedAtMs);
+      if (state.startedAtMs === undefined) {
+        state.startedAtMs = callStartedAtMs;
+      }
+      state.attempts = Math.max(state.attempts, attempt);
       return await fn();
     } catch (error: unknown) {
       if (isOverloadError(error)) {
+        state.overloadCount += 1;
         consecutiveSuccesses = 0;
         currentParallelLimit = Math.max(1, Math.ceil(currentParallelLimit / 2));
       }
@@ -178,9 +217,10 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
       }
       const normalizedDelay = Math.max(0, delay);
       if (normalizedDelay > 0) {
+        state.retryDelayMs += normalizedDelay;
         await sleep(normalizedDelay);
       }
-      return attemptWithRetries(fn, attempt + 1);
+      return attemptWithRetries(fn, attempt + 1, state);
     }
   }
 
@@ -195,11 +235,22 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
     }
   }
 
-  function run<T>(fn: () => Promise<T>): Promise<T> {
+  function run<T>(fn: () => Promise<T>, runOptions: CallSchedulerRunOptions = {}): Promise<T> {
     return new Promise<T>((resolve, reject) => {
+      const enqueuedAtMs = Date.now();
       const job: QueueJob = async () => {
+        const dequeuedAtMs = Date.now();
+        const state: RunState = {
+          enqueuedAtMs,
+          dequeuedAtMs,
+          schedulerDelayMs: 0,
+          retryDelayMs: 0,
+          attempts: 0,
+          overloadCount: 0,
+        };
         try {
-          const result = await attemptWithRetries(fn, 1);
+          const result = await attemptWithRetries(fn, 1, state);
+          state.completedAtMs = Date.now();
           consecutiveSuccesses += 1;
           if (
             currentParallelLimit < maxParallelRequests &&
@@ -210,8 +261,27 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
           }
           resolve(result);
         } catch (error: unknown) {
+          state.completedAtMs = Date.now();
           reject(toError(error));
         } finally {
+          const startedAtMs = state.startedAtMs ?? state.dequeuedAtMs;
+          const completedAtMs = state.completedAtMs ?? Date.now();
+          const metrics: CallSchedulerRunMetrics = {
+            enqueuedAtMs: state.enqueuedAtMs,
+            dequeuedAtMs: state.dequeuedAtMs,
+            startedAtMs,
+            completedAtMs,
+            queueWaitMs: Math.max(0, state.dequeuedAtMs - state.enqueuedAtMs),
+            schedulerDelayMs: Math.max(0, state.schedulerDelayMs),
+            retryDelayMs: Math.max(0, state.retryDelayMs),
+            attempts: Math.max(1, state.attempts),
+            overloadCount: Math.max(0, state.overloadCount),
+          };
+          try {
+            runOptions.onSettled?.(metrics);
+          } catch {
+            // Metrics hooks must not interfere with scheduling behavior.
+          }
           activeCount -= 1;
           queueMicrotask(drainQueue);
         }

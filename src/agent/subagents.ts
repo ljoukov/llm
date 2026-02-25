@@ -106,6 +106,10 @@ type ManagedSubagent = {
   instructions?: string;
   maxSteps?: number;
   turns: number;
+  firstRunStartedAtMs?: number;
+  lastRunStartedAtMs?: number;
+  lastRunCompletedAtMs?: number;
+  lastRunDurationMs?: number;
   lastResult?: LlmToolLoopResult;
   lastError?: string;
   abortController?: AbortController;
@@ -690,7 +694,12 @@ function startRun(
 
   const input: LlmInputMessage[] = [...agent.history, { role: "user", content: nextInput }];
   const abortController = new AbortController();
+  const runStartedAtMs = Date.now();
   agent.abortController = abortController;
+  if (agent.firstRunStartedAtMs === undefined) {
+    agent.firstRunStartedAtMs = runStartedAtMs;
+  }
+  agent.lastRunStartedAtMs = runStartedAtMs;
   agent.lastError = undefined;
   setLifecycle(
     agent,
@@ -735,6 +744,9 @@ function startRun(
       agent.lastError = message;
       setLifecycle(agent, "failed", "run_failed", `Subagent ${agent.id} failed: ${message}`);
     } finally {
+      const runCompletedAtMs = Date.now();
+      agent.lastRunCompletedAtMs = runCompletedAtMs;
+      agent.lastRunDurationMs = Math.max(0, runCompletedAtMs - runStartedAtMs);
       agent.runningPromise = undefined;
       agent.abortController = undefined;
     }
@@ -824,6 +836,21 @@ function buildSnapshot(agent: ManagedSubagent): Record<string, unknown> {
     turns: agent.turns,
     created_at: new Date(agent.createdAtMs).toISOString(),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
+    ...(agent.firstRunStartedAtMs
+      ? {
+          first_run_started_at: new Date(agent.firstRunStartedAtMs).toISOString(),
+          spawn_startup_latency_ms: Math.max(0, agent.firstRunStartedAtMs - agent.createdAtMs),
+        }
+      : {}),
+    ...(agent.lastRunStartedAtMs
+      ? { last_run_started_at: new Date(agent.lastRunStartedAtMs).toISOString() }
+      : {}),
+    ...(agent.lastRunCompletedAtMs
+      ? { last_run_completed_at: new Date(agent.lastRunCompletedAtMs).toISOString() }
+      : {}),
+    ...(typeof agent.lastRunDurationMs === "number"
+      ? { last_run_duration_ms: Math.max(0, agent.lastRunDurationMs) }
+      : {}),
     ...(agent.lastError ? { last_error: agent.lastError } : {}),
     ...(agent.lastResult
       ? {
