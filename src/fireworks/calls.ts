@@ -1,15 +1,36 @@
 import type OpenAI from "openai";
 
-import { createCallScheduler } from "../utils/scheduler.js";
+import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { createCallScheduler, type CallScheduler } from "../utils/scheduler.js";
 
 import { getFireworksClient } from "./client.js";
 
-const scheduler = createCallScheduler({
-  maxParallelRequests: 3,
-  minIntervalBetweenStartMs: 200,
-  startJitterMs: 200,
-});
+const DEFAULT_SCHEDULER_KEY = "__default__";
+const schedulerByModel = new Map<string, CallScheduler>();
 
-export async function runFireworksCall<T>(fn: (client: OpenAI) => Promise<T>): Promise<T> {
-  return scheduler.run(async () => fn(getFireworksClient()));
+function getSchedulerForModel(modelId?: string): CallScheduler {
+  const normalizedModelId = modelId?.trim();
+  const schedulerKey =
+    normalizedModelId && normalizedModelId.length > 0 ? normalizedModelId : DEFAULT_SCHEDULER_KEY;
+  const existing = schedulerByModel.get(schedulerKey);
+  if (existing) {
+    return existing;
+  }
+  const created = createCallScheduler({
+    maxParallelRequests: resolveModelConcurrencyCap({
+      providerEnvPrefix: "FIREWORKS",
+      modelId: normalizedModelId,
+    }),
+    minIntervalBetweenStartMs: 200,
+    startJitterMs: 200,
+  });
+  schedulerByModel.set(schedulerKey, created);
+  return created;
+}
+
+export async function runFireworksCall<T>(
+  fn: (client: OpenAI) => Promise<T>,
+  modelId?: string,
+): Promise<T> {
+  return getSchedulerForModel(modelId).run(async () => fn(getFireworksClient()));
 }
