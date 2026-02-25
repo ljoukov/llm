@@ -68,6 +68,13 @@ export type {
 export { loadEnvFromFile, loadLocalEnv } from "./utils/env.js";
 export { runAgentLoop } from "./agent.js";
 export type {
+  AgentRunCompletedTelemetryEvent,
+  AgentRunStartedTelemetryEvent,
+  AgentRunStreamTelemetryEvent,
+  AgentTelemetryConfig,
+  AgentTelemetryEvent,
+  AgentTelemetrySelection,
+  AgentTelemetrySink,
   AgentFilesystemToolConfig,
   AgentFilesystemToolSelection,
   AgentSubagentToolConfig,

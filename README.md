@@ -510,6 +510,37 @@ const result = await runAgentLoop({
 console.log(result.text);
 ```
 
+### Agent Telemetry (Pluggable Backends)
+
+`runAgentLoop()` supports optional telemetry hooks that keep default behavior unchanged.
+You can attach any backend by implementing a sink with `emit(event)` and optional `flush()`.
+
+```ts
+import { runAgentLoop } from "@ljoukov/llm";
+
+const result = await runAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Summarize the report and update output JSON files.",
+  filesystemTool: true,
+  telemetry: {
+    includeLlmStreamEvents: false, // enable only if you need token/delta event fan-out
+    sink: {
+      emit: (event) => {
+        // Forward to your backend (Cloud Logging, OpenTelemetry, Datadog, etc.)
+        // event.type: "agent.run.started" | "agent.run.stream" | "agent.run.completed"
+        // event carries runId, parentRunId, depth, model, timestamp + payload
+      },
+      flush: async () => {
+        // Optional: flush buffered telemetry on run completion.
+      },
+    },
+  },
+});
+```
+
+Telemetry emits parent/child run correlation (`runId` + `parentRunId`) for subagents.
+See `docs/agent-telemetry.md` for event schema, design rationale, and backend adapter guidance.
+
 If you need exact control over tool definitions, build the filesystem toolset yourself and call `runToolLoop()` directly.
 
 ```ts
