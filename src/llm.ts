@@ -1974,7 +1974,8 @@ function extractSpawnStartupMetrics(outputPayload: unknown): Record<string, unkn
     return undefined;
   }
   const outputRecord = outputPayload as Record<string, unknown>;
-  const notification = typeof outputRecord.notification === "string" ? outputRecord.notification : "";
+  const notification =
+    typeof outputRecord.notification === "string" ? outputRecord.notification : "";
   if (notification !== "spawned") {
     return undefined;
   }
@@ -2021,13 +2022,19 @@ async function executeToolCall(params: {
   if (!tool) {
     const message = `Unknown tool: ${toolName}`;
     const outputPayload = buildToolErrorOutput(message);
-    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
+    return finalize(
+      { toolName, input: rawInput, output: outputPayload, error: message },
+      outputPayload,
+    );
   }
   if (callKind === "custom") {
     if (!isCustomTool(tool)) {
       const message = `Tool ${toolName} was called as custom_tool_call but is declared as function.`;
       const outputPayload = buildToolErrorOutput(message);
-      return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
+      return finalize(
+        { toolName, input: rawInput, output: outputPayload, error: message },
+        outputPayload,
+      );
     }
     const input = typeof rawInput === "string" ? rawInput : String(rawInput ?? "");
     try {
@@ -2043,18 +2050,27 @@ async function executeToolCall(params: {
   if (isCustomTool(tool)) {
     const message = `Tool ${toolName} was called as function_call but is declared as custom.`;
     const outputPayload = buildToolErrorOutput(message);
-    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
+    return finalize(
+      { toolName, input: rawInput, output: outputPayload, error: message },
+      outputPayload,
+    );
   }
   if (parseError) {
     const message = `Invalid JSON for tool ${toolName}: ${parseError}`;
     const outputPayload = buildToolErrorOutput(message);
-    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
+    return finalize(
+      { toolName, input: rawInput, output: outputPayload, error: message },
+      outputPayload,
+    );
   }
   const parsed = tool.inputSchema.safeParse(rawInput);
   if (!parsed.success) {
     const message = `Invalid tool arguments for ${toolName}: ${formatZodIssues(parsed.error.issues)}`;
     const outputPayload = buildToolErrorOutput(message, parsed.error.issues);
-    return finalize({ toolName, input: rawInput, output: outputPayload, error: message }, outputPayload);
+    return finalize(
+      { toolName, input: rawInput, output: outputPayload, error: message },
+      outputPayload,
+    );
   }
   try {
     const output = await tool.execute(parsed.data);
@@ -2063,7 +2079,10 @@ async function executeToolCall(params: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const outputPayload = buildToolErrorOutput(`Tool ${toolName} failed: ${message}`);
-    return finalize({ toolName, input: parsed.data, output: outputPayload, error: message }, outputPayload);
+    return finalize(
+      { toolName, input: parsed.data, output: outputPayload, error: message },
+      outputPayload,
+    );
   }
 }
 
@@ -3150,51 +3169,55 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }
       };
 
-      const finalResponse = await runOpenAiCall(async (client) => {
-        const stream = client.responses.stream(
-          {
-            model: providerInfo.model,
-            input,
-            ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-            ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
-            ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
-            reasoning,
-            text: textConfig as any,
-            include: ["reasoning.encrypted_content"] as any,
-          },
-          { signal: abortController.signal } as any,
-        );
+      const finalResponse = await runOpenAiCall(
+        async (client) => {
+          const stream = client.responses.stream(
+            {
+              model: providerInfo.model,
+              input,
+              ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+              ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
+              ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
+              reasoning,
+              text: textConfig as any,
+              include: ["reasoning.encrypted_content"] as any,
+            },
+            { signal: abortController.signal } as any,
+          );
 
-        for await (const event of stream as any) {
-          markFirstModelEvent();
-          switch (event.type) {
-            case "response.output_text.delta":
-              emitEvent({
-                type: "delta",
-                channel: "response",
-                text: typeof event.delta === "string" ? event.delta : "",
-              });
-              break;
-            case "response.reasoning_summary_text.delta":
-              emitEvent({
-                type: "delta",
-                channel: "thought",
-                text: typeof event.delta === "string" ? event.delta : "",
-              });
-              break;
-            case "response.refusal.delta":
-              emitEvent({ type: "blocked" });
-              break;
-            default:
-              break;
+          for await (const event of stream as any) {
+            markFirstModelEvent();
+            switch (event.type) {
+              case "response.output_text.delta":
+                emitEvent({
+                  type: "delta",
+                  channel: "response",
+                  text: typeof event.delta === "string" ? event.delta : "",
+                });
+                break;
+              case "response.reasoning_summary_text.delta":
+                emitEvent({
+                  type: "delta",
+                  channel: "thought",
+                  text: typeof event.delta === "string" ? event.delta : "",
+                });
+                break;
+              case "response.refusal.delta":
+                emitEvent({ type: "blocked" });
+                break;
+              default:
+                break;
+            }
           }
-        }
-        return await (stream as any).finalResponse();
-      }, providerInfo.model, {
-        onSettled: (metrics) => {
-          schedulerMetrics = metrics;
+          return await (stream as any).finalResponse();
         },
-      });
+        providerInfo.model,
+        {
+          onSettled: (metrics) => {
+            schedulerMetrics = metrics;
+          },
+        },
+      );
 
       modelVersion =
         typeof (finalResponse as any).model === "string"
@@ -3571,22 +3594,26 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const turn = stepIndex + 1;
       const stepStartedAtMs = Date.now();
       let schedulerMetrics: CallSchedulerRunMetrics | undefined;
-      const response = await runFireworksCall(async (client) => {
-        return await client.chat.completions.create(
-          {
-            model: providerInfo.model,
-            messages: messages as any,
-            tools: fireworksTools as any,
-            tool_choice: "auto" as const,
-            parallel_tool_calls: true,
-          } as any,
-          { signal: request.signal } as any,
-        );
-      }, providerInfo.model, {
-        onSettled: (metrics) => {
-          schedulerMetrics = metrics;
+      const response = await runFireworksCall(
+        async (client) => {
+          return await client.chat.completions.create(
+            {
+              model: providerInfo.model,
+              messages: messages as any,
+              tools: fireworksTools as any,
+              tool_choice: "auto" as const,
+              parallel_tool_calls: true,
+            } as any,
+            { signal: request.signal } as any,
+          );
         },
-      });
+        providerInfo.model,
+        {
+          onSettled: (metrics) => {
+            schedulerMetrics = metrics;
+          },
+        },
+      );
       const modelCompletedAtMs = Date.now();
 
       const modelVersion = typeof response.model === "string" ? response.model : request.model;
@@ -3772,89 +3799,93 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       readonly modelVersion?: string;
     };
 
-    const response: GeminiToolLoopResponse = await runGeminiCall(async (client) => {
-      const stream = await client.models.generateContentStream({
-        model: request.model,
-        contents: geminiContents,
-        config,
-      });
-      let responseText = "";
-      let thoughtsText = "";
-      const modelParts: GeminiPart[] = [];
-      const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
-      const seenFunctionCallIds = new Set<string>();
-      const seenFunctionCallKeys = new Set<string>();
-      let latestUsageMetadata: unknown;
-      let resolvedModelVersion: string | undefined;
+    const response: GeminiToolLoopResponse = await runGeminiCall(
+      async (client) => {
+        const stream = await client.models.generateContentStream({
+          model: request.model,
+          contents: geminiContents,
+          config,
+        });
+        let responseText = "";
+        let thoughtsText = "";
+        const modelParts: GeminiPart[] = [];
+        const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
+        const seenFunctionCallIds = new Set<string>();
+        const seenFunctionCallKeys = new Set<string>();
+        let latestUsageMetadata: unknown;
+        let resolvedModelVersion: string | undefined;
 
-      for await (const chunk of stream) {
-        markFirstModelEvent();
-        if (chunk.modelVersion) {
-          resolvedModelVersion = chunk.modelVersion;
-          onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
-        }
-        if (chunk.usageMetadata) {
-          latestUsageMetadata = chunk.usageMetadata;
-        }
-        const candidates = chunk.candidates;
-        if (!candidates || candidates.length === 0) {
-          continue;
-        }
-        const primary = candidates[0];
-        const parts = primary?.content?.parts;
-        if (!parts || parts.length === 0) {
-          continue;
-        }
+        for await (const chunk of stream) {
+          markFirstModelEvent();
+          if (chunk.modelVersion) {
+            resolvedModelVersion = chunk.modelVersion;
+            onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
+          }
+          if (chunk.usageMetadata) {
+            latestUsageMetadata = chunk.usageMetadata;
+          }
+          const candidates = chunk.candidates;
+          if (!candidates || candidates.length === 0) {
+            continue;
+          }
+          const primary = candidates[0];
+          const parts = primary?.content?.parts;
+          if (!parts || parts.length === 0) {
+            continue;
+          }
 
-        for (const part of parts) {
-          modelParts.push(part);
-          const call = part.functionCall;
-          if (call) {
-            const id = typeof call.id === "string" ? call.id : "";
-            const shouldAdd = (() => {
-              if (id.length > 0) {
-                if (seenFunctionCallIds.has(id)) {
+          for (const part of parts) {
+            modelParts.push(part);
+            const call = part.functionCall;
+            if (call) {
+              const id = typeof call.id === "string" ? call.id : "";
+              const shouldAdd = (() => {
+                if (id.length > 0) {
+                  if (seenFunctionCallIds.has(id)) {
+                    return false;
+                  }
+                  seenFunctionCallIds.add(id);
+                  return true;
+                }
+                const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
+                if (seenFunctionCallKeys.has(key)) {
                   return false;
                 }
-                seenFunctionCallIds.add(id);
+                seenFunctionCallKeys.add(key);
                 return true;
+              })();
+              if (shouldAdd) {
+                functionCalls.push(call);
               }
-              const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
-              if (seenFunctionCallKeys.has(key)) {
-                return false;
-              }
-              seenFunctionCallKeys.add(key);
-              return true;
-            })();
-            if (shouldAdd) {
-              functionCalls.push(call);
             }
-          }
-          if (typeof part.text === "string" && part.text.length > 0) {
-            if (part.thought) {
-              thoughtsText += part.text;
-              onEvent?.({ type: "delta", channel: "thought", text: part.text });
-            } else {
-              responseText += part.text;
-              onEvent?.({ type: "delta", channel: "response", text: part.text });
+            if (typeof part.text === "string" && part.text.length > 0) {
+              if (part.thought) {
+                thoughtsText += part.text;
+                onEvent?.({ type: "delta", channel: "thought", text: part.text });
+              } else {
+                responseText += part.text;
+                onEvent?.({ type: "delta", channel: "response", text: part.text });
+              }
             }
           }
         }
-      }
 
-      return {
-        responseText,
-        thoughtsText,
-        functionCalls,
-        modelParts,
-        usageMetadata: latestUsageMetadata,
-        modelVersion: resolvedModelVersion ?? request.model,
-      };
-    }, request.model, {
-      onSettled: (metrics) => {
-        schedulerMetrics = metrics;
+        return {
+          responseText,
+          thoughtsText,
+          functionCalls,
+          modelParts,
+          usageMetadata: latestUsageMetadata,
+          modelVersion: resolvedModelVersion ?? request.model,
+        };
       },
-    });
+      request.model,
+      {
+        onSettled: (metrics) => {
+          schedulerMetrics = metrics;
+        },
+      },
+    );
     const modelCompletedAtMs = Date.now();
 
     const usageTokens = extractGeminiUsageTokens(response.usageMetadata);

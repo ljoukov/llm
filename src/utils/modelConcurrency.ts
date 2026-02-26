@@ -19,7 +19,9 @@ type NormalizedModelConcurrencyConfig = {
   readonly globalCap?: number;
   readonly providerCaps: Partial<Record<ModelConcurrencyProvider, number>>;
   readonly modelCaps: ReadonlyMap<string, number>;
-  readonly providerModelCaps: Readonly<Record<ModelConcurrencyProvider, ReadonlyMap<string, number>>>;
+  readonly providerModelCaps: Readonly<
+    Record<ModelConcurrencyProvider, ReadonlyMap<string, number>>
+  >;
 };
 
 const MODEL_CONCURRENCY_PROVIDERS: readonly ModelConcurrencyProvider[] = [
