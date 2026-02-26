@@ -485,11 +485,53 @@ Use `customTool()` only when you need freeform/non-JSON tool input grammar.
 
 `runAgentLoop()` is the high-level agentic API. It supports:
 
-- built-in subagent orchestration (delegate work across spawned agents),
 - optional filesystem workspace tools,
+- built-in subagent orchestration (delegate work across spawned agents),
 - your own custom runtime tools.
 
-#### Subagent orchestration
+#### 1) Filesystem agent loop
+
+For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
+when `profile: "auto"`:
+
+- Codex-like models: Codex-compatible filesystem tool shape.
+- Gemini models: Gemini-compatible filesystem tool shape.
+- Other models: model-agnostic profile (currently Gemini-style).
+
+Confinement/policy is set through `filesystemTool.options`:
+
+- `cwd`: workspace root for path resolution.
+- `fs`: backend (`createNodeAgentFilesystem()` or `createInMemoryAgentFilesystem()`).
+- `checkAccess`: hook for allow/deny policy + audit.
+- `allowOutsideCwd`: opt-out confinement (default is false).
+
+Detailed reference: `docs/agent-filesystem-tools.md`.
+
+Filesystem-only example:
+
+```ts
+import { createInMemoryAgentFilesystem, runAgentLoop } from "@ljoukov/llm";
+
+const fs = createInMemoryAgentFilesystem({
+  "/repo/src/a.ts": "export const value = 1;\n",
+});
+
+const result = await runAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Change value from 1 to 2 using filesystem tools.",
+  filesystemTool: {
+    profile: "auto",
+    options: {
+      cwd: "/repo",
+      fs,
+    },
+  },
+});
+
+console.log(result.text);
+```
+
+#### 2) Add subagent orchestration
 
 Enable `subagentTool` to allow delegation via Codex-style control tools:
 
@@ -512,25 +554,7 @@ const result = await runAgentLoop({
 console.log(result.text);
 ```
 
-#### Filesystem workspace tools
-
-For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
-when `profile: "auto"`:
-
-- Codex-like models: Codex-compatible filesystem tool shape.
-- Gemini models: Gemini-compatible filesystem tool shape.
-- Other models: model-agnostic profile (currently Gemini-style).
-
-Confinement/policy is set through `filesystemTool.options`:
-
-- `cwd`: workspace root for path resolution.
-- `fs`: backend (`createNodeAgentFilesystem()` or `createInMemoryAgentFilesystem()`).
-- `checkAccess`: hook for allow/deny policy + audit.
-- `allowOutsideCwd`: opt-out confinement (default is false).
-
-Detailed reference: `docs/agent-filesystem-tools.md`.
-
-Combined example (`subagentTool` + `filesystemTool`):
+#### 3) Combine filesystem + subagents
 
 ```ts
 import { createInMemoryAgentFilesystem, runAgentLoop } from "@ljoukov/llm";
