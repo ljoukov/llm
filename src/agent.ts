@@ -193,14 +193,15 @@ async function runAgentLoopInternal(
 
   const sourceOnEvent = toolLoopRequest.onEvent;
   const includeLlmStreamEvents = telemetrySession?.includeLlmStreamEvents === true;
-  const wrappedOnEvent = sourceOnEvent || includeLlmStreamEvents
-    ? (event: LlmStreamEvent) => {
-        sourceOnEvent?.(event);
-        if (includeLlmStreamEvents) {
-          emitTelemetry({ type: "agent.run.stream", event });
+  const wrappedOnEvent =
+    sourceOnEvent || includeLlmStreamEvents
+      ? (event: LlmStreamEvent) => {
+          sourceOnEvent?.(event);
+          if (includeLlmStreamEvents) {
+            emitTelemetry({ type: "agent.run.stream", event });
+          }
         }
-      }
-    : undefined;
+      : undefined;
 
   try {
     const result = await runToolLoop({
@@ -404,10 +405,7 @@ function countToolCalls(result: LlmToolLoopResult): number {
   return count;
 }
 
-function sumUsageValue(
-  current: number | undefined,
-  next: number | undefined,
-): number | undefined {
+function sumUsageValue(current: number | undefined, next: number | undefined): number | undefined {
   if (typeof next !== "number" || !Number.isFinite(next)) {
     return current;
   }

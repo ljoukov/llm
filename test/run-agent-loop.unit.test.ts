@@ -299,7 +299,9 @@ describe("runAgentLoop", () => {
             {
               step: 1,
               modelVersion: "gpt-5.2",
-              toolCalls: [{ toolName: "spawn_agent", input: {}, output: { agent_id: spawnResult.agent_id } }],
+              toolCalls: [
+                { toolName: "spawn_agent", input: {}, output: { agent_id: spawnResult.agent_id } },
+              ],
               costUsd: 0,
             },
           ],
@@ -335,7 +337,9 @@ describe("runAgentLoop", () => {
       telemetry: {
         sink: {
           emit: (event) => {
-            events.push(event as { type: string; runId: string; depth: number; parentRunId?: string });
+            events.push(
+              event as { type: string; runId: string; depth: number; parentRunId?: string },
+            );
           },
         },
       },

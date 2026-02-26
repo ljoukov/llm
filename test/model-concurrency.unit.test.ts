@@ -45,9 +45,9 @@ describe("model concurrency config", () => {
 
   it("uses higher OpenAI default and lower Gemini preview default", () => {
     expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.3-codex" })).toBe(12);
-    expect(resolveModelConcurrencyCap({ provider: "google", modelId: "gemini-3.1-pro-preview" })).toBe(
-      2,
-    );
+    expect(
+      resolveModelConcurrencyCap({ provider: "google", modelId: "gemini-3.1-pro-preview" }),
+    ).toBe(2);
     expect(resolveModelConcurrencyCap({ provider: "google", modelId: "gemini-2.5-pro" })).toBe(4);
   });
 
