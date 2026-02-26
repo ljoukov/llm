@@ -1,17 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   clampModelConcurrencyCap,
-  normalizeModelIdForEnv,
+  configureModelConcurrency,
+  normalizeModelIdForConfig,
+  resetModelConcurrencyConfig,
   resolveModelConcurrencyCap,
 } from "../src/utils/modelConcurrency.js";
 
-describe("model concurrency env parsing", () => {
-  it("normalizes model ids for env keys", () => {
-    expect(normalizeModelIdForEnv("gpt-5.2")).toBe("GPT_5_2");
-    expect(normalizeModelIdForEnv(" gemini-2.5-pro/experimental ")).toBe(
-      "GEMINI_2_5_PRO_EXPERIMENTAL",
-    );
+describe("model concurrency config", () => {
+  afterEach(() => {
+    resetModelConcurrencyConfig();
+  });
+
+  it("normalizes model ids for config keys", () => {
+    expect(normalizeModelIdForConfig("gpt-5.2")).toBe("gpt-5.2");
+    expect(normalizeModelIdForConfig(" GEMINI-2.5-PRO ")).toBe("gemini-2.5-pro");
   });
 
   it("clamps configured caps to the supported range", () => {
@@ -22,50 +26,55 @@ describe("model concurrency env parsing", () => {
   });
 
   it("prefers provider+model overrides over broader defaults", () => {
-    const env: NodeJS.ProcessEnv = {
-      LLM_MAX_PARALLEL_REQUESTS_PER_MODEL: "4",
-      OPENAI_MAX_PARALLEL_REQUESTS_PER_MODEL: "5",
-      LLM_MAX_PARALLEL_REQUESTS_MODEL_GPT_5_2: "6",
-      OPENAI_MAX_PARALLEL_REQUESTS_MODEL_GPT_5_2: "7",
-    };
+    configureModelConcurrency({
+      globalCap: 4,
+      providerCaps: { openai: 5 },
+      modelCaps: { "gpt-5.2": 6 },
+      providerModelCaps: {
+        openai: { "gpt-5.2": 7 },
+      },
+    });
 
     expect(
       resolveModelConcurrencyCap({
-        providerEnvPrefix: "OPENAI",
+        provider: "openai",
         modelId: "gpt-5.2",
-        env,
       }),
     ).toBe(7);
   });
 
-  it("falls back to default when configured values are invalid", () => {
-    const env: NodeJS.ProcessEnv = {
-      LLM_MAX_PARALLEL_REQUESTS_PER_MODEL: "not-a-number",
-      GOOGLE_MAX_PARALLEL_REQUESTS_PER_MODEL: "",
-      GOOGLE_MAX_PARALLEL_REQUESTS_MODEL_GEMINI_2_5_PRO: "NaN",
-    };
-
-    expect(
-      resolveModelConcurrencyCap({
-        providerEnvPrefix: "GOOGLE",
-        modelId: "gemini-2.5-pro",
-        env,
-        defaultCap: 9,
-      }),
-    ).toBe(9);
+  it("uses higher OpenAI default and lower Gemini preview default", () => {
+    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.3-codex" })).toBe(12);
+    expect(resolveModelConcurrencyCap({ provider: "google", modelId: "gemini-3.1-pro-preview" })).toBe(
+      2,
+    );
+    expect(resolveModelConcurrencyCap({ provider: "google", modelId: "gemini-2.5-pro" })).toBe(4);
   });
 
-  it("clamps parsed env values to max 64", () => {
-    const env: NodeJS.ProcessEnv = {
-      LLM_MAX_PARALLEL_REQUESTS_PER_MODEL: "512",
-    };
+  it("clamps configured values to max 64", () => {
+    configureModelConcurrency({
+      providerCaps: {
+        fireworks: 512,
+      },
+    });
 
     expect(
       resolveModelConcurrencyCap({
-        providerEnvPrefix: "FIREWORKS",
+        provider: "fireworks",
         modelId: "kimi-k2.5",
-        env,
       }),
     ).toBe(64);
+  });
+
+  it("supports resetting configured caps", () => {
+    configureModelConcurrency({
+      providerCaps: {
+        openai: 9,
+      },
+    });
+    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.2" })).toBe(9);
+
+    resetModelConcurrencyConfig();
+    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.2" })).toBe(12);
   });
 });

@@ -109,21 +109,40 @@ SSE for the rest of the process to avoid repeated failing upgrade attempts.
 
 ### Adaptive per-model concurrency
 
-Provider calls use adaptive, overload-aware concurrency (with retry/backoff where supported). Configure hard caps per
-model/per binary with env vars (clamped to `1..64`, default `3`):
+Provider calls use adaptive, overload-aware concurrency (with retry/backoff where supported). Configure hard caps in
+code (clamped to `1..64`):
 
-- global cap: `LLM_MAX_PARALLEL_REQUESTS_PER_MODEL`
-- provider caps: `OPENAI_MAX_PARALLEL_REQUESTS_PER_MODEL`, `GOOGLE_MAX_PARALLEL_REQUESTS_PER_MODEL`,
-  `FIREWORKS_MAX_PARALLEL_REQUESTS_PER_MODEL`
-- model overrides:
-  - `LLM_MAX_PARALLEL_REQUESTS_MODEL_<MODEL>`
-  - `<PROVIDER>_MAX_PARALLEL_REQUESTS_MODEL_<MODEL>`
+```ts
+import { configureModelConcurrency } from "@ljoukov/llm";
 
-`<MODEL>` is uppercased and non-alphanumeric characters become `_` (for example `gpt-5.2` -> `GPT_5_2`).
+configureModelConcurrency({
+  globalCap: 8,
+  providerCaps: {
+    openai: 16,
+    google: 3,
+    fireworks: 8,
+  },
+  modelCaps: {
+    "gpt-5.2": 24,
+  },
+  providerModelCaps: {
+    google: {
+      "gemini-3.1-pro-preview": 2,
+    },
+  },
+});
+```
+
+Default caps (without configuration):
+
+- OpenAI: `12`
+- Google preview models (`*preview*`): `2`
+- Other Google models: `4`
+- Fireworks: `6`
 
 ## Usage
 
-`v2` uses OpenAI-style request fields:
+Use OpenAI-style request fields:
 
 - `input`: string or message array
 - `instructions`: optional top-level system instructions
@@ -326,8 +345,8 @@ console.log(result.text);
 
 - OpenAI API models use structured outputs (`json_schema`) when possible.
 - Gemini uses `responseJsonSchema`.
-- `chatgpt-*` models try to use structured outputs too; if rejected by the endpoint/model, it falls back to best-effort
-  JSON parsing.
+- `chatgpt-*` models try to use structured outputs too; if the endpoint/account/model rejects `json_schema`, the call
+  retries with best-effort JSON parsing.
 
 ```ts
 import { generateJson } from "@ljoukov/llm";
@@ -412,12 +431,12 @@ There are three tool-enabled call patterns:
 
 1. `generateText()` for provider-native/server-side tools (for example web search).
 2. `runToolLoop()` for your runtime JS/TS tools (function tools executed in your process).
-3. `runAgentLoop()` for filesystem tasks (a convenience wrapper around `runToolLoop()`).
+3. `runAgentLoop()` for full agentic loops (a convenience wrapper around `runToolLoop()` with optional built-in tools).
 
 Architecture note:
 
-- Filesystem tools are not a separate execution system.
-- `runAgentLoop()` constructs a filesystem toolset, merges your optional custom tools, then calls the same `runToolLoop()` engine.
+- Built-in filesystem tools are not a separate execution system.
+- `runAgentLoop()` can construct a filesystem toolset, merges your optional custom tools, and calls the same `runToolLoop()` engine.
 - This behavior is model-agnostic at API level; profile selection only adapts tool shape for model compatibility.
 
 ### Provider-Native Tools (`generateText()`)
@@ -461,9 +480,10 @@ console.log(result.text);
 
 Use `customTool()` only when you need freeform/non-JSON tool input grammar.
 
-### Filesystem Tasks (`runAgentLoop()`)
+### Agentic Loop (`runAgentLoop()`)
 
-Use this for read/search/write tasks in a workspace. The library auto-selects filesystem tool profile by model when `profile: "auto"`:
+Use this for general agentic workflows (including read/search/write tasks in a workspace). When filesystem tools are
+enabled, the library auto-selects a tool profile by model when `profile: "auto"`:
 
 - Codex-like models: Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.

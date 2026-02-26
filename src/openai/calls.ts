@@ -25,7 +25,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
   }
   const created = createCallScheduler({
     maxParallelRequests: resolveModelConcurrencyCap({
-      providerEnvPrefix: "OPENAI",
+      provider: "openai",
       modelId: normalizedModelId,
     }),
     minIntervalBetweenStartMs: 200,
