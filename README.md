@@ -11,6 +11,7 @@ Unified TypeScript wrapper over:
 - **Google Gemini via Vertex AI** (`@google/genai`)
 - **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
+- **Agentic orchestration with subagents** via `runAgentLoop()` + built-in delegation control tools
 
 Designed around a single streaming API that yields:
 
@@ -431,7 +432,7 @@ There are three tool-enabled call patterns:
 
 1. `generateText()` for provider-native/server-side tools (for example web search).
 2. `runToolLoop()` for your runtime JS/TS tools (function tools executed in your process).
-3. `runAgentLoop()` for full agentic loops (a convenience wrapper around `runToolLoop()` with optional built-in tools).
+3. `runAgentLoop()` for full agentic loops (a convenience wrapper around `runToolLoop()` with built-in subagent orchestration and optional filesystem tools).
 
 Architecture note:
 
@@ -482,8 +483,39 @@ Use `customTool()` only when you need freeform/non-JSON tool input grammar.
 
 ### Agentic Loop (`runAgentLoop()`)
 
-Use this for general agentic workflows (including read/search/write tasks in a workspace). When filesystem tools are
-enabled, the library auto-selects a tool profile by model when `profile: "auto"`:
+`runAgentLoop()` is the high-level agentic API. It supports:
+
+- built-in subagent orchestration (delegate work across spawned agents),
+- optional filesystem workspace tools,
+- your own custom runtime tools.
+
+#### Subagent orchestration
+
+Enable `subagentTool` to allow delegation via Codex-style control tools:
+
+- `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent`
+- optional limits: `maxAgents`, `maxDepth`, wait timeouts
+
+```ts
+import { runAgentLoop } from "@ljoukov/llm";
+
+const result = await runAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Plan the work, delegate in parallel where useful, and return a final merged result.",
+  subagentTool: {
+    enabled: true,
+    maxAgents: 4,
+    maxDepth: 2,
+  },
+});
+
+console.log(result.text);
+```
+
+#### Filesystem workspace tools
+
+For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
+when `profile: "auto"`:
 
 - Codex-like models: Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
@@ -498,10 +530,7 @@ Confinement/policy is set through `filesystemTool.options`:
 
 Detailed reference: `docs/agent-filesystem-tools.md`.
 
-Subagent delegation can be enabled via `subagentTool` (Codex-style control tools):
-
-- `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent`
-- Optional limits: `maxAgents`, `maxDepth`, wait timeouts.
+Combined example (`subagentTool` + `filesystemTool`):
 
 ```ts
 import { createInMemoryAgentFilesystem, runAgentLoop } from "@ljoukov/llm";
