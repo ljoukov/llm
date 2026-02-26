@@ -1665,8 +1665,9 @@ async function runCase(params: {
     success: schemaPass,
     attributes: {
       totalFiles: validations.length,
-      failedFiles: validations.filter((validation) => !validation.schemaValid || !validation.groundingValid)
-        .length,
+      failedFiles: validations.filter(
+        (validation) => !validation.schemaValid || !validation.groundingValid,
+      ).length,
     },
   });
 
@@ -1753,8 +1754,14 @@ async function runCase(params: {
     },
   };
 
-  await writeFile(join(layout.rootAbs, "timing-breakdown.json"), `${JSON.stringify(timing, null, 2)}\n`);
-  await writeFile(join(layout.rootAbs, "timing-events.json"), `${JSON.stringify(timingEvents, null, 2)}\n`);
+  await writeFile(
+    join(layout.rootAbs, "timing-breakdown.json"),
+    `${JSON.stringify(timing, null, 2)}\n`,
+  );
+  await writeFile(
+    join(layout.rootAbs, "timing-events.json"),
+    `${JSON.stringify(timingEvents, null, 2)}\n`,
+  );
   await writeFile(
     join(layout.rootAbs, "validation.json"),
     `${JSON.stringify(caseResult, null, 2)}\n`,
@@ -1856,7 +1863,10 @@ function summarizeByModelVariant(
   const totalCostUsd = modelCases.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
   const totalUsage = sumUsageSummaries(modelCases.map((entry) => entry.totalUsage));
   const totalTiming = sumTimingBreakdowns(modelCases.map((entry) => entry.timing));
-  const avgTiming = averageTimingBreakdown(modelCases.map((entry) => entry.timing), count);
+  const avgTiming = averageTimingBreakdown(
+    modelCases.map((entry) => entry.timing),
+    count,
+  );
 
   return {
     model,
@@ -1981,7 +1991,10 @@ function summarizeByModelTaskAcrossRuns(params: {
     const avgSubagentCalls =
       entries.reduce((acc, entry) => acc + entry.subagentUsage.totalSubagentCalls, 0) / runs;
     const runsUsingSubagents = entries.filter((entry) => entry.subagentUsage.usedSubagents).length;
-    const avgTiming = averageTimingBreakdown(entries.map((entry) => entry.timing), runs);
+    const avgTiming = averageTimingBreakdown(
+      entries.map((entry) => entry.timing),
+      runs,
+    );
 
     summaries.push({
       model,
@@ -2108,7 +2121,10 @@ function buildMarkdownReport(params: {
   const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
   const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
   const totalTiming = sumTimingBreakdowns(params.caseResults.map((entry) => entry.timing));
-  const avgTiming = averageTimingBreakdown(params.caseResults.map((entry) => entry.timing), totalCases);
+  const avgTiming = averageTimingBreakdown(
+    params.caseResults.map((entry) => entry.timing),
+    totalCases,
+  );
   const phaseTiming = summarizeTimingPhases(params.caseResults);
   const totalSubagentCalls = params.caseResults.reduce(
     (acc, entry) => acc + entry.subagentUsage.totalSubagentCalls,
@@ -2160,7 +2176,9 @@ function buildMarkdownReport(params: {
     `- Avg active model generation/case: ${(avgTiming.modelActiveGenerationMs / 1000).toFixed(2)}s`,
   );
   lines.push(`- Avg agent.run wall-clock/case: ${(avgTiming.agentWallClockMs / 1000).toFixed(2)}s`);
-  lines.push(`- Avg grader.run wall-clock/case: ${(avgTiming.graderWallClockMs / 1000).toFixed(2)}s`);
+  lines.push(
+    `- Avg grader.run wall-clock/case: ${(avgTiming.graderWallClockMs / 1000).toFixed(2)}s`,
+  );
   lines.push(`- Avg tool execution/case: ${(avgTiming.toolExecutionMs / 1000).toFixed(2)}s`);
   lines.push(`- Avg wait-tool polling/case: ${(avgTiming.pollingWaitToolMs / 1000).toFixed(2)}s`);
   lines.push(
@@ -2216,7 +2234,9 @@ function buildMarkdownReport(params: {
   lines.push(
     "| Model | Variant | Success | Schema pass | Tool pass | Grader pass | Avg latency (s) | Queue (s) | Conn setup (s) | Active gen (s) | Tool exec (s) | Wait tool (s) | Tool calls | Subagent calls | Runs using subagents | Total cost (USD) | In tokens | Cached tokens | Out tokens |",
   );
-  lines.push("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  lines.push(
+    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  );
   for (const model of params.models) {
     for (const variant of params.variants) {
       const summary = summarizeByModelVariant(model, variant, params.caseResults);
@@ -2235,7 +2255,9 @@ function buildMarkdownReport(params: {
   lines.push(
     "| Model | Variant | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Avg queue (s) | Avg conn setup (s) | Avg active gen (s) | Avg tool exec (s) | Avg wait tool (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls | Avg subagent calls | Best subagent calls | Runs using subagents |",
   );
-  lines.push("|---|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  lines.push(
+    "|---|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  );
   for (const summary of perTaskAcrossRuns) {
     lines.push(
       `| ${summary.model} | ${summary.variant} | ${summary.taskId} | ${summary.runs} | ${summary.bestSuccess ? "PASS" : "FAIL"} (run ${summary.bestRunIndex}) | ${summary.passCount}/${summary.runs} (${formatPercent(summary.passCount, summary.runs)}) | ${summary.schemaPassCount}/${summary.runs} (${formatPercent(summary.schemaPassCount, summary.runs)}) | ${summary.toolPassCount}/${summary.runs} (${formatPercent(summary.toolPassCount, summary.runs)}) | ${summary.graderPassCount}/${summary.runs} (${formatPercent(summary.graderPassCount, summary.runs)}) | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.avgTiming.modelQueueWaitMs / 1000).toFixed(2)} | ${(summary.avgTiming.modelConnectionSetupMs / 1000).toFixed(2)} | ${(summary.avgTiming.modelActiveGenerationMs / 1000).toFixed(2)} | ${(summary.avgTiming.toolExecutionMs / 1000).toFixed(2)} | ${(summary.avgTiming.pollingWaitToolMs / 1000).toFixed(2)} | ${(summary.bestDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.avgCostUsd)} | ${formatUsd(summary.bestCostUsd)} | ${summary.avgToolCalls.toFixed(2)} | ${summary.bestToolCalls} | ${summary.avgSubagentCalls.toFixed(2)} | ${summary.bestSubagentCalls} | ${summary.runsUsingSubagents}/${summary.runs} |`,
@@ -2265,7 +2287,9 @@ function buildMarkdownReport(params: {
   lines.push(
     "| Model | Variant | Task | Run | Reasoning | Status | Schema | Tool trace | Grader | Latency (s) | Queue (s) | Conn setup (s) | Active gen (s) | Tool exec (s) | Wait tool (s) | Spawn startup avg (ms) | Tool calls | Subagent calls (spawn/send/wait/close) | Used subagents | Cost (USD) | In tokens | Cached tokens | Out tokens |",
   );
-  lines.push("|---|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|---:|---:|---:|");
+  lines.push(
+    "|---|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|---:|---:|---:|",
+  );
   for (const result of params.caseResults) {
     const spawnStartupAvgMs =
       result.timing.spawnStartupCount > 0
@@ -2329,7 +2353,10 @@ function buildLatestResultsMarkdown(params: {
   const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
   const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
   const totalTiming = sumTimingBreakdowns(params.caseResults.map((entry) => entry.timing));
-  const avgTiming = averageTimingBreakdown(params.caseResults.map((entry) => entry.timing), totalCases);
+  const avgTiming = averageTimingBreakdown(
+    params.caseResults.map((entry) => entry.timing),
+    totalCases,
+  );
   const phaseTiming = summarizeTimingPhases(params.caseResults);
   const totalSubagentCalls = params.caseResults.reduce(
     (acc, entry) => acc + entry.subagentUsage.totalSubagentCalls,
@@ -2383,7 +2410,9 @@ function buildLatestResultsMarkdown(params: {
     `- Avg active model generation/case: ${(avgTiming.modelActiveGenerationMs / 1000).toFixed(2)}s`,
   );
   lines.push(`- Avg agent.run wall-clock/case: ${(avgTiming.agentWallClockMs / 1000).toFixed(2)}s`);
-  lines.push(`- Avg grader.run wall-clock/case: ${(avgTiming.graderWallClockMs / 1000).toFixed(2)}s`);
+  lines.push(
+    `- Avg grader.run wall-clock/case: ${(avgTiming.graderWallClockMs / 1000).toFixed(2)}s`,
+  );
   lines.push(`- Avg tool execution/case: ${(avgTiming.toolExecutionMs / 1000).toFixed(2)}s`);
   lines.push(`- Avg wait-tool polling/case: ${(avgTiming.pollingWaitToolMs / 1000).toFixed(2)}s`);
   lines.push(
@@ -2416,7 +2445,9 @@ function buildLatestResultsMarkdown(params: {
   lines.push(
     "| Model | Variant | Overall | Schema | Tool Trace | Grader | Avg latency (s) | Queue (s) | Conn setup (s) | Active gen (s) | Tool exec (s) | Wait tool (s) | Tool Calls | Subagent Calls | Used subagents | Cost (USD) | In tokens | Cached tokens | Out tokens |",
   );
-  lines.push("|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|");
+  lines.push(
+    "|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|",
+  );
   for (const model of params.models) {
     for (const variant of params.variants) {
       const summary = summarizeByModelVariant(model, variant, params.caseResults);
@@ -2436,7 +2467,9 @@ function buildLatestResultsMarkdown(params: {
   lines.push(
     "| Model | Variant | Task | Runs | Best result | Overall pass rate | Schema pass rate | Tool pass rate | Grader pass rate | Avg latency (s) | Avg queue (s) | Avg conn setup (s) | Avg active gen (s) | Avg tool exec (s) | Avg wait tool (s) | Best latency (s) | Avg cost (USD) | Best cost (USD) | Avg tool calls | Best tool calls | Avg subagent calls | Best subagent calls | Runs using subagents |",
   );
-  lines.push("|---|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  lines.push(
+    "|---|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  );
   for (const summary of perTaskAcrossRuns) {
     lines.push(
       `| \`${summary.model}\` | \`${summary.variant}\` | \`${summary.taskId}\` | ${summary.runs} | ${summary.bestSuccess ? "PASS" : "FAIL"} (run ${summary.bestRunIndex}) | ${summary.passCount}/${summary.runs} (${formatPercent(summary.passCount, summary.runs)}) | ${summary.schemaPassCount}/${summary.runs} (${formatPercent(summary.schemaPassCount, summary.runs)}) | ${summary.toolPassCount}/${summary.runs} (${formatPercent(summary.toolPassCount, summary.runs)}) | ${summary.graderPassCount}/${summary.runs} (${formatPercent(summary.graderPassCount, summary.runs)}) | ${(summary.avgDurationMs / 1000).toFixed(2)} | ${(summary.avgTiming.modelQueueWaitMs / 1000).toFixed(2)} | ${(summary.avgTiming.modelConnectionSetupMs / 1000).toFixed(2)} | ${(summary.avgTiming.modelActiveGenerationMs / 1000).toFixed(2)} | ${(summary.avgTiming.toolExecutionMs / 1000).toFixed(2)} | ${(summary.avgTiming.pollingWaitToolMs / 1000).toFixed(2)} | ${(summary.bestDurationMs / 1000).toFixed(2)} | ${formatUsd(summary.avgCostUsd)} | ${formatUsd(summary.bestCostUsd)} | ${summary.avgToolCalls.toFixed(2)} | ${summary.bestToolCalls} | ${summary.avgSubagentCalls.toFixed(2)} | ${summary.bestSubagentCalls} | ${summary.runsUsingSubagents}/${summary.runs} |`,
