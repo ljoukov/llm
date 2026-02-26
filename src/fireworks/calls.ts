@@ -22,7 +22,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
   }
   const created = createCallScheduler({
     maxParallelRequests: resolveModelConcurrencyCap({
-      providerEnvPrefix: "FIREWORKS",
+      provider: "fireworks",
       modelId: normalizedModelId,
     }),
     minIntervalBetweenStartMs: 200,

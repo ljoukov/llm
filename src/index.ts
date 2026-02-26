@@ -66,6 +66,11 @@ export type {
 } from "./llm.js";
 
 export { loadEnvFromFile, loadLocalEnv } from "./utils/env.js";
+export {
+  configureModelConcurrency,
+  resetModelConcurrencyConfig,
+} from "./utils/modelConcurrency.js";
+export type { ModelConcurrencyConfig, ModelConcurrencyProvider } from "./utils/modelConcurrency.js";
 export { runAgentLoop } from "./agent.js";
 export type {
   AgentRunCompletedTelemetryEvent,
