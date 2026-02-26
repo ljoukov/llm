@@ -255,7 +255,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
   }
   const created = createCallScheduler({
     maxParallelRequests: resolveModelConcurrencyCap({
-      providerEnvPrefix: "GOOGLE",
+      provider: "google",
       modelId: normalizedModelId,
     }),
     minIntervalBetweenStartMs: 200,
