@@ -429,12 +429,8 @@ export type LlmToolLoopSteeringAppendResult = {
 };
 
 export type LlmToolLoopSteeringChannel = {
-  readonly append: (
-    input: LlmToolLoopSteeringInput,
-  ) => LlmToolLoopSteeringAppendResult;
-  readonly steer: (
-    input: LlmToolLoopSteeringInput,
-  ) => LlmToolLoopSteeringAppendResult;
+  readonly append: (input: LlmToolLoopSteeringInput) => LlmToolLoopSteeringAppendResult;
+  readonly steer: (input: LlmToolLoopSteeringInput) => LlmToolLoopSteeringAppendResult;
   readonly pendingCount: () => number;
   readonly close: () => void;
 };
@@ -453,12 +449,8 @@ export type LlmToolLoopRequest = LlmInput & {
 export type LlmToolLoopStream = {
   readonly events: AsyncIterable<LlmStreamEvent>;
   readonly result: Promise<LlmToolLoopResult>;
-  readonly append: (
-    input: LlmToolLoopSteeringInput,
-  ) => LlmToolLoopSteeringAppendResult;
-  readonly steer: (
-    input: LlmToolLoopSteeringInput,
-  ) => LlmToolLoopSteeringAppendResult;
+  readonly append: (input: LlmToolLoopSteeringInput) => LlmToolLoopSteeringAppendResult;
+  readonly steer: (input: LlmToolLoopSteeringInput) => LlmToolLoopSteeringAppendResult;
   readonly pendingSteeringCount: () => number;
   readonly abort: () => void;
 };
@@ -3310,157 +3302,279 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   let finalThoughts = "";
 
   try {
-
-  if (providerInfo.provider === "openai") {
-    const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
-    const openAiNativeTools = toOpenAiTools(request.modelTools);
-    const openAiTools = openAiNativeTools
-      ? [...openAiNativeTools, ...openAiAgentTools]
-      : [...openAiAgentTools];
-    const reasoningEffort = resolveOpenAiReasoningEffort(
-      providerInfo.model,
-      request.openAiReasoningEffort,
-    );
-    const textConfig = {
-      format: { type: "text" },
-      verbosity: resolveOpenAiVerbosity(providerInfo.model),
-    };
-    const reasoning = {
-      effort: toOpenAiReasoningEffort(reasoningEffort),
-      summary: "detailed" as const,
-    };
-
-    let previousResponseId: string | undefined;
-    let input: any = toOpenAiInput(contents);
-
-    for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
-      const turn = stepIndex + 1;
-      const stepStartedAtMs = Date.now();
-      let firstModelEventAtMs: number | undefined;
-      let schedulerMetrics: CallSchedulerRunMetrics | undefined;
-      const abortController = new AbortController();
-      if (request.signal) {
-        if (request.signal.aborted) {
-          abortController.abort(request.signal.reason);
-        } else {
-          request.signal.addEventListener(
-            "abort",
-            () => abortController.abort(request.signal?.reason),
-            { once: true },
-          );
-        }
-      }
-
-      const onEvent = request.onEvent;
-      let modelVersion: string = request.model;
-      let usageTokens: LlmUsageTokens | undefined;
-      let thoughtDeltaEmitted = false;
-
-      const emitEvent = (ev: LlmStreamEvent) => {
-        onEvent?.(ev);
-      };
-
-      const markFirstModelEvent = () => {
-        if (firstModelEventAtMs === undefined) {
-          firstModelEventAtMs = Date.now();
-        }
-      };
-
-      const finalResponse = await runOpenAiCall(
-        async (client) => {
-          const stream = client.responses.stream(
-            {
-              model: providerInfo.model,
-              input,
-              ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-              ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
-              ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
-              reasoning,
-              text: textConfig as any,
-              include: ["reasoning.encrypted_content"] as any,
-            },
-            { signal: abortController.signal } as any,
-          );
-
-          for await (const event of stream as any) {
-            markFirstModelEvent();
-            switch (event.type) {
-              case "response.output_text.delta":
-                emitEvent({
-                  type: "delta",
-                  channel: "response",
-                  text: typeof event.delta === "string" ? event.delta : "",
-                });
-                break;
-              case "response.reasoning_summary_text.delta":
-                thoughtDeltaEmitted = true;
-                emitEvent({
-                  type: "delta",
-                  channel: "thought",
-                  text: typeof event.delta === "string" ? event.delta : "",
-                });
-                break;
-              case "response.refusal.delta":
-                emitEvent({ type: "blocked" });
-                break;
-              default:
-                break;
-            }
-          }
-          return await (stream as any).finalResponse();
-        },
+    if (providerInfo.provider === "openai") {
+      const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
+      const openAiNativeTools = toOpenAiTools(request.modelTools);
+      const openAiTools = openAiNativeTools
+        ? [...openAiNativeTools, ...openAiAgentTools]
+        : [...openAiAgentTools];
+      const reasoningEffort = resolveOpenAiReasoningEffort(
         providerInfo.model,
-        {
-          onSettled: (metrics) => {
-            schedulerMetrics = metrics;
-          },
-        },
+        request.openAiReasoningEffort,
       );
+      const textConfig = {
+        format: { type: "text" },
+        verbosity: resolveOpenAiVerbosity(providerInfo.model),
+      };
+      const reasoning = {
+        effort: toOpenAiReasoningEffort(reasoningEffort),
+        summary: "detailed" as const,
+      };
 
-      modelVersion =
-        typeof (finalResponse as any).model === "string"
-          ? (finalResponse as any).model
-          : request.model;
-      emitEvent({ type: "model", modelVersion });
-      if ((finalResponse as any).error) {
-        const message =
-          typeof (finalResponse as any).error.message === "string"
-            ? (finalResponse as any).error.message
-            : "OpenAI response failed";
-        throw new Error(message);
-      }
-      usageTokens = extractOpenAiUsageTokens((finalResponse as any).usage);
+      let previousResponseId: string | undefined;
+      let input: any = toOpenAiInput(contents);
 
-      const responseText = extractOpenAiResponseParts(finalResponse)
-        .parts.filter((p) => p.type === "text" && p.thought !== true)
-        .map((p) => (p as any).text as string)
-        .join("")
-        .trim();
-      const reasoningSummary = extractOpenAiReasoningSummary(finalResponse).trim();
-      if (!thoughtDeltaEmitted && reasoningSummary.length > 0) {
-        emitEvent({ type: "delta", channel: "thought", text: reasoningSummary });
-      }
-      const modelCompletedAtMs = Date.now();
+      for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+        const turn = stepIndex + 1;
+        const stepStartedAtMs = Date.now();
+        let firstModelEventAtMs: number | undefined;
+        let schedulerMetrics: CallSchedulerRunMetrics | undefined;
+        const abortController = new AbortController();
+        if (request.signal) {
+          if (request.signal.aborted) {
+            abortController.abort(request.signal.reason);
+          } else {
+            request.signal.addEventListener(
+              "abort",
+              () => abortController.abort(request.signal?.reason),
+              { once: true },
+            );
+          }
+        }
 
-      const stepCostUsd = estimateCallCostUsd({
-        modelId: modelVersion,
-        tokens: usageTokens,
-        responseImages: 0,
-      });
-      totalCostUsd += stepCostUsd;
+        const onEvent = request.onEvent;
+        let modelVersion: string = request.model;
+        let usageTokens: LlmUsageTokens | undefined;
+        let thoughtDeltaEmitted = false;
 
-      if (usageTokens) {
-        emitEvent({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
-      }
+        const emitEvent = (ev: LlmStreamEvent) => {
+          onEvent?.(ev);
+        };
 
-      const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
+        const markFirstModelEvent = () => {
+          if (firstModelEventAtMs === undefined) {
+            firstModelEventAtMs = Date.now();
+          }
+        };
 
-      const stepToolCalls: LlmToolCallResult[] = [];
-      if (responseToolCalls.length === 0) {
-        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
-        finalText = responseText;
-        finalThoughts = reasoningSummary;
+        const finalResponse = await runOpenAiCall(
+          async (client) => {
+            const stream = client.responses.stream(
+              {
+                model: providerInfo.model,
+                input,
+                ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+                ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
+                ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
+                reasoning,
+                text: textConfig as any,
+                include: ["reasoning.encrypted_content"] as any,
+              },
+              { signal: abortController.signal } as any,
+            );
+
+            for await (const event of stream as any) {
+              markFirstModelEvent();
+              switch (event.type) {
+                case "response.output_text.delta":
+                  emitEvent({
+                    type: "delta",
+                    channel: "response",
+                    text: typeof event.delta === "string" ? event.delta : "",
+                  });
+                  break;
+                case "response.reasoning_summary_text.delta":
+                  thoughtDeltaEmitted = true;
+                  emitEvent({
+                    type: "delta",
+                    channel: "thought",
+                    text: typeof event.delta === "string" ? event.delta : "",
+                  });
+                  break;
+                case "response.refusal.delta":
+                  emitEvent({ type: "blocked" });
+                  break;
+                default:
+                  break;
+              }
+            }
+            return await (stream as any).finalResponse();
+          },
+          providerInfo.model,
+          {
+            onSettled: (metrics) => {
+              schedulerMetrics = metrics;
+            },
+          },
+        );
+
+        modelVersion =
+          typeof (finalResponse as any).model === "string"
+            ? (finalResponse as any).model
+            : request.model;
+        emitEvent({ type: "model", modelVersion });
+        if ((finalResponse as any).error) {
+          const message =
+            typeof (finalResponse as any).error.message === "string"
+              ? (finalResponse as any).error.message
+              : "OpenAI response failed";
+          throw new Error(message);
+        }
+        usageTokens = extractOpenAiUsageTokens((finalResponse as any).usage);
+
+        const responseText = extractOpenAiResponseParts(finalResponse)
+          .parts.filter((p) => p.type === "text" && p.thought !== true)
+          .map((p) => (p as any).text as string)
+          .join("")
+          .trim();
+        const reasoningSummary = extractOpenAiReasoningSummary(finalResponse).trim();
+        if (!thoughtDeltaEmitted && reasoningSummary.length > 0) {
+          emitEvent({ type: "delta", channel: "thought", text: reasoningSummary });
+        }
+        const modelCompletedAtMs = Date.now();
+
+        const stepCostUsd = estimateCallCostUsd({
+          modelId: modelVersion,
+          tokens: usageTokens,
+          responseImages: 0,
+        });
+        totalCostUsd += stepCostUsd;
+
+        if (usageTokens) {
+          emitEvent({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
+        }
+
+        const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
+
+        const stepToolCalls: LlmToolCallResult[] = [];
+        if (responseToolCalls.length === 0) {
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
+          finalText = responseText;
+          finalThoughts = reasoningSummary;
+          const stepCompletedAtMs = Date.now();
+          const timing = buildStepTiming({
+            stepStartedAtMs,
+            stepCompletedAtMs,
+            modelCompletedAtMs,
+            firstModelEventAtMs,
+            schedulerMetrics,
+            toolExecutionMs: 0,
+            waitToolMs: 0,
+          });
+          steps.push({
+            step: steps.length + 1,
+            modelVersion,
+            text: responseText || undefined,
+            thoughts: reasoningSummary || undefined,
+            toolCalls: [],
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            timing,
+          });
+          if (steeringItems.length === 0) {
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
+          previousResponseId = (finalResponse as any).id;
+          input = steeringItems;
+          continue;
+        }
+
+        const callInputs = responseToolCalls.map((call, index) => {
+          const toolIndex = index + 1;
+          const toolId = buildToolLogId(turn, toolIndex);
+          const toolName = call.name;
+          if (call.kind === "custom") {
+            return {
+              call,
+              toolName,
+              value: call.input,
+              parseError: undefined,
+              toolId,
+              turn,
+              toolIndex,
+            };
+          }
+          const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
+          return { call, toolName, value, parseError, toolId, turn, toolIndex };
+        });
+
+        for (const entry of callInputs) {
+          emitEvent({
+            type: "tool_call",
+            phase: "started",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: entry.call.kind,
+            callId: entry.call.call_id,
+            input: entry.value,
+          });
+        }
+
+        const callResults = await Promise.all(
+          callInputs.map(async (entry) => {
+            return await toolCallContextStorage.run(
+              {
+                toolName: entry.toolName,
+                toolId: entry.toolId,
+                turn: entry.turn,
+                toolIndex: entry.toolIndex,
+              },
+              async () => {
+                const { result, outputPayload } = await executeToolCall({
+                  callKind: entry.call.kind,
+                  toolName: entry.toolName,
+                  tool: request.tools[entry.toolName],
+                  rawInput: entry.value,
+                  parseError: entry.parseError,
+                });
+                return { entry, result, outputPayload };
+              },
+            );
+          }),
+        );
+
+        const toolOutputs: any[] = [];
+        let toolExecutionMs = 0;
+        let waitToolMs = 0;
+        for (const { entry, result, outputPayload } of callResults) {
+          stepToolCalls.push({ ...result, callId: entry.call.call_id });
+          const callDurationMs = toToolResultDuration(result);
+          toolExecutionMs += callDurationMs;
+          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+            waitToolMs += callDurationMs;
+          }
+          emitEvent({
+            type: "tool_call",
+            phase: "completed",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: entry.call.kind,
+            callId: entry.call.call_id,
+            input: entry.value,
+            output: result.output,
+            error: result.error,
+            durationMs: result.durationMs,
+          });
+          if (entry.call.kind === "custom") {
+            toolOutputs.push({
+              type: "custom_tool_call_output",
+              call_id: entry.call.call_id,
+              output: mergeToolOutput(outputPayload),
+            });
+          } else {
+            toolOutputs.push({
+              type: "function_call_output",
+              call_id: entry.call.call_id,
+              output: mergeToolOutput(outputPayload),
+            });
+          }
+        }
+
         const stepCompletedAtMs = Date.now();
         const timing = buildStepTiming({
           stepStartedAtMs,
@@ -3468,428 +3582,622 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           modelCompletedAtMs,
           firstModelEventAtMs,
           schedulerMetrics,
-          toolExecutionMs: 0,
-          waitToolMs: 0,
+          toolExecutionMs,
+          waitToolMs,
         });
         steps.push({
           step: steps.length + 1,
           modelVersion,
           text: responseText || undefined,
           thoughts: reasoningSummary || undefined,
-          toolCalls: [],
+          toolCalls: stepToolCalls,
           usage: usageTokens,
           costUsd: stepCostUsd,
           timing,
         });
-        if (steeringItems.length === 0) {
-          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
-        }
+
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
         previousResponseId = (finalResponse as any).id;
-        input = steeringItems;
-        continue;
+        input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
       }
 
-      const callInputs = responseToolCalls.map((call, index) => {
-        const toolIndex = index + 1;
-        const toolId = buildToolLogId(turn, toolIndex);
-        const toolName = call.name;
-        if (call.kind === "custom") {
-          return {
-            call,
-            toolName,
-            value: call.input,
-            parseError: undefined,
-            toolId,
-            turn,
-            toolIndex,
-          };
-        }
-        const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
-        return { call, toolName, value, parseError, toolId, turn, toolIndex };
-      });
-
-      for (const entry of callInputs) {
-        emitEvent({
-          type: "tool_call",
-          phase: "started",
-          turn: entry.turn,
-          toolIndex: entry.toolIndex,
-          toolName: entry.toolName,
-          toolId: entry.toolId,
-          callKind: entry.call.kind,
-          callId: entry.call.call_id,
-          input: entry.value,
-        });
-      }
-
-      const callResults = await Promise.all(
-        callInputs.map(async (entry) => {
-          return await toolCallContextStorage.run(
-            {
-              toolName: entry.toolName,
-              toolId: entry.toolId,
-              turn: entry.turn,
-              toolIndex: entry.toolIndex,
-            },
-            async () => {
-              const { result, outputPayload } = await executeToolCall({
-                callKind: entry.call.kind,
-                toolName: entry.toolName,
-                tool: request.tools[entry.toolName],
-                rawInput: entry.value,
-                parseError: entry.parseError,
-              });
-              return { entry, result, outputPayload };
-            },
-          );
-        }),
-      );
-
-      const toolOutputs: any[] = [];
-      let toolExecutionMs = 0;
-      let waitToolMs = 0;
-      for (const { entry, result, outputPayload } of callResults) {
-        stepToolCalls.push({ ...result, callId: entry.call.call_id });
-        const callDurationMs = toToolResultDuration(result);
-        toolExecutionMs += callDurationMs;
-        if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-          waitToolMs += callDurationMs;
-        }
-        emitEvent({
-          type: "tool_call",
-          phase: "completed",
-          turn: entry.turn,
-          toolIndex: entry.toolIndex,
-          toolName: entry.toolName,
-          toolId: entry.toolId,
-          callKind: entry.call.kind,
-          callId: entry.call.call_id,
-          input: entry.value,
-          output: result.output,
-          error: result.error,
-          durationMs: result.durationMs,
-        });
-        if (entry.call.kind === "custom") {
-          toolOutputs.push({
-            type: "custom_tool_call_output",
-            call_id: entry.call.call_id,
-            output: mergeToolOutput(outputPayload),
-          });
-        } else {
-          toolOutputs.push({
-            type: "function_call_output",
-            call_id: entry.call.call_id,
-            output: mergeToolOutput(outputPayload),
-          });
-        }
-      }
-
-      const stepCompletedAtMs = Date.now();
-      const timing = buildStepTiming({
-        stepStartedAtMs,
-        stepCompletedAtMs,
-        modelCompletedAtMs,
-        firstModelEventAtMs,
-        schedulerMetrics,
-        toolExecutionMs,
-        waitToolMs,
-      });
-      steps.push({
-        step: steps.length + 1,
-        modelVersion,
-        text: responseText || undefined,
-        thoughts: reasoningSummary || undefined,
-        toolCalls: stepToolCalls,
-        usage: usageTokens,
-        costUsd: stepCostUsd,
-        timing,
-      });
-
-      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-      const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
-      previousResponseId = (finalResponse as any).id;
-      input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
+      throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
     }
 
-    throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
-  }
+    if (providerInfo.provider === "chatgpt") {
+      const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
+      const openAiNativeTools = toOpenAiTools(request.modelTools);
+      const openAiTools = openAiNativeTools
+        ? [...openAiNativeTools, ...openAiAgentTools]
+        : [...openAiAgentTools];
 
-  if (providerInfo.provider === "chatgpt") {
-    const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
-    const openAiNativeTools = toOpenAiTools(request.modelTools);
-    const openAiTools = openAiNativeTools
-      ? [...openAiNativeTools, ...openAiAgentTools]
-      : [...openAiAgentTools];
+      const reasoningEffort = resolveOpenAiReasoningEffort(
+        request.model,
+        request.openAiReasoningEffort,
+      );
+      const toolLoopInput = toChatGptInput(contents);
+      // ChatGPT Codex prompt caching is keyed by both prompt_cache_key and session_id.
+      const conversationId = `tool-loop-${randomBytes(8).toString("hex")}`;
+      const promptCacheKey = conversationId;
+      let input: ChatGptInputItem[] = [...toolLoopInput.input];
 
-    const reasoningEffort = resolveOpenAiReasoningEffort(
-      request.model,
-      request.openAiReasoningEffort,
-    );
-    const toolLoopInput = toChatGptInput(contents);
-    // ChatGPT Codex prompt caching is keyed by both prompt_cache_key and session_id.
-    const conversationId = `tool-loop-${randomBytes(8).toString("hex")}`;
-    const promptCacheKey = conversationId;
-    let input: ChatGptInputItem[] = [...toolLoopInput.input];
-
-    for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
-      const turn = stepIndex + 1;
-      const stepStartedAtMs = Date.now();
-      let firstModelEventAtMs: number | undefined;
-      let thoughtDeltaEmitted = false;
-      const markFirstModelEvent = () => {
-        if (firstModelEventAtMs === undefined) {
-          firstModelEventAtMs = Date.now();
-        }
-      };
-      const response = await collectChatGptCodexResponseWithRetry({
-        sessionId: conversationId,
-        request: {
-          model: providerInfo.model,
-          store: false,
-          stream: true,
-          instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
-          input,
-          prompt_cache_key: promptCacheKey,
-          include: ["reasoning.encrypted_content"],
-          tools: openAiTools,
-          tool_choice: "auto" as const,
-          parallel_tool_calls: true,
-          reasoning: {
-            effort: toOpenAiReasoningEffort(reasoningEffort),
-            summary: "detailed" as const,
+      for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+        const turn = stepIndex + 1;
+        const stepStartedAtMs = Date.now();
+        let firstModelEventAtMs: number | undefined;
+        let thoughtDeltaEmitted = false;
+        const markFirstModelEvent = () => {
+          if (firstModelEventAtMs === undefined) {
+            firstModelEventAtMs = Date.now();
+          }
+        };
+        const response = await collectChatGptCodexResponseWithRetry({
+          sessionId: conversationId,
+          request: {
+            model: providerInfo.model,
+            store: false,
+            stream: true,
+            instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
+            input,
+            prompt_cache_key: promptCacheKey,
+            include: ["reasoning.encrypted_content"],
+            tools: openAiTools,
+            tool_choice: "auto" as const,
+            parallel_tool_calls: true,
+            reasoning: {
+              effort: toOpenAiReasoningEffort(reasoningEffort),
+              summary: "detailed" as const,
+            },
+            text: { verbosity: resolveOpenAiVerbosity(request.model) },
+          } as any,
+          signal: request.signal,
+          onDelta: (delta) => {
+            if (delta.thoughtDelta) {
+              markFirstModelEvent();
+              thoughtDeltaEmitted = true;
+              request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
+            }
+            if (delta.textDelta) {
+              markFirstModelEvent();
+              request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
+            }
           },
-          text: { verbosity: resolveOpenAiVerbosity(request.model) },
-        } as any,
-        signal: request.signal,
-        onDelta: (delta) => {
-          if (delta.thoughtDelta) {
-            markFirstModelEvent();
-            thoughtDeltaEmitted = true;
-            request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
+        });
+        const modelCompletedAtMs = Date.now();
+
+        const modelVersion = response.model ? `chatgpt-${response.model}` : request.model;
+        const usageTokens = extractChatGptUsageTokens(response.usage);
+        const stepCostUsd = estimateCallCostUsd({
+          modelId: modelVersion,
+          tokens: usageTokens,
+          responseImages: 0,
+        });
+        totalCostUsd += stepCostUsd;
+
+        const responseText = (response.text ?? "").trim();
+        const reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
+        if (!thoughtDeltaEmitted && reasoningSummaryText.length > 0) {
+          request.onEvent?.({ type: "delta", channel: "thought", text: reasoningSummaryText });
+        }
+
+        const responseToolCalls = response.toolCalls ?? [];
+        if (responseToolCalls.length === 0) {
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+          finalText = responseText;
+          finalThoughts = reasoningSummaryText;
+          const stepCompletedAtMs = Date.now();
+          const timing = buildStepTiming({
+            stepStartedAtMs,
+            stepCompletedAtMs,
+            modelCompletedAtMs,
+            firstModelEventAtMs,
+            toolExecutionMs: 0,
+            waitToolMs: 0,
+          });
+          steps.push({
+            step: steps.length + 1,
+            modelVersion,
+            text: responseText || undefined,
+            thoughts: reasoningSummaryText || undefined,
+            toolCalls: [],
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            timing,
+          });
+          if (steeringItems.length === 0) {
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
           }
-          if (delta.textDelta) {
-            markFirstModelEvent();
-            request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
+          const assistantItem = toChatGptAssistantMessage(responseText);
+          input = assistantItem
+            ? input.concat(assistantItem, steeringItems)
+            : input.concat(steeringItems);
+          continue;
+        }
+
+        const toolCalls: LlmToolCallResult[] = [];
+        const toolOutputs: ChatGptInputItem[] = [];
+        const callInputs = responseToolCalls.map((call, index) => {
+          const toolIndex = index + 1;
+          const toolId = buildToolLogId(turn, toolIndex);
+          const toolName = call.name;
+          const { value, error: parseError } =
+            call.kind === "custom"
+              ? { value: call.input, error: undefined }
+              : parseOpenAiToolArguments(call.arguments);
+          const ids = normalizeChatGptToolIds({
+            callKind: call.kind,
+            callId: call.callId,
+            itemId: call.id,
+          });
+          return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
+        });
+
+        for (const entry of callInputs) {
+          request.onEvent?.({
+            type: "tool_call",
+            phase: "started",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: entry.call.kind,
+            callId: entry.ids.callId,
+            input: entry.value,
+          });
+        }
+
+        const callResults = await Promise.all(
+          callInputs.map(async (entry) => {
+            return await toolCallContextStorage.run(
+              {
+                toolName: entry.toolName,
+                toolId: entry.toolId,
+                turn: entry.turn,
+                toolIndex: entry.toolIndex,
+              },
+              async () => {
+                const { result, outputPayload } = await executeToolCall({
+                  callKind: entry.call.kind,
+                  toolName: entry.toolName,
+                  tool: request.tools[entry.toolName],
+                  rawInput: entry.value,
+                  parseError: entry.parseError,
+                });
+                return { entry, result, outputPayload };
+              },
+            );
+          }),
+        );
+
+        let toolExecutionMs = 0;
+        let waitToolMs = 0;
+        for (const { entry, result, outputPayload } of callResults) {
+          toolCalls.push({ ...result, callId: entry.ids.callId });
+          const callDurationMs = toToolResultDuration(result);
+          toolExecutionMs += callDurationMs;
+          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+            waitToolMs += callDurationMs;
           }
-        },
-      });
-      const modelCompletedAtMs = Date.now();
+          request.onEvent?.({
+            type: "tool_call",
+            phase: "completed",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: entry.call.kind,
+            callId: entry.ids.callId,
+            input: entry.value,
+            output: result.output,
+            error: result.error,
+            durationMs: result.durationMs,
+          });
+          if (entry.call.kind === "custom") {
+            toolOutputs.push({
+              type: "custom_tool_call",
+              id: entry.ids.itemId,
+              call_id: entry.ids.callId,
+              name: entry.toolName,
+              input: entry.call.input,
+              status: "completed",
+            } as ChatGptInputItem);
+            toolOutputs.push({
+              type: "custom_tool_call_output",
+              call_id: entry.ids.callId,
+              output: mergeToolOutput(outputPayload),
+            } as ChatGptInputItem);
+          } else {
+            toolOutputs.push({
+              type: "function_call",
+              id: entry.ids.itemId,
+              call_id: entry.ids.callId,
+              name: entry.toolName,
+              arguments: entry.call.arguments,
+              status: "completed",
+            } as ChatGptInputItem);
+            toolOutputs.push({
+              type: "function_call_output",
+              call_id: entry.ids.callId,
+              output: mergeToolOutput(outputPayload),
+            } as ChatGptInputItem);
+          }
+        }
 
-      const modelVersion = response.model ? `chatgpt-${response.model}` : request.model;
-      const usageTokens = extractChatGptUsageTokens(response.usage);
-      const stepCostUsd = estimateCallCostUsd({
-        modelId: modelVersion,
-        tokens: usageTokens,
-        responseImages: 0,
-      });
-      totalCostUsd += stepCostUsd;
-
-      const responseText = (response.text ?? "").trim();
-      const reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
-      if (!thoughtDeltaEmitted && reasoningSummaryText.length > 0) {
-        request.onEvent?.({ type: "delta", channel: "thought", text: reasoningSummaryText });
-      }
-
-      const responseToolCalls = response.toolCalls ?? [];
-      if (responseToolCalls.length === 0) {
-        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
-        finalText = responseText;
-        finalThoughts = reasoningSummaryText;
         const stepCompletedAtMs = Date.now();
         const timing = buildStepTiming({
           stepStartedAtMs,
           stepCompletedAtMs,
           modelCompletedAtMs,
           firstModelEventAtMs,
-          toolExecutionMs: 0,
-          waitToolMs: 0,
+          toolExecutionMs,
+          waitToolMs,
         });
         steps.push({
           step: steps.length + 1,
           modelVersion,
           text: responseText || undefined,
           thoughts: reasoningSummaryText || undefined,
-          toolCalls: [],
+          toolCalls,
           usage: usageTokens,
           costUsd: stepCostUsd,
           timing,
         });
-        if (steeringItems.length === 0) {
-          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
-        }
-        const assistantItem = toChatGptAssistantMessage(responseText);
-        input = assistantItem
-          ? input.concat(assistantItem, steeringItems)
-          : input.concat(steeringItems);
-        continue;
+
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+        input =
+          steeringItems.length > 0
+            ? input.concat(toolOutputs, steeringItems)
+            : input.concat(toolOutputs);
       }
 
-      const toolCalls: LlmToolCallResult[] = [];
-      const toolOutputs: ChatGptInputItem[] = [];
-      const callInputs = responseToolCalls.map((call, index) => {
-        const toolIndex = index + 1;
-        const toolId = buildToolLogId(turn, toolIndex);
-        const toolName = call.name;
-        const { value, error: parseError } =
-          call.kind === "custom"
-            ? { value: call.input, error: undefined }
-            : parseOpenAiToolArguments(call.arguments);
-        const ids = normalizeChatGptToolIds({
-          callKind: call.kind,
-          callId: call.callId,
-          itemId: call.id,
-        });
-        return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
-      });
+      throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+    }
 
-      for (const entry of callInputs) {
-        request.onEvent?.({
-          type: "tool_call",
-          phase: "started",
-          turn: entry.turn,
-          toolIndex: entry.toolIndex,
-          toolName: entry.toolName,
-          toolId: entry.toolId,
-          callKind: entry.call.kind,
-          callId: entry.ids.callId,
-          input: entry.value,
-        });
+    if (providerInfo.provider === "fireworks") {
+      if (request.modelTools && request.modelTools.length > 0) {
+        throw new Error(
+          "Fireworks provider does not support provider-native modelTools in runToolLoop.",
+        );
       }
 
-      const callResults = await Promise.all(
-        callInputs.map(async (entry) => {
-          return await toolCallContextStorage.run(
-            {
-              toolName: entry.toolName,
-              toolId: entry.toolId,
-              turn: entry.turn,
-              toolIndex: entry.toolIndex,
+      const fireworksTools = buildFireworksToolsFromToolSet(request.tools);
+      const messages: Array<Record<string, unknown>> = toFireworksMessages(contents);
+
+      for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+        const turn = stepIndex + 1;
+        const stepStartedAtMs = Date.now();
+        let schedulerMetrics: CallSchedulerRunMetrics | undefined;
+        const response = await runFireworksCall(
+          async (client) => {
+            return await client.chat.completions.create(
+              {
+                model: providerInfo.model,
+                messages: messages as any,
+                tools: fireworksTools as any,
+                tool_choice: "auto" as const,
+                parallel_tool_calls: true,
+              } as any,
+              { signal: request.signal } as any,
+            );
+          },
+          providerInfo.model,
+          {
+            onSettled: (metrics) => {
+              schedulerMetrics = metrics;
             },
-            async () => {
-              const { result, outputPayload } = await executeToolCall({
-                callKind: entry.call.kind,
+          },
+        );
+        const modelCompletedAtMs = Date.now();
+
+        const modelVersion = typeof response.model === "string" ? response.model : request.model;
+        request.onEvent?.({ type: "model", modelVersion });
+
+        const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+        if (choice?.finish_reason === "content_filter") {
+          request.onEvent?.({ type: "blocked" });
+        }
+        const message = (choice as { message?: unknown } | undefined)?.message;
+        const responseText = extractFireworksMessageText(message).trim();
+        if (responseText.length > 0) {
+          request.onEvent?.({ type: "delta", channel: "response", text: responseText });
+        }
+
+        const usageTokens = extractFireworksUsageTokens(response.usage);
+        const stepCostUsd = estimateCallCostUsd({
+          modelId: modelVersion,
+          tokens: usageTokens,
+          responseImages: 0,
+        });
+        totalCostUsd += stepCostUsd;
+
+        if (usageTokens) {
+          request.onEvent?.({
+            type: "usage",
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            modelVersion,
+          });
+        }
+
+        const responseToolCalls = extractFireworksToolCalls(message);
+        if (responseToolCalls.length === 0) {
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          const steeringMessages =
+            steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
+          finalText = responseText;
+          finalThoughts = "";
+          const stepCompletedAtMs = Date.now();
+          const timing = buildStepTiming({
+            stepStartedAtMs,
+            stepCompletedAtMs,
+            modelCompletedAtMs,
+            schedulerMetrics,
+            toolExecutionMs: 0,
+            waitToolMs: 0,
+          });
+          steps.push({
+            step: steps.length + 1,
+            modelVersion,
+            text: responseText || undefined,
+            thoughts: undefined,
+            toolCalls: [],
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            timing,
+          });
+          if (steeringMessages.length === 0) {
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
+          if (responseText.length > 0) {
+            messages.push({ role: "assistant", content: responseText });
+          }
+          messages.push(...steeringMessages);
+          continue;
+        }
+
+        const stepToolCalls: LlmToolCallResult[] = [];
+        const callInputs = responseToolCalls.map((call, index) => {
+          const toolIndex = index + 1;
+          const toolId = buildToolLogId(turn, toolIndex);
+          const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
+          return { call, toolName: call.name, value, parseError, toolId, turn, toolIndex };
+        });
+
+        for (const entry of callInputs) {
+          request.onEvent?.({
+            type: "tool_call",
+            phase: "started",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: "function",
+            callId: entry.call.id,
+            input: entry.value,
+          });
+        }
+
+        const callResults = await Promise.all(
+          callInputs.map(async (entry) => {
+            return await toolCallContextStorage.run(
+              {
                 toolName: entry.toolName,
-                tool: request.tools[entry.toolName],
-                rawInput: entry.value,
-                parseError: entry.parseError,
-              });
-              return { entry, result, outputPayload };
-            },
-          );
-        }),
-      );
+                toolId: entry.toolId,
+                turn: entry.turn,
+                toolIndex: entry.toolIndex,
+              },
+              async () => {
+                const { result, outputPayload } = await executeToolCall({
+                  callKind: "function",
+                  toolName: entry.toolName,
+                  tool: request.tools[entry.toolName],
+                  rawInput: entry.value,
+                  parseError: entry.parseError,
+                });
+                return { entry, result, outputPayload };
+              },
+            );
+          }),
+        );
 
-      let toolExecutionMs = 0;
-      let waitToolMs = 0;
-      for (const { entry, result, outputPayload } of callResults) {
-        toolCalls.push({ ...result, callId: entry.ids.callId });
-        const callDurationMs = toToolResultDuration(result);
-        toolExecutionMs += callDurationMs;
-        if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-          waitToolMs += callDurationMs;
+        const assistantToolCalls: Array<Record<string, unknown>> = [];
+        const toolMessages: Array<Record<string, unknown>> = [];
+        let toolExecutionMs = 0;
+        let waitToolMs = 0;
+        for (const { entry, result, outputPayload } of callResults) {
+          stepToolCalls.push({ ...result, callId: entry.call.id });
+          const callDurationMs = toToolResultDuration(result);
+          toolExecutionMs += callDurationMs;
+          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+            waitToolMs += callDurationMs;
+          }
+          request.onEvent?.({
+            type: "tool_call",
+            phase: "completed",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: "function",
+            callId: entry.call.id,
+            input: entry.value,
+            output: result.output,
+            error: result.error,
+            durationMs: result.durationMs,
+          });
+          assistantToolCalls.push({
+            id: entry.call.id,
+            type: "function",
+            function: {
+              name: entry.toolName,
+              arguments: entry.call.arguments,
+            },
+          });
+          toolMessages.push({
+            role: "tool",
+            tool_call_id: entry.call.id,
+            content: mergeToolOutput(outputPayload),
+          });
         }
-        request.onEvent?.({
-          type: "tool_call",
-          phase: "completed",
-          turn: entry.turn,
-          toolIndex: entry.toolIndex,
-          toolName: entry.toolName,
-          toolId: entry.toolId,
-          callKind: entry.call.kind,
-          callId: entry.ids.callId,
-          input: entry.value,
-          output: result.output,
-          error: result.error,
-          durationMs: result.durationMs,
+
+        const stepCompletedAtMs = Date.now();
+        const timing = buildStepTiming({
+          stepStartedAtMs,
+          stepCompletedAtMs,
+          modelCompletedAtMs,
+          schedulerMetrics,
+          toolExecutionMs,
+          waitToolMs,
         });
-        if (entry.call.kind === "custom") {
-          toolOutputs.push({
-            type: "custom_tool_call",
-            id: entry.ids.itemId,
-            call_id: entry.ids.callId,
-            name: entry.toolName,
-            input: entry.call.input,
-            status: "completed",
-          } as ChatGptInputItem);
-          toolOutputs.push({
-            type: "custom_tool_call_output",
-            call_id: entry.ids.callId,
-            output: mergeToolOutput(outputPayload),
-          } as ChatGptInputItem);
-        } else {
-          toolOutputs.push({
-            type: "function_call",
-            id: entry.ids.itemId,
-            call_id: entry.ids.callId,
-            name: entry.toolName,
-            arguments: entry.call.arguments,
-            status: "completed",
-          } as ChatGptInputItem);
-          toolOutputs.push({
-            type: "function_call_output",
-            call_id: entry.ids.callId,
-            output: mergeToolOutput(outputPayload),
-          } as ChatGptInputItem);
+        steps.push({
+          step: steps.length + 1,
+          modelVersion,
+          text: responseText || undefined,
+          thoughts: undefined,
+          toolCalls: stepToolCalls,
+          usage: usageTokens,
+          costUsd: stepCostUsd,
+          timing,
+        });
+
+        messages.push({
+          role: "assistant",
+          ...(responseText.length > 0 ? { content: responseText } : {}),
+          tool_calls: assistantToolCalls,
+        });
+        messages.push(...toolMessages);
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        if (steeringInput.length > 0) {
+          messages.push(...toFireworksMessages(steeringInput));
         }
       }
 
-      const stepCompletedAtMs = Date.now();
-      const timing = buildStepTiming({
-        stepStartedAtMs,
-        stepCompletedAtMs,
-        modelCompletedAtMs,
-        firstModelEventAtMs,
-        toolExecutionMs,
-        waitToolMs,
-      });
-      steps.push({
-        step: steps.length + 1,
-        modelVersion,
-        text: responseText || undefined,
-        thoughts: reasoningSummaryText || undefined,
-        toolCalls,
-        usage: usageTokens,
-        costUsd: stepCostUsd,
-        timing,
-      });
-
-      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-      const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
-      input = steeringItems.length > 0 ? input.concat(toolOutputs, steeringItems) : input.concat(toolOutputs);
+      throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
     }
 
-    throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
-  }
-
-  if (providerInfo.provider === "fireworks") {
-    if (request.modelTools && request.modelTools.length > 0) {
-      throw new Error(
-        "Fireworks provider does not support provider-native modelTools in runToolLoop.",
-      );
-    }
-
-    const fireworksTools = buildFireworksToolsFromToolSet(request.tools);
-    const messages: Array<Record<string, unknown>> = toFireworksMessages(contents);
+    // Gemini provider
+    const geminiFunctionTools = buildGeminiFunctionDeclarations(request.tools);
+    const geminiNativeTools = toGeminiTools(request.modelTools);
+    const geminiTools = geminiNativeTools
+      ? geminiNativeTools.concat(geminiFunctionTools)
+      : geminiFunctionTools;
+    const geminiContents = contents.map(convertLlmContentToGeminiContent);
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
-      const turn = stepIndex + 1;
       const stepStartedAtMs = Date.now();
+      let firstModelEventAtMs: number | undefined;
       let schedulerMetrics: CallSchedulerRunMetrics | undefined;
-      const response = await runFireworksCall(
-        async (client) => {
-          return await client.chat.completions.create(
-            {
-              model: providerInfo.model,
-              messages: messages as any,
-              tools: fireworksTools as any,
-              tool_choice: "auto" as const,
-              parallel_tool_calls: true,
-            } as any,
-            { signal: request.signal } as any,
-          );
+      const markFirstModelEvent = () => {
+        if (firstModelEventAtMs === undefined) {
+          firstModelEventAtMs = Date.now();
+        }
+      };
+      const config: GenerateContentConfig = {
+        maxOutputTokens: 32_000,
+        tools: geminiTools,
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingConfigMode.VALIDATED,
+          },
         },
-        providerInfo.model,
+        thinkingConfig: resolveGeminiThinkingConfig(request.model),
+      };
+
+      const onEvent = request.onEvent;
+
+      type GeminiToolLoopResponse = {
+        readonly responseText: string;
+        readonly thoughtsText: string;
+        readonly functionCalls: Array<NonNullable<GeminiPart["functionCall"]>>;
+        readonly modelParts: GeminiPart[];
+        readonly usageMetadata?: unknown;
+        readonly modelVersion?: string;
+      };
+
+      const response: GeminiToolLoopResponse = await runGeminiCall(
+        async (client) => {
+          const stream = await client.models.generateContentStream({
+            model: request.model,
+            contents: geminiContents,
+            config,
+          });
+          let responseText = "";
+          let thoughtsText = "";
+          const modelParts: GeminiPart[] = [];
+          const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
+          const seenFunctionCallIds = new Set<string>();
+          const seenFunctionCallKeys = new Set<string>();
+          let latestUsageMetadata: unknown;
+          let resolvedModelVersion: string | undefined;
+
+          for await (const chunk of stream) {
+            markFirstModelEvent();
+            if (chunk.modelVersion) {
+              resolvedModelVersion = chunk.modelVersion;
+              onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
+            }
+            if (chunk.usageMetadata) {
+              latestUsageMetadata = chunk.usageMetadata;
+            }
+            const candidates = chunk.candidates;
+            if (!candidates || candidates.length === 0) {
+              continue;
+            }
+            const primary = candidates[0];
+            const parts = primary?.content?.parts;
+            if (!parts || parts.length === 0) {
+              continue;
+            }
+
+            for (const part of parts) {
+              modelParts.push(part);
+              const call = part.functionCall;
+              if (call) {
+                const id = typeof call.id === "string" ? call.id : "";
+                const shouldAdd = (() => {
+                  if (id.length > 0) {
+                    if (seenFunctionCallIds.has(id)) {
+                      return false;
+                    }
+                    seenFunctionCallIds.add(id);
+                    return true;
+                  }
+                  const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
+                  if (seenFunctionCallKeys.has(key)) {
+                    return false;
+                  }
+                  seenFunctionCallKeys.add(key);
+                  return true;
+                })();
+                if (shouldAdd) {
+                  functionCalls.push(call);
+                }
+              }
+              if (typeof part.text === "string" && part.text.length > 0) {
+                if (part.thought) {
+                  thoughtsText += part.text;
+                  onEvent?.({ type: "delta", channel: "thought", text: part.text });
+                } else {
+                  responseText += part.text;
+                  onEvent?.({ type: "delta", channel: "response", text: part.text });
+                }
+              }
+            }
+          }
+
+          return {
+            responseText,
+            thoughtsText,
+            functionCalls,
+            modelParts,
+            usageMetadata: latestUsageMetadata,
+            modelVersion: resolvedModelVersion ?? request.model,
+          };
+        },
+        request.model,
         {
           onSettled: (metrics) => {
             schedulerMetrics = metrics;
@@ -3898,20 +4206,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       );
       const modelCompletedAtMs = Date.now();
 
-      const modelVersion = typeof response.model === "string" ? response.model : request.model;
-      request.onEvent?.({ type: "model", modelVersion });
-
-      const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
-      if (choice?.finish_reason === "content_filter") {
-        request.onEvent?.({ type: "blocked" });
-      }
-      const message = (choice as { message?: unknown } | undefined)?.message;
-      const responseText = extractFireworksMessageText(message).trim();
-      if (responseText.length > 0) {
-        request.onEvent?.({ type: "delta", channel: "response", text: responseText });
-      }
-
-      const usageTokens = extractFireworksUsageTokens(response.usage);
+      const usageTokens = extractGeminiUsageTokens(response.usageMetadata);
+      const modelVersion = response.modelVersion ?? request.model;
       const stepCostUsd = estimateCallCostUsd({
         modelId: modelVersion,
         tokens: usageTokens,
@@ -3919,27 +4215,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       });
       totalCostUsd += stepCostUsd;
 
-      if (usageTokens) {
-        request.onEvent?.({
-          type: "usage",
-          usage: usageTokens,
-          costUsd: stepCostUsd,
-          modelVersion,
-        });
-      }
-
-      const responseToolCalls = extractFireworksToolCalls(message);
-      if (responseToolCalls.length === 0) {
+      if (response.functionCalls.length === 0) {
         const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        const steeringMessages =
-          steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
-        finalText = responseText;
-        finalThoughts = "";
+        finalText = response.responseText.trim();
+        finalThoughts = response.thoughtsText.trim();
         const stepCompletedAtMs = Date.now();
         const timing = buildStepTiming({
           stepStartedAtMs,
           stepCompletedAtMs,
           modelCompletedAtMs,
+          firstModelEventAtMs,
           schedulerMetrics,
           toolExecutionMs: 0,
           waitToolMs: 0,
@@ -3947,33 +4232,58 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         steps.push({
           step: steps.length + 1,
           modelVersion,
-          text: responseText || undefined,
-          thoughts: undefined,
+          text: finalText || undefined,
+          thoughts: finalThoughts || undefined,
           toolCalls: [],
           usage: usageTokens,
           costUsd: stepCostUsd,
           timing,
         });
-        if (steeringMessages.length === 0) {
+        if (steeringInput.length === 0) {
           return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
         }
-        if (responseText.length > 0) {
-          messages.push({ role: "assistant", content: responseText });
+        const modelPartsForHistory = response.modelParts.filter(
+          (part) => !(typeof part.text === "string" && part.thought === true),
+        );
+        if (modelPartsForHistory.length > 0) {
+          geminiContents.push({ role: "model", parts: modelPartsForHistory });
+        } else if (response.responseText.length > 0) {
+          geminiContents.push({ role: "model", parts: [{ text: response.responseText }] });
         }
-        messages.push(...steeringMessages);
+        geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
         continue;
       }
 
-      const stepToolCalls: LlmToolCallResult[] = [];
-      const callInputs = responseToolCalls.map((call, index) => {
+      const toolCalls: LlmToolCallResult[] = [];
+
+      const modelPartsForHistory = response.modelParts.filter(
+        (part) => !(typeof part.text === "string" && part.thought === true),
+      );
+      if (modelPartsForHistory.length > 0) {
+        geminiContents.push({ role: "model", parts: modelPartsForHistory });
+      } else {
+        const parts: GeminiPart[] = [];
+        if (response.responseText) {
+          parts.push({ text: response.responseText });
+        }
+        for (const call of response.functionCalls) {
+          parts.push({ functionCall: call });
+        }
+        geminiContents.push({ role: "model", parts });
+      }
+
+      const responseParts: GeminiPart[] = [];
+      const callInputs = response.functionCalls.map((call, index) => {
+        const turn = stepIndex + 1;
         const toolIndex = index + 1;
         const toolId = buildToolLogId(turn, toolIndex);
-        const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
-        return { call, toolName: call.name, value, parseError, toolId, turn, toolIndex };
+        const toolName = call.name ?? "unknown";
+        const rawInput = call.args ?? {};
+        return { call, toolName, rawInput, toolId, turn, toolIndex };
       });
 
       for (const entry of callInputs) {
-        request.onEvent?.({
+        onEvent?.({
           type: "tool_call",
           phase: "started",
           turn: entry.turn,
@@ -3982,7 +4292,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           toolId: entry.toolId,
           callKind: "function",
           callId: entry.call.id,
-          input: entry.value,
+          input: entry.rawInput,
         });
       }
 
@@ -4000,8 +4310,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 callKind: "function",
                 toolName: entry.toolName,
                 tool: request.tools[entry.toolName],
-                rawInput: entry.value,
-                parseError: entry.parseError,
+                rawInput: entry.rawInput,
               });
               return { entry, result, outputPayload };
             },
@@ -4009,18 +4318,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }),
       );
 
-      const assistantToolCalls: Array<Record<string, unknown>> = [];
-      const toolMessages: Array<Record<string, unknown>> = [];
       let toolExecutionMs = 0;
       let waitToolMs = 0;
       for (const { entry, result, outputPayload } of callResults) {
-        stepToolCalls.push({ ...result, callId: entry.call.id });
+        toolCalls.push({ ...result, callId: entry.call.id });
         const callDurationMs = toToolResultDuration(result);
         toolExecutionMs += callDurationMs;
         if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
           waitToolMs += callDurationMs;
         }
-        request.onEvent?.({
+        onEvent?.({
           type: "tool_call",
           phase: "completed",
           turn: entry.turn,
@@ -4029,202 +4336,23 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           toolId: entry.toolId,
           callKind: "function",
           callId: entry.call.id,
-          input: entry.value,
+          input: entry.rawInput,
           output: result.output,
           error: result.error,
           durationMs: result.durationMs,
         });
-        assistantToolCalls.push({
-          id: entry.call.id,
-          type: "function",
-          function: {
+        const responsePayload = isPlainRecord(outputPayload)
+          ? outputPayload
+          : { output: outputPayload };
+        responseParts.push({
+          functionResponse: {
             name: entry.toolName,
-            arguments: entry.call.arguments,
+            response: responsePayload,
+            ...(entry.call.id ? { id: entry.call.id } : {}),
           },
         });
-        toolMessages.push({
-          role: "tool",
-          tool_call_id: entry.call.id,
-          content: mergeToolOutput(outputPayload),
-        });
       }
 
-      const stepCompletedAtMs = Date.now();
-      const timing = buildStepTiming({
-        stepStartedAtMs,
-        stepCompletedAtMs,
-        modelCompletedAtMs,
-        schedulerMetrics,
-        toolExecutionMs,
-        waitToolMs,
-      });
-      steps.push({
-        step: steps.length + 1,
-        modelVersion,
-        text: responseText || undefined,
-        thoughts: undefined,
-        toolCalls: stepToolCalls,
-        usage: usageTokens,
-        costUsd: stepCostUsd,
-        timing,
-      });
-
-      messages.push({
-        role: "assistant",
-        ...(responseText.length > 0 ? { content: responseText } : {}),
-        tool_calls: assistantToolCalls,
-      });
-      messages.push(...toolMessages);
-      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-      if (steeringInput.length > 0) {
-        messages.push(...toFireworksMessages(steeringInput));
-      }
-    }
-
-    throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
-  }
-
-  // Gemini provider
-  const geminiFunctionTools = buildGeminiFunctionDeclarations(request.tools);
-  const geminiNativeTools = toGeminiTools(request.modelTools);
-  const geminiTools = geminiNativeTools
-    ? geminiNativeTools.concat(geminiFunctionTools)
-    : geminiFunctionTools;
-  const geminiContents = contents.map(convertLlmContentToGeminiContent);
-
-  for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
-    const stepStartedAtMs = Date.now();
-    let firstModelEventAtMs: number | undefined;
-    let schedulerMetrics: CallSchedulerRunMetrics | undefined;
-    const markFirstModelEvent = () => {
-      if (firstModelEventAtMs === undefined) {
-        firstModelEventAtMs = Date.now();
-      }
-    };
-    const config: GenerateContentConfig = {
-      maxOutputTokens: 32_000,
-      tools: geminiTools,
-      toolConfig: {
-        functionCallingConfig: {
-          mode: FunctionCallingConfigMode.VALIDATED,
-        },
-      },
-      thinkingConfig: resolveGeminiThinkingConfig(request.model),
-    };
-
-    const onEvent = request.onEvent;
-
-    type GeminiToolLoopResponse = {
-      readonly responseText: string;
-      readonly thoughtsText: string;
-      readonly functionCalls: Array<NonNullable<GeminiPart["functionCall"]>>;
-      readonly modelParts: GeminiPart[];
-      readonly usageMetadata?: unknown;
-      readonly modelVersion?: string;
-    };
-
-    const response: GeminiToolLoopResponse = await runGeminiCall(
-      async (client) => {
-        const stream = await client.models.generateContentStream({
-          model: request.model,
-          contents: geminiContents,
-          config,
-        });
-        let responseText = "";
-        let thoughtsText = "";
-        const modelParts: GeminiPart[] = [];
-        const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
-        const seenFunctionCallIds = new Set<string>();
-        const seenFunctionCallKeys = new Set<string>();
-        let latestUsageMetadata: unknown;
-        let resolvedModelVersion: string | undefined;
-
-        for await (const chunk of stream) {
-          markFirstModelEvent();
-          if (chunk.modelVersion) {
-            resolvedModelVersion = chunk.modelVersion;
-            onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
-          }
-          if (chunk.usageMetadata) {
-            latestUsageMetadata = chunk.usageMetadata;
-          }
-          const candidates = chunk.candidates;
-          if (!candidates || candidates.length === 0) {
-            continue;
-          }
-          const primary = candidates[0];
-          const parts = primary?.content?.parts;
-          if (!parts || parts.length === 0) {
-            continue;
-          }
-
-          for (const part of parts) {
-            modelParts.push(part);
-            const call = part.functionCall;
-            if (call) {
-              const id = typeof call.id === "string" ? call.id : "";
-              const shouldAdd = (() => {
-                if (id.length > 0) {
-                  if (seenFunctionCallIds.has(id)) {
-                    return false;
-                  }
-                  seenFunctionCallIds.add(id);
-                  return true;
-                }
-                const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
-                if (seenFunctionCallKeys.has(key)) {
-                  return false;
-                }
-                seenFunctionCallKeys.add(key);
-                return true;
-              })();
-              if (shouldAdd) {
-                functionCalls.push(call);
-              }
-            }
-            if (typeof part.text === "string" && part.text.length > 0) {
-              if (part.thought) {
-                thoughtsText += part.text;
-                onEvent?.({ type: "delta", channel: "thought", text: part.text });
-              } else {
-                responseText += part.text;
-                onEvent?.({ type: "delta", channel: "response", text: part.text });
-              }
-            }
-          }
-        }
-
-        return {
-          responseText,
-          thoughtsText,
-          functionCalls,
-          modelParts,
-          usageMetadata: latestUsageMetadata,
-          modelVersion: resolvedModelVersion ?? request.model,
-        };
-      },
-      request.model,
-      {
-        onSettled: (metrics) => {
-          schedulerMetrics = metrics;
-        },
-      },
-    );
-    const modelCompletedAtMs = Date.now();
-
-    const usageTokens = extractGeminiUsageTokens(response.usageMetadata);
-    const modelVersion = response.modelVersion ?? request.model;
-    const stepCostUsd = estimateCallCostUsd({
-      modelId: modelVersion,
-      tokens: usageTokens,
-      responseImages: 0,
-    });
-    totalCostUsd += stepCostUsd;
-
-    if (response.functionCalls.length === 0) {
-      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-      finalText = response.responseText.trim();
-      finalThoughts = response.thoughtsText.trim();
       const stepCompletedAtMs = Date.now();
       const timing = buildStepTiming({
         stepStartedAtMs,
@@ -4232,162 +4360,28 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         modelCompletedAtMs,
         firstModelEventAtMs,
         schedulerMetrics,
-        toolExecutionMs: 0,
-        waitToolMs: 0,
+        toolExecutionMs,
+        waitToolMs,
       });
       steps.push({
         step: steps.length + 1,
         modelVersion,
-        text: finalText || undefined,
-        thoughts: finalThoughts || undefined,
-        toolCalls: [],
+        text: response.responseText.trim() || undefined,
+        thoughts: response.thoughtsText.trim() || undefined,
+        toolCalls,
         usage: usageTokens,
         costUsd: stepCostUsd,
         timing,
       });
-      if (steeringInput.length === 0) {
-        return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+
+      geminiContents.push({ role: "user", parts: responseParts });
+      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+      if (steeringInput.length > 0) {
+        geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
       }
-      const modelPartsForHistory = response.modelParts.filter(
-        (part) => !(typeof part.text === "string" && part.thought === true),
-      );
-      if (modelPartsForHistory.length > 0) {
-        geminiContents.push({ role: "model", parts: modelPartsForHistory });
-      } else if (response.responseText.length > 0) {
-        geminiContents.push({ role: "model", parts: [{ text: response.responseText }] });
-      }
-      geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
-      continue;
     }
 
-    const toolCalls: LlmToolCallResult[] = [];
-
-    const modelPartsForHistory = response.modelParts.filter(
-      (part) => !(typeof part.text === "string" && part.thought === true),
-    );
-    if (modelPartsForHistory.length > 0) {
-      geminiContents.push({ role: "model", parts: modelPartsForHistory });
-    } else {
-      const parts: GeminiPart[] = [];
-      if (response.responseText) {
-        parts.push({ text: response.responseText });
-      }
-      for (const call of response.functionCalls) {
-        parts.push({ functionCall: call });
-      }
-      geminiContents.push({ role: "model", parts });
-    }
-
-    const responseParts: GeminiPart[] = [];
-    const callInputs = response.functionCalls.map((call, index) => {
-      const turn = stepIndex + 1;
-      const toolIndex = index + 1;
-      const toolId = buildToolLogId(turn, toolIndex);
-      const toolName = call.name ?? "unknown";
-      const rawInput = call.args ?? {};
-      return { call, toolName, rawInput, toolId, turn, toolIndex };
-    });
-
-    for (const entry of callInputs) {
-      onEvent?.({
-        type: "tool_call",
-        phase: "started",
-        turn: entry.turn,
-        toolIndex: entry.toolIndex,
-        toolName: entry.toolName,
-        toolId: entry.toolId,
-        callKind: "function",
-        callId: entry.call.id,
-        input: entry.rawInput,
-      });
-    }
-
-    const callResults = await Promise.all(
-      callInputs.map(async (entry) => {
-        return await toolCallContextStorage.run(
-          {
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-          },
-          async () => {
-            const { result, outputPayload } = await executeToolCall({
-              callKind: "function",
-              toolName: entry.toolName,
-              tool: request.tools[entry.toolName],
-              rawInput: entry.rawInput,
-            });
-            return { entry, result, outputPayload };
-          },
-        );
-      }),
-    );
-
-    let toolExecutionMs = 0;
-    let waitToolMs = 0;
-    for (const { entry, result, outputPayload } of callResults) {
-      toolCalls.push({ ...result, callId: entry.call.id });
-      const callDurationMs = toToolResultDuration(result);
-      toolExecutionMs += callDurationMs;
-      if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-        waitToolMs += callDurationMs;
-      }
-      onEvent?.({
-        type: "tool_call",
-        phase: "completed",
-        turn: entry.turn,
-        toolIndex: entry.toolIndex,
-        toolName: entry.toolName,
-        toolId: entry.toolId,
-        callKind: "function",
-        callId: entry.call.id,
-        input: entry.rawInput,
-        output: result.output,
-        error: result.error,
-        durationMs: result.durationMs,
-      });
-      const responsePayload = isPlainRecord(outputPayload)
-        ? outputPayload
-        : { output: outputPayload };
-      responseParts.push({
-        functionResponse: {
-          name: entry.toolName,
-          response: responsePayload,
-          ...(entry.call.id ? { id: entry.call.id } : {}),
-        },
-      });
-    }
-
-    const stepCompletedAtMs = Date.now();
-    const timing = buildStepTiming({
-      stepStartedAtMs,
-      stepCompletedAtMs,
-      modelCompletedAtMs,
-      firstModelEventAtMs,
-      schedulerMetrics,
-      toolExecutionMs,
-      waitToolMs,
-    });
-    steps.push({
-      step: steps.length + 1,
-      modelVersion,
-      text: response.responseText.trim() || undefined,
-      thoughts: response.thoughtsText.trim() || undefined,
-      toolCalls,
-      usage: usageTokens,
-      costUsd: stepCostUsd,
-      timing,
-    });
-
-    geminiContents.push({ role: "user", parts: responseParts });
-    const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-    if (steeringInput.length > 0) {
-      geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
-    }
-  }
-
-  throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+    throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
   } finally {
     steeringInternal?.close();
   }
