@@ -22,6 +22,48 @@ const MAX_SUBAGENT_MAX_STEPS = 64;
 const MAX_SUBAGENT_WAIT_TIMEOUT_MS = 3_600_000;
 
 const SUBAGENT_CONTROL_TOOL_NAMES = ["send_input", "resume_agent", "wait", "close_agent"] as const;
+const DEFAULT_AGENT_TYPE = "default";
+const BUILT_IN_AGENT_TYPES = ["default", "researcher", "worker", "reviewer"] as const;
+
+const RESEARCHER_ROLE_DESCRIPTION = `Use \`researcher\` for focused discovery and fact-finding work.
+Researchers are fast and authoritative.
+They should be used for specific, well-scoped research questions.
+Rules:
+- Do not repeat searches they have already completed.
+- Trust researcher findings unless there is a clear contradiction.
+- Run researchers in parallel when useful.
+- Reuse existing researchers for related follow-up questions.`;
+
+const WORKER_ROLE_DESCRIPTION = `Use for execution and production work across domains.
+Typical tasks:
+- Build part of a deliverable
+- Implement requested changes
+- Produce concrete outputs (documents, plans, analyses, artifacts)
+Rules:
+- Explicitly assign **ownership** of the task (scope / responsibility).
+- Always tell workers they are **not alone in the workspace**, and they should ignore edits made by others without touching them unless asked.`;
+
+const REVIEWER_ROLE_DESCRIPTION = `Use \`reviewer\` to evaluate completed work and provide feedback.
+Reviewers focus on quality, correctness, risk, and clarity.
+Rules:
+- Review critically and prioritize issues by severity.
+- Call out gaps, assumptions, and edge cases explicitly.
+- Provide actionable, concrete feedback to improve the result.
+- Do not redo the entire task unless explicitly requested; evaluate first.`;
+
+const BUILT_IN_AGENT_TYPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  default: "Default agent.",
+  researcher: RESEARCHER_ROLE_DESCRIPTION,
+  worker: WORKER_ROLE_DESCRIPTION,
+  reviewer: REVIEWER_ROLE_DESCRIPTION,
+};
+
+const BUILT_IN_AGENT_TYPE_INSTRUCTIONS: Readonly<Record<string, string | undefined>> = {
+  default: undefined,
+  researcher: RESEARCHER_ROLE_DESCRIPTION,
+  worker: WORKER_ROLE_DESCRIPTION,
+  reviewer: REVIEWER_ROLE_DESCRIPTION,
+};
 
 export type AgentSubagentToolPromptPattern = "codex" | "none";
 
@@ -71,6 +113,7 @@ export type CreateSubagentToolControllerOptions = {
   readonly config: ResolvedAgentSubagentToolConfig;
   readonly parentDepth: number;
   readonly parentModel: LlmTextModelId;
+  readonly forkContextMessages?: readonly LlmInputMessage[];
   readonly runSubagent: (request: SubagentRunRequest) => Promise<LlmToolLoopResult>;
   readonly onBackgroundMessage?: (message: string) => void;
   readonly buildChildInstructions?: (
@@ -103,6 +146,8 @@ type ManagedSubagent = {
   id: string;
   depth: number;
   model: LlmTextModelId;
+  nickname?: string;
+  agentRole: string;
   status: SubagentStatus;
   createdAtMs: number;
   updatedAtMs: number;
@@ -128,6 +173,8 @@ type ManagedSubagent = {
 const SUBAGENT_NOTIFICATION_OPEN_TAG = "<subagent_notification>";
 const SUBAGENT_NOTIFICATION_CLOSE_TAG = "</subagent_notification>";
 
+const SPAWN_AGENT_TYPE_DESCRIPTION = buildSpawnAgentTypeDescription();
+
 const subagentInputItemSchema = z
   .object({
     text: z.string().nullish(),
@@ -138,42 +185,60 @@ const subagentInputItemSchema = z
   })
   .passthrough();
 
-const spawnAgentInputSchema = z
-  .object({
-    prompt: z.string().nullish().describe("Initial prompt for the subagent."),
-    message: z.string().nullish().describe("Codex-style alias for prompt."),
-    items: z
-      .array(subagentInputItemSchema)
-      .nullish()
-      .describe("Optional Codex-style input items."),
-    agent_type: z.string().nullish().describe("Codex-style agent type hint."),
-    instructions: z
-      .string()
-      .nullish()
-      .describe("Optional extra instructions for this subagent instance."),
-    model: z
-      .string()
-      .nullish()
-      .describe("Optional model override. Must be one of this package's supported text model ids."),
-    max_steps: z
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_SUBAGENT_MAX_STEPS)
-      .nullish()
-      .describe("Optional max step budget for each subagent run."),
-  });
+const spawnAgentInputSchema = z.object({
+  prompt: z
+    .string()
+    .nullish()
+    .describe("Alias for message. Initial plain-text task for the new agent."),
+  message: z
+    .string()
+    .nullish()
+    .describe("Initial plain-text task for the new agent. Use either message or items."),
+  items: z
+    .array(subagentInputItemSchema)
+    .nullish()
+    .describe(
+      "Structured input items. Use this to pass explicit mentions (for example app:// connector paths).",
+    ),
+  agent_type: z.string().nullish().describe(SPAWN_AGENT_TYPE_DESCRIPTION),
+  fork_context: z
+    .boolean()
+    .nullish()
+    .describe(
+      "When true, fork the current thread history into the new agent before sending the initial prompt. This must be used when you want the new agent to have exactly the same context as you.",
+    ),
+  instructions: z
+    .string()
+    .nullish()
+    .describe("Optional extra instructions for this subagent instance."),
+  model: z
+    .string()
+    .nullish()
+    .describe("Optional model override. Must be one of this package's supported text model ids."),
+  max_steps: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_SUBAGENT_MAX_STEPS)
+    .nullish()
+    .describe("Optional max step budget for each subagent run."),
+});
 
 const sendInputSchema = z
   .object({
     agent_id: z.string().nullish().describe("Target subagent id."),
-    id: z.string().nullish().describe("Codex-style alias for agent_id."),
+    id: z.string().nullish().describe("Agent id to message (from spawn_agent)."),
     input: z.string().nullish().describe("New user input queued for the subagent."),
-    message: z.string().nullish().describe("Codex-style alias for input."),
+    message: z
+      .string()
+      .nullish()
+      .describe("Legacy plain-text message to send to the agent. Use either message or items."),
     items: z
       .array(subagentInputItemSchema)
       .nullish()
-      .describe("Optional Codex-style input items."),
+      .describe(
+        "Structured input items. Use this to pass explicit mentions (for example app:// connector paths).",
+      ),
     interrupt: z
       .boolean()
       .nullish()
@@ -186,28 +251,32 @@ const sendInputSchema = z
 const resumeAgentSchema = z
   .object({
     agent_id: z.string().nullish().describe("Target subagent id."),
-    id: z.string().nullish().describe("Codex-style alias for agent_id."),
+    id: z.string().nullish().describe("Agent id to resume."),
   })
   .refine((value) => Boolean(resolveAgentIdValue(value.agent_id, value.id)), {
     message: "agent_id (or id) is required.",
   });
 
-const waitSchema = z
-  .object({
-    agent_id: z.string().nullish().describe("Target subagent id."),
-    id: z.string().nullish().describe("Codex-style alias for agent_id."),
-    ids: z.array(z.string().min(1)).nullish().describe("Codex-style list of agent ids."),
-    timeout_ms: z
-      .number()
-      .int()
-      .nullish()
-      .describe("Optional wait timeout in milliseconds."),
-  });
+const waitSchema = z.object({
+  agent_id: z.string().nullish().describe("Target subagent id."),
+  id: z.string().nullish().describe("Codex-style alias for agent_id."),
+  ids: z
+    .array(z.string().min(1))
+    .nullish()
+    .describe("Agent ids to wait on. Pass multiple ids to wait for whichever finishes first."),
+  timeout_ms: z
+    .number()
+    .int()
+    .nullish()
+    .describe(
+      "Optional timeout in milliseconds. Defaults to 30000, min 10000, max 3600000. Prefer longer waits (minutes) to avoid busy polling.",
+    ),
+});
 
 const closeSchema = z
   .object({
     agent_id: z.string().nullish().describe("Target subagent id."),
-    id: z.string().nullish().describe("Codex-style alias for agent_id."),
+    id: z.string().nullish().describe("Agent id to close (from spawn_agent)."),
   })
   .refine((value) => Boolean(resolveAgentIdValue(value.agent_id, value.id)), {
     message: "agent_id (or id) is required.",
@@ -290,9 +359,10 @@ export function buildCodexSubagentOrchestratorInstructions(params: {
   return [
     "Subagent orchestration tools are available: spawn_agent, send_input, resume_agent, wait, close_agent.",
     "Background updates may appear as <subagent_notification>{...}</subagent_notification>; treat them as status updates, not new user intent.",
+    "Available spawn_agent agent_type values: default, researcher, worker, reviewer.",
     "Use this control pattern:",
     "1. spawn_agent with a focused prompt.",
-    "2. wait with ids=[agent_id] until the agent reaches a non-running state.",
+    "2. wait with ids=[agent_id] until the agent reaches a non-running state. Prefer long waits (minutes).",
     "3. For follow-up turns, send_input then resume_agent.",
     "4. close_agent when delegation is complete.",
     `Limits: max active subagents ${params.maxAgents}, max depth ${params.maxDepth}, current depth ${params.currentDepth}.`,
@@ -321,11 +391,12 @@ export function createSubagentToolController(
   }
 
   const agents = new Map<string, ManagedSubagent>();
+  const roleNicknameCounts = new Map<string, number>();
 
   const tools: LlmToolSet = {
     spawn_agent: tool({
       description:
-        "Spawns a subagent asynchronously. Returns immediately with agent status and id.",
+        "Spawn a sub-agent for a well-scoped task. Returns the agent id (and user-facing nickname when available) to use to communicate with this agent.",
       inputSchema: spawnAgentInputSchema,
       execute: async (input) => {
         if (countActiveAgents(agents) >= options.config.maxAgents) {
@@ -351,11 +422,14 @@ export function createSubagentToolController(
 
         const id = `agent_${randomBytes(6).toString("hex")}`;
         const now = Date.now();
+        const { roleName, roleInstructions } = resolveAgentType(input.agent_type);
+        const nickname = reserveAgentNickname(roleName, roleNicknameCounts);
+        const perSpawnInstructions = joinInstructionBlocks(
+          roleInstructions,
+          trimToUndefined(input.instructions),
+        );
         const initialPrompt = resolveCollabInputText({
-          textCandidates: [
-            { value: input.prompt },
-            { value: input.message },
-          ],
+          textCandidates: [{ value: input.prompt }, { value: input.message }],
           items: input.items,
           bothError: "Provide either prompt/message or items, but not both.",
           missingError: "Provide one of: prompt/message or items.",
@@ -366,19 +440,24 @@ export function createSubagentToolController(
           id,
           depth: childDepth,
           model,
+          ...(nickname ? { nickname } : {}),
+          agentRole: roleName,
           status: "idle",
           createdAtMs: now,
           updatedAtMs: now,
           pendingInputs: [initialPrompt],
-          history: [],
+          history:
+            input.fork_context && options.forkContextMessages
+              ? [...options.forkContextMessages]
+              : [],
           ...(options.buildChildInstructions
-              ? {
-                  instructions: trimToUndefined(
-                  options.buildChildInstructions(trimToUndefined(input.instructions), childDepth),
+            ? {
+                instructions: trimToUndefined(
+                  options.buildChildInstructions(perSpawnInstructions, childDepth),
                 ),
               }
-            : input.instructions
-              ? { instructions: trimToUndefined(input.instructions) }
+            : perSpawnInstructions
+              ? { instructions: perSpawnInstructions }
               : {}),
           ...(input.max_steps
             ? { maxSteps: input.max_steps }
@@ -394,26 +473,29 @@ export function createSubagentToolController(
         agents.set(id, agent);
 
         startRun(agent, options);
-        return buildToolResponse(agent, {
-          notification: "spawned",
-          message: `Spawned subagent ${id}.`,
-        });
+        return buildToolResponse(
+          agent,
+          {
+            notification: "spawned",
+            message: `Spawned subagent ${id}.`,
+          },
+          { nickname: agent.nickname },
+        );
       },
     }),
     send_input: tool({
-      description: "Queues new input for an existing subagent.",
+      description:
+        "Send a message to an existing agent. Use interrupt=true to redirect work immediately.",
       inputSchema: sendInputSchema,
       execute: async (input) => {
+        const submissionId = randomSubmissionId();
         const agentId = resolveAgentIdValue(input.agent_id, input.id);
         if (!agentId) {
           throw new Error("send_input requires agent_id or id.");
         }
         const agent = requireAgent(agents, agentId);
         const nextInput = resolveCollabInputText({
-          textCandidates: [
-            { value: input.input },
-            { value: input.message },
-          ],
+          textCandidates: [{ value: input.input }, { value: input.message }],
           items: input.items,
           bothError: "Provide either input/message or items, but not both.",
           missingError: "Provide one of: input/message or items.",
@@ -421,21 +503,22 @@ export function createSubagentToolController(
           emptyItemsError: "Items can't be empty.",
         });
         if (agent.status === "closed") {
-          throw new Error(`Subagent ${agent.id} is closed.`);
+          throw new Error(`agent with id ${agent.id} is closed`);
         }
         if (input.interrupt && agent.abortController) {
           agent.abortController.abort("send_input_interrupt");
           agent.pendingInputs.unshift(nextInput);
           setNotification(agent, "input_queued", `Interrupted ${agent.id} and queued new input.`);
-          return buildToolResponse(agent);
+          return buildToolResponse(agent, undefined, { submission_id: submissionId });
         }
         agent.pendingInputs.push(nextInput);
         setNotification(agent, "input_queued", `Queued input for ${agent.id}.`);
-        return buildToolResponse(agent);
+        return buildToolResponse(agent, undefined, { submission_id: submissionId });
       },
     }),
     resume_agent: tool({
-      description: "Resumes a subagent run when queued input is available.",
+      description:
+        "Resume a previously closed agent by id so it can receive send_input and wait calls.",
       inputSchema: resumeAgentSchema,
       execute: async (input) => {
         const agentId = resolveAgentIdValue(input.agent_id, input.id);
@@ -468,15 +551,15 @@ export function createSubagentToolController(
     }),
     wait: tool({
       description:
-        "Waits for a running subagent to change state or until timeout. Returns current status.",
+        "Wait for agents to reach a final status. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a final status, a notification message will be received containing the same completed status.",
       inputSchema: waitSchema,
       execute: async (input) => {
         const ids = resolveAgentIdList(input.agent_id, input.id, input.ids);
         if (ids.length === 0) {
-          throw new Error("ids must be non-empty.");
+          throw new Error("ids must be non-empty");
         }
         if (typeof input.timeout_ms === "number" && input.timeout_ms <= 0) {
-          throw new Error("timeout_ms must be greater than zero.");
+          throw new Error("timeout_ms must be greater than zero");
         }
         const timeoutMs = normalizeInteger(
           input.timeout_ms,
@@ -488,17 +571,22 @@ export function createSubagentToolController(
         const timedOut = Object.keys(status).length === 0;
         if (timedOut && ids.length === 1) {
           const agent = requireAgent(agents, ids[0] as string);
-          setNotification(agent, "timeout", `Timed out after ${timeoutMs}ms while waiting for ${agent.id}.`);
+          setNotification(
+            agent,
+            "timeout",
+            `Timed out after ${timeoutMs}ms while waiting for ${agent.id}.`,
+          );
         }
         return {
           status,
+          status_summary: summarizeAgentStatuses(status),
           timed_out: timedOut,
           timeout_ms: timeoutMs,
         };
       },
     }),
     close_agent: tool({
-      description: "Closes a subagent and aborts its current run if it is still running.",
+      description: "Close an agent when it is no longer needed and return its last known status.",
       inputSchema: closeSchema,
       execute: async (input) => {
         const agentId = resolveAgentIdValue(input.agent_id, input.id);
@@ -542,12 +630,15 @@ export function createSubagentToolController(
 function requireAgent(agents: Map<string, ManagedSubagent>, id: string): ManagedSubagent {
   const agent = agents.get(id);
   if (!agent) {
-    throw new Error(`Unknown subagent id: ${id}`);
+    throw new Error(`agent with id ${id} not found`);
   }
   return agent;
 }
 
-function resolveAgentIdValue(agentId: string | null | undefined, idAlias: string | null | undefined): string {
+function resolveAgentIdValue(
+  agentId: string | null | undefined,
+  idAlias: string | null | undefined,
+): string {
   const preferred = agentId?.trim();
   if (preferred) {
     return preferred;
@@ -625,9 +716,28 @@ function resolveInputItemsText(
     const name = typeof item.name === "string" ? item.name.trim() : "";
     const path = typeof item.path === "string" ? item.path.trim() : "";
     const imageUrl = typeof item.image_url === "string" ? item.image_url.trim() : "";
-    const compact = [itemType, name, path || imageUrl].filter(Boolean).join(" ");
-    if (compact) {
-      lines.push(compact);
+    if (itemType === "image") {
+      lines.push("[image]");
+      continue;
+    }
+    if (itemType === "local_image" && path) {
+      lines.push(`[local_image:${path}]`);
+      continue;
+    }
+    if (itemType === "skill" && name && path) {
+      lines.push(`[skill:$${name}](${path})`);
+      continue;
+    }
+    if (itemType === "mention" && name && path) {
+      lines.push(`[mention:$${name}](${path})`);
+      continue;
+    }
+    if (path || imageUrl) {
+      lines.push(`[${itemType || "input"}:${path || imageUrl}]`);
+      continue;
+    }
+    if (name) {
+      lines.push(`[${itemType || "input"}:${name}]`);
     }
   }
   if (lines.length === 0) {
@@ -854,6 +964,8 @@ function buildToolResponse(
 function buildSnapshot(agent: ManagedSubagent): Record<string, unknown> {
   return {
     agent_id: agent.id,
+    ...(agent.nickname ? { nickname: agent.nickname } : {}),
+    agent_role: agent.agentRole,
     status: agent.status,
     depth: agent.depth,
     model: agent.model,
@@ -915,7 +1027,73 @@ function emitBackgroundNotification(
 }
 
 function isBackgroundNotification(notification: SubagentNotification): boolean {
-  return notification === "run_completed" || notification === "run_failed" || notification === "closed";
+  return (
+    notification === "run_completed" || notification === "run_failed" || notification === "closed"
+  );
+}
+
+function summarizeAgentStatuses(
+  status: Record<string, Record<string, unknown>>,
+): Record<string, string> {
+  const summary: Record<string, string> = {};
+  for (const [agentId, snapshot] of Object.entries(status)) {
+    const value = snapshot.status;
+    summary[agentId] = typeof value === "string" ? value : "unknown";
+  }
+  return summary;
+}
+
+function buildSpawnAgentTypeDescription(): string {
+  const sections = BUILT_IN_AGENT_TYPES.map((name) => {
+    const description = BUILT_IN_AGENT_TYPE_DESCRIPTIONS[name];
+    return `${name}: {\n${description}\n}`;
+  });
+  return [
+    `Optional type name for the new agent. If omitted, \`${DEFAULT_AGENT_TYPE}\` is used.`,
+    "Available roles:",
+    ...sections,
+  ].join("\n");
+}
+
+function resolveAgentType(agentType: string | null | undefined): {
+  readonly roleName: string;
+  readonly roleInstructions: string | undefined;
+} {
+  const requestedRoleName = trimToUndefined(agentType) ?? DEFAULT_AGENT_TYPE;
+  const roleName = requestedRoleName;
+  const description = BUILT_IN_AGENT_TYPE_DESCRIPTIONS[roleName];
+  if (!description) {
+    throw new Error(`unknown agent_type '${requestedRoleName}'`);
+  }
+  return {
+    roleName,
+    roleInstructions: BUILT_IN_AGENT_TYPE_INSTRUCTIONS[roleName],
+  };
+}
+
+function reserveAgentNickname(roleName: string, counts: Map<string, number>): string {
+  const prefixByRole: Readonly<Record<string, string>> = {
+    default: "Agent",
+    researcher: "Researcher",
+    worker: "Worker",
+    reviewer: "Reviewer",
+  };
+  const prefix = prefixByRole[roleName] ?? "Agent";
+  const next = (counts.get(prefix) ?? 0) + 1;
+  counts.set(prefix, next);
+  return `${prefix}_${next}`;
+}
+
+function joinInstructionBlocks(...blocks: Array<string | undefined>): string | undefined {
+  const parts = blocks.map(trimToUndefined).filter((value): value is string => Boolean(value));
+  if (parts.length === 0) {
+    return undefined;
+  }
+  return parts.join("\n\n");
+}
+
+function randomSubmissionId(): string {
+  return `sub_${randomBytes(6).toString("hex")}`;
 }
 
 function normalizeInteger(

@@ -4,6 +4,7 @@ import {
   createToolLoopSteeringChannel,
   runToolLoop,
   type LlmStreamEvent,
+  type LlmInputMessage,
   type LlmToolLoopSteeringAppendResult,
   type LlmToolLoopSteeringInput,
   type LlmUsageTokens,
@@ -56,12 +57,8 @@ export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
 export type AgentLoopStream = {
   readonly events: AsyncIterable<LlmStreamEvent>;
   readonly result: Promise<LlmToolLoopResult>;
-  readonly append: (
-    input: LlmToolLoopSteeringInput,
-  ) => LlmToolLoopSteeringAppendResult;
-  readonly steer: (
-    input: LlmToolLoopSteeringInput,
-  ) => LlmToolLoopSteeringAppendResult;
+  readonly append: (input: LlmToolLoopSteeringInput) => LlmToolLoopSteeringAppendResult;
+  readonly steer: (input: LlmToolLoopSteeringInput) => LlmToolLoopSteeringAppendResult;
   readonly pendingSteeringCount: () => number;
   readonly abort: () => void;
 };
@@ -382,6 +379,7 @@ function createSubagentController(params: {
     config: params.resolvedSubagentConfig,
     parentDepth: params.depth,
     parentModel: params.resolvedSubagentConfig.model ?? params.model,
+    forkContextMessages: normalizeForkContextMessages(params.toolLoopRequest.input),
     onBackgroundMessage: (message) => {
       params.steering?.append({ role: "user", content: message });
     },
@@ -465,6 +463,16 @@ function buildChildInstructions(
     blocks.push(perSpawn);
   }
   return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+}
+
+function normalizeForkContextMessages(input: RunAgentLoopRequest["input"]): LlmInputMessage[] {
+  if (typeof input === "string") {
+    return [{ role: "user", content: input }];
+  }
+  return input.map((message) => ({
+    role: message.role,
+    content: Array.isArray(message.content) ? [...message.content] : message.content,
+  }));
 }
 
 function trimToUndefined(value: string | undefined): string | undefined {

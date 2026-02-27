@@ -597,6 +597,7 @@ Enable `subagentTool` to allow delegation via Codex-style control tools:
 
 - `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent`
 - optional limits: `maxAgents`, `maxDepth`, wait timeouts
+- `spawn_agent.agent_type` supports built-ins aligned with codex-rs-style roles: `default`, `researcher`, `worker`, `reviewer`
 
 ```ts
 import { runAgentLoop } from "@ljoukov/llm";

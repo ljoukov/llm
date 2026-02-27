@@ -287,4 +287,140 @@ describe("subagent tools", () => {
       }),
     ).rejects.toThrow("Provide either input/message or items, but not both.");
   });
+
+  it("applies built-in agent_type metadata and role instructions", async () => {
+    const runSubagent = vi.fn(async (_request: SubagentRunRequest) => ({
+      text: "done",
+      thoughts: "",
+      steps: [],
+      totalCostUsd: 0,
+    }));
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const wait = getExecutableTool(controller.tools, "wait");
+
+    const spawned = await spawn.execute({ message: "explore", agent_type: "researcher" });
+    const agentId = spawned.agent_id as string;
+    expect(spawned.nickname).toBe("Researcher_1");
+    expect(spawned.agent?.agent_role).toBe("researcher");
+
+    const completed = await wait.execute({ ids: [agentId], timeout_ms: 200 });
+    expect(completed.status_summary?.[agentId]).toBe("idle");
+
+    const firstCall = runSubagent.mock.calls[0]?.[0] as SubagentRunRequest | undefined;
+    expect(firstCall?.instructions).toContain(
+      "Use `researcher` for focused discovery and fact-finding work.",
+    );
+  });
+
+  it("rejects removed explorer agent_type", async () => {
+    const runSubagent = vi.fn(async () => ({
+      text: "done",
+      thoughts: "",
+      steps: [],
+      totalCostUsd: 0,
+    }));
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    await expect(spawn.execute({ message: "legacy", agent_type: "explorer" })).rejects.toThrow(
+      "unknown agent_type 'explorer'",
+    );
+  });
+
+  it("assigns reviewer role and reviewer naming", async () => {
+    const runSubagent = vi.fn(async () => ({
+      text: "done",
+      thoughts: "",
+      steps: [],
+      totalCostUsd: 0,
+    }));
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const spawned = await spawn.execute({ message: "review", agent_type: "reviewer" });
+    expect(spawned.agent?.agent_role).toBe("reviewer");
+    expect(spawned.nickname).toBe("Reviewer_1");
+  });
+
+  it("rejects unknown agent_type values", async () => {
+    const runSubagent = vi.fn(async () => ({
+      text: "done",
+      thoughts: "",
+      steps: [],
+      totalCostUsd: 0,
+    }));
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    await expect(
+      spawn.execute({
+        message: "unknown role",
+        agent_type: "missing-role",
+      }),
+    ).rejects.toThrow("unknown agent_type 'missing-role'");
+  });
+
+  it("supports fork_context by seeding child history from parent context snapshot", async () => {
+    const runSubagent = vi.fn(async (request: SubagentRunRequest) => {
+      const last = request.input[request.input.length - 1];
+      const text = asSingleLineText(last?.content);
+      return {
+        text: `done:${text}`,
+        thoughts: "",
+        steps: [],
+        totalCostUsd: 0,
+      };
+    });
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      forkContextMessages: [
+        { role: "system", content: "parent-system" },
+        { role: "assistant", content: "parent-assistant" },
+      ],
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const wait = getExecutableTool(controller.tools, "wait");
+    const spawned = await spawn.execute({
+      message: "child-task",
+      fork_context: true,
+    });
+    const agentId = spawned.agent_id as string;
+
+    const completed = await wait.execute({ ids: [agentId], timeout_ms: 200 });
+    expect(completed.timed_out).toBe(false);
+
+    const firstCall = runSubagent.mock.calls[0]?.[0] as SubagentRunRequest | undefined;
+    expect(firstCall?.input.map((entry) => entry.role)).toEqual(["system", "assistant", "user"]);
+  });
 });
