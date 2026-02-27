@@ -163,6 +163,26 @@ export type {
   GeminiReplaceToolInput,
   GeminiWriteFileToolInput,
 } from "./tools/filesystemTools.js";
+export { runCandidateEvolution } from "./agent/candidateEvolution.js";
+export type {
+  AssessmentSubagentInput,
+  CandidateAssessment,
+  CandidateEvolutionOptions,
+  CandidateEvolutionResult,
+  CandidateEvolutionSnapshot,
+  CandidateEvolutionStats,
+  CandidateFeedbackEntry,
+  CandidateIssue,
+  CandidateProposal,
+  CandidateRecord,
+  FeedbackScope,
+  GenerationSubagent,
+  GenerationSubagentInput,
+  ParentSelectionConfig,
+  ParentSelectionMidpoint,
+  PostCheckRejection,
+  PostGenerationCheckInput,
+} from "./agent/candidateEvolution.js";
 
 export {
   encodeChatGptAuthJson,
