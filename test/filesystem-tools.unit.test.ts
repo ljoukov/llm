@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { createInMemoryAgentFilesystem } from "../src/tools/filesystem.js";
 import {
+  createCodexReadFileTool,
   createCodexApplyPatchTool,
   createFilesystemToolSetForModel,
   createGeminiReadFileTool,
   createGlobTool,
+  createListDirTool,
   createRgSearchTool,
   createListDirectoryTool,
   createReadFilesTool,
@@ -63,6 +65,44 @@ describe("filesystemTools behavior", () => {
         paths: ["src/example.ts"],
       }),
     ).toContain("L1: export const value = 1;");
+
+    const codexReadFile = createCodexReadFileTool({ cwd, fs });
+    expect(
+      codexReadFile.inputSchema.safeParse({
+        file_path: "src/example.ts",
+        offset: null,
+        limit: null,
+        mode: null,
+        indentation: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      await codexReadFile.execute({
+        file_path: "src/example.ts",
+        offset: null,
+        limit: null,
+        mode: null,
+        indentation: null,
+      }),
+    ).toContain("L1: export const value = 1;");
+
+    const codexListDir = createListDirTool({ cwd, fs });
+    expect(
+      codexListDir.inputSchema.safeParse({
+        dir_path: "src",
+        offset: null,
+        limit: null,
+        depth: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      await codexListDir.execute({
+        dir_path: "src",
+        offset: null,
+        limit: null,
+        depth: null,
+      }),
+    ).toContain("example.ts");
 
     const replace = createReplaceTool({ cwd, fs });
     await replace.execute({
