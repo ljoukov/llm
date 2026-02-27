@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 
 import {
+  createToolLoopSteeringChannel,
   runToolLoop,
   type LlmStreamEvent,
+  type LlmToolLoopSteeringAppendResult,
+  type LlmToolLoopSteeringInput,
   type LlmUsageTokens,
   type LlmToolLoopRequest,
   type LlmToolLoopResult,
@@ -21,6 +24,7 @@ import {
   type AgentFilesystemToolProfile,
   type AgentFilesystemToolsOptions,
 } from "./tools/filesystemTools.js";
+import { createAsyncQueue } from "./utils/asyncQueue.js";
 
 export type AgentFilesystemToolConfig = {
   readonly enabled?: boolean;
@@ -49,6 +53,19 @@ export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
   readonly telemetry?: AgentTelemetrySelection;
 };
 
+export type AgentLoopStream = {
+  readonly events: AsyncIterable<LlmStreamEvent>;
+  readonly result: Promise<LlmToolLoopResult>;
+  readonly append: (
+    input: LlmToolLoopSteeringInput,
+  ) => LlmToolLoopSteeringAppendResult;
+  readonly steer: (
+    input: LlmToolLoopSteeringInput,
+  ) => LlmToolLoopSteeringAppendResult;
+  readonly pendingSteeringCount: () => number;
+  readonly abort: () => void;
+};
+
 export async function runAgentLoop(request: RunAgentLoopRequest): Promise<LlmToolLoopResult> {
   const telemetry = createAgentTelemetrySession(request.telemetry);
   try {
@@ -56,6 +73,72 @@ export async function runAgentLoop(request: RunAgentLoopRequest): Promise<LlmToo
   } finally {
     await telemetry?.flush();
   }
+}
+
+function mergeAbortSignals(
+  first: AbortSignal | undefined,
+  second: AbortSignal | undefined,
+): AbortSignal | undefined {
+  if (!first) {
+    return second;
+  }
+  if (!second) {
+    return first;
+  }
+  const controller = new AbortController();
+  const abortFrom = (signal: AbortSignal): void => {
+    if (!controller.signal.aborted) {
+      controller.abort(signal.reason);
+    }
+  };
+  if (first.aborted) {
+    abortFrom(first);
+  } else {
+    first.addEventListener("abort", () => abortFrom(first), { once: true });
+  }
+  if (second.aborted) {
+    abortFrom(second);
+  } else {
+    second.addEventListener("abort", () => abortFrom(second), { once: true });
+  }
+  return controller.signal;
+}
+
+export function streamAgentLoop(request: RunAgentLoopRequest): AgentLoopStream {
+  const queue = createAsyncQueue<LlmStreamEvent>();
+  const abortController = new AbortController();
+  const steering = request.steering ?? createToolLoopSteeringChannel();
+  const signal = mergeAbortSignals(request.signal, abortController.signal);
+  const sourceOnEvent = request.onEvent;
+
+  const result = (async () => {
+    try {
+      const output = await runAgentLoop({
+        ...request,
+        steering,
+        ...(signal ? { signal } : {}),
+        onEvent: (event) => {
+          sourceOnEvent?.(event);
+          queue.push(event);
+        },
+      });
+      queue.close();
+      return output;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      queue.fail(err);
+      throw err;
+    }
+  })();
+
+  return {
+    events: queue.iterable,
+    result,
+    append: steering.append,
+    steer: steering.steer,
+    pendingSteeringCount: steering.pendingCount,
+    abort: () => abortController.abort(),
+  };
 }
 
 type RunAgentLoopInternalContext = {
@@ -143,6 +226,11 @@ async function runAgentLoopInternal(
   const telemetrySession = context.telemetry ?? createAgentTelemetrySession(telemetry);
   const runId = randomRunId();
   const startedAtMs = Date.now();
+  const steeringChannel = toolLoopRequest.steering ?? createToolLoopSteeringChannel();
+  const toolLoopRequestWithSteering =
+    toolLoopRequest.steering === steeringChannel
+      ? toolLoopRequest
+      : { ...toolLoopRequest, steering: steeringChannel };
   const filesystemSelection = filesystemTool ?? filesystem_tool;
   const subagentSelection = subagentTool ?? subagent_tool ?? subagents;
   const filesystemTools = resolveFilesystemTools(request.model, filesystemSelection);
@@ -155,7 +243,8 @@ async function runAgentLoopInternal(
     customTools: customTools ?? {},
     filesystemSelection,
     subagentSelection,
-    toolLoopRequest,
+    toolLoopRequest: toolLoopRequestWithSteering,
+    steering: steeringChannel,
     resolvedSubagentConfig,
   });
   const mergedTools = mergeToolSets(
@@ -170,7 +259,7 @@ async function runAgentLoopInternal(
   }
 
   const instructions = buildLoopInstructions(
-    toolLoopRequest.instructions,
+    toolLoopRequestWithSteering.instructions,
     resolvedSubagentConfig,
     context.depth,
   );
@@ -191,7 +280,7 @@ async function runAgentLoopInternal(
     subagentToolsEnabled: resolvedSubagentConfig.enabled,
   });
 
-  const sourceOnEvent = toolLoopRequest.onEvent;
+  const sourceOnEvent = toolLoopRequestWithSteering.onEvent;
   const includeLlmStreamEvents = telemetrySession?.includeLlmStreamEvents === true;
   const wrappedOnEvent =
     sourceOnEvent || includeLlmStreamEvents
@@ -205,7 +294,7 @@ async function runAgentLoopInternal(
 
   try {
     const result = await runToolLoop({
-      ...toolLoopRequest,
+      ...toolLoopRequestWithSteering,
       ...(instructions ? { instructions } : {}),
       ...(wrappedOnEvent ? { onEvent: wrappedOnEvent } : {}),
       tools: mergedTools,
@@ -279,6 +368,7 @@ function createSubagentController(params: {
   readonly customTools: LlmToolSet;
   readonly filesystemSelection: AgentFilesystemToolSelection | undefined;
   readonly subagentSelection: AgentSubagentToolSelection | undefined;
+  readonly steering: LlmToolLoopRequest["steering"];
   readonly toolLoopRequest: Omit<
     RunAgentLoopRequest,
     "tools" | "filesystemTool" | "filesystem_tool"
@@ -292,6 +382,9 @@ function createSubagentController(params: {
     config: params.resolvedSubagentConfig,
     parentDepth: params.depth,
     parentModel: params.resolvedSubagentConfig.model ?? params.model,
+    onBackgroundMessage: (message) => {
+      params.steering?.append({ role: "user", content: message });
+    },
     buildChildInstructions: (spawnInstructions, childDepth) =>
       buildChildInstructions(spawnInstructions, params.resolvedSubagentConfig, childDepth),
     runSubagent: async (subagentRequest) => {

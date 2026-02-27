@@ -394,4 +394,52 @@ describe("runAgentLoop", () => {
     expect(order.includes("emit")).toBe(true);
     expect(order[order.length - 1]).toBe("flush");
   });
+
+  it("streamAgentLoop exposes append/steer while run is active", async () => {
+    runToolLoopMock.mockClear();
+    const gate = new Promise<void>((resolve) => {
+      setTimeout(resolve, 5);
+    });
+    let steering: { pendingCount: () => number } | undefined;
+    runToolLoopMock.mockImplementationOnce(async (request: unknown) => {
+      const typed = request as {
+        steering?: { pendingCount: () => number };
+        onEvent?: (event: { type: "delta"; channel: "response"; text: string }) => void;
+      };
+      steering = typed.steering;
+      typed.onEvent?.({ type: "delta", channel: "response", text: "working" });
+      await gate;
+      return {
+        text: "done",
+        thoughts: "",
+        steps: [],
+        totalCostUsd: 0,
+      };
+    });
+
+    const { streamAgentLoop } = await import("../src/agent.js");
+    const call = streamAgentLoop({
+      model: "gpt-5.2",
+      input: "test",
+      subagentTool: true,
+    });
+    const events: Array<{ type: string; channel?: string; text?: string }> = [];
+    const drainEvents = (async () => {
+      for await (const event of call.events) {
+        events.push(event as { type: string; channel?: string; text?: string });
+      }
+    })();
+
+    await vi.waitFor(() => expect(runToolLoopMock).toHaveBeenCalledTimes(1));
+    const appended = call.append("please prioritize tests");
+    expect(appended.accepted).toBe(true);
+    expect(appended.queuedCount).toBe(1);
+    expect(steering?.pendingCount()).toBe(1);
+
+    const result = await call.result;
+    await drainEvents;
+
+    expect(result.text).toBe("done");
+    expect(events.some((event) => event.type === "delta" && event.text === "working")).toBe(true);
+  });
 });

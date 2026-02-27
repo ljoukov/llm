@@ -1,5 +1,6 @@
 export {
   appendMarkdownSourcesSection,
+  createToolLoopSteeringChannel,
   convertGooglePartsToLlmParts,
   customTool,
   estimateCallCostUsd,
@@ -18,6 +19,7 @@ export {
   parseJsonFromLlmText,
   runToolLoop,
   sanitisePartForLogging,
+  streamToolLoop,
   streamJson,
   streamText,
   stripCodexCitationMarkers,
@@ -55,9 +57,17 @@ export type {
   LlmTextStream,
   LlmToolCallContext,
   LlmToolCallResult,
+  LlmToolCallCompletedEvent,
+  LlmToolCallStartedEvent,
+  LlmToolCallStreamEvent,
   LlmToolConfig,
   LlmToolLoopRequest,
   LlmToolLoopResult,
+  LlmToolLoopSteeringAppendResult,
+  LlmToolLoopSteeringChannel,
+  LlmToolLoopSteeringInput,
+  LlmToolLoopSteeringMessage,
+  LlmToolLoopStream,
   LlmToolLoopStep,
   LlmToolSet,
   LlmUsageEvent,
@@ -71,8 +81,9 @@ export {
   resetModelConcurrencyConfig,
 } from "./utils/modelConcurrency.js";
 export type { ModelConcurrencyConfig, ModelConcurrencyProvider } from "./utils/modelConcurrency.js";
-export { runAgentLoop } from "./agent.js";
+export { runAgentLoop, streamAgentLoop } from "./agent.js";
 export type {
+  AgentLoopStream,
   AgentRunCompletedTelemetryEvent,
   AgentRunStartedTelemetryEvent,
   AgentRunStreamTelemetryEvent,

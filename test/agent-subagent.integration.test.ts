@@ -46,6 +46,7 @@ suite(`integration: runAgentLoop subagent tools (${runtime})`, () => {
             enabled: true,
             maxDepth: 1,
             maxAgents: 2,
+            minWaitTimeoutMs: 2_000,
             defaultWaitTimeoutMs: 2_000,
             maxWaitTimeoutMs: 20_000,
           },

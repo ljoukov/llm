@@ -100,43 +100,53 @@ export type AgentFilesystemToolsOptions = {
 };
 
 const codexReadFileInputSchema = z.object({
-  file_path: z.string().min(1).describe("Absolute path to the file"),
+  file_path: z
+    .string()
+    .min(1)
+    .describe(
+      "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
+    ),
   offset: z
     .number()
     .int()
     .min(1)
-    .optional()
+    .nullish()
     .describe("The line number to start reading from. Must be 1 or greater."),
-  limit: z.number().int().min(1).optional().describe("The maximum number of lines to return."),
+  limit: z.number().int().min(1).nullish().describe("The maximum number of lines to return."),
   mode: z
     .enum(["slice", "indentation"])
-    .optional()
+    .nullish()
     .describe('Optional mode selector: "slice" (default) or "indentation".'),
   indentation: z
     .object({
-      anchor_line: z.number().int().min(1).optional(),
-      max_levels: z.number().int().min(0).optional(),
-      include_siblings: z.boolean().optional(),
-      include_header: z.boolean().optional(),
-      max_lines: z.number().int().min(1).optional(),
+      anchor_line: z.number().int().min(1).nullish(),
+      max_levels: z.number().int().min(0).nullish(),
+      include_siblings: z.boolean().nullish(),
+      include_header: z.boolean().nullish(),
+      max_lines: z.number().int().min(1).nullish(),
     })
-    .optional(),
+    .nullish(),
 });
 
 const codexListDirInputSchema = z.object({
-  dir_path: z.string().min(1).describe("Absolute path to the directory to list."),
+  dir_path: z
+    .string()
+    .min(1)
+    .describe(
+      "Path to the directory to list (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
+    ),
   offset: z
     .number()
     .int()
     .min(1)
-    .optional()
+    .nullish()
     .describe("The entry number to start listing from. Must be 1 or greater."),
-  limit: z.number().int().min(1).optional().describe("The maximum number of entries to return."),
+  limit: z.number().int().min(1).nullish().describe("The maximum number of entries to return."),
   depth: z
     .number()
     .int()
     .min(1)
-    .optional()
+    .nullish()
     .describe("The maximum directory depth to traverse. Must be 1 or greater."),
 });
 
@@ -144,14 +154,14 @@ const codexGrepFilesInputSchema = z.object({
   pattern: z.string().min(1).describe("Regular expression pattern to search for."),
   include: z
     .string()
-    .optional()
+    .nullish()
     .describe('Optional glob limiting searched files (for example "*.rs").'),
-  path: z.string().optional().describe("Directory or file path to search. Defaults to cwd."),
+  path: z.string().nullish().describe("Directory or file path to search. Defaults to cwd."),
   limit: z
     .number()
     .int()
     .min(1)
-    .optional()
+    .nullish()
     .describe("Maximum number of file paths to return (defaults to 100)."),
 });
 
@@ -479,9 +489,6 @@ async function readFileCodex(
   options: AgentFilesystemToolsOptions,
 ): Promise<string> {
   const runtime = resolveRuntime(options);
-  if (!path.isAbsolute(input.file_path)) {
-    throw new Error("file_path must be an absolute path");
-  }
   const filePath = resolvePathWithPolicy(input.file_path, runtime.cwd, runtime.allowOutsideCwd);
   await runAccessHook(runtime, {
     cwd: runtime.cwd,
@@ -528,7 +535,7 @@ async function readFileCodex(
     maxLevels: indentation.max_levels ?? 0,
     includeSiblings: indentation.include_siblings ?? false,
     includeHeader: indentation.include_header ?? true,
-    maxLines: indentation.max_lines,
+    maxLines: indentation.max_lines ?? undefined,
   });
 
   return selected.map((record) => `L${record.number}: ${record.display}`).join("\n");
@@ -539,9 +546,6 @@ async function listDirectoryCodex(
   options: AgentFilesystemToolsOptions,
 ): Promise<string> {
   const runtime = resolveRuntime(options);
-  if (!path.isAbsolute(input.dir_path)) {
-    throw new Error("dir_path must be an absolute path");
-  }
   const dirPath = resolvePathWithPolicy(input.dir_path, runtime.cwd, runtime.allowOutsideCwd);
   await runAccessHook(runtime, {
     cwd: runtime.cwd,
@@ -573,7 +577,7 @@ async function listDirectoryCodex(
   const cappedLimit = Math.min(limit, remaining);
   const selected = entries.slice(startIndex, startIndex + cappedLimit);
 
-  const output: string[] = [`Absolute path: ${dirPath}`];
+  const output: string[] = [`Absolute path: ${toSandboxDisplayPath(dirPath, runtime.cwd)}`];
   for (const entry of selected) {
     output.push(formatListEntry(entry));
   }
@@ -1067,10 +1071,18 @@ function resolvePathWithPolicy(inputPath: string, cwd: string, allowOutsideCwd: 
   const absolutePath = path.isAbsolute(inputPath)
     ? path.resolve(inputPath)
     : path.resolve(cwd, inputPath);
-  if (!allowOutsideCwd && !isPathInsideCwd(absolutePath, cwd)) {
-    throw new Error(`path "${inputPath}" resolves outside cwd "${cwd}"`);
+  if (allowOutsideCwd || isPathInsideCwd(absolutePath, cwd)) {
+    return absolutePath;
   }
-  return absolutePath;
+
+  if (path.isAbsolute(inputPath)) {
+    const sandboxRelativePath = inputPath.replace(/^[/\\]+/, "");
+    const sandboxRootedPath = path.resolve(cwd, sandboxRelativePath);
+    if (isPathInsideCwd(sandboxRootedPath, cwd)) {
+      return sandboxRootedPath;
+    }
+  }
+  throw new Error(`path "${inputPath}" resolves outside cwd "${cwd}"`);
 }
 
 function isPathInsideCwd(candidatePath: string, cwd: string): boolean {
@@ -1087,6 +1099,17 @@ function toDisplayPath(absolutePath: string, cwd: string): string {
     return relative;
   }
   return absolutePath;
+}
+
+function toSandboxDisplayPath(absolutePath: string, cwd: string): string {
+  const relative = path.relative(cwd, absolutePath);
+  if (relative === "") {
+    return "/";
+  }
+  if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
+    return `/${normalizeSlashes(relative)}`;
+  }
+  return normalizeSlashes(absolutePath);
 }
 
 function splitLines(content: string): string[] {

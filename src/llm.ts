@@ -109,7 +109,41 @@ export type LlmBlockedEvent = {
   readonly type: "blocked";
 };
 
-export type LlmStreamEvent = LlmTextDeltaEvent | LlmUsageEvent | LlmModelEvent | LlmBlockedEvent;
+export type LlmToolCallStartedEvent = {
+  readonly type: "tool_call";
+  readonly phase: "started";
+  readonly turn: number;
+  readonly toolIndex: number;
+  readonly toolName: string;
+  readonly toolId: string;
+  readonly callKind: "function" | "custom";
+  readonly callId?: string;
+  readonly input: unknown;
+};
+
+export type LlmToolCallCompletedEvent = {
+  readonly type: "tool_call";
+  readonly phase: "completed";
+  readonly turn: number;
+  readonly toolIndex: number;
+  readonly toolName: string;
+  readonly toolId: string;
+  readonly callKind: "function" | "custom";
+  readonly callId?: string;
+  readonly input: unknown;
+  readonly output: unknown;
+  readonly error?: string;
+  readonly durationMs?: number;
+};
+
+export type LlmToolCallStreamEvent = LlmToolCallStartedEvent | LlmToolCallCompletedEvent;
+
+export type LlmStreamEvent =
+  | LlmTextDeltaEvent
+  | LlmUsageEvent
+  | LlmModelEvent
+  | LlmBlockedEvent
+  | LlmToolCallStreamEvent;
 
 export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks";
 export const LLM_TEXT_MODEL_IDS = [
@@ -379,14 +413,54 @@ export type LlmToolLoopResult = {
   readonly totalCostUsd: number;
 };
 
+export type LlmToolLoopSteeringMessage = {
+  readonly role?: "user";
+  readonly content: string | readonly LlmContentPart[];
+};
+
+export type LlmToolLoopSteeringInput =
+  | string
+  | LlmToolLoopSteeringMessage
+  | readonly LlmToolLoopSteeringMessage[];
+
+export type LlmToolLoopSteeringAppendResult = {
+  readonly accepted: boolean;
+  readonly queuedCount: number;
+};
+
+export type LlmToolLoopSteeringChannel = {
+  readonly append: (
+    input: LlmToolLoopSteeringInput,
+  ) => LlmToolLoopSteeringAppendResult;
+  readonly steer: (
+    input: LlmToolLoopSteeringInput,
+  ) => LlmToolLoopSteeringAppendResult;
+  readonly pendingCount: () => number;
+  readonly close: () => void;
+};
+
 export type LlmToolLoopRequest = LlmInput & {
   readonly model: LlmTextModelId;
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
   readonly openAiReasoningEffort?: OpenAiReasoningEffort;
+  readonly steering?: LlmToolLoopSteeringChannel;
   readonly onEvent?: (event: LlmStreamEvent) => void;
   readonly signal?: AbortSignal;
+};
+
+export type LlmToolLoopStream = {
+  readonly events: AsyncIterable<LlmStreamEvent>;
+  readonly result: Promise<LlmToolLoopResult>;
+  readonly append: (
+    input: LlmToolLoopSteeringInput,
+  ) => LlmToolLoopSteeringAppendResult;
+  readonly steer: (
+    input: LlmToolLoopSteeringInput,
+  ) => LlmToolLoopSteeringAppendResult;
+  readonly pendingSteeringCount: () => number;
+  readonly abort: () => void;
 };
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -2981,6 +3055,125 @@ function resolveToolLoopContents(input: LlmInput): readonly LlmContent[] {
   return resolveTextContents(input);
 }
 
+type ToolLoopSteeringInternalState = {
+  readonly drainPendingContents: () => readonly LlmContent[];
+  readonly close: () => void;
+};
+
+const toolLoopSteeringInternals = new WeakMap<
+  LlmToolLoopSteeringChannel,
+  ToolLoopSteeringInternalState
+>();
+
+export function createToolLoopSteeringChannel(): LlmToolLoopSteeringChannel {
+  const pending: LlmContent[] = [];
+  let closed = false;
+
+  const channel: LlmToolLoopSteeringChannel = {
+    append: (input) => {
+      if (closed) {
+        return { accepted: false, queuedCount: pending.length };
+      }
+      const normalized = normalizeToolLoopSteeringInput(input);
+      if (normalized.length === 0) {
+        return { accepted: false, queuedCount: pending.length };
+      }
+      pending.push(...normalized);
+      return { accepted: true, queuedCount: pending.length };
+    },
+    steer: (input) => channel.append(input),
+    pendingCount: () => pending.length,
+    close: () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      pending.length = 0;
+    },
+  };
+
+  const internalState: ToolLoopSteeringInternalState = {
+    drainPendingContents: () => {
+      if (pending.length === 0) {
+        return [];
+      }
+      return pending.splice(0, pending.length);
+    },
+    close: channel.close,
+  };
+  toolLoopSteeringInternals.set(channel, internalState);
+  return channel;
+}
+
+function resolveToolLoopSteeringInternal(
+  steering: LlmToolLoopSteeringChannel | undefined,
+): ToolLoopSteeringInternalState | undefined {
+  if (!steering) {
+    return undefined;
+  }
+  const internal = toolLoopSteeringInternals.get(steering);
+  if (!internal) {
+    throw new Error(
+      "Invalid tool loop steering channel. Use createToolLoopSteeringChannel() to construct one.",
+    );
+  }
+  return internal;
+}
+
+function normalizeToolLoopSteeringInput(input: LlmToolLoopSteeringInput): LlmContent[] {
+  const messages =
+    typeof input === "string"
+      ? ([{ role: "user", content: input }] as const)
+      : Array.isArray(input)
+        ? input
+        : [input];
+
+  const normalized: LlmContent[] = [];
+  for (const message of messages) {
+    const role = message.role ?? "user";
+    if (role !== "user") {
+      throw new Error("Tool loop steering only accepts role='user' messages.");
+    }
+    if (typeof message.content === "string") {
+      if (message.content.length === 0) {
+        continue;
+      }
+      normalized.push({
+        role: "user",
+        parts: [{ type: "text", text: message.content }],
+      });
+      continue;
+    }
+    if (!Array.isArray(message.content) || message.content.length === 0) {
+      continue;
+    }
+    const parts: LlmContentPart[] = [];
+    for (const part of message.content) {
+      if (part.type === "text") {
+        parts.push({ type: "text", text: part.text });
+      } else {
+        parts.push({ type: "inlineData", data: part.data, mimeType: part.mimeType });
+      }
+    }
+    if (parts.length > 0) {
+      normalized.push({ role: "user", parts });
+    }
+  }
+  return normalized;
+}
+
+function toChatGptAssistantMessage(text: string): ChatGptInputItem | undefined {
+  if (!text) {
+    return undefined;
+  }
+  return {
+    type: "message",
+    role: "assistant",
+    status: "completed",
+    content: [{ type: "output_text", text }],
+  };
+}
+
 function isCustomTool(
   toolDef: LlmExecutableTool<z.ZodType, unknown>,
 ): toolDef is LlmCustomTool<unknown> {
@@ -3109,11 +3302,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
   const maxSteps = Math.max(1, Math.floor(request.maxSteps ?? DEFAULT_TOOL_LOOP_MAX_STEPS));
   const providerInfo = resolveProvider(request.model);
+  const steeringInternal = resolveToolLoopSteeringInternal(request.steering);
 
   const steps: LlmToolLoopStep[] = [];
   let totalCostUsd = 0;
   let finalText = "";
   let finalThoughts = "";
+
+  try {
 
   if (providerInfo.provider === "openai") {
     const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
@@ -3158,6 +3354,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const onEvent = request.onEvent;
       let modelVersion: string = request.model;
       let usageTokens: LlmUsageTokens | undefined;
+      let thoughtDeltaEmitted = false;
 
       const emitEvent = (ev: LlmStreamEvent) => {
         onEvent?.(ev);
@@ -3196,6 +3393,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 });
                 break;
               case "response.reasoning_summary_text.delta":
+                thoughtDeltaEmitted = true;
                 emitEvent({
                   type: "delta",
                   channel: "thought",
@@ -3239,6 +3437,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         .join("")
         .trim();
       const reasoningSummary = extractOpenAiReasoningSummary(finalResponse).trim();
+      if (!thoughtDeltaEmitted && reasoningSummary.length > 0) {
+        emitEvent({ type: "delta", channel: "thought", text: reasoningSummary });
+      }
       const modelCompletedAtMs = Date.now();
 
       const stepCostUsd = estimateCallCostUsd({
@@ -3256,6 +3457,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
       const stepToolCalls: LlmToolCallResult[] = [];
       if (responseToolCalls.length === 0) {
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
         finalText = responseText;
         finalThoughts = reasoningSummary;
         const stepCompletedAtMs = Date.now();
@@ -3278,7 +3481,12 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           costUsd: stepCostUsd,
           timing,
         });
-        return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        if (steeringItems.length === 0) {
+          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        }
+        previousResponseId = (finalResponse as any).id;
+        input = steeringItems;
+        continue;
       }
 
       const callInputs = responseToolCalls.map((call, index) => {
@@ -3299,6 +3507,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
         return { call, toolName, value, parseError, toolId, turn, toolIndex };
       });
+
+      for (const entry of callInputs) {
+        emitEvent({
+          type: "tool_call",
+          phase: "started",
+          turn: entry.turn,
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName,
+          toolId: entry.toolId,
+          callKind: entry.call.kind,
+          callId: entry.call.call_id,
+          input: entry.value,
+        });
+      }
 
       const callResults = await Promise.all(
         callInputs.map(async (entry) => {
@@ -3333,6 +3555,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
           waitToolMs += callDurationMs;
         }
+        emitEvent({
+          type: "tool_call",
+          phase: "completed",
+          turn: entry.turn,
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName,
+          toolId: entry.toolId,
+          callKind: entry.call.kind,
+          callId: entry.call.call_id,
+          input: entry.value,
+          output: result.output,
+          error: result.error,
+          durationMs: result.durationMs,
+        });
         if (entry.call.kind === "custom") {
           toolOutputs.push({
             type: "custom_tool_call_output",
@@ -3369,8 +3605,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         timing,
       });
 
+      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+      const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
       previousResponseId = (finalResponse as any).id;
-      input = toolOutputs;
+      input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
     }
 
     throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
@@ -3397,6 +3635,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const turn = stepIndex + 1;
       const stepStartedAtMs = Date.now();
       let firstModelEventAtMs: number | undefined;
+      let thoughtDeltaEmitted = false;
       const markFirstModelEvent = () => {
         if (firstModelEventAtMs === undefined) {
           firstModelEventAtMs = Date.now();
@@ -3425,6 +3664,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         onDelta: (delta) => {
           if (delta.thoughtDelta) {
             markFirstModelEvent();
+            thoughtDeltaEmitted = true;
             request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
           }
           if (delta.textDelta) {
@@ -3446,9 +3686,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
       const responseText = (response.text ?? "").trim();
       const reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
+      if (!thoughtDeltaEmitted && reasoningSummaryText.length > 0) {
+        request.onEvent?.({ type: "delta", channel: "thought", text: reasoningSummaryText });
+      }
 
       const responseToolCalls = response.toolCalls ?? [];
       if (responseToolCalls.length === 0) {
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
         finalText = responseText;
         finalThoughts = reasoningSummaryText;
         const stepCompletedAtMs = Date.now();
@@ -3470,7 +3715,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           costUsd: stepCostUsd,
           timing,
         });
-        return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        if (steeringItems.length === 0) {
+          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        }
+        const assistantItem = toChatGptAssistantMessage(responseText);
+        input = assistantItem
+          ? input.concat(assistantItem, steeringItems)
+          : input.concat(steeringItems);
+        continue;
       }
 
       const toolCalls: LlmToolCallResult[] = [];
@@ -3490,6 +3742,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         });
         return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
       });
+
+      for (const entry of callInputs) {
+        request.onEvent?.({
+          type: "tool_call",
+          phase: "started",
+          turn: entry.turn,
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName,
+          toolId: entry.toolId,
+          callKind: entry.call.kind,
+          callId: entry.ids.callId,
+          input: entry.value,
+        });
+      }
 
       const callResults = await Promise.all(
         callInputs.map(async (entry) => {
@@ -3523,6 +3789,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
           waitToolMs += callDurationMs;
         }
+        request.onEvent?.({
+          type: "tool_call",
+          phase: "completed",
+          turn: entry.turn,
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName,
+          toolId: entry.toolId,
+          callKind: entry.call.kind,
+          callId: entry.ids.callId,
+          input: entry.value,
+          output: result.output,
+          error: result.error,
+          durationMs: result.durationMs,
+        });
         if (entry.call.kind === "custom") {
           toolOutputs.push({
             type: "custom_tool_call",
@@ -3574,7 +3854,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         timing,
       });
 
-      input = input.concat(toolOutputs);
+      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+      const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+      input = steeringItems.length > 0 ? input.concat(toolOutputs, steeringItems) : input.concat(toolOutputs);
     }
 
     throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
@@ -3648,6 +3930,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
       const responseToolCalls = extractFireworksToolCalls(message);
       if (responseToolCalls.length === 0) {
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        const steeringMessages =
+          steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
         finalText = responseText;
         finalThoughts = "";
         const stepCompletedAtMs = Date.now();
@@ -3669,7 +3954,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           costUsd: stepCostUsd,
           timing,
         });
-        return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        if (steeringMessages.length === 0) {
+          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        }
+        if (responseText.length > 0) {
+          messages.push({ role: "assistant", content: responseText });
+        }
+        messages.push(...steeringMessages);
+        continue;
       }
 
       const stepToolCalls: LlmToolCallResult[] = [];
@@ -3679,6 +3971,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
         return { call, toolName: call.name, value, parseError, toolId, turn, toolIndex };
       });
+
+      for (const entry of callInputs) {
+        request.onEvent?.({
+          type: "tool_call",
+          phase: "started",
+          turn: entry.turn,
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName,
+          toolId: entry.toolId,
+          callKind: "function",
+          callId: entry.call.id,
+          input: entry.value,
+        });
+      }
 
       const callResults = await Promise.all(
         callInputs.map(async (entry) => {
@@ -3714,6 +4020,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
           waitToolMs += callDurationMs;
         }
+        request.onEvent?.({
+          type: "tool_call",
+          phase: "completed",
+          turn: entry.turn,
+          toolIndex: entry.toolIndex,
+          toolName: entry.toolName,
+          toolId: entry.toolId,
+          callKind: "function",
+          callId: entry.call.id,
+          input: entry.value,
+          output: result.output,
+          error: result.error,
+          durationMs: result.durationMs,
+        });
         assistantToolCalls.push({
           id: entry.call.id,
           type: "function",
@@ -3755,6 +4075,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         tool_calls: assistantToolCalls,
       });
       messages.push(...toolMessages);
+      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+      if (steeringInput.length > 0) {
+        messages.push(...toFireworksMessages(steeringInput));
+      }
     }
 
     throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
@@ -3898,6 +4222,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     totalCostUsd += stepCostUsd;
 
     if (response.functionCalls.length === 0) {
+      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
       finalText = response.responseText.trim();
       finalThoughts = response.thoughtsText.trim();
       const stepCompletedAtMs = Date.now();
@@ -3920,7 +4245,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         costUsd: stepCostUsd,
         timing,
       });
-      return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+      if (steeringInput.length === 0) {
+        return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+      }
+      const modelPartsForHistory = response.modelParts.filter(
+        (part) => !(typeof part.text === "string" && part.thought === true),
+      );
+      if (modelPartsForHistory.length > 0) {
+        geminiContents.push({ role: "model", parts: modelPartsForHistory });
+      } else if (response.responseText.length > 0) {
+        geminiContents.push({ role: "model", parts: [{ text: response.responseText }] });
+      }
+      geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
+      continue;
     }
 
     const toolCalls: LlmToolCallResult[] = [];
@@ -3950,6 +4287,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const rawInput = call.args ?? {};
       return { call, toolName, rawInput, toolId, turn, toolIndex };
     });
+
+    for (const entry of callInputs) {
+      onEvent?.({
+        type: "tool_call",
+        phase: "started",
+        turn: entry.turn,
+        toolIndex: entry.toolIndex,
+        toolName: entry.toolName,
+        toolId: entry.toolId,
+        callKind: "function",
+        callId: entry.call.id,
+        input: entry.rawInput,
+      });
+    }
 
     const callResults = await Promise.all(
       callInputs.map(async (entry) => {
@@ -3982,6 +4333,20 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
         waitToolMs += callDurationMs;
       }
+      onEvent?.({
+        type: "tool_call",
+        phase: "completed",
+        turn: entry.turn,
+        toolIndex: entry.toolIndex,
+        toolName: entry.toolName,
+        toolId: entry.toolId,
+        callKind: "function",
+        callId: entry.call.id,
+        input: entry.rawInput,
+        output: result.output,
+        error: result.error,
+        durationMs: result.durationMs,
+      });
       const responsePayload = isPlainRecord(outputPayload)
         ? outputPayload
         : { output: outputPayload };
@@ -4016,9 +4381,82 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     });
 
     geminiContents.push({ role: "user", parts: responseParts });
+    const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+    if (steeringInput.length > 0) {
+      geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
+    }
   }
 
   throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+  } finally {
+    steeringInternal?.close();
+  }
+}
+
+function mergeAbortSignals(
+  first: AbortSignal | undefined,
+  second: AbortSignal | undefined,
+): AbortSignal | undefined {
+  if (!first) {
+    return second;
+  }
+  if (!second) {
+    return first;
+  }
+  const controller = new AbortController();
+  const abortFrom = (signal: AbortSignal): void => {
+    if (!controller.signal.aborted) {
+      controller.abort(signal.reason);
+    }
+  };
+  if (first.aborted) {
+    abortFrom(first);
+  } else {
+    first.addEventListener("abort", () => abortFrom(first), { once: true });
+  }
+  if (second.aborted) {
+    abortFrom(second);
+  } else {
+    second.addEventListener("abort", () => abortFrom(second), { once: true });
+  }
+  return controller.signal;
+}
+
+export function streamToolLoop(request: LlmToolLoopRequest): LlmToolLoopStream {
+  const queue = createAsyncQueue<LlmStreamEvent>();
+  const abortController = new AbortController();
+  const steering = request.steering ?? createToolLoopSteeringChannel();
+  const signal = mergeAbortSignals(request.signal, abortController.signal);
+  const sourceOnEvent = request.onEvent;
+
+  const result = (async () => {
+    try {
+      const output = await runToolLoop({
+        ...request,
+        steering,
+        ...(signal ? { signal } : {}),
+        onEvent: (event) => {
+          sourceOnEvent?.(event);
+          queue.push(event);
+        },
+      });
+      queue.close();
+      return output;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      queue.fail(err);
+      throw err;
+    }
+  })();
+
+  return {
+    events: queue.iterable,
+    result,
+    append: steering.append,
+    steer: steering.steer,
+    pendingSteeringCount: steering.pendingCount,
+    abort: () => abortController.abort(),
+  };
 }
 
 // --- Images (Gemini image-preview) ---
