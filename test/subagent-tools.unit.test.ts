@@ -39,7 +39,10 @@ describe("subagent tools", () => {
     });
 
     const controller = createSubagentToolController({
-      config: resolveSubagentToolConfig(true, 0),
+      config: resolveSubagentToolConfig(
+        { minWaitTimeoutMs: 1, defaultWaitTimeoutMs: 30, maxWaitTimeoutMs: 5_000 },
+        0,
+      ),
       parentDepth: 0,
       parentModel: "gpt-5.2",
       runSubagent,
@@ -65,14 +68,12 @@ describe("subagent tools", () => {
 
     const timedOut = await wait.execute({ agent_id: agentId, timeout_ms: 5 });
     expect(timedOut.timed_out).toBe(true);
-    expect(timedOut.status).toBe("running");
-    expect(timedOut.notification).toBe("timeout");
+    expect(timedOut.status).toEqual({});
 
     const completed = await wait.execute({ agent_id: agentId, timeout_ms: 400 });
     expect(completed.timed_out).toBe(false);
-    expect(completed.status).toBe("idle");
-    expect(completed.notification).toBe("run_completed");
-    expect(completed.agent?.last_result?.text).toBe("done:first");
+    expect(completed.status?.[agentId]?.status).toBe("idle");
+    expect(completed.status?.[agentId]?.last_result?.text).toBe("done:first");
 
     const queued = await sendInput.execute({ agent_id: agentId, input: "second" });
     expect(queued.notification).toBe("input_queued");
@@ -83,8 +84,8 @@ describe("subagent tools", () => {
     expect(resumed.status).toBe("running");
 
     const completedAgain = await wait.execute({ agent_id: agentId, timeout_ms: 400 });
-    expect(completedAgain.status).toBe("idle");
-    expect(completedAgain.agent?.last_result?.text).toBe("done:second");
+    expect(completedAgain.status?.[agentId]?.status).toBe("idle");
+    expect(completedAgain.status?.[agentId]?.last_result?.text).toBe("done:second");
 
     expect(runSubagent).toHaveBeenCalledTimes(2);
     const secondInput = runSubagent.mock.calls[1]?.[0]?.input as
@@ -111,7 +112,7 @@ describe("subagent tools", () => {
     });
 
     const controller = createSubagentToolController({
-      config: resolveSubagentToolConfig(true, 0),
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
       parentModel: "gpt-5.2",
       runSubagent,
@@ -132,7 +133,7 @@ describe("subagent tools", () => {
 
     const status = await wait.execute({ agent_id: agentId, timeout_ms: 50 });
     expect(status.timed_out).toBe(false);
-    expect(status.status).toBe("closed");
+    expect(status.status?.[agentId]?.status).toBe("closed");
   });
 
   it("accepts codex-style argument aliases (message/id/ids)", async () => {
@@ -148,7 +149,7 @@ describe("subagent tools", () => {
     });
 
     const controller = createSubagentToolController({
-      config: resolveSubagentToolConfig(true, 0),
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
       parentModel: "gpt-5.2",
       runSubagent,
@@ -164,7 +165,7 @@ describe("subagent tools", () => {
 
     const waitOne = await wait.execute({ id: agentId, timeout_ms: 200 });
     expect(waitOne.timed_out).toBe(false);
-    expect(waitOne.status).toBe("idle");
+    expect(waitOne.status?.[agentId]?.status).toBe("idle");
 
     const waitMany = await wait.execute({ ids: [agentId], timeout_ms: 200 });
     expect(waitMany.timed_out).toBe(false);
@@ -172,5 +173,118 @@ describe("subagent tools", () => {
 
     const closed = await close.execute({ id: agentId });
     expect(closed.status).toBe("closed");
+  });
+
+  it("treats null optional spawn_agent fields as omitted", async () => {
+    const runSubagent = vi.fn(async (request: SubagentRunRequest) => {
+      const last = request.input[request.input.length - 1];
+      const text = asSingleLineText(last?.content);
+      return {
+        text: `done:${text}`,
+        thoughts: "",
+        steps: [],
+        totalCostUsd: 0,
+      };
+    });
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const wait = getExecutableTool(controller.tools, "wait");
+
+    const spawned = await spawn.execute({
+      prompt: null,
+      message: null,
+      items: [{ type: "text", text: "from-items", image_url: null, path: null }],
+      model: null,
+      instructions: null,
+      max_steps: null,
+      agent_type: null,
+    });
+    const agentId = spawned.agent_id as string;
+    expect(agentId).toBeTypeOf("string");
+    expect(spawned.agent?.model).toBe("gpt-5.2");
+
+    const completed = await wait.execute({ agent_id: agentId, timeout_ms: 200 });
+    expect(completed.timed_out).toBe(false);
+    expect(completed.status?.[agentId]?.status).toBe("idle");
+    expect(completed.status?.[agentId]?.last_result?.text).toBe("done:from-items");
+  });
+
+  it("injects codex-style background notifications when subagent completes", async () => {
+    const runSubagent = vi.fn(async (request: SubagentRunRequest) => {
+      const last = request.input[request.input.length - 1];
+      const text = asSingleLineText(last?.content);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      return {
+        text: `done:${text}`,
+        thoughts: "",
+        steps: [],
+        totalCostUsd: 0,
+      };
+    });
+    const background = vi.fn();
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+      onBackgroundMessage: background,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const wait = getExecutableTool(controller.tools, "wait");
+
+    const spawned = await spawn.execute({ message: "notify me" });
+    const agentId = spawned.agent_id as string;
+    await wait.execute({ ids: [agentId], timeout_ms: 500 });
+
+    expect(background).toHaveBeenCalled();
+    const payload = String(background.mock.calls[0]?.[0] ?? "");
+    expect(payload.startsWith("<subagent_notification>")).toBe(true);
+    expect(payload.endsWith("</subagent_notification>")).toBe(true);
+    expect(payload).toContain(agentId);
+  });
+
+  it("rejects message+items combinations like codex collab tools", async () => {
+    const runSubagent = vi.fn(async () => ({
+      text: "done",
+      thoughts: "",
+      steps: [],
+      totalCostUsd: 0,
+    }));
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const sendInput = getExecutableTool(controller.tools, "send_input");
+
+    await expect(
+      spawn.execute({
+        message: "hi",
+        items: [{ type: "text", text: "also hi" }],
+      }),
+    ).rejects.toThrow("Provide either prompt/message or items, but not both.");
+
+    const spawned = await spawn.execute({ message: "first" });
+    const agentId = spawned.agent_id as string;
+    await expect(
+      sendInput.execute({
+        id: agentId,
+        message: "next",
+        items: [{ type: "text", text: "also next" }],
+      }),
+    ).rejects.toThrow("Provide either input/message or items, but not both.");
   });
 });

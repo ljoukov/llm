@@ -481,6 +481,50 @@ console.log(result.text);
 
 Use `customTool()` only when you need freeform/non-JSON tool input grammar.
 
+### Mid-Run Steering (Queued Input)
+
+You can queue user steering while a tool loop is already running. Steering is applied on the next model step (it does
+not interrupt the current generation/tool execution).
+
+```ts
+import { streamToolLoop, tool } from "@ljoukov/llm";
+import { z } from "zod";
+
+const call = streamToolLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Start implementing the feature.",
+  tools: {
+    echo: tool({
+      inputSchema: z.object({ text: z.string() }),
+      execute: ({ text }) => ({ text }),
+    }),
+  },
+});
+
+// Append steering while run is active.
+call.append("Focus on tests first, then refactor.");
+
+const result = await call.result;
+console.log(result.text);
+```
+
+If you already manage your own run lifecycle, you can create and pass a steering channel directly:
+
+```ts
+import { createToolLoopSteeringChannel, runAgentLoop } from "@ljoukov/llm";
+
+const steering = createToolLoopSteeringChannel();
+const run = runAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Implement the task.",
+  filesystemTool: true,
+  steering,
+});
+
+steering.append("Do not interrupt; apply this guidance on the next turn.");
+const result = await run;
+```
+
 ### Agentic Loop (`runAgentLoop()`)
 
 `runAgentLoop()` is the high-level agentic API. It supports:
@@ -488,6 +532,22 @@ Use `customTool()` only when you need freeform/non-JSON tool input grammar.
 - optional filesystem workspace tools,
 - built-in subagent orchestration (delegate work across spawned agents),
 - your own custom runtime tools.
+
+For interactive runs where you want to stream events and inject steering mid-run, use `streamAgentLoop()`:
+
+```ts
+import { streamAgentLoop } from "@ljoukov/llm";
+
+const call = streamAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Start implementation.",
+  filesystemTool: true,
+});
+
+call.append("Prioritize a minimal diff and update tests.");
+const result = await call.result;
+console.log(result.text);
+```
 
 #### 1) Filesystem agent loop
 
@@ -657,6 +717,15 @@ npm run bench:agent:estimate
 ```
 
 See `benchmarks/agent/README.md` for options and output format.
+
+## Examples
+
+Interactive CLI chat with mid-run steering, thought streaming, filesystem tools rooted at
+the current directory, subagents enabled, and `Esc` interrupt support:
+
+```bash
+npm run example:cli-chat
+```
 
 ## License
 
