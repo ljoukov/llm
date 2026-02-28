@@ -135,6 +135,22 @@ export const DelegationEvidenceSchema = strictObject({
     )
     .min(2)
     .max(8),
+  alignment_pass: strictObject({
+    applied: z.literal(true),
+    pairings: z
+      .array(
+        strictObject({
+          quiz_id: z.enum(["quiz-1", "quiz-2", "quiz-3", "quiz-4"]),
+          coding_problem_id: z.enum(["problem-1", "problem-2", "problem-3"]),
+          prerequisite_topics_covered: z.array(z.string().min(2)).min(1).max(8),
+          tricky_concepts_covered: z.array(z.string().min(2)).min(1).max(12),
+          updated: z.boolean(),
+        }),
+      )
+      .length(4),
+    updated_quiz_files: z.array(z.string().min(1)).min(3).max(4),
+    checks: z.array(z.string().min(8)).min(3).max(10),
+  }),
   merge_notes: z.string().min(20),
 });
 
@@ -253,7 +269,7 @@ export const LESSON_OUTPUT_FILE_SPECS: readonly OutputFileSpec[] = [
     schemaFile: "schemas/delegation_evidence.schema.json",
     schema: DelegationEvidenceSchema,
     description:
-      "Evidence of early decomposition into parallel subagent workstreams and merge outcomes.",
+      "Evidence of early decomposition into parallel workstreams plus the required quiz->coding alignment pass.",
     validationProfile: "delegation-evidence",
   },
   {
@@ -342,7 +358,8 @@ export const LESSON_GRADER_ASPECTS: readonly TaskGraderAspect[] = [
     name: "Pedagogical Flow",
     criteria: [
       "- Sequence prepares learner progressively from Problem 1 to Problem 3.",
-      "- Quiz content clearly supports adjacent coding problem goals.",
+      "- `quiz-1` prepares `problem-1`, `quiz-2` prepares `problem-2`, `quiz-3` prepares `problem-3`, and `quiz-4` reinforces final/cumulative prerequisites.",
+      "- Quiz content explicitly covers paired coding prerequisites/tricky concepts (not generic detached theory).",
       "- Quiz 4 functions as review/reflection, not unrelated new material.",
     ].join("\n"),
   },
@@ -351,6 +368,7 @@ export const LESSON_GRADER_ASPECTS: readonly TaskGraderAspect[] = [
     name: "Assessment Design",
     criteria: [
       "- Every quiz has exactly 18 questions with mix 4 info-card, 10 multiple-choice, 4 type-answer.",
+      "- Each paired quiz references target coding requirements/constraints and includes at least one direct requirement-focused question.",
       "- Coding problems include clear examples and sufficient non-trivial tests.",
       "- Problem 3 includes official sample in examples and marking rows in tests.",
     ].join("\n"),

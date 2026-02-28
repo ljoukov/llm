@@ -1555,6 +1555,531 @@ const SAFE_HAVEN_HIDDEN_CASES = [
   { input: "10 4999 4999", output: "5 8" },
 ] as const;
 
+type LessonAlignmentPair = {
+  readonly quizFile: string;
+  readonly problemFile: string;
+  readonly label: string;
+  readonly minTopicMatches: number;
+  readonly minPrereqMatches: number;
+  readonly referencePhrases: readonly string[];
+};
+
+const LESSON_ALIGNMENT_PAIRS: readonly LessonAlignmentPair[] = [
+  {
+    quizFile: "lesson/output/quiz/quiz-1.json",
+    problemFile: "lesson/output/code/problem-1.json",
+    label: "quiz-1 -> problem-1",
+    minTopicMatches: 2,
+    minPrereqMatches: 3,
+    referencePhrases: ["problem 1", "problem-1", "intro bio"],
+  },
+  {
+    quizFile: "lesson/output/quiz/quiz-2.json",
+    problemFile: "lesson/output/code/problem-2.json",
+    label: "quiz-2 -> problem-2",
+    minTopicMatches: 2,
+    minPrereqMatches: 3,
+    referencePhrases: ["problem 2", "problem-2", "intermediate bio"],
+  },
+  {
+    quizFile: "lesson/output/quiz/quiz-3.json",
+    problemFile: "lesson/output/code/problem-3.json",
+    label: "quiz-3 -> problem-3",
+    minTopicMatches: 2,
+    minPrereqMatches: 3,
+    referencePhrases: ["problem 3", "problem-3", "safe haven", "final bio"],
+  },
+  {
+    quizFile: "lesson/output/quiz/quiz-4.json",
+    problemFile: "lesson/output/code/problem-3.json",
+    label: "quiz-4 -> problem-3",
+    minTopicMatches: 1,
+    minPrereqMatches: 3,
+    referencePhrases: ["problem 3", "problem-3", "safe haven", "final bio"],
+  },
+] as const;
+
+const LESSON_ALIGNMENT_SHORT_TOKENS = new Set(["io", "dfs", "bfs", "dp", "uf", "n2"]);
+const LESSON_ALIGNMENT_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "can",
+  "do",
+  "for",
+  "from",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "or",
+  "that",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "this",
+  "to",
+  "up",
+  "use",
+  "uses",
+  "using",
+  "with",
+  "you",
+  "your",
+  "will",
+  "must",
+  "should",
+  "could",
+  "would",
+  "problem",
+  "quiz",
+  "lesson",
+  "student",
+  "students",
+  "coding",
+  "code",
+  "task",
+  "final",
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "intro",
+  "intermediate",
+  "review",
+  "reflection",
+  "prepare",
+  "prep",
+  "learn",
+  "learning",
+  "practice",
+  "theory",
+  "question",
+  "questions",
+  "prompt",
+  "choice",
+  "answer",
+  "answers",
+  "true",
+  "false",
+  "where",
+  "when",
+  "what",
+  "which",
+  "whose",
+  "while",
+  "after",
+  "before",
+  "between",
+  "until",
+  "through",
+  "across",
+  "over",
+  "under",
+  "than",
+  "also",
+  "each",
+  "every",
+  "any",
+  "all",
+  "some",
+  "more",
+  "most",
+  "least",
+  "very",
+  "only",
+  "same",
+  "new",
+  "old",
+  "main",
+  "key",
+  "part",
+  "parts",
+  "step",
+  "steps",
+  "example",
+  "examples",
+  "input",
+  "output",
+]);
+
+type LessonQuizAlignmentContext = {
+  readonly headerText: string;
+  readonly fullText: string;
+  readonly tokenSet: ReadonlySet<string>;
+  readonly questionTexts: readonly string[];
+  readonly questionTokenSets: readonly ReadonlySet<string>[];
+};
+
+type LessonProblemAlignmentContext = {
+  readonly topicPhrases: readonly string[];
+  readonly prereqTokens: readonly string[];
+};
+
+function normalizeAlignmentText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function tokenizeAlignmentText(value: string): readonly string[] {
+  const normalized = normalizeAlignmentText(value);
+  if (normalized.length === 0) {
+    return [];
+  }
+  return normalized.split(" ").filter((token) => token.length > 0);
+}
+
+function isAlignmentTokenMeaningful(token: string): boolean {
+  if (LESSON_ALIGNMENT_SHORT_TOKENS.has(token)) {
+    return true;
+  }
+  if (token.length < 4) {
+    return false;
+  }
+  if (LESSON_ALIGNMENT_STOPWORDS.has(token)) {
+    return false;
+  }
+  return true;
+}
+
+function collectStringValues(value: unknown): readonly string[] {
+  const strings: string[] = [];
+  const visit = (current: unknown): void => {
+    if (typeof current === "string") {
+      if (current.trim().length > 0) {
+        strings.push(current);
+      }
+      return;
+    }
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        visit(item);
+      }
+      return;
+    }
+    if (typeof current !== "object" || current === null) {
+      return;
+    }
+    for (const valueItem of Object.values(current)) {
+      visit(valueItem);
+    }
+  };
+  visit(value);
+  return strings;
+}
+
+function containsNormalizedPhrase(text: string, phrase: string): boolean {
+  if (text.length === 0 || phrase.length === 0) {
+    return false;
+  }
+  const paddedText = ` ${text} `;
+  const normalizedPhrase = normalizeAlignmentText(phrase);
+  if (normalizedPhrase.length === 0) {
+    return false;
+  }
+  return paddedText.includes(` ${normalizedPhrase} `);
+}
+
+function collectQuestionTexts(quizValue: unknown): readonly string[] {
+  if (typeof quizValue !== "object" || quizValue === null) {
+    return [];
+  }
+  const questions = (quizValue as { questions?: unknown }).questions;
+  if (!Array.isArray(questions)) {
+    return [];
+  }
+  const results: string[] = [];
+  for (const question of questions) {
+    const fragments = collectStringValues(question);
+    if (fragments.length === 0) {
+      continue;
+    }
+    const normalized = normalizeAlignmentText(fragments.join(" "));
+    if (normalized.length > 0) {
+      results.push(normalized);
+    }
+  }
+  return results;
+}
+
+function buildLessonQuizAlignmentContext(quizValue: unknown): LessonQuizAlignmentContext {
+  if (typeof quizValue !== "object" || quizValue === null) {
+    return {
+      headerText: "",
+      fullText: "",
+      tokenSet: new Set<string>(),
+      questionTexts: [],
+      questionTokenSets: [],
+    };
+  }
+  const objectValue = quizValue as {
+    title?: unknown;
+    description?: unknown;
+    gradingPrompt?: unknown;
+  };
+  const headerPieces: string[] = [];
+  if (typeof objectValue.title === "string") {
+    headerPieces.push(objectValue.title);
+  }
+  if (typeof objectValue.description === "string") {
+    headerPieces.push(objectValue.description);
+  }
+  if (typeof objectValue.gradingPrompt === "string") {
+    headerPieces.push(objectValue.gradingPrompt);
+  }
+  const headerText = normalizeAlignmentText(headerPieces.join(" "));
+  const questionTexts = collectQuestionTexts(quizValue);
+  const fullTextParts = [headerText, ...questionTexts].filter((part) => part.length > 0);
+  const fullText = fullTextParts.join(" ");
+  const tokenSet = new Set(tokenizeAlignmentText(fullText));
+  const questionTokenSets = questionTexts.map((questionText) => new Set(tokenizeAlignmentText(questionText)));
+  return {
+    headerText,
+    fullText,
+    tokenSet,
+    questionTexts,
+    questionTokenSets,
+  };
+}
+
+function buildLessonProblemAlignmentContext(problemValue: unknown): LessonProblemAlignmentContext {
+  if (typeof problemValue !== "object" || problemValue === null) {
+    return { topicPhrases: [], prereqTokens: [] };
+  }
+  const objectValue = problemValue as {
+    title?: unknown;
+    description?: unknown;
+    inputFormat?: unknown;
+    topics?: unknown;
+    constraints?: unknown;
+    hints?: unknown;
+    examples?: unknown;
+  };
+  const topicPhrases = Array.isArray(objectValue.topics)
+    ? objectValue.topics
+        .filter((topic): topic is string => typeof topic === "string")
+        .map((topic) => normalizeAlignmentText(topic))
+        .filter((topic) => topic.length > 0)
+    : [];
+
+  const sourceParts: string[] = [];
+  if (typeof objectValue.title === "string") {
+    sourceParts.push(objectValue.title);
+  }
+  if (typeof objectValue.description === "string") {
+    sourceParts.push(objectValue.description);
+  }
+  if (typeof objectValue.inputFormat === "string") {
+    sourceParts.push(objectValue.inputFormat);
+  }
+  if (Array.isArray(objectValue.constraints)) {
+    for (const item of objectValue.constraints) {
+      if (typeof item === "string") {
+        sourceParts.push(item);
+      }
+    }
+  }
+  if (Array.isArray(objectValue.hints)) {
+    for (const item of objectValue.hints) {
+      if (typeof item === "string") {
+        sourceParts.push(item);
+      }
+    }
+  }
+  if (Array.isArray(objectValue.examples)) {
+    for (const example of objectValue.examples) {
+      if (typeof example !== "object" || example === null) {
+        continue;
+      }
+      const explanation = (example as { explanation?: unknown }).explanation;
+      if (typeof explanation === "string") {
+        sourceParts.push(explanation);
+      }
+    }
+  }
+
+  const frequency = new Map<string, number>();
+  for (const part of sourceParts) {
+    for (const token of tokenizeAlignmentText(part)) {
+      if (!isAlignmentTokenMeaningful(token)) {
+        continue;
+      }
+      frequency.set(token, (frequency.get(token) ?? 0) + 1);
+    }
+  }
+  for (const topicPhrase of topicPhrases) {
+    for (const token of tokenizeAlignmentText(topicPhrase)) {
+      if (!isAlignmentTokenMeaningful(token)) {
+        continue;
+      }
+      frequency.set(token, (frequency.get(token) ?? 0) + 2);
+    }
+  }
+
+  const prereqTokens = [...frequency.entries()]
+    .sort((a, b) => {
+      if (b[1] !== a[1]) {
+        return b[1] - a[1];
+      }
+      return a[0].localeCompare(b[0]);
+    })
+    .slice(0, 24)
+    .map(([token]) => token);
+
+  return { topicPhrases, prereqTokens };
+}
+
+function matchPhrasesInText(text: string, phrases: readonly string[]): readonly string[] {
+  const uniqueMatches = new Set<string>();
+  for (const phrase of phrases) {
+    if (containsNormalizedPhrase(text, phrase)) {
+      uniqueMatches.add(normalizeAlignmentText(phrase));
+    }
+  }
+  return [...uniqueMatches];
+}
+
+function matchTokensInSet(tokens: ReadonlySet<string>, candidates: readonly string[]): readonly string[] {
+  const matches: string[] = [];
+  for (const candidate of candidates) {
+    if (tokens.has(candidate)) {
+      matches.push(candidate);
+    }
+  }
+  return matches;
+}
+
+function safeParseValidationContent(validation: OutputValidation): unknown | undefined {
+  if (!validation.content) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(validation.content);
+  } catch {
+    return undefined;
+  }
+}
+
+function validateLessonQuizCodingAlignment(
+  validations: readonly OutputValidation[],
+): ReadonlyMap<string, readonly string[]> {
+  const errorsByFile = new Map<string, string[]>();
+  const validationsByFile = new Map(validations.map((validation) => [validation.outputFile, validation]));
+  const parsedByFile = new Map<string, unknown>();
+
+  for (const pair of LESSON_ALIGNMENT_PAIRS) {
+    const quizValidation = validationsByFile.get(pair.quizFile);
+    const problemValidation = validationsByFile.get(pair.problemFile);
+    if (
+      !quizValidation ||
+      !problemValidation ||
+      !quizValidation.exists ||
+      !problemValidation.exists ||
+      !quizValidation.jsonValid ||
+      !problemValidation.jsonValid ||
+      !quizValidation.schemaValid ||
+      !problemValidation.schemaValid
+    ) {
+      continue;
+    }
+    const quizParsed =
+      parsedByFile.get(pair.quizFile) ?? safeParseValidationContent(quizValidation);
+    const problemParsed =
+      parsedByFile.get(pair.problemFile) ?? safeParseValidationContent(problemValidation);
+    if (quizParsed === undefined || problemParsed === undefined) {
+      continue;
+    }
+    parsedByFile.set(pair.quizFile, quizParsed);
+    parsedByFile.set(pair.problemFile, problemParsed);
+
+    const quizContext = buildLessonQuizAlignmentContext(quizParsed);
+    const problemContext = buildLessonProblemAlignmentContext(problemParsed);
+    const pairErrors: string[] = [];
+
+    const referenceMatched = pair.referencePhrases.some((phrase) =>
+      containsNormalizedPhrase(quizContext.headerText, phrase),
+    );
+    if (!referenceMatched) {
+      pairErrors.push(
+        `[alignment ${pair.label}] quiz header must explicitly reference the paired coding problem.`,
+      );
+    }
+
+    const matchedTopics = matchPhrasesInText(quizContext.fullText, problemContext.topicPhrases);
+    const requiredTopicMatches = Math.min(problemContext.topicPhrases.length, pair.minTopicMatches);
+    if (requiredTopicMatches > 0 && matchedTopics.length < requiredTopicMatches) {
+      pairErrors.push(
+        `[alignment ${pair.label}] quiz covers ${matchedTopics.length}/${requiredTopicMatches} required problem topics.`,
+      );
+    }
+
+    const matchedPrereqTokens = matchTokensInSet(quizContext.tokenSet, problemContext.prereqTokens);
+    const requiredPrereqMatches = Math.min(problemContext.prereqTokens.length, pair.minPrereqMatches);
+    if (requiredPrereqMatches > 0 && matchedPrereqTokens.length < requiredPrereqMatches) {
+      pairErrors.push(
+        `[alignment ${pair.label}] quiz covers ${matchedPrereqTokens.length}/${requiredPrereqMatches} prerequisite/tricky concepts from the coding problem.`,
+      );
+    }
+
+    const hasRequirementFocusedQuestion = quizContext.questionTokenSets.some((tokenSet) => {
+      const matches = matchTokensInSet(tokenSet, problemContext.prereqTokens);
+      return matches.length > 0;
+    });
+    if (!hasRequirementFocusedQuestion) {
+      pairErrors.push(
+        `[alignment ${pair.label}] quiz needs at least one requirement-focused question derived from paired coding constraints/hints.`,
+      );
+    }
+
+    const hasTopicFocusedQuestion = quizContext.questionTexts.some((questionText) => {
+      const matches = matchPhrasesInText(questionText, problemContext.topicPhrases);
+      return matches.length > 0;
+    });
+    if (!hasTopicFocusedQuestion) {
+      pairErrors.push(
+        `[alignment ${pair.label}] quiz needs at least one question directly targeting a paired coding topic.`,
+      );
+    }
+
+    if (pairErrors.length > 0) {
+      errorsByFile.set(pair.quizFile, pairErrors);
+    }
+  }
+
+  return errorsByFile;
+}
+
+function applyCrossFileValidationErrors(params: {
+  validations: readonly OutputValidation[];
+  errorsByFile: ReadonlyMap<string, readonly string[]>;
+}): readonly OutputValidation[] {
+  if (params.errorsByFile.size === 0) {
+    return params.validations;
+  }
+  return params.validations.map((validation) => {
+    const extraErrors = params.errorsByFile.get(validation.outputFile);
+    if (!extraErrors || extraErrors.length === 0) {
+      return validation;
+    }
+    return {
+      ...validation,
+      groundingValid: false,
+      errors: [...validation.errors, ...extraErrors],
+    };
+  });
+}
+
 function normalizeIoText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -1676,7 +2201,6 @@ function validateLessonQuiz(value: unknown): readonly string[] {
     }
     if (kind === "type-answer") {
       typeAnswer += 1;
-      continue;
     }
   }
 
@@ -1740,6 +2264,7 @@ function validateDelegationEvidence(value: unknown): readonly string[] {
     delegated_early?: unknown;
     first_spawn_step?: unknown;
     parallel_workstreams?: unknown;
+    alignment_pass?: unknown;
   };
   if (objectValue.delegated_early !== true) {
     errors.push("delegated_early must be true.");
@@ -1786,6 +2311,49 @@ function validateDelegationEvidence(value: unknown): readonly string[] {
   if (!ownsCode) {
     errors.push("Delegation evidence must include a coding-focused workstream.");
   }
+
+  const alignmentPass = objectValue.alignment_pass;
+  if (typeof alignmentPass !== "object" || alignmentPass === null) {
+    errors.push("Delegation evidence must include alignment_pass.");
+    return errors;
+  }
+  const pairings = Array.isArray((alignmentPass as { pairings?: unknown }).pairings)
+    ? ((alignmentPass as { pairings: unknown[] }).pairings ?? [])
+    : [];
+  const expectedPairings = new Map([
+    ["quiz-1", "problem-1"],
+    ["quiz-2", "problem-2"],
+    ["quiz-3", "problem-3"],
+    ["quiz-4", "problem-3"],
+  ]);
+  for (const [quizId, problemId] of expectedPairings.entries()) {
+    const matched = pairings.some((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return false;
+      }
+      const quiz = (entry as { quiz_id?: unknown }).quiz_id;
+      const problem = (entry as { coding_problem_id?: unknown }).coding_problem_id;
+      return quiz === quizId && problem === problemId;
+    });
+    if (!matched) {
+      errors.push(
+        `alignment_pass.pairings must include ${JSON.stringify(quizId)} -> ${JSON.stringify(problemId)}.`,
+      );
+    }
+  }
+
+  const updatedQuizFiles = Array.isArray((alignmentPass as { updated_quiz_files?: unknown }).updated_quiz_files)
+    ? ((alignmentPass as { updated_quiz_files: unknown[] }).updated_quiz_files ?? [])
+    : [];
+  for (const requiredQuizId of ["quiz-1", "quiz-2", "quiz-3"]) {
+    const hasQuiz = updatedQuizFiles.some(
+      (entry) => typeof entry === "string" && entry.includes(requiredQuizId),
+    );
+    if (!hasQuiz) {
+      errors.push(`alignment_pass.updated_quiz_files must include ${requiredQuizId}.`);
+    }
+  }
+
   return errors;
 }
 
@@ -1965,7 +2533,11 @@ async function validateOutputs(layout: WorkspaceLayout): Promise<readonly Output
     });
   }
 
-  return validations;
+  const alignmentErrorsByFile = validateLessonQuizCodingAlignment(validations);
+  return applyCrossFileValidationErrors({
+    validations,
+    errorsByFile: alignmentErrorsByFile,
+  });
 }
 function renderOutputBundle(validations: readonly OutputValidation[]): string {
   const sections: string[] = [];
