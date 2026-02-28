@@ -1,0 +1,266 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "planItemId": {
+      "$ref": "#/definitions/SessionMediaDoc/properties/id"
+    },
+    "sessionId": {
+      "$ref": "#/definitions/SessionMediaDoc/properties/id"
+    },
+    "audio": {
+      "type": "object",
+      "properties": {
+        "storagePath": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/id"
+        },
+        "durationSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mimeType": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/id"
+        }
+      },
+      "required": [
+        "storagePath",
+        "durationSec"
+      ],
+      "additionalProperties": false
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "storagePath": {
+            "$ref": "#/definitions/SessionMediaDoc/properties/id"
+          },
+          "startSec": {
+            "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+          },
+          "durationSec": {
+            "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+          }
+        },
+        "required": [
+          "index",
+          "storagePath",
+          "startSec",
+          "durationSec"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "narration": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "speaker": {
+            "type": "string",
+            "enum": [
+              "m",
+              "f"
+            ]
+          },
+          "text": {
+            "$ref": "#/definitions/SessionMediaDoc/properties/id"
+          },
+          "startSec": {
+            "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+          },
+          "durationSec": {
+            "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+          }
+        },
+        "required": [
+          "text",
+          "startSec",
+          "durationSec"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "posterImage": {
+      "type": "object",
+      "properties": {
+        "storagePath": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/id"
+        }
+      },
+      "required": [
+        "storagePath"
+      ],
+      "additionalProperties": false
+    },
+    "endingImage": {
+      "$ref": "#/definitions/SessionMediaDoc/properties/posterImage"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "$ref": "#/definitions/SessionMediaDoc/properties/createdAt"
+    },
+    "metadataVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3
+    }
+  },
+  "required": [
+    "audio",
+    "images",
+    "narration",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "SessionMediaDoc": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planItemId": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/id"
+        },
+        "sessionId": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/id"
+        },
+        "audio": {
+          "type": "object",
+          "properties": {
+            "storagePath": {
+              "$ref": "#/definitions/SessionMediaDoc/properties/id"
+            },
+            "durationSec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "mimeType": {
+              "$ref": "#/definitions/SessionMediaDoc/properties/id"
+            }
+          },
+          "required": [
+            "storagePath",
+            "durationSec"
+          ],
+          "additionalProperties": false
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "storagePath": {
+                "$ref": "#/definitions/SessionMediaDoc/properties/id"
+              },
+              "startSec": {
+                "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+              },
+              "durationSec": {
+                "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+              }
+            },
+            "required": [
+              "index",
+              "storagePath",
+              "startSec",
+              "durationSec"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "narration": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "speaker": {
+                "type": "string",
+                "enum": [
+                  "m",
+                  "f"
+                ]
+              },
+              "text": {
+                "$ref": "#/definitions/SessionMediaDoc/properties/id"
+              },
+              "startSec": {
+                "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+              },
+              "durationSec": {
+                "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
+              }
+            },
+            "required": [
+              "text",
+              "startSec",
+              "durationSec"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "posterImage": {
+          "type": "object",
+          "properties": {
+            "storagePath": {
+              "$ref": "#/definitions/SessionMediaDoc/properties/id"
+            }
+          },
+          "required": [
+            "storagePath"
+          ],
+          "additionalProperties": false
+        },
+        "endingImage": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/posterImage"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/SessionMediaDoc/properties/createdAt"
+        },
+        "metadataVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        }
+      },
+      "required": [
+        "id",
+        "planItemId",
+        "sessionId",
+        "audio",
+        "images",
+        "narration",
+        "createdAt",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
