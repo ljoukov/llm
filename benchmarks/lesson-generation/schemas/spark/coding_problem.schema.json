@@ -1,0 +1,280 @@
+{
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "$ref": "#/definitions/CodeProblem/properties/slug"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CodeProblem/properties/slug"
+      },
+      "minItems": 1
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "warmup",
+        "intro",
+        "easy",
+        "medium",
+        "hard"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "inputFormat": {
+      "$ref": "#/definitions/CodeProblem/properties/description"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CodeProblem/properties/slug"
+      },
+      "minItems": 1
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "$ref": "#/definitions/CodeProblem/properties/slug"
+          },
+          "input": {
+            "type": "string"
+          },
+          "output": {
+            "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+          },
+          "explanation": {
+            "$ref": "#/definitions/CodeProblem/properties/description"
+          }
+        },
+        "required": [
+          "title",
+          "input",
+          "output",
+          "explanation"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+          },
+          "output": {
+            "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+          },
+          "explanation": {
+            "$ref": "#/definitions/CodeProblem/properties/description"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 3,
+      "maxItems": 100
+    },
+    "hints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/CodeProblem/properties/description"
+      },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "solution": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "const": "python",
+          "default": "python"
+        },
+        "code": {
+          "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    "metadataVersion": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "title",
+    "topics",
+    "difficulty",
+    "description",
+    "inputFormat",
+    "constraints",
+    "examples",
+    "tests",
+    "hints",
+    "solution",
+    "metadataVersion"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "CodeProblem": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "$ref": "#/definitions/CodeProblem/properties/slug"
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CodeProblem/properties/slug"
+          },
+          "minItems": 1
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "warmup",
+            "intro",
+            "easy",
+            "medium",
+            "hard"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputFormat": {
+          "$ref": "#/definitions/CodeProblem/properties/description"
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CodeProblem/properties/slug"
+          },
+          "minItems": 1
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "$ref": "#/definitions/CodeProblem/properties/slug"
+              },
+              "input": {
+                "type": "string"
+              },
+              "output": {
+                "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+              },
+              "explanation": {
+                "$ref": "#/definitions/CodeProblem/properties/description"
+              }
+            },
+            "required": [
+              "title",
+              "input",
+              "output",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+              },
+              "output": {
+                "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+              },
+              "explanation": {
+                "$ref": "#/definitions/CodeProblem/properties/description"
+              }
+            },
+            "required": [
+              "input",
+              "output"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 3,
+          "maxItems": 100
+        },
+        "hints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CodeProblem/properties/description"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "solution": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string",
+              "const": "python",
+              "default": "python"
+            },
+            "code": {
+              "$ref": "#/definitions/CodeProblem/properties/examples/items/properties/input"
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false
+        },
+        "metadataVersion": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "slug",
+        "title",
+        "topics",
+        "difficulty",
+        "description",
+        "inputFormat",
+        "constraints",
+        "examples",
+        "tests",
+        "hints",
+        "solution",
+        "metadataVersion"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

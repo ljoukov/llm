@@ -1,0 +1,374 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tagline": {
+      "$ref": "#/definitions/Session/properties/summary"
+    },
+    "emoji": {
+      "$ref": "#/definitions/Session/properties/summary"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "plan": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Session/properties/id"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "summary": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "description": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "icon": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "meta": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "kind": {
+                "type": "string",
+                "const": "quiz"
+              },
+              "progressKey": {
+                "$ref": "#/definitions/Session/properties/summary"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Session/properties/id"
+              },
+              "title": {
+                "$ref": "#/definitions/Session/properties/plan/items/anyOf/0/properties/title"
+              },
+              "summary": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "description": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "icon": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "meta": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "kind": {
+                "type": "string",
+                "const": "coding_problem"
+              },
+              "difficulty": {
+                "$ref": "#/definitions/Session/properties/summary"
+              },
+              "topic": {
+                "$ref": "#/definitions/Session/properties/summary"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "generating",
+        "ready",
+        "in_progress",
+        "completed",
+        "error"
+      ]
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "sourceSessionId": {
+      "$ref": "#/definitions/Session/properties/summary"
+    },
+    "sourceProposalId": {
+      "$ref": "#/definitions/Session/properties/summary"
+    },
+    "nextLessonProposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/definitions/Session/properties/id"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tagline": {
+            "type": "string",
+            "minLength": 1
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "emoji": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "tagline",
+          "topics",
+          "emoji"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "nextLessonProposalsGeneratedAt": {
+      "$ref": "#/definitions/Session/properties/createdAt"
+    }
+  },
+  "required": [
+    "title",
+    "summary",
+    "tagline",
+    "emoji",
+    "topics",
+    "plan"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "Session": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tagline": {
+          "$ref": "#/definitions/Session/properties/summary"
+        },
+        "emoji": {
+          "$ref": "#/definitions/Session/properties/summary"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "plan": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/Session/properties/id"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "summary": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "icon": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "meta": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "quiz"
+                  },
+                  "progressKey": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "kind"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/Session/properties/id"
+                  },
+                  "title": {
+                    "$ref": "#/definitions/Session/properties/plan/items/anyOf/0/properties/title"
+                  },
+                  "summary": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "description": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "icon": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "meta": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "const": "coding_problem"
+                  },
+                  "difficulty": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  },
+                  "topic": {
+                    "$ref": "#/definitions/Session/properties/summary"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "generating",
+            "ready",
+            "in_progress",
+            "completed",
+            "error"
+          ]
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sourceSessionId": {
+          "$ref": "#/definitions/Session/properties/summary"
+        },
+        "sourceProposalId": {
+          "$ref": "#/definitions/Session/properties/summary"
+        },
+        "nextLessonProposals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Session/properties/id"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tagline": {
+                "type": "string",
+                "minLength": 1
+              },
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              },
+              "emoji": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "tagline",
+              "topics",
+              "emoji"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "nextLessonProposalsGeneratedAt": {
+          "$ref": "#/definitions/Session/properties/createdAt"
+        }
+      },
+      "required": [
+        "id",
+        "createdAt",
+        "title",
+        "summary",
+        "tagline",
+        "emoji",
+        "status",
+        "topics",
+        "plan"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

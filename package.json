@@ -47,6 +47,8 @@
     "bench:agent:estimate": "tsx benchmarks/agent/run.ts --estimate-only",
     "bench:agent:latest": "tsx benchmarks/agent/run.ts --tasks all --prune-traces",
     "bench:agent:latest:estimate": "tsx benchmarks/agent/run.ts --tasks all --estimate-only",
+    "bench:subagent-loop": "tsx benchmarks/subagent-loop/run.ts",
+    "bench:lesson-generation": "tsx benchmarks/lesson-generation/run.ts",
     "example:cli-chat": "tsx examples/cli-chat-steering.ts",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
@@ -61,6 +63,8 @@
   "dependencies": {
     "@alcyone-labs/zod-to-json-schema": "^4.0.10",
     "@google/genai": "^1.40.0",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "google-auth-library": "^10.5.0",
     "openai": "^6.23.0",
     "undici": "^7.21.0",
