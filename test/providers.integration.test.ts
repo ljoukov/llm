@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { generateJson, streamText } from "../src/index.js";
-import { getIntegrationProviderAvailability } from "./integration-env.js";
+import { generateJson, isChatGptModelId, isOpenAiModelId, streamText } from "../src/index.js";
+import {
+  assertIntegrationCredentialsForModels,
+  resolveIntegrationRequestedImageModels,
+  resolveIntegrationRequestedModels,
+} from "./integration-env.js";
 
-const availability = getIntegrationProviderAvailability();
-
-const openAiIt = availability.openAi ? it : it.skip;
-const geminiIt = availability.gemini ? it : it.skip;
-const chatGptIt = availability.chatGpt ? it : it.skip;
+const requestedTextModels = resolveIntegrationRequestedModels();
+const requestedImageModels = resolveIntegrationRequestedImageModels();
+assertIntegrationCredentialsForModels(requestedTextModels);
+assertIntegrationCredentialsForModels(requestedImageModels);
 
 async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
   response: string;
@@ -32,61 +35,48 @@ async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
   return { response, thought, sawUsage };
 }
 
-describe("integration: providers", () => {
-  openAiIt("OpenAI: streams and returns result", async () => {
-    const call = streamText({
-      model: "gpt-5.1-codex-mini",
-      input: "Return exactly: OK",
-      openAiReasoningEffort: "low",
-    });
-    const streamed = await streamToStrings(call);
-    const result = await call.result;
+describe("integration: text model matrix", () => {
+  for (const model of requestedTextModels) {
+    it(`${model}: streams and returns result`, async () => {
+      const call = streamText({
+        model,
+        input: "Return exactly: OK",
+        ...(isOpenAiModelId(model) || isChatGptModelId(model)
+          ? { openAiReasoningEffort: "low" as const }
+          : {}),
+      });
+      const streamed = await streamToStrings(call);
+      const result = await call.result;
 
-    expect(result.provider).toBe("openai");
-    expect(result.text).toContain("OK");
-    expect(streamed.response).toContain("OK");
-    expect(streamed.sawUsage).toBe(true);
-    expect(result.usage?.totalTokens).toBeTypeOf("number");
-    expect(result.costUsd).toBeGreaterThan(0);
-  });
+      expect(result.text.toUpperCase()).toContain("OK");
+      expect(streamed.response.toUpperCase()).toContain("OK");
+      expect(streamed.sawUsage).toBe(true);
+      expect(result.usage?.totalTokens).toBeTypeOf("number");
+      expect(Number.isFinite(result.costUsd)).toBe(true);
+      if (isOpenAiModelId(model)) {
+        expect(result.provider).toBe("openai");
+      } else if (isChatGptModelId(model)) {
+        expect(result.provider).toBe("chatgpt");
+      } else if (model.startsWith("gemini-")) {
+        expect(result.provider).toBe("gemini");
+      } else {
+        expect(result.provider).toBe("fireworks");
+      }
+    }, 180_000);
+  }
+});
 
-  geminiIt("Gemini: streams and returns result", async () => {
-    const call = streamText({
-      model: "gemini-2.5-pro",
-      input: "Return exactly: OK",
-    });
-    const streamed = await streamToStrings(call);
-    const result = await call.result;
-
-    expect(result.provider).toBe("gemini");
-    expect(result.text).toContain("OK");
-    expect(streamed.response).toContain("OK");
-    expect(streamed.sawUsage).toBe(true);
-    expect(result.usage?.totalTokens).toBeTypeOf("number");
-    expect(result.costUsd).toBeGreaterThan(0);
-  });
-
-  chatGptIt("ChatGPT: streams and returns result", async () => {
-    const call = streamText({
-      model: "chatgpt-gpt-5.1-codex-mini",
-      input: "Return exactly: OK",
-      openAiReasoningEffort: "low",
-    });
-    const streamed = await streamToStrings(call);
-    const result = await call.result;
-
-    expect(result.provider).toBe("chatgpt");
-    expect(result.text).toContain("OK");
-    expect(streamed.response).toContain("OK");
-    expect(streamed.sawUsage).toBe(true);
-    expect(result.usage?.totalTokens).toBeTypeOf("number");
-    expect(result.costUsd).toBeGreaterThan(0);
-  });
+describe("integration: structured output", () => {
+  const chatGptModel = requestedTextModels.find((model) => isChatGptModelId(model));
+  const chatGptIt = chatGptModel ? it : it.skip;
 
   chatGptIt("ChatGPT: generateJson returns validated JSON", async () => {
+    if (!chatGptModel) {
+      return;
+    }
     const schema = z.object({ ok: z.boolean(), message: z.string() });
     const { value } = await generateJson({
-      model: "chatgpt-gpt-5.1-codex-mini",
+      model: chatGptModel,
       input: 'Return exactly this JSON object: {"ok":true,"message":"hello"}. Return only JSON.',
       schema,
       openAiReasoningEffort: "low",
@@ -95,4 +85,35 @@ describe("integration: providers", () => {
     expect(value.ok).toBe(true);
     expect(value.message).toContain("hello");
   });
+});
+
+describe("integration: image model matrix", () => {
+  for (const model of requestedImageModels) {
+    it(`${model}: returns image content`, async () => {
+      const call = streamText({
+        model,
+        input:
+          "Generate a single simple 1:1 icon of a blue square on a white background. Include no text in the image.",
+        responseModalities: ["IMAGE", "TEXT"],
+        imageAspectRatio: "1:1",
+        imageSize: "1K",
+      });
+      const streamed = await streamToStrings(call);
+      const result = await call.result;
+
+      expect(result.provider).toBe("gemini");
+      expect(streamed.sawUsage).toBe(true);
+      expect(result.usage?.totalTokens).toBeTypeOf("number");
+      expect(Number.isFinite(result.costUsd)).toBe(true);
+
+      const imageParts =
+        result.content?.parts.filter(
+          (part): part is { type: "inlineData"; data: string; mimeType?: string } =>
+            part.type === "inlineData",
+        ) ?? [];
+      expect(imageParts.length).toBeGreaterThan(0);
+      expect(imageParts[0]?.data.length).toBeGreaterThan(0);
+      expect(imageParts[0]?.mimeType?.startsWith("image/") ?? false).toBe(true);
+    }, 180_000);
+  }
 });

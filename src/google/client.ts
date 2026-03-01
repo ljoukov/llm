@@ -11,7 +11,10 @@ export const GEMINI_TEXT_MODEL_IDS = [
   "gemini-flash-lite-latest",
 ] as const;
 
-export const GEMINI_IMAGE_MODEL_IDS = ["gemini-3-pro-image-preview"] as const;
+export const GEMINI_IMAGE_MODEL_IDS = [
+  "gemini-3-pro-image-preview",
+  "gemini-3.1-flash-image-preview",
+] as const;
 
 export const GEMINI_MODEL_IDS = [...GEMINI_TEXT_MODEL_IDS, ...GEMINI_IMAGE_MODEL_IDS] as const;
 

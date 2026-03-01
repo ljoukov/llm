@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+let geminiRequests: any[] = [];
+
 vi.mock("../src/google/calls.js", () => {
   async function* stream() {
     yield {
@@ -23,7 +25,10 @@ vi.mock("../src/google/calls.js", () => {
 
   const fakeClient = {
     models: {
-      generateContentStream: async () => stream(),
+      generateContentStream: async (request: any) => {
+        geminiRequests.push(request);
+        return stream();
+      },
     },
   };
 
@@ -34,6 +39,7 @@ vi.mock("../src/google/calls.js", () => {
 
 describe("streamText (Gemini)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
+    geminiRequests = [];
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({ model: "gemini-2.5-pro", input: "hi" });
@@ -53,5 +59,29 @@ describe("streamText (Gemini)", () => {
     expect(events.some((e) => e.type === "delta" && e.channel === "response")).toBe(true);
     expect(events.some((e) => e.type === "delta" && e.channel === "thought")).toBe(true);
     expect(events.some((e) => e.type === "usage")).toBe(true);
+    expect(geminiRequests[0]?.config?.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingBudget: 32_768,
+    });
+  });
+
+  it("does not send thinkingConfig for Gemini image models", async () => {
+    geminiRequests = [];
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({
+      model: "gemini-3.1-flash-image-preview",
+      input: "Generate an image",
+      responseModalities: ["IMAGE", "TEXT"],
+    });
+
+    for await (const _event of call.events) {
+      // Drain stream to completion.
+    }
+    const result = await call.result;
+
+    expect(result.provider).toBe("gemini");
+    expect(geminiRequests[0]?.model).toBe("gemini-3.1-flash-image-preview");
+    expect(geminiRequests[0]?.config?.thinkingConfig).toBeUndefined();
   });
 });

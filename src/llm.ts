@@ -2389,6 +2389,9 @@ function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[
   return calls;
 }
 function resolveGeminiThinkingConfig(modelId: string): GenerateContentConfig["thinkingConfig"] {
+  if (isGeminiImageModelId(modelId)) {
+    return undefined;
+  }
   switch (modelId) {
     case "gemini-3-pro-preview":
     case "gemini-3.1-pro-preview":
@@ -2690,9 +2693,10 @@ async function runTextCall(params: {
     }, modelForProvider);
   } else {
     const geminiContents = contents.map(convertLlmContentToGeminiContent);
+    const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider);
     const config: GenerateContentConfig = {
       maxOutputTokens: 32_000,
-      thinkingConfig: resolveGeminiThinkingConfig(modelForProvider),
+      ...(thinkingConfig ? { thinkingConfig } : {}),
       ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
       ...(request.responseJsonSchema ? { responseJsonSchema: request.responseJsonSchema } : {}),
       ...(request.responseModalities
@@ -4095,6 +4099,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           firstModelEventAtMs = Date.now();
         }
       };
+      const thinkingConfig = resolveGeminiThinkingConfig(request.model);
       const config: GenerateContentConfig = {
         maxOutputTokens: 32_000,
         tools: geminiTools,
@@ -4103,7 +4108,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             mode: FunctionCallingConfigMode.VALIDATED,
           },
         },
-        thinkingConfig: resolveGeminiThinkingConfig(request.model),
+        ...(thinkingConfig ? { thinkingConfig } : {}),
       };
 
       const onEvent = request.onEvent;

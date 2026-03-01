@@ -23,12 +23,15 @@ describe("model id lists", () => {
     expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
     expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.1-pro-preview");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3-pro-image-preview");
+    expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3.1-flash-image-preview");
   });
 
   it("removes gpt-5-codex from supported model ids", () => {
     expect(OPENAI_MODEL_IDS).not.toContain("gpt-5-codex");
+    expect(OPENAI_MODEL_IDS).not.toContain("gpt-5.3-codex-spark");
     expect(CHATGPT_MODEL_IDS).not.toContain("chatgpt-gpt-5-codex");
     expect(isOpenAiModelId("gpt-5-codex")).toBe(false);
+    expect(isOpenAiModelId("gpt-5.3-codex-spark")).toBe(false);
     expect(isChatGptModelId("chatgpt-gpt-5-codex")).toBe(false);
     expect(isLlmTextModelId("gpt-5-codex")).toBe(false);
     expect(isLlmModelId("gpt-5-codex")).toBe(false);
