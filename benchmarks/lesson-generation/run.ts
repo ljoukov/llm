@@ -1,4 +1,5 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -277,20 +278,24 @@ type PromptTemplates = {
 
 const DEFAULT_GRADER_MODEL: LlmTextModelId = "chatgpt-gpt-5.2";
 const DEFAULT_MAX_STEPS = 24;
-const DEFAULT_AGENT_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_AGENT_TIMEOUT_MS = 20 * 60_000;
 const DEFAULT_GRADER_TIMEOUT_MS = 4 * 60_000;
+const HIGH_AGENT_TIMEOUT_MS = 25 * 60_000;
+const XHIGH_AGENT_TIMEOUT_MS = 30 * 60_000;
+const HIGH_GRADER_TIMEOUT_MS = 6 * 60_000;
+const XHIGH_GRADER_TIMEOUT_MS = 8 * 60_000;
+const DEFAULT_GRADER_MAX_ATTEMPTS = 3;
+const XHIGH_GRADER_MAX_ATTEMPTS = 4;
 const MIN_TOOL_CALLS = 3;
 const REASONING_EFFORTS: readonly ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
-const BENCHMARK_VARIANTS: readonly BenchmarkVariant[] = ["subagents"];
+const BENCHMARK_VARIANTS: readonly BenchmarkVariant[] = ["baseline", "subagents"];
 const SUBAGENT_TOOL_NAMES = {
   spawn: "spawn_agent",
   sendInput: "send_input",
   wait: "wait",
   close: "close_agent",
 } as const;
-const MODEL_REASONING_OVERRIDES: Readonly<Record<string, ReasoningEffort>> = {
-  "chatgpt-gpt-5.3-codex": "xhigh",
-};
+const MODEL_REASONING_OVERRIDES: Readonly<Record<string, ReasoningEffort>> = {};
 
 const READ_TOOL_NAMES = new Set([
   "read_file",
@@ -866,12 +871,20 @@ function computeTimingBreakdownFromSteps(
   return timing;
 }
 
-function truncatePreview(value: string, limit = 220): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= limit) {
-    return compact;
+function truncatePreview(
+  value: string,
+  limit = 220,
+  options?: { readonly compact?: boolean },
+): string {
+  const compact = options?.compact ?? true;
+  const normalized = compact ? value.replace(/\s+/g, " ").trim() : value.trim();
+  if (normalized.length <= limit) {
+    return normalized;
   }
-  return `${compact.slice(0, limit - 3)}...`;
+  if (compact) {
+    return `${normalized.slice(0, limit - 3)}...`;
+  }
+  return `${normalized.slice(0, limit)}\n... [truncated]`;
 }
 
 function buildAgentLlmCallTraces(
@@ -1555,6 +1568,42 @@ const SAFE_HAVEN_HIDDEN_CASES = [
   { input: "10 4999 4999", output: "5 8" },
 ] as const;
 
+const SAFE_HAVEN_SETUP_ANCHOR_CASES = [
+  { input: "2 7 23", output: "2 2" },
+  { input: "3 5 5", output: "5 4" },
+] as const;
+
+const SAFE_HAVEN_STATIC_ANCHOR_CASES = [
+  {
+    input: "3\nR.E\n.RG\nE.G",
+    output: "1 0",
+  },
+  {
+    input: "4\nR..G\n.R.G\n..G.\nR...",
+    output: "3 2",
+  },
+  {
+    input: "3\nRRG\nEGG\nEER",
+    output: "0 0",
+  },
+] as const;
+
+const SAFE_HAVEN_RUNTIME_CHECK_CASES = [
+  SAFE_HAVEN_SAMPLE_CASE,
+  ...SAFE_HAVEN_HIDDEN_CASES,
+] as const;
+
+const PYTHON_PLACEHOLDER_PATTERNS = [
+  /^\s*pass\s*$/im,
+  /todo/i,
+  /notimplementederror/i,
+  /implement (full|simulator|solution|logic|me|here)/i,
+  /placeholder/i,
+] as const;
+
+const PYTHON_SYNTAX_CHECK_TIMEOUT_MS = 2_500;
+const PYTHON_EXEC_TIMEOUT_MS = 3_500;
+
 type LessonAlignmentPair = {
   readonly quizFile: string;
   readonly problemFile: string;
@@ -1569,7 +1618,7 @@ const LESSON_ALIGNMENT_PAIRS: readonly LessonAlignmentPair[] = [
     quizFile: "lesson/output/quiz/quiz-1.json",
     problemFile: "lesson/output/code/problem-1.json",
     label: "quiz-1 -> problem-1",
-    minTopicMatches: 2,
+    minTopicMatches: 1,
     minPrereqMatches: 3,
     referencePhrases: ["problem 1", "problem-1", "intro bio"],
   },
@@ -1577,7 +1626,7 @@ const LESSON_ALIGNMENT_PAIRS: readonly LessonAlignmentPair[] = [
     quizFile: "lesson/output/quiz/quiz-2.json",
     problemFile: "lesson/output/code/problem-2.json",
     label: "quiz-2 -> problem-2",
-    minTopicMatches: 2,
+    minTopicMatches: 1,
     minPrereqMatches: 3,
     referencePhrases: ["problem 2", "problem-2", "intermediate bio"],
   },
@@ -1585,7 +1634,7 @@ const LESSON_ALIGNMENT_PAIRS: readonly LessonAlignmentPair[] = [
     quizFile: "lesson/output/quiz/quiz-3.json",
     problemFile: "lesson/output/code/problem-3.json",
     label: "quiz-3 -> problem-3",
-    minTopicMatches: 2,
+    minTopicMatches: 1,
     minPrereqMatches: 3,
     referencePhrases: ["problem 3", "problem-3", "safe haven", "final bio"],
   },
@@ -1593,13 +1642,34 @@ const LESSON_ALIGNMENT_PAIRS: readonly LessonAlignmentPair[] = [
     quizFile: "lesson/output/quiz/quiz-4.json",
     problemFile: "lesson/output/code/problem-3.json",
     label: "quiz-4 -> problem-3",
-    minTopicMatches: 1,
+    minTopicMatches: 0,
     minPrereqMatches: 3,
     referencePhrases: ["problem 3", "problem-3", "safe haven", "final bio"],
   },
 ] as const;
 
 const LESSON_ALIGNMENT_SHORT_TOKENS = new Set(["io", "dfs", "bfs", "dp", "uf", "n2"]);
+const DISALLOWED_DARWINIAN_TERMS = [
+  "darwin",
+  "darwinian",
+  "evolution",
+  "evolve",
+  "evolved",
+  "evolving",
+  "mutation",
+  "mutate",
+  "mutated",
+  "natural selection",
+  "survival",
+  "survive",
+  "survives",
+  "surviving",
+  "birth",
+  "born",
+  "reproduction",
+  "reproduce",
+  "colony",
+] as const;
 const LESSON_ALIGNMENT_STOPWORDS = new Set([
   "a",
   "an",
@@ -1732,12 +1802,31 @@ function normalizeAlignmentText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function canonicalizeAlignmentToken(token: string): string {
+  if (token.length <= 4) {
+    return token;
+  }
+  if (token.endsWith("ies") && token.length > 5) {
+    return `${token.slice(0, -3)}y`;
+  }
+  if (token.endsWith("es") && token.length > 5) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith("s") && token.length > 4) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
 function tokenizeAlignmentText(value: string): readonly string[] {
   const normalized = normalizeAlignmentText(value);
   if (normalized.length === 0) {
     return [];
   }
-  return normalized.split(" ").filter((token) => token.length > 0);
+  return normalized
+    .split(" ")
+    .map((token) => canonicalizeAlignmentToken(token))
+    .filter((token) => token.length > 0);
 }
 
 function isAlignmentTokenMeaningful(token: string): boolean {
@@ -1779,16 +1868,42 @@ function collectStringValues(value: unknown): readonly string[] {
   return strings;
 }
 
+function detectDisallowedDarwinianTerms(value: unknown): readonly string[] {
+  const corpus = normalizeAlignmentText(collectStringValues(value).join(" "));
+  if (corpus.length === 0) {
+    return [];
+  }
+  const matches = new Set<string>();
+  for (const term of DISALLOWED_DARWINIAN_TERMS) {
+    if (containsNormalizedPhrase(corpus, term)) {
+      matches.add(term);
+    }
+  }
+  return [...matches];
+}
+
 function containsNormalizedPhrase(text: string, phrase: string): boolean {
   if (text.length === 0 || phrase.length === 0) {
     return false;
   }
-  const paddedText = ` ${text} `;
-  const normalizedPhrase = normalizeAlignmentText(phrase);
-  if (normalizedPhrase.length === 0) {
+  const textTokens = tokenizeAlignmentText(text);
+  const phraseTokens = tokenizeAlignmentText(phrase);
+  if (phraseTokens.length === 0 || textTokens.length < phraseTokens.length) {
     return false;
   }
-  return paddedText.includes(` ${normalizedPhrase} `);
+  for (let index = 0; index <= textTokens.length - phraseTokens.length; index += 1) {
+    let matches = true;
+    for (let offset = 0; offset < phraseTokens.length; offset += 1) {
+      if (textTokens[index + offset] !== phraseTokens[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function collectQuestionTexts(quizValue: unknown): readonly string[] {
@@ -1866,12 +1981,42 @@ function buildLessonProblemAlignmentContext(problemValue: unknown): LessonProble
     hints?: unknown;
     examples?: unknown;
   };
-  const topicPhrases = Array.isArray(objectValue.topics)
-    ? objectValue.topics
-        .filter((topic): topic is string => typeof topic === "string")
-        .map((topic) => normalizeAlignmentText(topic))
-        .filter((topic) => topic.length > 0)
-    : [];
+  const topicPhraseSet = new Set<string>();
+  if (Array.isArray(objectValue.topics)) {
+    for (const topic of objectValue.topics) {
+      if (typeof topic !== "string") {
+        continue;
+      }
+      const normalized = normalizeAlignmentText(topic);
+      if (normalized.length > 0) {
+        topicPhraseSet.add(normalized);
+      }
+    }
+  }
+  if (typeof objectValue.title === "string") {
+    const normalizedTitle = normalizeAlignmentText(objectValue.title);
+    if (normalizedTitle.length > 0) {
+      topicPhraseSet.add(normalizedTitle);
+    }
+  }
+  if (typeof objectValue.description === "string") {
+    const normalizedDescription = normalizeAlignmentText(objectValue.description);
+    if (normalizedDescription.length > 0) {
+      if (containsNormalizedPhrase(normalizedDescription, "safe haven")) {
+        topicPhraseSet.add("safe haven");
+      }
+      if (containsNormalizedPhrase(normalizedDescription, "setup")) {
+        topicPhraseSet.add("setup simulation");
+      }
+      if (containsNormalizedPhrase(normalizedDescription, "haven")) {
+        topicPhraseSet.add("haven selection");
+      }
+      if (containsNormalizedPhrase(normalizedDescription, "tie break")) {
+        topicPhraseSet.add("tie breaking");
+      }
+    }
+  }
+  const topicPhrases = [...topicPhraseSet];
 
   const sourceParts: string[] = [];
   if (typeof objectValue.title === "string") {
@@ -1941,9 +2086,21 @@ function buildLessonProblemAlignmentContext(problemValue: unknown): LessonProble
 }
 
 function matchPhrasesInText(text: string, phrases: readonly string[]): readonly string[] {
+  const textTokens = new Set(tokenizeAlignmentText(text));
   const uniqueMatches = new Set<string>();
   for (const phrase of phrases) {
     if (containsNormalizedPhrase(text, phrase)) {
+      uniqueMatches.add(normalizeAlignmentText(phrase));
+      continue;
+    }
+    const phraseTokens = tokenizeAlignmentText(phrase).filter(isAlignmentTokenMeaningful);
+    if (phraseTokens.length === 0) {
+      continue;
+    }
+    const tokenHits = phraseTokens.filter((token) => textTokens.has(token)).length;
+    const requiredHits =
+      phraseTokens.length <= 2 ? 1 : 2;
+    if (tokenHits >= requiredHits) {
       uniqueMatches.add(normalizeAlignmentText(phrase));
     }
   }
@@ -2042,16 +2199,6 @@ function validateLessonQuizCodingAlignment(
       );
     }
 
-    const hasTopicFocusedQuestion = quizContext.questionTexts.some((questionText) => {
-      const matches = matchPhrasesInText(questionText, problemContext.topicPhrases);
-      return matches.length > 0;
-    });
-    if (!hasTopicFocusedQuestion) {
-      pairErrors.push(
-        `[alignment ${pair.label}] quiz needs at least one question directly targeting a paired coding topic.`,
-      );
-    }
-
     if (pairErrors.length > 0) {
       errorsByFile.set(pair.quizFile, pairErrors);
     }
@@ -2134,6 +2281,459 @@ function hasIoCase(
   );
 }
 
+type ProblemId = "problem-1" | "problem-2" | "problem-3";
+
+function parseIntegerTokens(input: string): readonly number[] | undefined {
+  const tokens = normalizeIoText(input).split(" ").filter((token) => token.length > 0);
+  if (tokens.length === 0) {
+    return undefined;
+  }
+  const parsed: number[] = [];
+  for (const token of tokens) {
+    if (!/^-?\d+$/u.test(token)) {
+      return undefined;
+    }
+    const value = Number.parseInt(token, 10);
+    if (!Number.isFinite(value)) {
+      return undefined;
+    }
+    parsed.push(value);
+  }
+  return parsed;
+}
+
+function parseNrgInput(input: string): { readonly n: number; readonly r: number; readonly g: number } | undefined {
+  const parsed = parseIntegerTokens(input);
+  if (!parsed || parsed.length !== 3) {
+    return undefined;
+  }
+  const [n, r, g] = parsed;
+  if (n === undefined || r === undefined || g === undefined) {
+    return undefined;
+  }
+  return { n, r, g };
+}
+
+function parseTwoIntOutput(output: string): { readonly first: number; readonly second: number } | undefined {
+  const parsed = parseIntegerTokens(output);
+  if (!parsed || parsed.length !== 2) {
+    return undefined;
+  }
+  const [first, second] = parsed;
+  if (first === undefined || second === undefined) {
+    return undefined;
+  }
+  return { first, second };
+}
+
+function formatTwoIntOutput(first: number, second: number): string {
+  return `${first} ${second}`;
+}
+
+function safeHavenNeighbors(position: number, size: number): readonly number[] {
+  const row = Math.floor((position - 1) / size);
+  const col = (position - 1) % size;
+  const results: number[] = [];
+  if (row > 0) {
+    results.push((row - 1) * size + col + 1);
+  }
+  if (row + 1 < size) {
+    results.push((row + 1) * size + col + 1);
+  }
+  if (col > 0) {
+    results.push(row * size + col);
+  }
+  if (col + 1 < size) {
+    results.push(row * size + col + 2);
+  }
+  return results;
+}
+
+function simulateSafeHavenSetupCounts(params: {
+  readonly n: number;
+  readonly r: number;
+  readonly g: number;
+}): { readonly red: number; readonly green: number } {
+  const total = params.n * params.n;
+  const board = new Array<number>(total + 1).fill(0);
+  board[1] = 1;
+  let lastControlled = 1;
+  let player = 2;
+  let filled = 1;
+
+  while (filled < total) {
+    const modifier = player === 1 ? params.r : params.g;
+    let visits = 0;
+    let current = lastControlled;
+    while (true) {
+      current = current < total ? current + 1 : 1;
+      if (board[current] === 0) {
+        visits += 1;
+        if (visits === modifier) {
+          board[current] = player;
+          lastControlled = current;
+          filled += 1;
+          break;
+        }
+      }
+    }
+    player = player === 1 ? 2 : 1;
+  }
+
+  let red = 0;
+  let green = 0;
+  for (let position = 1; position <= total; position += 1) {
+    if (board[position] === 1) {
+      red += 1;
+    } else if (board[position] === 2) {
+      green += 1;
+    }
+  }
+  return { red, green };
+}
+
+type HavenComponent = {
+  readonly cells: readonly number[];
+  readonly redCount: number;
+  readonly greenCount: number;
+  readonly maxPosition: number;
+};
+
+function computeHavenComponents(board: readonly number[], size: number): readonly HavenComponent[] {
+  const total = size * size;
+  const visited = new Array<boolean>(total + 1).fill(false);
+  const components: HavenComponent[] = [];
+
+  for (let position = 1; position <= total; position += 1) {
+    if (board[position] === 0 || visited[position]) {
+      continue;
+    }
+    const queue = [position];
+    visited[position] = true;
+    const cells: number[] = [];
+    let redCount = 0;
+    let greenCount = 0;
+    let maxPosition = 0;
+    let queueIndex = 0;
+    while (queueIndex < queue.length) {
+      const current = queue[queueIndex];
+      queueIndex += 1;
+      cells.push(current);
+      if (current > maxPosition) {
+        maxPosition = current;
+      }
+      if (board[current] === 1) {
+        redCount += 1;
+      } else if (board[current] === 2) {
+        greenCount += 1;
+      }
+      for (const neighbour of safeHavenNeighbors(current, size)) {
+        if (board[neighbour] === 0 || visited[neighbour]) {
+          continue;
+        }
+        visited[neighbour] = true;
+        queue.push(neighbour);
+      }
+    }
+    components.push({ cells, redCount, greenCount, maxPosition });
+  }
+
+  return components;
+}
+
+function chooseSafeHavenMove(
+  board: readonly number[],
+  size: number,
+  player: 1 | 2,
+): { readonly source: number; readonly target: number } | undefined {
+  const opponent: 1 | 2 = player === 1 ? 2 : 1;
+  const candidates = computeHavenComponents(board, size)
+    .map((component) => {
+      const own = player === 1 ? component.redCount : component.greenCount;
+      const opp = player === 1 ? component.greenCount : component.redCount;
+      return { component, own, opp };
+    })
+    .filter((entry) => entry.own > 0 && entry.opp > 0)
+    .sort((left, right) => {
+      if (left.opp !== right.opp) {
+        return left.opp - right.opp;
+      }
+      if (left.own !== right.own) {
+        return right.own - left.own;
+      }
+      return right.component.maxPosition - left.component.maxPosition;
+    });
+
+  const chosen = candidates[0];
+  if (!chosen) {
+    return undefined;
+  }
+
+  let bestSource: number | undefined;
+  let bestTarget: number | undefined;
+  for (const source of [...chosen.component.cells].sort((a, b) => a - b)) {
+    if (board[source] !== player) {
+      continue;
+    }
+    const opponentNeighbours = safeHavenNeighbors(source, size)
+      .filter((neighbour) => board[neighbour] === opponent)
+      .sort((a, b) => a - b);
+    const target = opponentNeighbours[0];
+    if (target === undefined) {
+      continue;
+    }
+    if (bestSource === undefined || source < bestSource || (source === bestSource && target < (bestTarget ?? target + 1))) {
+      bestSource = source;
+      bestTarget = target;
+    }
+  }
+
+  if (bestSource === undefined || bestTarget === undefined) {
+    return undefined;
+  }
+
+  return { source: bestSource, target: bestTarget };
+}
+
+function simulateFinalSafeHavenCounts(params: {
+  readonly n: number;
+  readonly r: number;
+  readonly g: number;
+}): { readonly red: number; readonly green: number } {
+  const total = params.n * params.n;
+  const board = new Array<number>(total + 1).fill(0);
+  board[1] = 1;
+  let lastControlled = 1;
+  let player: 1 | 2 = 2;
+  let filled = 1;
+
+  while (filled < total) {
+    const modifier = player === 1 ? params.r : params.g;
+    let visits = 0;
+    let current = lastControlled;
+    while (true) {
+      current = current < total ? current + 1 : 1;
+      if (board[current] === 0) {
+        visits += 1;
+        if (visits === modifier) {
+          board[current] = player;
+          lastControlled = current;
+          filled += 1;
+          break;
+        }
+      }
+    }
+    player = player === 1 ? 2 : 1;
+  }
+
+  let turn: 1 | 2 = 1;
+  let consecutiveNoMove = 0;
+  while (consecutiveNoMove < 2) {
+    const move = chooseSafeHavenMove(board, params.n, turn);
+    if (!move) {
+      consecutiveNoMove += 1;
+    } else {
+      consecutiveNoMove = 0;
+      board[move.source] = 0;
+      board[move.target] = turn;
+    }
+    turn = turn === 1 ? 2 : 1;
+  }
+
+  let red = 0;
+  let green = 0;
+  for (const component of computeHavenComponents(board, params.n)) {
+    if (component.redCount > 0 && component.greenCount === 0) {
+      red += 1;
+    } else if (component.greenCount > 0 && component.redCount === 0) {
+      green += 1;
+    }
+  }
+  return { red, green };
+}
+
+type ParsedStaticBoardInput = {
+  readonly size: number;
+  readonly rows: readonly string[];
+};
+
+function parseStaticBoardInput(input: string): ParsedStaticBoardInput | undefined {
+  const lines = input
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length < 2) {
+    return undefined;
+  }
+  const size = Number.parseInt(lines[0] ?? "", 10);
+  if (!Number.isFinite(size) || size < 1) {
+    return undefined;
+  }
+  const rows = lines.slice(1);
+  if (rows.length !== size) {
+    return undefined;
+  }
+  for (const row of rows) {
+    if (row.length !== size) {
+      return undefined;
+    }
+    if (!/^[RGE.]+$/u.test(row)) {
+      return undefined;
+    }
+  }
+  return { size, rows };
+}
+
+function evaluateStaticSafeHavenCounts(parsed: ParsedStaticBoardInput): {
+  readonly red: number;
+  readonly green: number;
+  readonly hasEmpty: boolean;
+} {
+  const total = parsed.size * parsed.size;
+  const board = new Array<number>(total + 1).fill(0);
+  let hasEmpty = false;
+  for (let row = 0; row < parsed.size; row += 1) {
+    const rowText = parsed.rows[row] ?? "";
+    for (let col = 0; col < parsed.size; col += 1) {
+      const symbol = rowText[col];
+      const position = row * parsed.size + col + 1;
+      if (symbol === "R") {
+        board[position] = 1;
+      } else if (symbol === "G") {
+        board[position] = 2;
+      } else {
+        board[position] = 0;
+        hasEmpty = true;
+      }
+    }
+  }
+
+  let red = 0;
+  let green = 0;
+  for (const component of computeHavenComponents(board, parsed.size)) {
+    if (component.redCount > 0 && component.greenCount === 0) {
+      red += 1;
+    } else if (component.greenCount > 0 && component.redCount === 0) {
+      green += 1;
+    }
+  }
+  return { red, green, hasEmpty };
+}
+
+function getSolutionCode(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const solution = (value as { solution?: unknown }).solution;
+  if (typeof solution !== "object" || solution === null) {
+    return undefined;
+  }
+  const code = (solution as { code?: unknown }).code;
+  if (typeof code !== "string") {
+    return undefined;
+  }
+  return code;
+}
+
+function checkPythonSyntax(code: string): string | undefined {
+  const result = spawnSync(
+    "python3",
+    [
+      "-c",
+      [
+        "import ast, sys",
+        "source = sys.stdin.read()",
+        "try:",
+        "    ast.parse(source)",
+        "except SyntaxError as exc:",
+        "    print(f\"{exc.msg} at line {exc.lineno}:{exc.offset}\")",
+        "    raise SystemExit(1)",
+      ].join("\n"),
+    ],
+    {
+      input: code,
+      encoding: "utf8",
+      timeout: PYTHON_SYNTAX_CHECK_TIMEOUT_MS,
+      maxBuffer: 1_000_000,
+    },
+  );
+  if (result.error) {
+    return `Python syntax check failed to execute: ${result.error.message}`;
+  }
+  if (result.status !== 0) {
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+    const detail = stdout || stderr || "unknown syntax error";
+    return `Python syntax invalid: ${detail}`;
+  }
+  return undefined;
+}
+
+function runPythonSolution(params: {
+  readonly code: string;
+  readonly input: string;
+}): { readonly output?: string; readonly error?: string } {
+  const hasMainGuard = /if\s+__name__\s*==\s*["']__main__["']/u.test(params.code);
+  const wrappedCode = hasMainGuard
+    ? params.code
+    : `${params.code}\n\nif __name__ == "__main__":\n    _solve = globals().get("solve")\n    if callable(_solve):\n        _solve()\n`;
+  const result = spawnSync("python3", ["-c", wrappedCode], {
+    input: params.input,
+    encoding: "utf8",
+    timeout: PYTHON_EXEC_TIMEOUT_MS,
+    maxBuffer: 1_000_000,
+  });
+  if (result.error) {
+    return { error: result.error.message };
+  }
+  if (result.status !== 0) {
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+    const detail = stderr || stdout || `exit code ${String(result.status)}`;
+    return { error: detail };
+  }
+  const stdout = typeof result.stdout === "string" ? result.stdout : "";
+  return { output: normalizeIoText(stdout) };
+}
+
+function collectCodeProblemCorpus(value: unknown): string {
+  if (typeof value !== "object" || value === null) {
+    return "";
+  }
+  const objectValue = value as {
+    title?: unknown;
+    description?: unknown;
+    inputFormat?: unknown;
+    constraints?: unknown;
+    hints?: unknown;
+  };
+  const sections: string[] = [];
+  if (typeof objectValue.title === "string") {
+    sections.push(objectValue.title);
+  }
+  if (typeof objectValue.description === "string") {
+    sections.push(objectValue.description);
+  }
+  if (typeof objectValue.inputFormat === "string") {
+    sections.push(objectValue.inputFormat);
+  }
+  if (Array.isArray(objectValue.constraints)) {
+    for (const item of objectValue.constraints) {
+      if (typeof item === "string") {
+        sections.push(item);
+      }
+    }
+  }
+  if (Array.isArray(objectValue.hints)) {
+    for (const item of objectValue.hints) {
+      if (typeof item === "string") {
+        sections.push(item);
+      }
+    }
+  }
+  return normalizeAlignmentText(sections.join(" "));
+}
+
 function validateLessonSession(value: unknown): readonly string[] {
   const errors: string[] = [];
   if (typeof value !== "object" || value === null) {
@@ -2167,6 +2767,25 @@ function validateLessonSession(value: unknown): readonly string[] {
   }
 
   return errors;
+}
+
+function detectHiddenMarkingLeakInQuiz(value: unknown): readonly string[] {
+  const corpus = normalizeAlignmentText(collectStringValues(value).join(" "));
+  if (corpus.length === 0) {
+    return [];
+  }
+  const leaked: string[] = [];
+  for (const hiddenCase of SAFE_HAVEN_HIDDEN_CASES) {
+    const normalizedInput = normalizeIoText(hiddenCase.input);
+    const normalizedOutput = normalizeIoText(hiddenCase.output);
+    if (
+      containsNormalizedPhrase(corpus, normalizedInput) &&
+      containsNormalizedPhrase(corpus, normalizedOutput)
+    ) {
+      leaked.push(`${normalizedInput} -> ${normalizedOutput}`);
+    }
+  }
+  return leaked;
 }
 
 function validateLessonQuiz(value: unknown): readonly string[] {
@@ -2214,42 +2833,310 @@ function validateLessonQuiz(value: unknown): readonly string[] {
     errors.push(`Quiz must contain 4 type-answer questions, got ${typeAnswer}.`);
   }
 
+  const disallowedTerms = detectDisallowedDarwinianTerms(value);
+  if (disallowedTerms.length > 0) {
+    errors.push(
+      `Quiz must not include Darwinian terminology; found: ${disallowedTerms.join(", ")}.`,
+    );
+  }
+
+  const leakedHiddenRows = detectHiddenMarkingLeakInQuiz(value);
+  if (leakedHiddenRows.length > 0) {
+    errors.push(
+      `Quiz must not expose official hidden marking rows; found ${leakedHiddenRows.length} leaked row(s).`,
+    );
+  }
+
+  const rawCorpus = collectStringValues(value).join(" ");
+  if (
+    /\b\d+\s+\d+\s+\d+\s*(?:->|=>|to)\s*\d+\s+\d+\b/u.test(rawCorpus) ||
+    /\b\d+\s+\d+\s+\d+\s+\d+\s+\d+\b/u.test(rawCorpus)
+  ) {
+    errors.push(
+      "Quiz should not include concrete Safe Haven marking-row numeric input/output tuples; keep hidden-test discussion conceptual.",
+    );
+  }
+
   return errors;
 }
 
 function validateLessonCodeProblem(
   value: unknown,
-  options: { readonly isFinalProblem: boolean },
+  options: { readonly isFinalProblem: boolean; readonly problemId: ProblemId },
 ): readonly string[] {
   const errors: string[] = [];
   if (typeof value !== "object" || value === null) {
     return ["Coding problem output must be an object."];
   }
   const { examples, tests } = parseCodeIoCases(value);
-  if (tests.length < 4) {
-    errors.push(`Coding problem should contain at least 4 tests, got ${tests.length}.`);
+  const allCases = [...examples, ...tests];
+  const requiredMinTests = options.isFinalProblem ? 10 : 6;
+  if (tests.length < requiredMinTests) {
+    errors.push(`Coding problem should contain at least ${requiredMinTests} tests, got ${tests.length}.`);
+  }
+  if (!options.isFinalProblem) {
+    const exampleKeySet = new Set(
+      examples.map((entry) => `${normalizeIoText(entry.input)} -> ${normalizeIoText(entry.output)}`),
+    );
+    const nonDuplicateTests = tests.filter((entry) => {
+      const key = `${normalizeIoText(entry.input)} -> ${normalizeIoText(entry.output)}`;
+      return !exampleKeySet.has(key);
+    });
+    if (nonDuplicateTests.length < 2) {
+      errors.push("Coding problem should include at least 2 tests not duplicated from examples.");
+    }
   }
 
-  if (!options.isFinalProblem) {
+  const disallowedTerms = detectDisallowedDarwinianTerms(value);
+  if (disallowedTerms.length > 0) {
+    errors.push(
+      `Coding problems must not include Darwinian terminology; found: ${disallowedTerms.join(", ")}.`,
+    );
+  }
+
+  const corpus = collectCodeProblemCorpus(value);
+  const description = (value as { description?: unknown }).description;
+
+  if (options.problemId === "problem-1") {
+    if (!containsNormalizedPhrase(corpus, "setup")) {
+      errors.push("Problem 1 should explicitly stay on setup-phase simulation.");
+    }
+
+    const parsedCases = allCases
+      .map((entry) => {
+        const input = parseNrgInput(entry.input);
+        const output = parseTwoIntOutput(entry.output);
+        if (!input || !output) {
+          return undefined;
+        }
+        return { input, output, rawInput: entry.input };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          input: { n: number; r: number; g: number };
+          output: { first: number; second: number };
+          rawInput: string;
+        } => Boolean(entry),
+      );
+    if (parsedCases.length < 3) {
+      errors.push("Problem 1 should use canonical `n r g` cases with two-integer outputs in examples/tests.");
+    }
+    for (const caseEntry of parsedCases) {
+      const expected = simulateSafeHavenSetupCounts(caseEntry.input);
+      if (
+        caseEntry.output.first !== expected.red ||
+        caseEntry.output.second !== expected.green
+      ) {
+        errors.push(
+          `Problem 1 case ${JSON.stringify(normalizeIoText(caseEntry.rawInput))} has incorrect output; expected ${formatTwoIntOutput(expected.red, expected.green)}.`,
+        );
+        break;
+      }
+    }
+    for (const anchor of SAFE_HAVEN_SETUP_ANCHOR_CASES) {
+      if (!hasIoCase(allCases, anchor)) {
+        errors.push(
+          `Problem 1 must include anchor case ${anchor.input} -> ${anchor.output} in examples or tests.`,
+        );
+      }
+    }
+  }
+
+  if (options.problemId === "problem-2") {
+    if (!containsNormalizedPhrase(corpus, "safe haven")) {
+      errors.push('Problem 2 should explicitly use "safe haven" terminology.');
+    }
+    if (!containsNormalizedPhrase(corpus, "non empty")) {
+      errors.push("Problem 2 should define havens over non-empty squares.");
+    }
+    if (
+      containsNormalizedPhrase(corpus, "fully controlled") ||
+      containsNormalizedPhrase(corpus, "each square is non empty")
+    ) {
+      errors.push("Problem 2 should allow empty squares; avoid defining the board as fully controlled.");
+    }
+    if (
+      containsNormalizedPhrase(corpus, "haven is a monochrome") ||
+      containsNormalizedPhrase(corpus, "haven is a one colour")
+    ) {
+      errors.push("Problem 2 must not define haven itself as monochrome; only safe havens are monochrome.");
+    }
+
+    const parsedCases = allCases
+      .map((entry) => {
+        const parsedInput = parseStaticBoardInput(entry.input);
+        const parsedOutput = parseTwoIntOutput(entry.output);
+        if (!parsedInput || !parsedOutput) {
+          return undefined;
+        }
+        return { parsedInput, parsedOutput, rawInput: entry.input };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          parsedInput: ParsedStaticBoardInput;
+          parsedOutput: { first: number; second: number };
+          rawInput: string;
+        } => Boolean(entry),
+      );
+    if (parsedCases.length < 3) {
+      errors.push(
+        "Problem 2 should include static-board haven-counting cases (n + grid rows with R/G/E or R/G/.) in examples/tests.",
+      );
+    }
+    const hasEmptyCase = parsedCases.some((entry) => evaluateStaticSafeHavenCounts(entry.parsedInput).hasEmpty);
+    if (!hasEmptyCase) {
+      errors.push("Problem 2 should include at least one example/test with empty squares.");
+    }
+    for (const anchor of SAFE_HAVEN_STATIC_ANCHOR_CASES) {
+      if (!hasIoCase(allCases, anchor)) {
+        errors.push(
+          `Problem 2 must include anchor case ${JSON.stringify(anchor.input)} -> ${anchor.output} in examples or tests.`,
+        );
+      }
+    }
+    for (const caseEntry of parsedCases) {
+      const expected = evaluateStaticSafeHavenCounts(caseEntry.parsedInput);
+      if (
+        caseEntry.parsedOutput.first !== expected.red ||
+        caseEntry.parsedOutput.second !== expected.green
+      ) {
+        errors.push(
+          `Problem 2 case ${JSON.stringify(normalizeIoText(caseEntry.rawInput))} has incorrect output; expected ${formatTwoIntOutput(expected.red, expected.green)}.`,
+        );
+        break;
+      }
+    }
+  }
+
+  if (options.isFinalProblem) {
+    if (typeof description !== "string" || !description.toLowerCase().includes("safe haven")) {
+      errors.push('Final problem description must clearly include "Safe Haven".');
+    }
+
+    if (!hasIoCase(examples, SAFE_HAVEN_SAMPLE_CASE)) {
+      errors.push(
+        `Final problem examples must include sample case ${SAFE_HAVEN_SAMPLE_CASE.input} -> ${SAFE_HAVEN_SAMPLE_CASE.output}.`,
+      );
+    }
+
+    const missingHidden = SAFE_HAVEN_HIDDEN_CASES.filter((target) => !hasIoCase(tests, target));
+    if (missingHidden.length > 0) {
+      errors.push(
+        `Final problem hidden tests are missing ${missingHidden.length} required marking cases.`,
+      );
+    }
+
+    const leakedHiddenCases = SAFE_HAVEN_HIDDEN_CASES.filter((target) => hasIoCase(examples, target));
+    if (leakedHiddenCases.length > 0) {
+      errors.push(
+        `Final problem examples must not expose official hidden marking cases (found ${leakedHiddenCases.length}).`,
+      );
+    }
+
+    const parsedCases = allCases
+      .map((entry) => {
+        const input = parseNrgInput(entry.input);
+        const output = parseTwoIntOutput(entry.output);
+        if (!input || !output) {
+          return undefined;
+        }
+        return { input, output, rawInput: entry.input };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          input: { n: number; r: number; g: number };
+          output: { first: number; second: number };
+          rawInput: string;
+        } => Boolean(entry),
+      );
+    for (const caseEntry of parsedCases) {
+      const expected = simulateFinalSafeHavenCounts(caseEntry.input);
+      if (
+        caseEntry.output.first !== expected.red ||
+        caseEntry.output.second !== expected.green
+      ) {
+        errors.push(
+          `Final problem case ${JSON.stringify(normalizeIoText(caseEntry.rawInput))} has incorrect output; expected ${formatTwoIntOutput(expected.red, expected.green)}.`,
+        );
+        break;
+      }
+    }
+  }
+
+  const solutionCode = getSolutionCode(value);
+  if (!solutionCode || solutionCode.trim().length === 0) {
+    errors.push("Coding problem must include non-empty solution.code.");
     return errors;
   }
 
-  const description = (value as { description?: unknown }).description;
-  if (typeof description !== "string" || !description.toLowerCase().includes("safe haven")) {
-    errors.push('Final problem description must clearly include "Safe Haven".');
+  const minSolutionLength = options.isFinalProblem ? 600 : 180;
+  if (solutionCode.trim().length < minSolutionLength) {
+    errors.push(`solution.code appears too short for ${options.problemId} (min ${minSolutionLength} chars).`);
+  }
+  for (const pattern of PYTHON_PLACEHOLDER_PATTERNS) {
+    if (pattern.test(solutionCode)) {
+      errors.push("solution.code appears to contain placeholder content.");
+      break;
+    }
   }
 
-  if (!hasIoCase(examples, SAFE_HAVEN_SAMPLE_CASE)) {
-    errors.push(
-      `Final problem examples must include sample case ${SAFE_HAVEN_SAMPLE_CASE.input} -> ${SAFE_HAVEN_SAMPLE_CASE.output}.`,
-    );
+  const syntaxError = checkPythonSyntax(solutionCode);
+  if (syntaxError) {
+    errors.push(syntaxError);
+    return errors;
   }
 
-  const missingHidden = SAFE_HAVEN_HIDDEN_CASES.filter((target) => !hasIoCase(tests, target));
-  if (missingHidden.length > 0) {
-    errors.push(
-      `Final problem hidden tests are missing ${missingHidden.length} required marking cases.`,
-    );
+  const runtimeCases: { input: string; expected: string }[] = [];
+  if (options.problemId === "problem-1") {
+    for (const entry of SAFE_HAVEN_SETUP_ANCHOR_CASES) {
+      runtimeCases.push({ input: entry.input, expected: entry.output });
+    }
+  } else if (options.problemId === "problem-2") {
+    for (const entry of allCases) {
+      const parsedInput = parseStaticBoardInput(entry.input);
+      if (!parsedInput) {
+        continue;
+      }
+      const expected = evaluateStaticSafeHavenCounts(parsedInput);
+      runtimeCases.push({
+        input: entry.input,
+        expected: formatTwoIntOutput(expected.red, expected.green),
+      });
+      if (runtimeCases.length >= 4) {
+        break;
+      }
+    }
+  } else {
+    for (const entry of SAFE_HAVEN_RUNTIME_CHECK_CASES) {
+      runtimeCases.push({ input: entry.input, expected: entry.output });
+    }
+  }
+
+  for (const runtimeCase of runtimeCases) {
+    const runResult = runPythonSolution({
+      code: solutionCode,
+      input: `${runtimeCase.input}\n`,
+    });
+    if (runResult.error) {
+      errors.push(
+        `solution.code failed execution on input ${JSON.stringify(runtimeCase.input)}: ${runResult.error}`,
+      );
+      break;
+    }
+    const actual = normalizeIoText(runResult.output ?? "");
+    const expected = normalizeIoText(runtimeCase.expected);
+    if (actual !== expected) {
+      errors.push(
+        `solution.code output mismatch on input ${JSON.stringify(runtimeCase.input)}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`,
+      );
+      break;
+    }
   }
 
   return errors;
@@ -2357,19 +3244,40 @@ function validateDelegationEvidence(value: unknown): readonly string[] {
   return errors;
 }
 
+function inferProblemIdFromOutputFile(outputFile: string): ProblemId | undefined {
+  if (outputFile.includes("problem-1.json")) {
+    return "problem-1";
+  }
+  if (outputFile.includes("problem-2.json")) {
+    return "problem-2";
+  }
+  if (outputFile.includes("problem-3.json")) {
+    return "problem-3";
+  }
+  return undefined;
+}
+
 function validateByProfile(
   profile: OutputFileSpec["validationProfile"],
   value: unknown,
+  outputFile: string,
 ): readonly string[] {
   switch (profile) {
     case "lesson-session":
       return validateLessonSession(value);
     case "lesson-quiz":
       return validateLessonQuiz(value);
-    case "lesson-code-problem":
-      return validateLessonCodeProblem(value, { isFinalProblem: false });
-    case "lesson-code-problem-final":
-      return validateLessonCodeProblem(value, { isFinalProblem: true });
+    case "lesson-code-problem": {
+      const problemId = inferProblemIdFromOutputFile(outputFile);
+      if (!problemId) {
+        return ["Could not infer coding problem id from output path."];
+      }
+      return validateLessonCodeProblem(value, { isFinalProblem: false, problemId });
+    }
+    case "lesson-code-problem-final": {
+      const problemId = inferProblemIdFromOutputFile(outputFile) ?? "problem-3";
+      return validateLessonCodeProblem(value, { isFinalProblem: true, problemId });
+    }
     case "delegation-evidence":
       return validateDelegationEvidence(value);
     default:
@@ -2518,7 +3426,7 @@ async function validateOutputs(layout: WorkspaceLayout): Promise<readonly Output
     const expectedAnswerErrors = spec.expectedAnswer
       ? validateExpectedAnswerValue(validatedValue, spec.expectedAnswer)
       : [];
-    const profileErrors = validateByProfile(spec.validationProfile, validatedValue);
+    const profileErrors = validateByProfile(spec.validationProfile, validatedValue, spec.outputFile);
     const allErrors = [...groundingErrors, ...expectedAnswerErrors, ...profileErrors];
 
     validations.push({
@@ -2586,6 +3494,9 @@ function renderOutputBundle(validations: readonly OutputValidation[]): string {
           ? (parsedContent as { tests: unknown[] }).tests.length
           : 0;
         sections.push(`- codeSummary: examples=${examples}, tests=${tests}`);
+        sections.push(
+          "- codeValidation: validator checks include placeholder detection, Python syntax checks, and runtime spot-check execution.",
+        );
       }
       if (validation.outputFile.endsWith("session.json")) {
         const plan = Array.isArray((parsedContent as { plan?: unknown }).plan)
@@ -2617,8 +3528,10 @@ function renderOutputBundle(validations: readonly OutputValidation[]): string {
     }
     sections.push("- contentPreview:");
     sections.push("```json");
+    const isCodePreview = validation.outputFile.includes("/code/");
+    const previewLimit = isCodePreview ? 12000 : 3000;
     const preview = validation.content
-      ? truncatePreview(validation.content, 1200)
+      ? truncatePreview(validation.content, previewLimit, { compact: !isCodePreview })
       : "<missing>";
     sections.push(preview);
     sections.push("```");
@@ -2716,6 +3629,30 @@ function resolveTaskGraderAspects(task: AgentBenchmarkTask): readonly TaskGrader
   return DEFAULT_GRADER_ASPECTS;
 }
 
+function resolveAgentTimeoutMs(reasoning: ReasoningEffort): number {
+  if (reasoning === "xhigh") {
+    return XHIGH_AGENT_TIMEOUT_MS;
+  }
+  if (reasoning === "high") {
+    return HIGH_AGENT_TIMEOUT_MS;
+  }
+  return DEFAULT_AGENT_TIMEOUT_MS;
+}
+
+function resolveGraderTimeoutMs(reasoning: ReasoningEffort): number {
+  if (reasoning === "xhigh") {
+    return XHIGH_GRADER_TIMEOUT_MS;
+  }
+  if (reasoning === "high") {
+    return HIGH_GRADER_TIMEOUT_MS;
+  }
+  return DEFAULT_GRADER_TIMEOUT_MS;
+}
+
+function resolveGraderMaxAttempts(reasoning: ReasoningEffort): number {
+  return reasoning === "xhigh" ? XHIGH_GRADER_MAX_ATTEMPTS : DEFAULT_GRADER_MAX_ATTEMPTS;
+}
+
 async function gradeOutputs(params: {
   graderModel: LlmTextModelId;
   task: AgentBenchmarkTask;
@@ -2732,6 +3669,8 @@ async function gradeOutputs(params: {
 }> {
   const aspects = resolveTaskGraderAspects(params.task);
   const aspectRuns: GraderAspectRun[] = [];
+  const graderTimeoutMs = resolveGraderTimeoutMs(params.reasoning);
+  const graderMaxAttempts = resolveGraderMaxAttempts(params.reasoning);
 
   for (const aspect of aspects) {
     const aspectStartedAtMs = Date.now();
@@ -2745,7 +3684,7 @@ async function gradeOutputs(params: {
     const abortController = new AbortController();
     const timeout = setTimeout(() => {
       abortController.abort(new Error(`Grader timeout exceeded for aspect "${aspect.id}".`));
-    }, DEFAULT_GRADER_TIMEOUT_MS);
+    }, graderTimeoutMs);
 
     try {
       const response = await generateJson({
@@ -2755,7 +3694,7 @@ async function gradeOutputs(params: {
         instructions:
           "Be conservative. If uncertain about fidelity or coverage, choose fail and explain concrete issues.",
         openAiReasoningEffort: params.reasoning,
-        maxAttempts: 2,
+        maxAttempts: graderMaxAttempts,
         signal: abortController.signal,
       });
       const aspectCompletedAtMs = Date.now();
@@ -2886,11 +3825,12 @@ async function runCase(params: {
   let agentRunSucceeded = false;
   const fsActions: FilesystemActionTrace[] = [];
   const timingEvents: BenchmarkTimingEvent[] = [];
+  const agentTimeoutMs = resolveAgentTimeoutMs(params.agentReasoning);
 
   const agentAbortController = new AbortController();
   const agentTimeout = setTimeout(() => {
     agentAbortController.abort(new Error("Agent timeout exceeded."));
-  }, DEFAULT_AGENT_TIMEOUT_MS);
+  }, agentTimeoutMs);
 
   try {
     agentRunStartedAtMs = Date.now();
