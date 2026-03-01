@@ -416,6 +416,4 @@ export const AGENT_BENCHMARK_TASKS: readonly AgentBenchmarkTask[] = [
   },
 ];
 
-export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
-  "chatgpt-gpt-5.3-codex",
-];
+export const DEFAULT_BENCHMARK_MODELS: readonly string[] = ["chatgpt-gpt-5.3-codex"];

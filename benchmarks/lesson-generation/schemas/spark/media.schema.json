@@ -25,10 +25,7 @@
           "$ref": "#/definitions/SessionMediaDoc/properties/id"
         }
       },
-      "required": [
-        "storagePath",
-        "durationSec"
-      ],
+      "required": ["storagePath", "durationSec"],
       "additionalProperties": false
     },
     "images": {
@@ -50,12 +47,7 @@
             "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
           }
         },
-        "required": [
-          "index",
-          "storagePath",
-          "startSec",
-          "durationSec"
-        ],
+        "required": ["index", "storagePath", "startSec", "durationSec"],
         "additionalProperties": false
       },
       "minItems": 1
@@ -67,10 +59,7 @@
         "properties": {
           "speaker": {
             "type": "string",
-            "enum": [
-              "m",
-              "f"
-            ]
+            "enum": ["m", "f"]
           },
           "text": {
             "$ref": "#/definitions/SessionMediaDoc/properties/id"
@@ -82,11 +71,7 @@
             "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
           }
         },
-        "required": [
-          "text",
-          "startSec",
-          "durationSec"
-        ],
+        "required": ["text", "startSec", "durationSec"],
         "additionalProperties": false
       },
       "minItems": 1
@@ -98,9 +83,7 @@
           "$ref": "#/definitions/SessionMediaDoc/properties/id"
         }
       },
-      "required": [
-        "storagePath"
-      ],
+      "required": ["storagePath"],
       "additionalProperties": false
     },
     "endingImage": {
@@ -119,13 +102,7 @@
       "default": 3
     }
   },
-  "required": [
-    "audio",
-    "images",
-    "narration",
-    "createdAt",
-    "updatedAt"
-  ],
+  "required": ["audio", "images", "narration", "createdAt", "updatedAt"],
   "additionalProperties": false,
   "definitions": {
     "SessionMediaDoc": {
@@ -155,10 +132,7 @@
               "$ref": "#/definitions/SessionMediaDoc/properties/id"
             }
           },
-          "required": [
-            "storagePath",
-            "durationSec"
-          ],
+          "required": ["storagePath", "durationSec"],
           "additionalProperties": false
         },
         "images": {
@@ -180,12 +154,7 @@
                 "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
               }
             },
-            "required": [
-              "index",
-              "storagePath",
-              "startSec",
-              "durationSec"
-            ],
+            "required": ["index", "storagePath", "startSec", "durationSec"],
             "additionalProperties": false
           },
           "minItems": 1
@@ -197,10 +166,7 @@
             "properties": {
               "speaker": {
                 "type": "string",
-                "enum": [
-                  "m",
-                  "f"
-                ]
+                "enum": ["m", "f"]
               },
               "text": {
                 "$ref": "#/definitions/SessionMediaDoc/properties/id"
@@ -212,11 +178,7 @@
                 "$ref": "#/definitions/SessionMediaDoc/properties/audio/properties/durationSec"
               }
             },
-            "required": [
-              "text",
-              "startSec",
-              "durationSec"
-            ],
+            "required": ["text", "startSec", "durationSec"],
             "additionalProperties": false
           },
           "minItems": 1
@@ -228,9 +190,7 @@
               "$ref": "#/definitions/SessionMediaDoc/properties/id"
             }
           },
-          "required": [
-            "storagePath"
-          ],
+          "required": ["storagePath"],
           "additionalProperties": false
         },
         "endingImage": {
