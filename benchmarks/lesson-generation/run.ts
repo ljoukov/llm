@@ -1802,7 +1802,11 @@ type LessonProblemAlignmentContext = {
 };
 
 function normalizeAlignmentText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function canonicalizeAlignmentToken(token: string): string {
@@ -1961,7 +1965,9 @@ function buildLessonQuizAlignmentContext(quizValue: unknown): LessonQuizAlignmen
   const fullTextParts = [headerText, ...questionTexts].filter((part) => part.length > 0);
   const fullText = fullTextParts.join(" ");
   const tokenSet = new Set(tokenizeAlignmentText(fullText));
-  const questionTokenSets = questionTexts.map((questionText) => new Set(tokenizeAlignmentText(questionText)));
+  const questionTokenSets = questionTexts.map(
+    (questionText) => new Set(tokenizeAlignmentText(questionText)),
+  );
   return {
     headerText,
     fullText,
@@ -2101,8 +2107,7 @@ function matchPhrasesInText(text: string, phrases: readonly string[]): readonly 
       continue;
     }
     const tokenHits = phraseTokens.filter((token) => textTokens.has(token)).length;
-    const requiredHits =
-      phraseTokens.length <= 2 ? 1 : 2;
+    const requiredHits = phraseTokens.length <= 2 ? 1 : 2;
     if (tokenHits >= requiredHits) {
       uniqueMatches.add(normalizeAlignmentText(phrase));
     }
@@ -2110,7 +2115,10 @@ function matchPhrasesInText(text: string, phrases: readonly string[]): readonly 
   return [...uniqueMatches];
 }
 
-function matchTokensInSet(tokens: ReadonlySet<string>, candidates: readonly string[]): readonly string[] {
+function matchTokensInSet(
+  tokens: ReadonlySet<string>,
+  candidates: readonly string[],
+): readonly string[] {
   const matches: string[] = [];
   for (const candidate of candidates) {
     if (tokens.has(candidate)) {
@@ -2135,7 +2143,9 @@ function validateLessonQuizCodingAlignment(
   validations: readonly OutputValidation[],
 ): ReadonlyMap<string, readonly string[]> {
   const errorsByFile = new Map<string, string[]>();
-  const validationsByFile = new Map(validations.map((validation) => [validation.outputFile, validation]));
+  const validationsByFile = new Map(
+    validations.map((validation) => [validation.outputFile, validation]),
+  );
   const parsedByFile = new Map<string, unknown>();
 
   for (const pair of LESSON_ALIGNMENT_PAIRS) {
@@ -2185,7 +2195,10 @@ function validateLessonQuizCodingAlignment(
     }
 
     const matchedPrereqTokens = matchTokensInSet(quizContext.tokenSet, problemContext.prereqTokens);
-    const requiredPrereqMatches = Math.min(problemContext.prereqTokens.length, pair.minPrereqMatches);
+    const requiredPrereqMatches = Math.min(
+      problemContext.prereqTokens.length,
+      pair.minPrereqMatches,
+    );
     if (requiredPrereqMatches > 0 && matchedPrereqTokens.length < requiredPrereqMatches) {
       pairErrors.push(
         `[alignment ${pair.label}] quiz covers ${matchedPrereqTokens.length}/${requiredPrereqMatches} prerequisite/tricky concepts from the coding problem.`,
@@ -2287,7 +2300,9 @@ function hasIoCase(
 type ProblemId = "problem-1" | "problem-2" | "problem-3";
 
 function parseIntegerTokens(input: string): readonly number[] | undefined {
-  const tokens = normalizeIoText(input).split(" ").filter((token) => token.length > 0);
+  const tokens = normalizeIoText(input)
+    .split(" ")
+    .filter((token) => token.length > 0);
   if (tokens.length === 0) {
     return undefined;
   }
@@ -2305,7 +2320,9 @@ function parseIntegerTokens(input: string): readonly number[] | undefined {
   return parsed;
 }
 
-function parseNrgInput(input: string): { readonly n: number; readonly r: number; readonly g: number } | undefined {
+function parseNrgInput(
+  input: string,
+): { readonly n: number; readonly r: number; readonly g: number } | undefined {
   const parsed = parseIntegerTokens(input);
   if (!parsed || parsed.length !== 3) {
     return undefined;
@@ -2317,7 +2334,9 @@ function parseNrgInput(input: string): { readonly n: number; readonly r: number;
   return { n, r, g };
 }
 
-function parseTwoIntOutput(output: string): { readonly first: number; readonly second: number } | undefined {
+function parseTwoIntOutput(
+  output: string,
+): { readonly first: number; readonly second: number } | undefined {
   const parsed = parseIntegerTokens(output);
   if (!parsed || parsed.length !== 2) {
     return undefined;
@@ -2421,6 +2440,9 @@ function computeHavenComponents(board: readonly number[], size: number): readonl
     while (queueIndex < queue.length) {
       const current = queue[queueIndex];
       queueIndex += 1;
+      if (current === undefined) {
+        continue;
+      }
       cells.push(current);
       if (current > maxPosition) {
         maxPosition = current;
@@ -2485,7 +2507,11 @@ function chooseSafeHavenMove(
     if (target === undefined) {
       continue;
     }
-    if (bestSource === undefined || source < bestSource || (source === bestSource && target < (bestTarget ?? target + 1))) {
+    if (
+      bestSource === undefined ||
+      source < bestSource ||
+      (source === bestSource && target < (bestTarget ?? target + 1))
+    ) {
       bestSource = source;
       bestTarget = target;
     }
@@ -2649,7 +2675,7 @@ function checkPythonSyntax(code: string): string | undefined {
         "try:",
         "    ast.parse(source)",
         "except SyntaxError as exc:",
-        "    print(f\"{exc.msg} at line {exc.lineno}:{exc.offset}\")",
+        '    print(f"{exc.msg} at line {exc.lineno}:{exc.offset}")',
         "    raise SystemExit(1)",
       ].join("\n"),
     ],
@@ -2672,10 +2698,10 @@ function checkPythonSyntax(code: string): string | undefined {
   return undefined;
 }
 
-function runPythonSolution(params: {
-  readonly code: string;
-  readonly input: string;
-}): { readonly output?: string; readonly error?: string } {
+function runPythonSolution(params: { readonly code: string; readonly input: string }): {
+  readonly output?: string;
+  readonly error?: string;
+} {
   const hasMainGuard = /if\s+__name__\s*==\s*["']__main__["']/u.test(params.code);
   const wrappedCode = hasMainGuard
     ? params.code
@@ -2875,11 +2901,15 @@ function validateLessonCodeProblem(
   const allCases = [...examples, ...tests];
   const requiredMinTests = options.isFinalProblem ? 10 : 6;
   if (tests.length < requiredMinTests) {
-    errors.push(`Coding problem should contain at least ${requiredMinTests} tests, got ${tests.length}.`);
+    errors.push(
+      `Coding problem should contain at least ${requiredMinTests} tests, got ${tests.length}.`,
+    );
   }
   if (!options.isFinalProblem) {
     const exampleKeySet = new Set(
-      examples.map((entry) => `${normalizeIoText(entry.input)} -> ${normalizeIoText(entry.output)}`),
+      examples.map(
+        (entry) => `${normalizeIoText(entry.input)} -> ${normalizeIoText(entry.output)}`,
+      ),
     );
     const nonDuplicateTests = tests.filter((entry) => {
       const key = `${normalizeIoText(entry.input)} -> ${normalizeIoText(entry.output)}`;
@@ -2924,14 +2954,13 @@ function validateLessonCodeProblem(
         } => Boolean(entry),
       );
     if (parsedCases.length < 3) {
-      errors.push("Problem 1 should use canonical `n r g` cases with two-integer outputs in examples/tests.");
+      errors.push(
+        "Problem 1 should use canonical `n r g` cases with two-integer outputs in examples/tests.",
+      );
     }
     for (const caseEntry of parsedCases) {
       const expected = simulateSafeHavenSetupCounts(caseEntry.input);
-      if (
-        caseEntry.output.first !== expected.red ||
-        caseEntry.output.second !== expected.green
-      ) {
+      if (caseEntry.output.first !== expected.red || caseEntry.output.second !== expected.green) {
         errors.push(
           `Problem 1 case ${JSON.stringify(normalizeIoText(caseEntry.rawInput))} has incorrect output; expected ${formatTwoIntOutput(expected.red, expected.green)}.`,
         );
@@ -2958,13 +2987,17 @@ function validateLessonCodeProblem(
       containsNormalizedPhrase(corpus, "fully controlled") ||
       containsNormalizedPhrase(corpus, "each square is non empty")
     ) {
-      errors.push("Problem 2 should allow empty squares; avoid defining the board as fully controlled.");
+      errors.push(
+        "Problem 2 should allow empty squares; avoid defining the board as fully controlled.",
+      );
     }
     if (
       containsNormalizedPhrase(corpus, "haven is a monochrome") ||
       containsNormalizedPhrase(corpus, "haven is a one colour")
     ) {
-      errors.push("Problem 2 must not define haven itself as monochrome; only safe havens are monochrome.");
+      errors.push(
+        "Problem 2 must not define haven itself as monochrome; only safe havens are monochrome.",
+      );
     }
 
     const parsedCases = allCases
@@ -2990,7 +3023,9 @@ function validateLessonCodeProblem(
         "Problem 2 should include static-board haven-counting cases (n + grid rows with R/G/E or R/G/.) in examples/tests.",
       );
     }
-    const hasEmptyCase = parsedCases.some((entry) => evaluateStaticSafeHavenCounts(entry.parsedInput).hasEmpty);
+    const hasEmptyCase = parsedCases.some(
+      (entry) => evaluateStaticSafeHavenCounts(entry.parsedInput).hasEmpty,
+    );
     if (!hasEmptyCase) {
       errors.push("Problem 2 should include at least one example/test with empty squares.");
     }
@@ -3033,7 +3068,9 @@ function validateLessonCodeProblem(
       );
     }
 
-    const leakedHiddenCases = SAFE_HAVEN_HIDDEN_CASES.filter((target) => hasIoCase(examples, target));
+    const leakedHiddenCases = SAFE_HAVEN_HIDDEN_CASES.filter((target) =>
+      hasIoCase(examples, target),
+    );
     if (leakedHiddenCases.length > 0) {
       errors.push(
         `Final problem examples must not expose official hidden marking cases (found ${leakedHiddenCases.length}).`,
@@ -3060,10 +3097,7 @@ function validateLessonCodeProblem(
       );
     for (const caseEntry of parsedCases) {
       const expected = simulateFinalSafeHavenCounts(caseEntry.input);
-      if (
-        caseEntry.output.first !== expected.red ||
-        caseEntry.output.second !== expected.green
-      ) {
+      if (caseEntry.output.first !== expected.red || caseEntry.output.second !== expected.green) {
         errors.push(
           `Final problem case ${JSON.stringify(normalizeIoText(caseEntry.rawInput))} has incorrect output; expected ${formatTwoIntOutput(expected.red, expected.green)}.`,
         );
@@ -3080,7 +3114,9 @@ function validateLessonCodeProblem(
 
   const minSolutionLength = options.isFinalProblem ? 600 : 180;
   if (solutionCode.trim().length < minSolutionLength) {
-    errors.push(`solution.code appears too short for ${options.problemId} (min ${minSolutionLength} chars).`);
+    errors.push(
+      `solution.code appears too short for ${options.problemId} (min ${minSolutionLength} chars).`,
+    );
   }
   for (const pattern of PYTHON_PLACEHOLDER_PATTERNS) {
     if (pattern.test(solutionCode)) {
@@ -3232,7 +3268,9 @@ function validateDelegationEvidence(value: unknown): readonly string[] {
     }
   }
 
-  const updatedQuizFiles = Array.isArray((alignmentPass as { updated_quiz_files?: unknown }).updated_quiz_files)
+  const updatedQuizFiles = Array.isArray(
+    (alignmentPass as { updated_quiz_files?: unknown }).updated_quiz_files,
+  )
     ? ((alignmentPass as { updated_quiz_files: unknown[] }).updated_quiz_files ?? [])
     : [];
   for (const requiredQuizId of ["quiz-1", "quiz-2", "quiz-3"]) {
@@ -3419,7 +3457,10 @@ async function validateOutputs(layout: WorkspaceLayout): Promise<readonly Output
         );
         break;
       case "line-refs":
-        groundingErrors = validateLineRefSet(collectLineRefsFromValue(validatedValue), reportLineCount);
+        groundingErrors = validateLineRefSet(
+          collectLineRefsFromValue(validatedValue),
+          reportLineCount,
+        );
         break;
       default:
         groundingErrors = [];
@@ -3429,7 +3470,11 @@ async function validateOutputs(layout: WorkspaceLayout): Promise<readonly Output
     const expectedAnswerErrors = spec.expectedAnswer
       ? validateExpectedAnswerValue(validatedValue, spec.expectedAnswer)
       : [];
-    const profileErrors = validateByProfile(spec.validationProfile, validatedValue, spec.outputFile);
+    const profileErrors = validateByProfile(
+      spec.validationProfile,
+      validatedValue,
+      spec.outputFile,
+    );
     const allErrors = [...groundingErrors, ...expectedAnswerErrors, ...profileErrors];
 
     validations.push({
@@ -3506,7 +3551,9 @@ function renderOutputBundle(validations: readonly OutputValidation[]): string {
           ? ((parsedContent as { plan: unknown[] }).plan ?? [])
           : [];
         const planKinds = plan
-          .map((item) => (typeof item === "object" && item ? (item as { kind?: unknown }).kind : ""))
+          .map((item) =>
+            typeof item === "object" && item ? (item as { kind?: unknown }).kind : "",
+          )
           .filter((kind): kind is string => typeof kind === "string" && kind.length > 0);
         sections.push(`- sessionSummary: planItems=${plan.length}, kinds=${planKinds.join(",")}`);
       }
@@ -3765,7 +3812,9 @@ async function gradeOutputs(params: {
   });
   const hasAspectErrors = aspectRuns.some((entry) => typeof entry.error === "string");
   const anyAspectFailed = normalizedVerdicts.some((entry) => entry.verdict !== "pass");
-  const mergedCriticalIssues = [...new Set(normalizedVerdicts.flatMap((entry) => entry.critical_issues))]
+  const mergedCriticalIssues = [
+    ...new Set(normalizedVerdicts.flatMap((entry) => entry.critical_issues)),
+  ]
     .slice(0, 8)
     .map((issue) => issue.slice(0, 500));
   const summary = hasAspectErrors
@@ -4036,8 +4085,7 @@ async function runCase(params: {
     graderDurationMs,
   );
 
-  const success =
-    !agentError && schemaPass && toolTrace.pass && graderPass && subagentPolicyPass;
+  const success = !agentError && schemaPass && toolTrace.pass && graderPass && subagentPolicyPass;
   timingEvents.push({
     phase: "case.total",
     startedAt: new Date(startedAt).toISOString(),
@@ -4967,8 +5015,7 @@ function parseStaleDiagnostic(value: unknown): StalePhaseDiagnostic {
   const record = value as Record<string, unknown>;
   return {
     appearsStale: record.appearsStale === true,
-    bottleneckStage:
-      typeof record.bottleneckStage === "string" ? record.bottleneckStage : "none",
+    bottleneckStage: typeof record.bottleneckStage === "string" ? record.bottleneckStage : "none",
     maxCallDurationMs: toNonNegativeNumber(record.maxCallDurationMs),
     notes: Array.isArray(record.notes)
       ? record.notes.filter((entry): entry is string => typeof entry === "string")
@@ -5401,15 +5448,16 @@ async function main(): Promise<void> {
   const defaultPromptTemplates = await loadPromptTemplates(benchmarkRoot);
   const taskPromptTemplatesById = new Map<string, PromptTemplates>(
     await Promise.all(
-      tasks.map(async (task) =>
-        [
-          task.id,
-          await resolveTaskPromptTemplates({
-            benchmarkRoot,
-            task,
-            defaults: defaultPromptTemplates,
-          }),
-        ] as const,
+      tasks.map(
+        async (task) =>
+          [
+            task.id,
+            await resolveTaskPromptTemplates({
+              benchmarkRoot,
+              task,
+              defaults: defaultPromptTemplates,
+            }),
+          ] as const,
       ),
     ),
   );
