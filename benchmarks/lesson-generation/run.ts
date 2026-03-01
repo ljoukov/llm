@@ -277,8 +277,10 @@ type PromptTemplates = {
 };
 
 const DEFAULT_GRADER_MODEL: LlmTextModelId = "chatgpt-gpt-5.2";
-const DEFAULT_MAX_STEPS = 24;
-const DEFAULT_AGENT_TIMEOUT_MS = 20 * 60_000;
+const DEFAULT_MAX_STEPS = 100;
+const DEFAULT_REPAIR_MAX_STEPS = 100;
+const DEFAULT_AGENT_TIMEOUT_MS = 2 * 60 * 60_000;
+const DEFAULT_REPAIR_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_GRADER_TIMEOUT_MS = 4 * 60_000;
 const HIGH_AGENT_TIMEOUT_MS = 25 * 60_000;
 const XHIGH_AGENT_TIMEOUT_MS = 30 * 60_000;
@@ -355,6 +357,7 @@ Options:
   --reasoning <level>                low, medium, high, xhigh (default: medium)
   --grader-model <id>                LLM grader model (default: ${DEFAULT_GRADER_MODEL})
   --max-steps <n>                    Max agent tool-loop steps (default: ${DEFAULT_MAX_STEPS})
+  --agent-timeout-ms <n>             Agent timeout in milliseconds (default: ${DEFAULT_AGENT_TIMEOUT_MS})
   --estimate-agent-prompt-tokens <n> Estimated prompt tokens per agent call (default: 4200)
   --estimate-agent-response-tokens <n> Estimated response tokens per agent call (default: 900)
   --estimate-grader-prompt-tokens <n> Estimated prompt tokens per grader call (default: 5200)
@@ -3797,6 +3800,7 @@ async function runCase(params: {
   reasoning: ReasoningEffort;
   graderModel: LlmTextModelId;
   maxSteps: number;
+  agentTimeoutMs: number;
   promptTemplates: PromptTemplates;
 }): Promise<CaseResult> {
   const caseName = `${sanitizeForPath(params.model)}-${params.task.id}-${params.variant}-run-${params.runIndex}`;
@@ -3830,7 +3834,7 @@ async function runCase(params: {
   const agentAbortController = new AbortController();
   const agentTimeout = setTimeout(() => {
     agentAbortController.abort(new Error("Agent timeout exceeded."));
-  }, agentTimeoutMs);
+  }, params.agentTimeoutMs);
 
   try {
     agentRunStartedAtMs = Date.now();
@@ -5306,6 +5310,7 @@ async function main(): Promise<void> {
       reasoning: { type: "string", default: "medium" },
       "grader-model": { type: "string", default: DEFAULT_GRADER_MODEL },
       "max-steps": { type: "string", default: String(DEFAULT_MAX_STEPS) },
+      "agent-timeout-ms": { type: "string", default: String(DEFAULT_AGENT_TIMEOUT_MS) },
       "estimate-agent-prompt-tokens": { type: "string", default: "4200" },
       "estimate-agent-response-tokens": { type: "string", default: "900" },
       "estimate-grader-prompt-tokens": { type: "string", default: "5200" },
@@ -5339,6 +5344,10 @@ async function main(): Promise<void> {
     values["max-steps"] ?? String(DEFAULT_MAX_STEPS),
     "--max-steps",
   );
+  const agentTimeoutMs = parsePositiveInt(
+    values["agent-timeout-ms"] ?? String(DEFAULT_AGENT_TIMEOUT_MS),
+    "--agent-timeout-ms",
+  );
 
   const projection = estimateProjection({
     models,
@@ -5369,6 +5378,7 @@ async function main(): Promise<void> {
   console.log(`Variants: ${variants.join(", ")}`);
   console.log(`Runs per model/task: ${runs}`);
   console.log(`Grader model: ${graderModel}`);
+  console.log(`Agent timeout (ms): ${agentTimeoutMs}`);
   console.log(`Projected cases: ${projection.totalCases}`);
   console.log(`Projected agent cost: $${formatUsd(projection.estimatedAgentCostUsd)}`);
   console.log(`Projected grader cost: $${formatUsd(projection.estimatedGraderCostUsd)}`);
@@ -5429,6 +5439,7 @@ async function main(): Promise<void> {
               reasoning,
               graderModel,
               maxSteps,
+              agentTimeoutMs,
               promptTemplates: taskPromptTemplates,
             });
             modelResults.push(result);
