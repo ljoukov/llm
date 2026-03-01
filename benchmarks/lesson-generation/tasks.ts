@@ -369,8 +369,9 @@ export const LESSON_GRADER_ASPECTS: readonly TaskGraderAspect[] = [
     criteria: [
       "- Every quiz has exactly 18 questions with mix 4 info-card, 10 multiple-choice, 4 type-answer.",
       "- Each paired quiz references target coding requirements/constraints and includes at least one direct requirement-focused question.",
-      "- Coding problems include clear examples and sufficient non-trivial tests.",
-      "- Problem 3 includes official sample in examples and marking rows in tests.",
+      "- Coding problems include clear examples and sufficient non-trivial tests (Problem 1 and Problem 2 should each have at least 6 tests with at least 2 tests not duplicated from examples).",
+      "- Problem 3 includes official sample in examples and official marking rows in tests (marking rows beyond sample should not appear in examples).",
+      "- Treat `tests[]` as hidden assessment cases by convention (no separate hidden flag exists in schema).",
     ].join("\n"),
   },
   {
@@ -379,6 +380,7 @@ export const LESSON_GRADER_ASPECTS: readonly TaskGraderAspect[] = [
     criteria: [
       "- JSON outputs are internally coherent and practical for downstream lesson publishing.",
       "- Descriptions, constraints, and test data are unambiguous and executable.",
+      "- `solution.code` should be runnable Python and not placeholder-only stubs.",
       "- Outputs avoid contradictions across session/quiz/problem artifacts.",
     ].join("\n"),
   },
