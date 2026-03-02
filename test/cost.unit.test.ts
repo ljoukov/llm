@@ -110,6 +110,27 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.005025, 8);
   });
 
+  it("estimates Gemini 2.5 Flash costs (including gemini-flash-latest alias)", () => {
+    const modelIds = ["gemini-2.5-flash", "gemini-flash-latest"] as const;
+    for (const modelId of modelIds) {
+      const cost = estimateCallCostUsd({
+        modelId,
+        tokens: {
+          promptTokens: 1000,
+          cachedTokens: 200,
+          responseTokens: 300,
+          thinkingTokens: 100,
+        },
+        responseImages: 0,
+      });
+
+      // non-cached prompt: 800 * (0.30/1M) = 0.00024
+      // cached: 200 * (0.03/1M) = 0.000006
+      // output: 400 * (2.5/1M) = 0.001
+      expect(cost).toBeCloseTo(0.001246, 8);
+    }
+  });
+
   it("estimates Gemini 3.1 Pro preview costs", () => {
     const cost = estimateCallCostUsd({
       modelId: "gemini-3.1-pro-preview",
