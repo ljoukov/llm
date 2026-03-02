@@ -42,6 +42,20 @@ const GEMINI_2_5_PRO_PRICING: GeminiProPricing = {
   outputRateHigh: 15 / 1_000_000,
 };
 
+// Pricing from Gemini 2.5 Flash public rates (standard, text/image/video):
+// - Input: $0.30
+// - Output (including thinking): $2.50
+// - Context caching: $0.03
+const GEMINI_2_5_FLASH_PRICING: GeminiProPricing = {
+  threshold: 200_000,
+  inputRateLow: 0.3 / 1_000_000,
+  inputRateHigh: 0.3 / 1_000_000,
+  cachedRateLow: 0.03 / 1_000_000,
+  cachedRateHigh: 0.03 / 1_000_000,
+  outputRateLow: 2.5 / 1_000_000,
+  outputRateHigh: 2.5 / 1_000_000,
+};
+
 const GEMINI_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
   inputRate: 2 / 1_000_000,
   cachedRate: 0.2 / 1_000_000,
@@ -57,6 +71,9 @@ const GEMINI_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
 export function getGeminiProPricing(modelId: string): GeminiProPricing | undefined {
   if (modelId.includes("gemini-2.5-pro")) {
     return GEMINI_2_5_PRO_PRICING;
+  }
+  if (modelId.includes("gemini-2.5-flash") || modelId.includes("gemini-flash-latest")) {
+    return GEMINI_2_5_FLASH_PRICING;
   }
   if (modelId.includes("gemini-3-pro") || modelId.includes("gemini-3.1-pro")) {
     return GEMINI_3_PRO_PREVIEW_PRICING;
