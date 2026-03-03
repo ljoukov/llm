@@ -16,7 +16,7 @@ export type GeminiImagePricing = {
   readonly imagePrices: Record<string, number>;
 };
 
-// Gemini pricing snapshot (best-effort). For current official pricing, see:
+// Gemini pricing snapshot (best-effort, Standard tier). For current official pricing, see:
 // https://cloud.google.com/vertex-ai/generative-ai/pricing
 const GEMINI_3_PRO_PREVIEW_PRICING: GeminiProPricing = {
   threshold: 200_000,
@@ -56,7 +56,21 @@ const GEMINI_2_5_FLASH_PRICING: GeminiProPricing = {
   outputRateHigh: 2.5 / 1_000_000,
 };
 
-const GEMINI_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
+// Pricing from Gemini 2.5 Flash Lite public rates (standard, text/image/video):
+// - Input: $0.10
+// - Output (including thinking): $0.40
+// - Context caching: $0.025
+const GEMINI_2_5_FLASH_LITE_PRICING: GeminiProPricing = {
+  threshold: 200_000,
+  inputRateLow: 0.1 / 1_000_000,
+  inputRateHigh: 0.1 / 1_000_000,
+  cachedRateLow: 0.025 / 1_000_000,
+  cachedRateHigh: 0.025 / 1_000_000,
+  outputRateLow: 0.4 / 1_000_000,
+  outputRateHigh: 0.4 / 1_000_000,
+};
+
+const GEMINI_3_PRO_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
   inputRate: 2 / 1_000_000,
   cachedRate: 0.2 / 1_000_000,
   outputTextRate: 12 / 1_000_000,
@@ -68,11 +82,31 @@ const GEMINI_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
   },
 };
 
+const GEMINI_3_1_FLASH_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
+  inputRate: 0.5 / 1_000_000,
+  cachedRate: 0.125 / 1_000_000,
+  outputTextRate: 3 / 1_000_000,
+  outputImageRate: 60 / 1_000_000,
+  imagePrices: {
+    "512": 0.045,
+    "1K": 0.067,
+    "2K": 0.101,
+    "4K": 0.15,
+  },
+};
+
 export function getGeminiProPricing(modelId: string): GeminiProPricing | undefined {
   if (modelId.includes("gemini-2.5-pro")) {
     return GEMINI_2_5_PRO_PRICING;
   }
-  if (modelId.includes("gemini-2.5-flash") || modelId.includes("gemini-flash-latest")) {
+  if (modelId.includes("gemini-flash-lite-latest")) {
+    return GEMINI_2_5_FLASH_LITE_PRICING;
+  }
+  if (
+    modelId.includes("gemini-2.5-flash") ||
+    modelId.includes("gemini-flash-latest") ||
+    modelId.includes("gemini-3-flash-preview")
+  ) {
     return GEMINI_2_5_FLASH_PRICING;
   }
   if (modelId.includes("gemini-3-pro") || modelId.includes("gemini-3.1-pro")) {
@@ -82,8 +116,14 @@ export function getGeminiProPricing(modelId: string): GeminiProPricing | undefin
 }
 
 export function getGeminiImagePricing(modelId: string): GeminiImagePricing | undefined {
+  if (modelId.includes("gemini-3.1-flash-image-preview")) {
+    return GEMINI_3_1_FLASH_IMAGE_PREVIEW_PRICING;
+  }
+  if (modelId.includes("gemini-3-pro-image-preview")) {
+    return GEMINI_3_PRO_IMAGE_PREVIEW_PRICING;
+  }
   if (modelId.includes("image-preview")) {
-    return GEMINI_IMAGE_PREVIEW_PRICING;
+    return GEMINI_3_PRO_IMAGE_PREVIEW_PRICING;
   }
   return undefined;
 }

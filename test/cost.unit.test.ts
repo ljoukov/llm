@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
@@ -87,9 +88,27 @@ describe("estimateCallCostUsd", () => {
     });
 
     // non-cached prompt: 900 * (0.30/1M) = 0.00027
-    // cached: 100 * (0.15/1M) = 0.000015
+    // cached: 100 * (0.03/1M) = 0.000003
     // output: 600 * (1.20/1M) = 0.00072
-    expect(cost).toBeCloseTo(0.001005, 8);
+    expect(cost).toBeCloseTo(0.000993, 8);
+  });
+
+  it("estimates Fireworks gpt-oss-120b costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "gpt-oss-120b",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (0.15/1M) = 0.000135
+    // cached: 100 * (0.075/1M) = 0.0000075
+    // output: 600 * (0.60/1M) = 0.00036
+    expect(cost).toBeCloseTo(0.0005025, 8);
   });
 
   it("estimates Gemini Pro costs (known model, low tier)", () => {
@@ -111,7 +130,7 @@ describe("estimateCallCostUsd", () => {
   });
 
   it("estimates Gemini 2.5 Flash costs (including gemini-flash-latest alias)", () => {
-    const modelIds = ["gemini-2.5-flash", "gemini-flash-latest"] as const;
+    const modelIds = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3-flash-preview"] as const;
     for (const modelId of modelIds) {
       const cost = estimateCallCostUsd({
         modelId,
@@ -129,6 +148,24 @@ describe("estimateCallCostUsd", () => {
       // output: 400 * (2.5/1M) = 0.001
       expect(cost).toBeCloseTo(0.001246, 8);
     }
+  });
+
+  it("estimates Gemini Flash Lite costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "gemini-flash-lite-latest",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 200,
+        responseTokens: 300,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 800 * (0.10/1M) = 0.00008
+    // cached: 200 * (0.025/1M) = 0.000005
+    // output: 400 * (0.40/1M) = 0.00016
+    expect(cost).toBeCloseTo(0.000245, 8);
   });
 
   it("estimates Gemini 3.1 Pro preview costs", () => {
@@ -164,5 +201,48 @@ describe("estimateCallCostUsd", () => {
 
     expect(cost).toBeGreaterThan(0);
     expect(Number.isFinite(cost)).toBe(true);
+  });
+
+  it("estimates Gemini 3.1 Flash image-preview costs lower than Gemini 3 Pro image-preview", () => {
+    const tokens = {
+      promptTokens: 1000,
+      cachedTokens: 0,
+      responseTokens: 2000,
+      responseImageTokens: 0,
+    };
+
+    const flashCost = estimateCallCostUsd({
+      modelId: "gemini-3.1-flash-image-preview",
+      tokens,
+      responseImages: 1,
+      imageSize: "2K",
+    });
+
+    const proCost = estimateCallCostUsd({
+      modelId: "gemini-3-pro-image-preview",
+      tokens,
+      responseImages: 1,
+      imageSize: "2K",
+    });
+
+    expect(flashCost).toBeGreaterThan(0);
+    expect(proCost).toBeGreaterThan(0);
+    expect(flashCost).toBeLessThan(proCost);
+  });
+
+  it("has non-zero pricing coverage for all supported model ids", () => {
+    const tokens = {
+      promptTokens: 1000,
+      cachedTokens: 100,
+      responseTokens: 500,
+      thinkingTokens: 100,
+      responseImageTokens: 0,
+    };
+
+    for (const modelId of LLM_MODEL_IDS) {
+      const responseImages = modelId.includes("image-preview") ? 1 : 0;
+      const cost = estimateCallCostUsd({ modelId, tokens, responseImages, imageSize: "2K" });
+      expect(cost, `expected non-zero cost mapping for ${modelId}`).toBeGreaterThan(0);
+    }
   });
 });
