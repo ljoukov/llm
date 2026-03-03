@@ -98,14 +98,42 @@ export type AgentFilesystemToolsOptions = {
   };
 };
 
+function parseOptionalString(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 const codexReadFileInputSchema = z
   .object({
-    file_path: z
-      .string()
-      .min(1)
-      .describe(
-        "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
-      ),
+    file_path: z.preprocess(
+      (value) => parseOptionalString(value),
+      z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
+        ),
+    ),
+    path: z.preprocess(
+      (value) => parseOptionalString(value),
+      z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Alias for file_path. If both file_path and path are provided they must be identical.",
+        ),
+    ),
     offset: z
       .number()
       .int()
@@ -114,7 +142,25 @@ const codexReadFileInputSchema = z
       .describe("The line number to start reading from. Must be 1 or greater."),
     limit: z.number().int().min(1).nullish().describe("The maximum number of lines to return."),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const filePath = value.file_path?.trim() ?? "";
+    const aliasPath = value.path?.trim() ?? "";
+    if (filePath.length === 0 && aliasPath.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "read_file requires file_path (or path alias).",
+        path: ["file_path"],
+      });
+    }
+    if (filePath.length > 0 && aliasPath.length > 0 && filePath !== aliasPath) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "file_path and path must match when both are provided.",
+        path: ["path"],
+      });
+    }
+  });
 
 const codexListDirInputSchema = z.object({
   dir_path: z
@@ -458,12 +504,28 @@ export function createGlobTool(
   });
 }
 
+function resolveCodexReadFilePath(input: CodexReadFileToolInput): string {
+  const filePath = parseOptionalString(input.file_path);
+  if (filePath) {
+    return filePath;
+  }
+  const aliasPath = parseOptionalString(input.path);
+  if (aliasPath) {
+    return aliasPath;
+  }
+  throw new Error("read_file requires file_path");
+}
+
 async function readFileCodex(
   input: CodexReadFileToolInput,
   options: AgentFilesystemToolsOptions,
 ): Promise<string> {
   const runtime = resolveRuntime(options);
-  const filePath = resolvePathWithPolicy(input.file_path, runtime.cwd, runtime.allowOutsideCwd);
+  const filePath = resolvePathWithPolicy(
+    resolveCodexReadFilePath(input),
+    runtime.cwd,
+    runtime.allowOutsideCwd,
+  );
   await runAccessHook(runtime, {
     cwd: runtime.cwd,
     tool: "read_file",

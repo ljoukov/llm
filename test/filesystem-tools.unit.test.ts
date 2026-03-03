@@ -82,6 +82,39 @@ describe("filesystemTools behavior", () => {
     expect(
       codexReadFile.inputSchema.safeParse({
         file_path: "src/example.ts",
+      }).success,
+    ).toBe(true);
+    expect(
+      await codexReadFile.execute({
+        file_path: "src/example.ts",
+      }),
+    ).toContain("L1: export const value = 1;");
+    expect(
+      codexReadFile.inputSchema.safeParse({
+        path: "src/example.ts",
+        file_path: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      await codexReadFile.execute({
+        path: "src/example.ts",
+      }),
+    ).toContain("L1: export const value = 1;");
+    expect(
+      codexReadFile.inputSchema.safeParse({
+        file_path: "src/example.ts",
+        path: "src/example.ts",
+      }).success,
+    ).toBe(true);
+    expect(
+      codexReadFile.inputSchema.safeParse({
+        file_path: "src/example.ts",
+        path: "src/other.ts",
+      }).success,
+    ).toBe(false);
+    expect(
+      codexReadFile.inputSchema.safeParse({
+        file_path: "src/example.ts",
         mode: "base64",
       }).success,
     ).toBe(false);
