@@ -112,55 +112,63 @@ function parseOptionalString(value: unknown): string | undefined {
   return trimmed;
 }
 
-const codexReadFileInputSchema = z
-  .object({
-    file_path: z.preprocess(
-      (value) => parseOptionalString(value),
-      z
-        .string()
-        .min(1)
-        .optional()
-        .describe(
-          "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
-        ),
-    ),
-    path: z.preprocess(
-      (value) => parseOptionalString(value),
-      z
-        .string()
-        .min(1)
-        .optional()
-        .describe(
-          "Alias for file_path. If both file_path and path are provided they must be identical.",
-        ),
-    ),
-    offset: z
-      .number()
-      .int()
-      .min(1)
-      .nullish()
-      .describe("The line number to start reading from. Must be 1 or greater."),
-    limit: z.number().int().min(1).nullish().describe("The maximum number of lines to return."),
-  })
-  .strict()
-  .superRefine((value, context) => {
-    const filePath = value.file_path?.trim() ?? "";
-    const aliasPath = value.path?.trim() ?? "";
-    if (filePath.length === 0 && aliasPath.length === 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "read_file requires file_path (or path alias).",
-        path: ["file_path"],
-      });
+const codexReadFileInputSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
     }
-    if (filePath.length > 0 && aliasPath.length > 0 && filePath !== aliasPath) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "file_path and path must match when both are provided.",
-        path: ["path"],
-      });
+    const record = value as Record<string, unknown>;
+    const filePath = parseOptionalString(record.file_path);
+    const aliasPath = parseOptionalString(record.path);
+    if (!filePath && aliasPath) {
+      return {
+        ...record,
+        file_path: aliasPath,
+      };
     }
-  });
+    return value;
+  },
+  z
+    .object({
+      file_path: z.preprocess(
+        (value) => parseOptionalString(value),
+        z
+          .string()
+          .min(1)
+          .describe(
+            "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
+          ),
+      ),
+      path: z.preprocess(
+        (value) => parseOptionalString(value),
+        z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "Alias for file_path. If both file_path and path are provided they must be identical.",
+          ),
+      ),
+      offset: z
+        .number()
+        .int()
+        .min(1)
+        .nullish()
+        .describe("The line number to start reading from. Must be 1 or greater."),
+      limit: z.number().int().min(1).nullish().describe("The maximum number of lines to return."),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      const aliasPath = value.path?.trim() ?? "";
+      if (aliasPath.length > 0 && value.file_path !== aliasPath) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "file_path and path must match when both are provided.",
+          path: ["path"],
+        });
+      }
+    }),
+);
 
 const codexListDirInputSchema = z.object({
   dir_path: z

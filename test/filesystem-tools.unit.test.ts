@@ -95,11 +95,13 @@ describe("filesystemTools behavior", () => {
         file_path: null,
       }).success,
     ).toBe(true);
-    expect(
-      await codexReadFile.execute({
-        path: "src/example.ts",
-      }),
-    ).toContain("L1: export const value = 1;");
+    const parsedFromPathAlias = codexReadFile.inputSchema.parse({
+      path: "src/example.ts",
+      file_path: null,
+    });
+    expect(await codexReadFile.execute(parsedFromPathAlias)).toContain(
+      "L1: export const value = 1;",
+    );
     expect(
       codexReadFile.inputSchema.safeParse({
         file_path: "src/example.ts",
