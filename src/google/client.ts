@@ -3,7 +3,6 @@ import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
 import { getGoogleAuthOptions, getGoogleServiceAccount } from "./auth.js";
 
 export const GEMINI_TEXT_MODEL_IDS = [
-  "gemini-3-pro-preview",
   "gemini-3.1-pro-preview",
   "gemini-3-flash-preview",
   "gemini-2.5-pro",

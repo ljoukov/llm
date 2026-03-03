@@ -49,6 +49,7 @@ describe("runAgentLoop", () => {
       "list_dir",
       "ping",
       "read_file",
+      "view_image",
     ]);
   });
 

@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { Buffer } from "node:buffer";
 
 import { createInMemoryAgentFilesystem } from "../src/tools/filesystem.js";
 import {
   createCodexReadFileTool,
   createCodexApplyPatchTool,
+  createViewImageTool,
   createFilesystemToolSetForModel,
   createGeminiReadFileTool,
   createGlobTool,
   createListDirTool,
   createRgSearchTool,
   createListDirectoryTool,
-  createReadFilesTool,
   createReplaceTool,
   createWriteFileTool,
   resolveFilesystemToolProfile,
@@ -32,6 +36,7 @@ describe("filesystemTools profiles", () => {
       "grep_files",
       "list_dir",
       "read_file",
+      "view_image",
     ]);
   });
 
@@ -59,21 +64,12 @@ describe("filesystemTools behavior", () => {
       content: "export const value = 1;\n",
     });
 
-    const readFiles = createReadFilesTool({ cwd, fs });
-    expect(
-      await readFiles.execute({
-        paths: ["src/example.ts"],
-      }),
-    ).toContain("L1: export const value = 1;");
-
     const codexReadFile = createCodexReadFileTool({ cwd, fs });
     expect(
       codexReadFile.inputSchema.safeParse({
         file_path: "src/example.ts",
         offset: null,
         limit: null,
-        mode: null,
-        indentation: null,
       }).success,
     ).toBe(true);
     expect(
@@ -81,10 +77,14 @@ describe("filesystemTools behavior", () => {
         file_path: "src/example.ts",
         offset: null,
         limit: null,
-        mode: null,
-        indentation: null,
       }),
     ).toContain("L1: export const value = 1;");
+    expect(
+      codexReadFile.inputSchema.safeParse({
+        file_path: "src/example.ts",
+        mode: "base64",
+      }).success,
+    ).toBe(false);
 
     const codexListDir = createListDirTool({ cwd, fs });
     expect(
@@ -192,5 +192,80 @@ describe("filesystemTools behavior", () => {
     expect(fs.snapshot()).toEqual({
       "/repo/example.ts": "export const value = 2;\n",
     });
+  });
+
+  it("returns input_image items for supported images and input_text fallback otherwise", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-view-image-"));
+    try {
+      const pngPath = path.join(tempRoot, "pixel.png");
+      const txtPath = path.join(tempRoot, "note.txt");
+      const pngBytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+        "base64",
+      );
+      await fs.writeFile(pngPath, pngBytes);
+      await fs.writeFile(txtPath, "hello");
+
+      const viewImage = createViewImageTool({ cwd: tempRoot });
+      const imageOutput = await viewImage.execute({ path: "pixel.png" });
+      expect(imageOutput).toHaveLength(1);
+      expect(imageOutput[0]).toMatchObject({ type: "input_image" });
+      const imageUrl = (imageOutput[0] as { image_url?: string }).image_url;
+      expect(typeof imageUrl).toBe("string");
+      expect(imageUrl?.startsWith("data:image/png;base64,")).toBe(true);
+
+      const fallbackOutput = await viewImage.execute({ path: "note.txt" });
+      expect(fallbackOutput).toHaveLength(1);
+      expect(fallbackOutput[0]).toMatchObject({ type: "input_text" });
+      const fallbackText = (fallbackOutput[0] as { text?: string }).text;
+      expect(fallbackText).toContain("unsupported image format");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects binary assets in codex read_file", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-read-file-asset-"));
+    try {
+      const pngPath = path.join(tempRoot, "pixel.png");
+      const pngNoExtPath = path.join(tempRoot, "pixel-no-ext");
+      const pdfPath = path.join(tempRoot, "document.pdf");
+      const pngBytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+        "base64",
+      );
+      const pdfBytes = Buffer.from("%PDF-1.4\n%tiny\n", "utf8");
+      await fs.writeFile(pngPath, pngBytes);
+      await fs.writeFile(pngNoExtPath, pngBytes);
+      await fs.writeFile(pdfPath, pdfBytes);
+
+      const readFile = createCodexReadFileTool({ cwd: tempRoot });
+
+      await expect(
+        readFile.execute({
+          file_path: "pixel.png",
+          offset: null,
+          limit: null,
+        }),
+      ).rejects.toThrow("is an image");
+
+      await expect(
+        readFile.execute({
+          file_path: "pixel-no-ext",
+          offset: null,
+          limit: null,
+        }),
+      ).rejects.toThrow("is an image");
+
+      await expect(
+        readFile.execute({
+          file_path: "document.pdf",
+          offset: null,
+          limit: null,
+        }),
+      ).rejects.toThrow("is a PDF");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });

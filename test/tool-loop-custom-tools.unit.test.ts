@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 let openAiRequests: any[] = [];
 let openAiCallCount = 0;
 let chatGptRequests: any[] = [];
 let chatGptCallCount = 0;
+let openAiScenario: "custom" | "image_function" = "custom";
+let chatGptScenario: "custom" | "image_function" = "custom";
 
 vi.mock("../src/openai/calls.js", () => {
   const fakeClient = {
@@ -11,20 +14,36 @@ vi.mock("../src/openai/calls.js", () => {
       stream: (request: any) => {
         openAiRequests.push(request);
         const callIndex = openAiCallCount++;
-        const firstResponse = {
-          id: "resp_1",
-          model: "gpt-5.2",
-          usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-          output: [
-            {
-              type: "custom_tool_call",
-              id: "ctc_1",
-              call_id: "call_custom_1",
-              name: "apply_patch",
-              input: "*** Begin Patch\n*** End Patch\n",
-            },
-          ],
-        };
+        const firstResponse =
+          openAiScenario === "image_function"
+            ? {
+                id: "resp_1",
+                model: "gpt-5.2",
+                usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+                output: [
+                  {
+                    type: "function_call",
+                    id: "fc_1",
+                    call_id: "call_function_1",
+                    name: "view_image",
+                    arguments: '{"path":"image.png"}',
+                  },
+                ],
+              }
+            : {
+                id: "resp_1",
+                model: "gpt-5.2",
+                usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+                output: [
+                  {
+                    type: "custom_tool_call",
+                    id: "ctc_1",
+                    call_id: "call_custom_1",
+                    name: "apply_patch",
+                    input: "*** Begin Patch\n*** End Patch\n",
+                  },
+                ],
+              };
         const secondResponse = {
           id: "resp_2",
           model: "gpt-5.2",
@@ -58,19 +77,31 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
       chatGptRequests.push(options.request);
       const callIndex = chatGptCallCount++;
       if (callIndex === 0) {
+        const toolCalls =
+          chatGptScenario === "image_function"
+            ? [
+                {
+                  kind: "function",
+                  id: "fc_1",
+                  callId: "call_function_1",
+                  name: "view_image",
+                  arguments: '{"path":"image.png"}',
+                },
+              ]
+            : [
+                {
+                  kind: "custom",
+                  id: "ctc_1",
+                  callId: "call_custom_1",
+                  name: "apply_patch",
+                  input: "*** Begin Patch\n*** End Patch\n",
+                },
+              ];
         return {
           text: "",
           reasoningText: "",
           reasoningSummaryText: "",
-          toolCalls: [
-            {
-              kind: "custom",
-              id: "ctc_1",
-              callId: "call_custom_1",
-              name: "apply_patch",
-              input: "*** Begin Patch\n*** End Patch\n",
-            },
-          ],
+          toolCalls,
           webSearchCalls: [],
           usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
           model: "gpt-5.3-codex-spark",
@@ -95,6 +126,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 
 describe("runToolLoop custom tools", () => {
   it("supports OpenAI custom/freeform tools", async () => {
+    openAiScenario = "custom";
     openAiRequests = [];
     openAiCallCount = 0;
 
@@ -124,6 +156,7 @@ describe("runToolLoop custom tools", () => {
   });
 
   it("supports ChatGPT custom/freeform tools", async () => {
+    chatGptScenario = "custom";
     chatGptRequests = [];
     chatGptCallCount = 0;
 
@@ -153,7 +186,71 @@ describe("runToolLoop custom tools", () => {
     expect(appendedInput.some((item: any) => item?.type === "custom_tool_call_output")).toBe(true);
   });
 
+  it("preserves OpenAI function_call_output content items for image tool outputs", async () => {
+    openAiScenario = "image_function";
+    openAiRequests = [];
+    openAiCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "gpt-5.2",
+      input: "inspect image",
+      tools: {
+        view_image: tool({
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => [
+            {
+              type: "input_image" as const,
+              image_url: "data:image/png;base64,AAA",
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(openAiRequests).toHaveLength(2);
+    const outputItem = openAiRequests[1]?.input?.[0];
+    expect(outputItem?.type).toBe("function_call_output");
+    expect(Array.isArray(outputItem?.output)).toBe(true);
+    expect(outputItem?.output?.[0]?.type).toBe("input_image");
+    expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
+  });
+
+  it("preserves ChatGPT function_call_output content items for image tool outputs", async () => {
+    chatGptScenario = "image_function";
+    chatGptRequests = [];
+    chatGptCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "chatgpt-gpt-5.3-codex-spark",
+      input: "inspect image",
+      tools: {
+        view_image: tool({
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => [
+            {
+              type: "input_image" as const,
+              image_url: "data:image/png;base64,AAA",
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(chatGptRequests).toHaveLength(2);
+    const appendedInput = chatGptRequests[1]?.input ?? [];
+    const outputItem = appendedInput.find((item: any) => item?.type === "function_call_output");
+    expect(Array.isArray(outputItem?.output)).toBe(true);
+    expect(outputItem?.output?.[0]?.type).toBe("input_image");
+    expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
+  });
+
   it("rejects custom/freeform tools for gemini provider", async () => {
+    openAiScenario = "custom";
+    chatGptScenario = "custom";
     const { customTool, runToolLoop } = await import("../src/llm.js");
 
     await expect(

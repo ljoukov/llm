@@ -77,13 +77,13 @@ export type ChatGptCustomToolCall = {
 export type ChatGptFunctionCallOutput = {
   type: "function_call_output";
   call_id: string;
-  output: string;
+  output: string | ChatGptInputMessagePart[];
 };
 
 export type ChatGptCustomToolCallOutput = {
   type: "custom_tool_call_output";
   call_id: string;
-  output: string;
+  output: string | ChatGptInputMessagePart[];
 };
 
 export type ChatGptInputItem =
