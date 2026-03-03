@@ -301,7 +301,6 @@ const MODEL_REASONING_OVERRIDES: Readonly<Record<string, ReasoningEffort>> = {};
 
 const READ_TOOL_NAMES = new Set([
   "read_file",
-  "read_files",
   "list_dir",
   "list_directory",
   "grep_files",

@@ -81,6 +81,24 @@ export type LlmContent = {
   readonly parts: readonly LlmContentPart[];
 };
 
+export type LlmToolOutputContentItem =
+  | {
+      readonly type: "input_text";
+      readonly text: string;
+    }
+  | {
+      readonly type: "input_image";
+      readonly image_url: string;
+      readonly detail?: "auto";
+    }
+  | {
+      readonly type: "input_file";
+      readonly file_data?: string | null;
+      readonly file_id?: string | null;
+      readonly file_url?: string | null;
+      readonly filename?: string | null;
+    };
+
 export type LlmImageSize = "1K" | "2K" | "4K";
 
 export type LlmWebSearchMode = "cached" | "live";
@@ -1929,6 +1947,40 @@ function mergeToolOutput(value: unknown): string {
   }
 }
 
+function isLlmToolOutputContentItem(value: unknown): value is LlmToolOutputContentItem {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+  const itemType = typeof value.type === "string" ? value.type : "";
+  if (itemType === "input_text") {
+    return typeof value.text === "string";
+  }
+  if (itemType === "input_image") {
+    return typeof value.image_url === "string";
+  }
+  if (itemType === "input_file") {
+    const keys = ["file_data", "file_id", "file_url", "filename"] as const;
+    for (const key of keys) {
+      const part = value[key];
+      if (part !== undefined && part !== null && typeof part !== "string") {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+function toOpenAiToolOutput(value: unknown): string | LlmToolOutputContentItem[] {
+  if (isLlmToolOutputContentItem(value)) {
+    return [value];
+  }
+  if (Array.isArray(value) && value.every((item) => isLlmToolOutputContentItem(item))) {
+    return value;
+  }
+  return mergeToolOutput(value);
+}
+
 function parseOpenAiToolArguments(raw: string): { value: unknown; error?: string } {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
@@ -2393,7 +2445,6 @@ function resolveGeminiThinkingConfig(modelId: string): GenerateContentConfig["th
     return undefined;
   }
   switch (modelId) {
-    case "gemini-3-pro-preview":
     case "gemini-3.1-pro-preview":
       return { includeThoughts: true } as const;
     case "gemini-3-flash-preview":
@@ -3568,13 +3619,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             toolOutputs.push({
               type: "custom_tool_call_output",
               call_id: entry.call.call_id,
-              output: mergeToolOutput(outputPayload),
+              output: toOpenAiToolOutput(outputPayload),
             });
           } else {
             toolOutputs.push({
               type: "function_call_output",
               call_id: entry.call.call_id,
-              output: mergeToolOutput(outputPayload),
+              output: toOpenAiToolOutput(outputPayload),
             });
           }
         }
@@ -3810,7 +3861,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             toolOutputs.push({
               type: "custom_tool_call_output",
               call_id: entry.ids.callId,
-              output: mergeToolOutput(outputPayload),
+              output: toOpenAiToolOutput(outputPayload),
             } as ChatGptInputItem);
           } else {
             toolOutputs.push({
@@ -3824,7 +3875,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             toolOutputs.push({
               type: "function_call_output",
               call_id: entry.ids.callId,
-              output: mergeToolOutput(outputPayload),
+              output: toOpenAiToolOutput(outputPayload),
             } as ChatGptInputItem);
           }
         }

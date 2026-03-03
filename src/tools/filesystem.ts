@@ -17,6 +17,7 @@ export type AgentDirectoryEntry = {
 
 export interface AgentFilesystem {
   readTextFile(filePath: string): Promise<string>;
+  readBinaryFile?(filePath: string): Promise<Buffer>;
   writeTextFile(filePath: string, content: string): Promise<void>;
   deleteFile(filePath: string): Promise<void>;
   ensureDir(directoryPath: string): Promise<void>;
@@ -58,6 +59,11 @@ export class InMemoryAgentFilesystem implements AgentFilesystem {
       throw createNoSuchFileError("open", absolutePath);
     }
     return file.content;
+  }
+
+  async readBinaryFile(filePath: string): Promise<Buffer> {
+    const content = await this.readTextFile(filePath);
+    return Buffer.from(content, "utf8");
   }
 
   async writeTextFile(filePath: string, content: string): Promise<void> {
@@ -184,6 +190,7 @@ export class InMemoryAgentFilesystem implements AgentFilesystem {
 export function createNodeAgentFilesystem(): AgentFilesystem {
   return {
     readTextFile: async (filePath: string) => fs.readFile(filePath, "utf8"),
+    readBinaryFile: async (filePath: string) => fs.readFile(filePath),
     writeTextFile: async (filePath: string, content: string) =>
       fs.writeFile(filePath, content, "utf8"),
     deleteFile: async (filePath: string) => fs.unlink(filePath),

@@ -1,9 +1,11 @@
 import path from "node:path";
+import { Buffer } from "node:buffer";
 
 import { z } from "zod";
 
 import {
   customTool,
+  type LlmToolOutputContentItem,
   type LlmCustomTool,
   type LlmFunctionTool,
   type LlmToolSet,
@@ -22,23 +24,20 @@ import {
 } from "./filesystem.js";
 
 const DEFAULT_READ_FILE_LINE_LIMIT = 2000;
-const DEFAULT_READ_FILES_LINE_LIMIT = 200;
-const DEFAULT_READ_FILES_CHAR_LIMIT = 4000;
 const DEFAULT_LIST_DIR_LIMIT = 25;
 const DEFAULT_LIST_DIR_DEPTH = 2;
 const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LIMIT = 2000;
+const MAX_VIEW_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_LINE_LENGTH = 500;
 const DEFAULT_GREP_MAX_SCANNED_FILES = 20_000;
-const DEFAULT_TAB_WIDTH = 4;
-
-type CodexReadMode = "slice" | "indentation";
-
-type ReadLineRecord = {
-  readonly number: number;
-  readonly raw: string;
-  readonly display: string;
-  readonly indent: number;
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const IMAGE_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
 };
 
 type ListEntryRecord = {
@@ -60,12 +59,12 @@ export type AgentFilesystemToolProfile = "auto" | "model-agnostic" | "codex" | "
 export type AgentFilesystemToolName =
   | "apply_patch"
   | "read_file"
-  | "read_files"
   | "write_file"
   | "replace"
   | "list_dir"
   | "list_directory"
   | "grep_files"
+  | "view_image"
   | "rg_search"
   | "grep_search"
   | "glob";
@@ -99,34 +98,23 @@ export type AgentFilesystemToolsOptions = {
   };
 };
 
-const codexReadFileInputSchema = z.object({
-  file_path: z
-    .string()
-    .min(1)
-    .describe(
-      "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
-    ),
-  offset: z
-    .number()
-    .int()
-    .min(1)
-    .nullish()
-    .describe("The line number to start reading from. Must be 1 or greater."),
-  limit: z.number().int().min(1).nullish().describe("The maximum number of lines to return."),
-  mode: z
-    .enum(["slice", "indentation"])
-    .nullish()
-    .describe('Optional mode selector: "slice" (default) or "indentation".'),
-  indentation: z
-    .object({
-      anchor_line: z.number().int().min(1).nullish(),
-      max_levels: z.number().int().min(0).nullish(),
-      include_siblings: z.boolean().nullish(),
-      include_header: z.boolean().nullish(),
-      max_lines: z.number().int().min(1).nullish(),
-    })
-    .nullish(),
-});
+const codexReadFileInputSchema = z
+  .object({
+    file_path: z
+      .string()
+      .min(1)
+      .describe(
+        "Path to the file (relative to cwd, or absolute. In sandbox mode, / maps to the sandbox root).",
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(1)
+      .nullish()
+      .describe("The line number to start reading from. Must be 1 or greater."),
+    limit: z.number().int().min(1).nullish().describe("The maximum number of lines to return."),
+  })
+  .strict();
 
 const codexListDirInputSchema = z.object({
   dir_path: z
@@ -165,35 +153,21 @@ const codexGrepFilesInputSchema = z.object({
     .describe("Maximum number of file paths to return (defaults to 100)."),
 });
 
+const codexViewImageInputSchema = z.object({
+  path: z.string().min(1).describe("Local filesystem path to an image file"),
+});
+
 const applyPatchInputSchema = z.object({
   input: z.string().min(1).describe(CODEX_APPLY_PATCH_INPUT_DESCRIPTION),
 });
 
-const geminiReadFileInputSchema = z.object({
-  file_path: z.string().min(1),
-  offset: z.number().int().min(0).nullish(),
-  limit: z.number().int().min(1).nullish(),
-});
-
-const geminiReadFilesInputSchema = z
+const geminiReadFileInputSchema = z
   .object({
-    paths: z.array(z.string().min(1)).min(1),
-    line_offset: z.number().int().min(0).nullish(),
-    line_limit: z.number().int().min(1).nullish(),
-    char_offset: z.number().int().min(0).nullish(),
-    char_limit: z.number().int().min(1).nullish(),
-    include_line_numbers: z.boolean().nullish(),
+    file_path: z.string().min(1),
+    offset: z.number().int().min(0).nullish(),
+    limit: z.number().int().min(1).nullish(),
   })
-  .superRefine((value, context) => {
-    const hasLineWindow = value.line_offset !== undefined || value.line_limit !== undefined;
-    const hasCharWindow = value.char_offset !== undefined || value.char_limit !== undefined;
-    if (hasLineWindow && hasCharWindow) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Use either line_* or char_* window arguments, not both.",
-      });
-    }
-  });
+  .strict();
 
 const geminiWriteFileInputSchema = z.object({
   file_path: z.string().min(1),
@@ -251,9 +225,9 @@ const geminiGlobInputSchema = z.object({
 export type CodexReadFileToolInput = z.output<typeof codexReadFileInputSchema>;
 export type CodexListDirToolInput = z.output<typeof codexListDirInputSchema>;
 export type CodexGrepFilesToolInput = z.output<typeof codexGrepFilesInputSchema>;
+export type CodexViewImageToolInput = z.output<typeof codexViewImageInputSchema>;
 export type CodexApplyPatchToolInput = z.output<typeof applyPatchInputSchema>;
 export type GeminiReadFileToolInput = z.output<typeof geminiReadFileInputSchema>;
-export type GeminiReadFilesToolInput = z.output<typeof geminiReadFilesInputSchema>;
 export type GeminiWriteFileToolInput = z.output<typeof geminiWriteFileInputSchema>;
 export type GeminiReplaceToolInput = z.output<typeof geminiReplaceInputSchema>;
 export type GeminiListDirectoryToolInput = z.output<typeof geminiListDirectoryInputSchema>;
@@ -311,6 +285,7 @@ export function createCodexFilesystemToolSet(
     read_file: createCodexReadFileTool(options),
     list_dir: createListDirTool(options),
     grep_files: createGrepFilesTool(options),
+    view_image: createViewImageTool(options),
   };
 }
 
@@ -373,8 +348,7 @@ export function createCodexReadFileTool(
   options: AgentFilesystemToolsOptions = {},
 ): LlmFunctionTool<typeof codexReadFileInputSchema, string> {
   return tool({
-    description:
-      "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware block modes.",
+    description: "Reads a local UTF-8 text file with 1-indexed line numbers.",
     inputSchema: codexReadFileInputSchema,
     execute: async (input) => readFileCodex(input, options),
   });
@@ -402,6 +376,17 @@ export function createGrepFilesTool(
   });
 }
 
+export function createViewImageTool(
+  options: AgentFilesystemToolsOptions = {},
+): LlmFunctionTool<typeof codexViewImageInputSchema, LlmToolOutputContentItem[]> {
+  return tool({
+    description:
+      "View a local image from the filesystem (only use if given a full filepath by the user, and the image isn't already attached to the thread context within <image ...> tags).",
+    inputSchema: codexViewImageInputSchema,
+    execute: async (input) => viewImageCodex(input, options),
+  });
+}
+
 export function createGeminiReadFileTool(
   options: AgentFilesystemToolsOptions = {},
 ): LlmFunctionTool<typeof geminiReadFileInputSchema, string> {
@@ -410,17 +395,6 @@ export function createGeminiReadFileTool(
       "Reads and returns the content of a specified file. Supports optional 0-based line offset and line limit.",
     inputSchema: geminiReadFileInputSchema,
     execute: async (input) => readFileGemini(input, options),
-  });
-}
-
-export function createReadFilesTool(
-  options: AgentFilesystemToolsOptions = {},
-): LlmFunctionTool<typeof geminiReadFilesInputSchema, string> {
-  return tool({
-    description:
-      "Reads one or more files with optional line-based or character-based slicing, similar to a controlled head/tail view.",
-    inputSchema: geminiReadFilesInputSchema,
-    execute: async (input) => readFilesGemini(input, options),
   });
 }
 
@@ -497,48 +471,39 @@ async function readFileCodex(
     path: filePath,
   });
 
-  const content = await runtime.filesystem.readTextFile(filePath);
+  const fileBytes = await readBinaryFile(runtime.filesystem, filePath);
+  const imageMimeType = detectImageMimeType(fileBytes, filePath);
+  if (imageMimeType) {
+    throw new Error(
+      `read_file only supports text files; "${toDisplayPath(filePath, runtime.cwd)}" is an image (${imageMimeType}). Use view_image instead.`,
+    );
+  }
+  if (isPdfFile(fileBytes, filePath)) {
+    throw new Error(
+      `read_file only supports text files; "${toDisplayPath(filePath, runtime.cwd)}" is a PDF.`,
+    );
+  }
+  if (!isValidUtf8(fileBytes)) {
+    throw new Error(
+      `read_file only supports UTF-8 text files; "${toDisplayPath(filePath, runtime.cwd)}" appears to be binary.`,
+    );
+  }
+
+  const content = fileBytes.toString("utf8");
   const lines = splitLines(content);
   const offset = input.offset ?? 1;
   const limit = input.limit ?? DEFAULT_READ_FILE_LINE_LIMIT;
-  const mode: CodexReadMode = input.mode ?? "slice";
   if (offset > lines.length) {
     throw new Error("offset exceeds file length");
   }
 
-  if (mode === "slice") {
-    const output: string[] = [];
-    const lastLine = Math.min(lines.length, offset + limit - 1);
-    for (let lineNumber = offset; lineNumber <= lastLine; lineNumber += 1) {
-      const line = lines[lineNumber - 1] ?? "";
-      output.push(`L${lineNumber}: ${truncateAtCodePointBoundary(line, runtime.maxLineLength)}`);
-    }
-    return output.join("\n");
+  const output: string[] = [];
+  const lastLine = Math.min(lines.length, offset + limit - 1);
+  for (let lineNumber = offset; lineNumber <= lastLine; lineNumber += 1) {
+    const line = lines[lineNumber - 1] ?? "";
+    output.push(`L${lineNumber}: ${truncateAtCodePointBoundary(line, runtime.maxLineLength)}`);
   }
-
-  const indentation = input.indentation ?? {};
-  const anchorLine = indentation.anchor_line ?? offset;
-  if (anchorLine < 1 || anchorLine > lines.length) {
-    throw new Error("anchor_line exceeds file length");
-  }
-  const records = lines.map((line, index) => ({
-    number: index + 1,
-    raw: line,
-    display: truncateAtCodePointBoundary(line, runtime.maxLineLength),
-    indent: measureIndent(line, DEFAULT_TAB_WIDTH),
-  }));
-
-  const selected = readWithIndentationMode({
-    records,
-    anchorLine,
-    limit,
-    maxLevels: indentation.max_levels ?? 0,
-    includeSiblings: indentation.include_siblings ?? false,
-    includeHeader: indentation.include_header ?? true,
-    maxLines: indentation.max_lines ?? undefined,
-  });
-
-  return selected.map((record) => `L${record.number}: ${record.display}`).join("\n");
+  return output.join("\n");
 }
 
 async function listDirectoryCodex(
@@ -647,6 +612,111 @@ async function grepFilesCodex(
     .join("\n");
 }
 
+async function viewImageCodex(
+  input: CodexViewImageToolInput,
+  options: AgentFilesystemToolsOptions,
+): Promise<LlmToolOutputContentItem[]> {
+  const runtime = resolveRuntime(options);
+  const imagePath = resolvePathWithPolicy(input.path, runtime.cwd, runtime.allowOutsideCwd);
+  await runAccessHook(runtime, {
+    cwd: runtime.cwd,
+    tool: "view_image",
+    action: "read",
+    path: imagePath,
+  });
+
+  const stats = await runtime.filesystem.stat(imagePath);
+  if (stats.kind !== "file") {
+    throw new Error(`image path \`${toDisplayPath(imagePath, runtime.cwd)}\` is not a file`);
+  }
+
+  const bytes = await readBinaryFile(runtime.filesystem, imagePath);
+  if (bytes.byteLength > MAX_VIEW_IMAGE_BYTES) {
+    return [
+      {
+        type: "input_text",
+        text: `Codex cannot attach image at \`${toDisplayPath(imagePath, runtime.cwd)}\`: image exceeds ${MAX_VIEW_IMAGE_BYTES} bytes.`,
+      },
+    ];
+  }
+
+  const mimeType = detectImageMimeType(bytes, imagePath);
+  if (!mimeType) {
+    return [
+      {
+        type: "input_text",
+        text: `Codex cannot attach image at \`${toDisplayPath(imagePath, runtime.cwd)}\`: unsupported image format.`,
+      },
+    ];
+  }
+
+  return [
+    {
+      type: "input_image",
+      image_url: `data:${mimeType};base64,${bytes.toString("base64")}`,
+    },
+  ];
+}
+
+async function readBinaryFile(filesystem: AgentFilesystem, filePath: string): Promise<Buffer> {
+  if (typeof filesystem.readBinaryFile === "function") {
+    return await filesystem.readBinaryFile(filePath);
+  }
+  const text = await filesystem.readTextFile(filePath);
+  return Buffer.from(text, "utf8");
+}
+
+function detectImageMimeType(buffer: Buffer, filePath: string): string | undefined {
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (buffer.length >= 6) {
+    const signature = buffer.subarray(0, 6).toString("ascii");
+    if (signature === "GIF87a" || signature === "GIF89a") {
+      return "image/gif";
+    }
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  const fromExtension = IMAGE_MIME_BY_EXTENSION[path.extname(filePath).toLowerCase()];
+  if (fromExtension && SUPPORTED_IMAGE_MIME_TYPES.has(fromExtension)) {
+    return fromExtension;
+  }
+  return undefined;
+}
+
+function isPdfFile(buffer: Buffer, filePath: string): boolean {
+  if (buffer.length >= 5 && buffer.subarray(0, 5).toString("ascii") === "%PDF-") {
+    return true;
+  }
+  return path.extname(filePath).toLowerCase() === ".pdf";
+}
+
+function isValidUtf8(buffer: Buffer): boolean {
+  if (buffer.length === 0) {
+    return true;
+  }
+  return Buffer.from(buffer.toString("utf8"), "utf8").equals(buffer);
+}
+
 async function readFileGemini(
   input: GeminiReadFileToolInput,
   options: AgentFilesystemToolsOptions,
@@ -676,64 +746,6 @@ async function readFileGemini(
         `L${offset + index + 1}: ${truncateAtCodePointBoundary(line ?? "", runtime.maxLineLength)}`,
     )
     .join("\n");
-}
-
-async function readFilesGemini(
-  input: GeminiReadFilesToolInput,
-  options: AgentFilesystemToolsOptions,
-): Promise<string> {
-  const runtime = resolveRuntime(options);
-  const useCharWindow = input.char_offset !== undefined || input.char_limit !== undefined;
-  const lineOffset = Math.max(0, input.line_offset ?? 0);
-  const lineLimit = input.line_limit ?? DEFAULT_READ_FILES_LINE_LIMIT;
-  const charOffset = Math.max(0, input.char_offset ?? 0);
-  const charLimit = input.char_limit ?? DEFAULT_READ_FILES_CHAR_LIMIT;
-  const includeLineNumbers = input.include_line_numbers !== false;
-
-  const sections: string[] = [];
-  for (const rawPath of input.paths) {
-    const filePath = resolvePathWithPolicy(rawPath, runtime.cwd, runtime.allowOutsideCwd);
-    await runAccessHook(runtime, {
-      cwd: runtime.cwd,
-      tool: "read_files",
-      action: "read",
-      path: filePath,
-    });
-    const content = await runtime.filesystem.readTextFile(filePath);
-    const displayPath = normalizeSlashes(toDisplayPath(filePath, runtime.cwd));
-    sections.push(`==> ${displayPath} <==`);
-
-    if (useCharWindow) {
-      if (charOffset >= content.length) {
-        sections.push("");
-        continue;
-      }
-      const end = Math.min(content.length, charOffset + charLimit);
-      sections.push(content.slice(charOffset, end));
-      continue;
-    }
-
-    const lines = splitLines(content);
-    if (lineOffset >= lines.length) {
-      sections.push("");
-      continue;
-    }
-    const end = Math.min(lines.length, lineOffset + lineLimit);
-    const selected = lines.slice(lineOffset, end);
-    if (includeLineNumbers) {
-      for (let index = 0; index < selected.length; index += 1) {
-        const lineNumber = lineOffset + index + 1;
-        const line = selected[index] ?? "";
-        sections.push(
-          `L${lineNumber}: ${truncateAtCodePointBoundary(line, runtime.maxLineLength)}`,
-        );
-      }
-      continue;
-    }
-    sections.push(selected.join("\n"));
-  }
-
-  return sections.join("\n");
 }
 
 async function writeFileGemini(
@@ -1126,137 +1138,6 @@ function truncateAtCodePointBoundary(value: string, maxLength: number): string {
     return value;
   }
   return Array.from(value).slice(0, maxLength).join("");
-}
-
-function measureIndent(line: string, tabWidth: number): number {
-  let count = 0;
-  for (const char of line) {
-    if (char === " ") {
-      count += 1;
-      continue;
-    }
-    if (char === "\t") {
-      count += tabWidth;
-      continue;
-    }
-    break;
-  }
-  return count;
-}
-
-function computeEffectiveIndents(records: readonly ReadLineRecord[]): number[] {
-  const effective: number[] = [];
-  let previous = 0;
-  for (const record of records) {
-    if (record.raw.trim().length === 0) {
-      effective.push(previous);
-    } else {
-      previous = record.indent;
-      effective.push(previous);
-    }
-  }
-  return effective;
-}
-
-function trimBoundaryBlankLines(records: ReadLineRecord[]): void {
-  while (records.length > 0 && records[0]?.raw.trim().length === 0) {
-    records.shift();
-  }
-  while (records.length > 0 && records[records.length - 1]?.raw.trim().length === 0) {
-    records.pop();
-  }
-}
-
-function isCommentLine(line: string): boolean {
-  const trimmed = line.trim();
-  return trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("--");
-}
-
-function readWithIndentationMode(params: {
-  records: readonly ReadLineRecord[];
-  anchorLine: number;
-  limit: number;
-  maxLevels: number;
-  includeSiblings: boolean;
-  includeHeader: boolean;
-  maxLines?: number;
-}): ReadLineRecord[] {
-  const { records, anchorLine, limit, maxLevels, includeSiblings, includeHeader, maxLines } =
-    params;
-  const anchorIndex = anchorLine - 1;
-  const effectiveIndents = computeEffectiveIndents(records);
-  const anchorIndent = effectiveIndents[anchorIndex] ?? 0;
-  const minIndent = maxLevels === 0 ? 0 : Math.max(anchorIndent - maxLevels * DEFAULT_TAB_WIDTH, 0);
-  const guardLimit = maxLines ?? limit;
-  const finalLimit = Math.min(limit, guardLimit, records.length);
-  if (finalLimit <= 1) {
-    return [records[anchorIndex]].filter((entry): entry is ReadLineRecord => Boolean(entry));
-  }
-
-  let upper = anchorIndex - 1;
-  let lower = anchorIndex + 1;
-  let upperMinIndentHits = 0;
-  let lowerMinIndentHits = 0;
-  const output: ReadLineRecord[] = [records[anchorIndex]].filter((entry): entry is ReadLineRecord =>
-    Boolean(entry),
-  );
-
-  while (output.length < finalLimit) {
-    let progressed = 0;
-
-    if (upper >= 0) {
-      const candidate = records[upper];
-      const candidateIndent = effectiveIndents[upper] ?? 0;
-      if (candidate && candidateIndent >= minIndent) {
-        output.unshift(candidate);
-        progressed += 1;
-        upper -= 1;
-        if (candidateIndent === minIndent && !includeSiblings) {
-          const allowHeaderComment = includeHeader && isCommentLine(candidate.raw);
-          const canTakeLine = allowHeaderComment || upperMinIndentHits === 0;
-          if (canTakeLine) {
-            upperMinIndentHits += 1;
-          } else {
-            output.shift();
-            progressed -= 1;
-            upper = -1;
-          }
-        }
-        if (output.length >= finalLimit) {
-          break;
-        }
-      } else {
-        upper = -1;
-      }
-    }
-
-    if (lower < records.length) {
-      const candidate = records[lower];
-      const candidateIndent = effectiveIndents[lower] ?? 0;
-      if (candidate && candidateIndent >= minIndent) {
-        output.push(candidate);
-        progressed += 1;
-        lower += 1;
-        if (candidateIndent === minIndent && !includeSiblings) {
-          if (lowerMinIndentHits > 0) {
-            output.pop();
-            progressed -= 1;
-            lower = records.length;
-          }
-          lowerMinIndentHits += 1;
-        }
-      } else {
-        lower = records.length;
-      }
-    }
-
-    if (progressed === 0) {
-      break;
-    }
-  }
-
-  trimBoundaryBlankLines(output);
-  return output;
 }
 
 async function collectDirectoryEntries(
