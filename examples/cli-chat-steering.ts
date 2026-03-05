@@ -5,14 +5,17 @@ import process from "node:process";
 
 import {
   createNodeAgentFilesystem,
+  isLlmTextModelId,
   loadLocalEnv,
   streamAgentLoop,
   type AgentLoopStream,
   type LlmInputMessage,
   type LlmStreamEvent,
+  type LlmTextModelId,
 } from "../src/index.js";
 
-const MODEL = "chatgpt-gpt-5.3-codex";
+const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.3-codex";
+const MODEL = resolveModelFromArgs(process.argv.slice(2));
 
 const ANSI = {
   reset: "\u001B[0m",
@@ -37,6 +40,7 @@ type ActiveRunState = {
   pendingDeltaChannel: "thought" | "response" | null;
   pendingDeltaText: string;
   sawThoughtDelta: boolean;
+  sawResponseDelta: boolean;
   sawAbort: boolean;
   sawModel: boolean;
 };
@@ -47,6 +51,36 @@ let shuttingDown = false;
 let rawModeEnabled = false;
 let inputBuffer = "";
 let composerRendered = false;
+
+function resolveModelFromArgs(args: readonly string[]): LlmTextModelId {
+  let requestedModel: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--model") {
+      requestedModel = args[index + 1];
+      break;
+    }
+    if (arg.startsWith("--model=")) {
+      requestedModel = arg.slice("--model=".length);
+      break;
+    }
+  }
+
+  if (requestedModel === undefined) {
+    return DEFAULT_MODEL;
+  }
+
+  const model = requestedModel.trim();
+  if (model.length === 0) {
+    process.stderr.write("Invalid --model flag: expected a non-empty model id.\n");
+    process.exit(1);
+  }
+  if (!isLlmTextModelId(model)) {
+    process.stderr.write(`Unsupported --model value: ${model}\n`);
+    process.exit(1);
+  }
+  return model;
+}
 
 loadLocalEnv();
 
@@ -239,6 +273,7 @@ function startRun(): void {
     pendingDeltaChannel: null,
     pendingDeltaText: "",
     sawThoughtDelta: false,
+    sawResponseDelta: false,
     sawAbort: false,
     sawModel: false,
   };
@@ -258,11 +293,18 @@ async function consumeRun(state: ActiveRunState): Promise<void> {
     flushPendingDeltaBuffer(state);
     const result = await state.call.result;
     if (!state.sawThoughtDelta && result.thoughts.trim().length > 0) {
-      writeUiLine(`${ANSI.dim}${ANSI.italic}• ${result.thoughts}${ANSI.reset}`);
+      const thoughtLines = normaliseThoughtText(result.thoughts).split("\n");
+      for (const line of thoughtLines) {
+        writeUiLine(`${ANSI.dim}${ANSI.italic}• ${line}${ANSI.reset}`);
+      }
     }
 
     if (result.text.trim().length > 0) {
       history.push({ role: "assistant", content: result.text });
+    }
+
+    if (state.sawResponseDelta) {
+      writeUiLine("");
     }
 
     printSystem(
@@ -334,13 +376,18 @@ function appendDeltaChunk(
   }
   if (channel === "thought") {
     state.sawThoughtDelta = true;
+  } else if (!state.sawResponseDelta) {
+    state.sawResponseDelta = true;
+    writeUiLine("");
   }
 
   if (state.pendingDeltaChannel && state.pendingDeltaChannel !== channel) {
     flushPendingDeltaBuffer(state);
   }
   state.pendingDeltaChannel = channel;
-  state.pendingDeltaText += chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalisedChunk =
+    channel === "thought" ? normaliseThoughtText(chunk) : chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  state.pendingDeltaText += normalisedChunk;
 
   while (true) {
     const newlineIndex = state.pendingDeltaText.indexOf("\n");
@@ -356,6 +403,15 @@ function appendDeltaChunk(
     emitDeltaLine(channel, state.pendingDeltaText);
     state.pendingDeltaText = "";
   }
+}
+
+function normaliseThoughtText(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n");
 }
 
 function shouldFlushPartialDelta(text: string): boolean {
@@ -386,7 +442,9 @@ function emitDeltaLine(channel: "thought" | "response", text: string): void {
 
 function renderUser(text: string, steering: boolean): void {
   const steeringTag = steering ? `${ANSI.dim}(steer)${ANSI.reset} ` : "";
+  writeUiLine("");
   writeUiLine(`${ANSI.cyan}${ANSI.bold}›${ANSI.reset} ${steeringTag}${text}`);
+  writeUiLine("");
 }
 
 function printBanner(): void {
@@ -407,6 +465,8 @@ function printHelp(usePromptAwareOutput = true): void {
     `${ANSI.dim}  /help${ANSI.reset} show help\n` +
     `${ANSI.dim}  /stop${ANSI.reset} stop active run\n` +
     `${ANSI.dim}  /exit${ANSI.reset} quit\n` +
+    `${ANSI.dim}Startup flags:${ANSI.reset}\n` +
+    `${ANSI.dim}  --model <id>${ANSI.reset} choose model (default: ${DEFAULT_MODEL})\n` +
     `${ANSI.dim}During a run: type a message and press Enter to append steering without interrupting.${ANSI.reset}\n`;
 
   if (!usePromptAwareOutput || !interactiveTty || shuttingDown) {
