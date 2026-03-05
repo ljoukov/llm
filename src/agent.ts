@@ -400,7 +400,7 @@ function createSubagentController(params: {
           subagentTool: params.subagentSelection,
           modelTools: params.toolLoopRequest.modelTools,
           maxSteps: subagentRequest.maxSteps,
-          openAiReasoningEffort: params.toolLoopRequest.openAiReasoningEffort,
+          thinkingLevel: params.toolLoopRequest.thinkingLevel,
           signal: subagentRequest.signal,
         },
         {

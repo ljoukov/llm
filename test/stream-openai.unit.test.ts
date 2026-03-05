@@ -61,6 +61,19 @@ describe("streamText (OpenAI)", () => {
     expect(events.some((e) => e.type === "usage")).toBe(true);
   });
 
+  it("maps thinkingLevel=high to OpenAI max reasoning effort", async () => {
+    capturedRequest = null;
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({ model: "gpt-5.2", input: "hi", thinkingLevel: "high" });
+    for await (const _event of call.events) {
+      // Drain stream.
+    }
+    await call.result;
+
+    expect(capturedRequest?.reasoning?.effort).toBe("high");
+  });
+
   it("maps inlineData application/pdf to input_file", async () => {
     capturedRequest = null;
     const { generateText } = await import("../src/llm.js");

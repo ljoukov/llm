@@ -65,6 +65,42 @@ describe("streamText (Gemini)", () => {
     });
   });
 
+  it("maps thinkingLevel=low to gemini-2.5-pro thinkingBudget=256", async () => {
+    geminiRequests = [];
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({ model: "gemini-2.5-pro", input: "hi", thinkingLevel: "low" });
+    for await (const _event of call.events) {
+      // Drain stream to completion.
+    }
+    await call.result;
+
+    expect(geminiRequests[0]?.config?.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingBudget: 256,
+    });
+  });
+
+  it("maps thinkingLevel=medium to gemini-3.1-pro-preview thinkingLevel=MEDIUM", async () => {
+    geminiRequests = [];
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({
+      model: "gemini-3.1-pro-preview",
+      input: "hi",
+      thinkingLevel: "medium",
+    });
+    for await (const _event of call.events) {
+      // Drain stream to completion.
+    }
+    await call.result;
+
+    expect(geminiRequests[0]?.config?.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingLevel: "MEDIUM",
+    });
+  });
+
   it("does not send thinkingConfig for Gemini image models", async () => {
     geminiRequests = [];
     const { streamText } = await import("../src/llm.js");

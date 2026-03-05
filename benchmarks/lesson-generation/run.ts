@@ -16,6 +16,7 @@ import {
   isLlmTextModelId,
   LLM_TEXT_MODEL_IDS,
   runAgentLoop,
+  type LlmThinkingLevel,
   type LlmTextModelId,
   type LlmToolLoopStep,
 } from "../../src/index.js";
@@ -382,6 +383,10 @@ function parseReasoningEffort(raw: string): ReasoningEffort {
     return raw as ReasoningEffort;
   }
   throw new Error(`Invalid --reasoning value: ${raw}`);
+}
+
+function toThinkingLevel(reasoning: ReasoningEffort): LlmThinkingLevel {
+  return reasoning === "xhigh" ? "high" : reasoning;
 }
 
 function isBenchmarkVariant(value: string): value is BenchmarkVariant {
@@ -3742,7 +3747,7 @@ async function gradeOutputs(params: {
         schema: GraderSchema,
         instructions:
           "Be conservative. If uncertain about fidelity or coverage, choose fail and explain concrete issues.",
-        openAiReasoningEffort: params.reasoning,
+        thinkingLevel: toThinkingLevel(params.reasoning),
         maxAttempts: graderMaxAttempts,
         signal: abortController.signal,
       });
@@ -3907,7 +3912,7 @@ async function runCase(params: {
           },
         },
       },
-      openAiReasoningEffort: params.agentReasoning,
+      thinkingLevel: toThinkingLevel(params.agentReasoning),
       maxSteps: params.maxSteps,
       signal: agentAbortController.signal,
       subagents:

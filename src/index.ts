@@ -52,6 +52,7 @@ export type {
   LlmStreamEvent,
   LlmTextDeltaEvent,
   LlmTextModelId,
+  LlmThinkingLevel,
   LlmTextRequest,
   LlmTextResult,
   LlmTextStream,
