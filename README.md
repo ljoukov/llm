@@ -675,6 +675,44 @@ const result = await runAgentLoop({
 Telemetry emits parent/child run correlation (`runId` + `parentRunId`) for subagents.
 See `docs/agent-telemetry.md` for event schema, design rationale, and backend adapter guidance.
 
+### Agent Logging (Console + Files + Redirects)
+
+`runAgentLoop()` enables logging by default. It writes:
+
+- console lines,
+- `<workspace>/agent.log`,
+- per-call artifacts under a sibling logs directory: `<workspace-parent>/logs/<timestamp>-<n>/<model-id>/`.
+
+Each LLM call writes:
+
+- `request.txt`, `request.metadata.json`, and extracted attachments immediately,
+- streamed `thoughts.txt` and `response.txt` deltas during generation,
+- `response.metadata.json` at completion/failure (usage/cost/status/error).
+
+`image_url` data URLs are redacted in text/metadata logs (`data:...,...`) so base64 payloads are not printed inline.
+
+```ts
+import { runAgentLoop } from "@ljoukov/llm";
+
+await runAgentLoop({
+  model: "chatgpt-gpt-5.3-codex",
+  input: "Do the task",
+  filesystemTool: true,
+  logging: {
+    workspaceDir: process.cwd(), // optional; defaults to filesystem cwd or process.cwd()
+    mirrorToConsole: false, // useful for CLI UIs that already render stream events
+    sink: {
+      append: (line) => {
+        // Optional extra destination (file, socket, queue, etc.)
+      },
+      flush: async () => {},
+    },
+  },
+});
+```
+
+Set `logging: false` to disable logger output for a run.
+
 If you need exact control over tool definitions, build the filesystem toolset yourself and call `runToolLoop()` directly.
 
 ```ts

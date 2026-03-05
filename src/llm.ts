@@ -45,6 +45,12 @@ import {
   isChatGptModelId,
   isOpenAiModelId,
 } from "./openai/models.js";
+import {
+  getCurrentAgentLoggingSession,
+  sanitiseLogValue,
+  type AgentLlmCallAttachment,
+  type AgentLlmCallLogger,
+} from "./agentLogging.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
 export { estimateCallCostUsd } from "./utils/cost.js";
@@ -2528,6 +2534,232 @@ function extractImages(content: LlmContent | undefined): LlmImageData[] {
   return images;
 }
 
+function resolveAttachmentExtension(mimeType: string | undefined): string {
+  const normalized = (mimeType ?? "").trim().toLowerCase();
+  switch (normalized) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/heic":
+      return "heic";
+    case "image/heif":
+      return "heif";
+    case "application/pdf":
+      return "pdf";
+    case "application/json":
+      return "json";
+    case "text/plain":
+      return "txt";
+    case "text/markdown":
+      return "md";
+    default: {
+      const slashIndex = normalized.indexOf("/");
+      if (slashIndex >= 0) {
+        const subtype = normalized.slice(slashIndex + 1).split("+")[0] ?? "";
+        const cleaned = subtype.replace(/[^a-z0-9]+/giu, "");
+        if (cleaned.length > 0) {
+          return cleaned;
+        }
+      }
+      return "bin";
+    }
+  }
+}
+
+function decodeDataUrlAttachment(value: string, basename: string): AgentLlmCallAttachment | null {
+  const trimmed = value.trim();
+  if (!trimmed.toLowerCase().startsWith("data:")) {
+    return null;
+  }
+  const commaIndex = trimmed.indexOf(",");
+  if (commaIndex < 0) {
+    return null;
+  }
+  const header = trimmed.slice(5, commaIndex);
+  const payload = trimmed.slice(commaIndex + 1);
+  const isBase64 = /;base64(?:;|$)/iu.test(header);
+  const mimeType = (header.split(";")[0] ?? "application/octet-stream").trim().toLowerCase();
+  try {
+    const bytes = isBase64
+      ? Buffer.from(payload, "base64")
+      : Buffer.from(decodeURIComponent(payload), "utf8");
+    return {
+      filename: `${basename}.${resolveAttachmentExtension(mimeType)}`,
+      bytes,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function collectPayloadAttachments(
+  value: unknown,
+  options: {
+    readonly prefix: string;
+    readonly attachments: AgentLlmCallAttachment[];
+    readonly seen: WeakSet<object>;
+    counter: number;
+  },
+): void {
+  if (typeof value === "string") {
+    const attachment = decodeDataUrlAttachment(
+      value,
+      `${options.prefix}-${options.counter.toString()}`,
+    );
+    if (attachment) {
+      options.attachments.push(attachment);
+      options.counter += 1;
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
+  if (options.seen.has(value)) {
+    return;
+  }
+  options.seen.add(value);
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectPayloadAttachments(entry, options);
+    }
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const mimeType = typeof record.mimeType === "string" ? record.mimeType : undefined;
+  if (typeof record.data === "string" && mimeType) {
+    try {
+      options.attachments.push({
+        filename: `${options.prefix}-${options.counter.toString()}.${resolveAttachmentExtension(mimeType)}`,
+        bytes: decodeInlineDataBuffer(record.data),
+      });
+      options.counter += 1;
+    } catch {
+      // Ignore malformed inline-data payloads in logging only.
+    }
+  }
+  for (const entry of Object.values(record)) {
+    collectPayloadAttachments(entry, options);
+  }
+}
+
+function serialiseRequestPayloadForLogging(value: unknown): string {
+  try {
+    return `${JSON.stringify(sanitiseLogValue(value), null, 2)}\n`;
+  } catch {
+    return `${String(value)}\n`;
+  }
+}
+
+function startLlmCallLoggerFromContents(options: {
+  readonly provider: LlmProvider;
+  readonly request: LlmTextRequest;
+  readonly contents: readonly LlmContent[];
+}): AgentLlmCallLogger | undefined {
+  const session = getCurrentAgentLoggingSession();
+  if (!session) {
+    return undefined;
+  }
+  const attachments: AgentLlmCallAttachment[] = [];
+  const sections: string[] = [];
+  for (const [messageIndex, message] of options.contents.entries()) {
+    sections.push(`### message_${(messageIndex + 1).toString()} role=${message.role}`);
+    for (const [partIndex, part] of message.parts.entries()) {
+      if (part.type === "text") {
+        const channel = part.thought === true ? "thought" : "response";
+        sections.push(`[text:${channel}]`);
+        sections.push(part.text);
+        continue;
+      }
+      const filename = `message-${(messageIndex + 1).toString()}-part-${(partIndex + 1).toString()}.${resolveAttachmentExtension(part.mimeType)}`;
+      attachments.push({
+        filename,
+        bytes: decodeInlineDataBuffer(part.data),
+      });
+      sections.push(
+        `[inlineData] file=${filename} mime=${part.mimeType ?? "application/octet-stream"} bytes=${attachments[attachments.length - 1]?.bytes.byteLength ?? 0}`,
+      );
+    }
+    sections.push("");
+  }
+
+  return session.startLlmCall({
+    provider: options.provider,
+    modelId: options.request.model,
+    requestText: sections.join("\n").trim(),
+    requestMetadata: {
+      model: options.request.model,
+      input: options.contents.map((content) => ({
+        role: content.role,
+        parts: content.parts.map((part) => sanitisePartForLogging(part)),
+      })),
+      ...(options.request.instructions
+        ? {
+            instructions: options.request.instructions,
+          }
+        : {}),
+      ...(options.request.tools ? { tools: options.request.tools } : {}),
+      ...(options.request.responseMimeType
+        ? {
+            responseMimeType: options.request.responseMimeType,
+          }
+        : {}),
+      ...(options.request.responseJsonSchema
+        ? {
+            responseJsonSchema: sanitiseLogValue(options.request.responseJsonSchema),
+          }
+        : {}),
+      ...(options.request.responseModalities
+        ? { responseModalities: options.request.responseModalities }
+        : {}),
+      ...(options.request.imageAspectRatio
+        ? { imageAspectRatio: options.request.imageAspectRatio }
+        : {}),
+      ...(options.request.imageSize ? { imageSize: options.request.imageSize } : {}),
+      ...(options.request.thinkingLevel ? { thinkingLevel: options.request.thinkingLevel } : {}),
+      ...(options.request.openAiTextFormat
+        ? { openAiTextFormat: sanitiseLogValue(options.request.openAiTextFormat) }
+        : {}),
+      ...(getCurrentToolCallContext() ? { toolContext: getCurrentToolCallContext() } : {}),
+    },
+    attachments,
+  });
+}
+
+function startLlmCallLoggerFromPayload(options: {
+  readonly provider: LlmProvider;
+  readonly modelId: string;
+  readonly requestPayload: unknown;
+  readonly step: number;
+}): AgentLlmCallLogger | undefined {
+  const session = getCurrentAgentLoggingSession();
+  if (!session) {
+    return undefined;
+  }
+  const attachments: AgentLlmCallAttachment[] = [];
+  collectPayloadAttachments(options.requestPayload, {
+    prefix: `step-${options.step.toString()}`,
+    attachments,
+    seen: new WeakSet<object>(),
+    counter: 1,
+  });
+  return session.startLlmCall({
+    provider: options.provider,
+    modelId: options.modelId,
+    requestText: serialiseRequestPayloadForLogging(options.requestPayload),
+    requestMetadata: {
+      step: options.step,
+      ...(getCurrentToolCallContext() ? { toolContext: getCurrentToolCallContext() } : {}),
+    },
+    attachments,
+  });
+}
+
 async function runTextCall(params: {
   request: LlmTextRequest;
   queue: AsyncQueue<LlmStreamEvent>;
@@ -2541,6 +2773,11 @@ async function runTextCall(params: {
   if (contents.length === 0) {
     throw new Error("LLM call received an empty prompt.");
   }
+  const callLogger = startLlmCallLoggerFromContents({
+    provider,
+    request,
+    contents,
+  });
 
   let modelVersion: string = request.model;
   let blocked = false;
@@ -2555,6 +2792,11 @@ async function runTextCall(params: {
       return;
     }
     responseParts.push({ type: "text", text, ...(channel === "thought" ? { thought: true } : {}) });
+    if (channel === "thought") {
+      callLogger?.appendThoughtDelta(text);
+    } else {
+      callLogger?.appendResponseDelta(text);
+    }
     queue.push({ type: "delta", channel, text });
   };
 
@@ -2587,265 +2829,83 @@ async function runTextCall(params: {
 
   const signal = resolveAbortSignal();
 
-  if (provider === "openai") {
-    const openAiInput = toOpenAiInput(contents);
-    const openAiTools = toOpenAiTools(request.tools);
-    const reasoningEffort = resolveOpenAiReasoningEffort(modelForProvider, request.thinkingLevel);
-    const openAiTextConfig = {
-      format: request.openAiTextFormat ?? { type: "text" },
-      verbosity: resolveOpenAiVerbosity(modelForProvider),
-    };
-    const reasoning = {
-      effort: toOpenAiReasoningEffort(reasoningEffort),
-      summary: "detailed" as const,
-    };
-
-    await runOpenAiCall(async (client) => {
-      const stream = client.responses.stream(
-        {
-          model: modelForProvider,
-          input: openAiInput as any,
-          reasoning,
-          text: openAiTextConfig as any,
-          ...(openAiTools ? { tools: openAiTools as any } : {}),
-          include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
-        },
-        { signal } as any,
-      );
-
-      for await (const event of stream as any) {
-        switch (event.type) {
-          case "response.output_text.delta": {
-            const delta = event.delta ?? "";
-            pushDelta("response", typeof delta === "string" ? delta : "");
-            break;
-          }
-          case "response.reasoning_summary_text.delta": {
-            const delta = event.delta ?? "";
-            pushDelta("thought", typeof delta === "string" ? delta : "");
-            break;
-          }
-          case "response.refusal.delta": {
-            blocked = true;
-            queue.push({ type: "blocked" });
-            break;
-          }
-          default:
-            break;
-        }
-      }
-
-      const finalResponse = await (stream as any).finalResponse();
-      modelVersion = typeof finalResponse.model === "string" ? finalResponse.model : request.model;
-      queue.push({ type: "model", modelVersion });
-      if (finalResponse.error) {
-        const message =
-          typeof finalResponse.error.message === "string"
-            ? finalResponse.error.message
-            : "OpenAI response failed";
-        throw new Error(message);
-      }
-      if (
-        finalResponse.status &&
-        finalResponse.status !== "completed" &&
-        finalResponse.status !== "in_progress"
-      ) {
-        const detail = finalResponse.incomplete_details?.reason;
-        throw new Error(
-          `OpenAI response status ${finalResponse.status}${detail ? ` (${detail})` : ""}`,
-        );
-      }
-      latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
-
-      // Fallback: if the stream did not deliver deltas (rare), extract from final output.
-      if (responseParts.length === 0) {
-        const fallback = extractOpenAiResponseParts(finalResponse);
-        blocked = blocked || fallback.blocked;
-        for (const part of fallback.parts) {
-          if (part.type === "text") {
-            pushDelta(part.thought === true ? "thought" : "response", part.text);
-          } else {
-            pushInline(part.data, part.mimeType);
-          }
-        }
-      }
-    }, modelForProvider);
-  } else if (provider === "chatgpt") {
-    const chatGptInput = toChatGptInput(contents);
-    const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
-    const openAiTools = toOpenAiTools(request.tools);
-    const requestPayload = {
-      model: modelForProvider,
-      store: false,
-      stream: true,
-      instructions: chatGptInput.instructions ?? "You are a helpful assistant.",
-      input: chatGptInput.input,
-      include: ["reasoning.encrypted_content"],
-      reasoning: { effort: toOpenAiReasoningEffort(reasoningEffort), summary: "detailed" as const },
-      text: {
+  try {
+    if (provider === "openai") {
+      const openAiInput = toOpenAiInput(contents);
+      const openAiTools = toOpenAiTools(request.tools);
+      const reasoningEffort = resolveOpenAiReasoningEffort(modelForProvider, request.thinkingLevel);
+      const openAiTextConfig = {
         format: request.openAiTextFormat ?? { type: "text" },
-        verbosity: resolveOpenAiVerbosity(request.model),
-      },
-      ...(openAiTools ? { tools: openAiTools as any } : {}),
-    };
+        verbosity: resolveOpenAiVerbosity(modelForProvider),
+      };
+      const reasoning = {
+        effort: toOpenAiReasoningEffort(reasoningEffort),
+        summary: "detailed" as const,
+      };
 
-    let sawResponseDelta = false;
-    let sawThoughtDelta = false;
-    const result = await collectChatGptCodexResponseWithRetry({
-      request: requestPayload as any,
-      signal,
-      onDelta: (delta) => {
-        if (delta.thoughtDelta) {
-          sawThoughtDelta = true;
-          pushDelta("thought", delta.thoughtDelta);
-        }
-        if (delta.textDelta) {
-          sawResponseDelta = true;
-          pushDelta("response", delta.textDelta);
-        }
-      },
-    });
+      await runOpenAiCall(async (client) => {
+        const stream = client.responses.stream(
+          {
+            model: modelForProvider,
+            input: openAiInput as any,
+            reasoning,
+            text: openAiTextConfig as any,
+            ...(openAiTools ? { tools: openAiTools as any } : {}),
+            include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
+          },
+          { signal } as any,
+        );
 
-    blocked = blocked || result.blocked;
-    if (blocked) {
-      queue.push({ type: "blocked" });
-    }
-    if (result.model) {
-      modelVersion = `chatgpt-${result.model}`;
-      queue.push({ type: "model", modelVersion });
-    }
-    latestUsage = extractChatGptUsageTokens(result.usage);
-
-    // Fallback for rare cases where the SSE stream does not emit deltas.
-    const fallbackText = typeof result.text === "string" ? result.text : "";
-    const fallbackThoughts =
-      typeof result.reasoningSummaryText === "string" && result.reasoningSummaryText.length > 0
-        ? result.reasoningSummaryText
-        : typeof result.reasoningText === "string"
-          ? result.reasoningText
-          : "";
-    if (!sawThoughtDelta && fallbackThoughts.length > 0) {
-      pushDelta("thought", fallbackThoughts);
-    }
-    if (!sawResponseDelta && fallbackText.length > 0) {
-      pushDelta("response", fallbackText);
-    }
-  } else if (provider === "fireworks") {
-    if (request.tools && request.tools.length > 0) {
-      throw new Error(
-        "Fireworks provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
-      );
-    }
-
-    const fireworksMessages = toFireworksMessages(contents, {
-      responseMimeType: request.responseMimeType,
-      responseJsonSchema: request.responseJsonSchema,
-    });
-
-    await runFireworksCall(async (client) => {
-      const responseFormat = request.responseJsonSchema
-        ? {
-            type: "json_schema" as const,
-            json_schema: {
-              name: "llm-response",
-              schema: request.responseJsonSchema,
-            },
+        for await (const event of stream as any) {
+          switch (event.type) {
+            case "response.output_text.delta": {
+              const delta = event.delta ?? "";
+              pushDelta("response", typeof delta === "string" ? delta : "");
+              break;
+            }
+            case "response.reasoning_summary_text.delta": {
+              const delta = event.delta ?? "";
+              pushDelta("thought", typeof delta === "string" ? delta : "");
+              break;
+            }
+            case "response.refusal.delta": {
+              blocked = true;
+              queue.push({ type: "blocked" });
+              break;
+            }
+            default:
+              break;
           }
-        : request.responseMimeType === "application/json"
-          ? { type: "json_object" as const }
-          : undefined;
-
-      const response = await client.chat.completions.create(
-        {
-          model: modelForProvider,
-          messages: fireworksMessages as any,
-          ...(responseFormat ? { response_format: responseFormat } : {}),
-        } as any,
-        { signal } as any,
-      );
-
-      modelVersion = typeof response.model === "string" ? response.model : request.model;
-      queue.push({ type: "model", modelVersion });
-
-      const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
-      if (choice?.finish_reason === "content_filter") {
-        blocked = true;
-        queue.push({ type: "blocked" });
-      }
-
-      const textOutput = extractFireworksMessageText(
-        (choice as { message?: unknown } | undefined)?.message,
-      );
-      if (textOutput.length > 0) {
-        pushDelta("response", textOutput);
-      }
-
-      latestUsage = extractFireworksUsageTokens(response.usage);
-    }, modelForProvider);
-  } else {
-    const geminiContents = contents.map(convertLlmContentToGeminiContent);
-    const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
-    const config: GenerateContentConfig = {
-      maxOutputTokens: 32_000,
-      ...(thinkingConfig ? { thinkingConfig } : {}),
-      ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
-      ...(request.responseJsonSchema ? { responseJsonSchema: request.responseJsonSchema } : {}),
-      ...(request.responseModalities
-        ? { responseModalities: Array.from(request.responseModalities) }
-        : {}),
-      ...(request.imageAspectRatio || request.imageSize
-        ? {
-            imageConfig: {
-              ...(request.imageAspectRatio ? { aspectRatio: request.imageAspectRatio } : {}),
-              ...(request.imageSize ? { imageSize: request.imageSize } : {}),
-            },
-          }
-        : {}),
-    };
-    const geminiTools = toGeminiTools(request.tools);
-    if (geminiTools) {
-      config.tools = geminiTools;
-    }
-
-    await runGeminiCall(async (client) => {
-      const stream = await client.models.generateContentStream({
-        model: modelForProvider,
-        contents: geminiContents,
-        config,
-      });
-      let latestGrounding: GroundingMetadata | undefined;
-      for await (const chunk of stream) {
-        if (chunk.modelVersion) {
-          modelVersion = chunk.modelVersion;
-          queue.push({ type: "model", modelVersion });
         }
-        if (chunk.promptFeedback?.blockReason) {
-          blocked = true;
-          queue.push({ type: "blocked" });
+
+        const finalResponse = await (stream as any).finalResponse();
+        modelVersion =
+          typeof finalResponse.model === "string" ? finalResponse.model : request.model;
+        queue.push({ type: "model", modelVersion });
+        if (finalResponse.error) {
+          const message =
+            typeof finalResponse.error.message === "string"
+              ? finalResponse.error.message
+              : "OpenAI response failed";
+          throw new Error(message);
         }
-        latestUsage = mergeTokenUpdates(latestUsage, extractGeminiUsageTokens(chunk.usageMetadata));
-        const candidates = chunk.candidates;
-        if (!candidates || candidates.length === 0) {
-          continue;
+        if (
+          finalResponse.status &&
+          finalResponse.status !== "completed" &&
+          finalResponse.status !== "in_progress"
+        ) {
+          const detail = finalResponse.incomplete_details?.reason;
+          throw new Error(
+            `OpenAI response status ${finalResponse.status}${detail ? ` (${detail})` : ""}`,
+          );
         }
-        const primary = candidates[0];
-        if (primary && isModerationFinish(primary.finishReason)) {
-          blocked = true;
-          queue.push({ type: "blocked" });
-        }
-        for (const candidate of candidates) {
-          const candidateContent = candidate.content;
-          if (!candidateContent) {
-            continue;
-          }
-          if (candidate.groundingMetadata) {
-            latestGrounding = candidate.groundingMetadata;
-          }
-          const content = convertGeminiContentToLlmContent(candidateContent);
-          if (!responseRole) {
-            responseRole = content.role;
-          }
-          for (const part of content.parts) {
+        latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
+
+        // Fallback: if the stream did not deliver deltas (rare), extract from final output.
+        if (responseParts.length === 0) {
+          const fallback = extractOpenAiResponseParts(finalResponse);
+          blocked = blocked || fallback.blocked;
+          for (const part of fallback.parts) {
             if (part.type === "text") {
               pushDelta(part.thought === true ? "thought" : "response", part.text);
             } else {
@@ -2853,39 +2913,256 @@ async function runTextCall(params: {
             }
           }
         }
+      }, modelForProvider);
+    } else if (provider === "chatgpt") {
+      const chatGptInput = toChatGptInput(contents);
+      const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
+      const openAiTools = toOpenAiTools(request.tools);
+      const requestPayload = {
+        model: modelForProvider,
+        store: false,
+        stream: true,
+        instructions: chatGptInput.instructions ?? "You are a helpful assistant.",
+        input: chatGptInput.input,
+        include: ["reasoning.encrypted_content"],
+        reasoning: {
+          effort: toOpenAiReasoningEffort(reasoningEffort),
+          summary: "detailed" as const,
+        },
+        text: {
+          format: request.openAiTextFormat ?? { type: "text" },
+          verbosity: resolveOpenAiVerbosity(request.model),
+        },
+        ...(openAiTools ? { tools: openAiTools as any } : {}),
+      };
+
+      let sawResponseDelta = false;
+      let sawThoughtDelta = false;
+      const result = await collectChatGptCodexResponseWithRetry({
+        request: requestPayload as any,
+        signal,
+        onDelta: (delta) => {
+          if (delta.thoughtDelta) {
+            sawThoughtDelta = true;
+            pushDelta("thought", delta.thoughtDelta);
+          }
+          if (delta.textDelta) {
+            sawResponseDelta = true;
+            pushDelta("response", delta.textDelta);
+          }
+        },
+      });
+
+      blocked = blocked || result.blocked;
+      if (blocked) {
+        queue.push({ type: "blocked" });
       }
-      grounding = latestGrounding;
-    }, modelForProvider);
+      if (result.model) {
+        modelVersion = `chatgpt-${result.model}`;
+        queue.push({ type: "model", modelVersion });
+      }
+      latestUsage = extractChatGptUsageTokens(result.usage);
+
+      // Fallback for rare cases where the SSE stream does not emit deltas.
+      const fallbackText = typeof result.text === "string" ? result.text : "";
+      const fallbackThoughts =
+        typeof result.reasoningSummaryText === "string" && result.reasoningSummaryText.length > 0
+          ? result.reasoningSummaryText
+          : typeof result.reasoningText === "string"
+            ? result.reasoningText
+            : "";
+      if (!sawThoughtDelta && fallbackThoughts.length > 0) {
+        pushDelta("thought", fallbackThoughts);
+      }
+      if (!sawResponseDelta && fallbackText.length > 0) {
+        pushDelta("response", fallbackText);
+      }
+    } else if (provider === "fireworks") {
+      if (request.tools && request.tools.length > 0) {
+        throw new Error(
+          "Fireworks provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
+        );
+      }
+
+      const fireworksMessages = toFireworksMessages(contents, {
+        responseMimeType: request.responseMimeType,
+        responseJsonSchema: request.responseJsonSchema,
+      });
+
+      await runFireworksCall(async (client) => {
+        const responseFormat = request.responseJsonSchema
+          ? {
+              type: "json_schema" as const,
+              json_schema: {
+                name: "llm-response",
+                schema: request.responseJsonSchema,
+              },
+            }
+          : request.responseMimeType === "application/json"
+            ? { type: "json_object" as const }
+            : undefined;
+
+        const response = await client.chat.completions.create(
+          {
+            model: modelForProvider,
+            messages: fireworksMessages as any,
+            ...(responseFormat ? { response_format: responseFormat } : {}),
+          } as any,
+          { signal } as any,
+        );
+
+        modelVersion = typeof response.model === "string" ? response.model : request.model;
+        queue.push({ type: "model", modelVersion });
+
+        const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+        if (choice?.finish_reason === "content_filter") {
+          blocked = true;
+          queue.push({ type: "blocked" });
+        }
+
+        const textOutput = extractFireworksMessageText(
+          (choice as { message?: unknown } | undefined)?.message,
+        );
+        if (textOutput.length > 0) {
+          pushDelta("response", textOutput);
+        }
+
+        latestUsage = extractFireworksUsageTokens(response.usage);
+      }, modelForProvider);
+    } else {
+      const geminiContents = contents.map(convertLlmContentToGeminiContent);
+      const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
+      const config: GenerateContentConfig = {
+        maxOutputTokens: 32_000,
+        ...(thinkingConfig ? { thinkingConfig } : {}),
+        ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
+        ...(request.responseJsonSchema ? { responseJsonSchema: request.responseJsonSchema } : {}),
+        ...(request.responseModalities
+          ? { responseModalities: Array.from(request.responseModalities) }
+          : {}),
+        ...(request.imageAspectRatio || request.imageSize
+          ? {
+              imageConfig: {
+                ...(request.imageAspectRatio ? { aspectRatio: request.imageAspectRatio } : {}),
+                ...(request.imageSize ? { imageSize: request.imageSize } : {}),
+              },
+            }
+          : {}),
+      };
+      const geminiTools = toGeminiTools(request.tools);
+      if (geminiTools) {
+        config.tools = geminiTools;
+      }
+
+      await runGeminiCall(async (client) => {
+        const stream = await client.models.generateContentStream({
+          model: modelForProvider,
+          contents: geminiContents,
+          config,
+        });
+        let latestGrounding: GroundingMetadata | undefined;
+        for await (const chunk of stream) {
+          if (chunk.modelVersion) {
+            modelVersion = chunk.modelVersion;
+            queue.push({ type: "model", modelVersion });
+          }
+          if (chunk.promptFeedback?.blockReason) {
+            blocked = true;
+            queue.push({ type: "blocked" });
+          }
+          latestUsage = mergeTokenUpdates(
+            latestUsage,
+            extractGeminiUsageTokens(chunk.usageMetadata),
+          );
+          const candidates = chunk.candidates;
+          if (!candidates || candidates.length === 0) {
+            continue;
+          }
+          const primary = candidates[0];
+          if (primary && isModerationFinish(primary.finishReason)) {
+            blocked = true;
+            queue.push({ type: "blocked" });
+          }
+          for (const candidate of candidates) {
+            const candidateContent = candidate.content;
+            if (!candidateContent) {
+              continue;
+            }
+            if (candidate.groundingMetadata) {
+              latestGrounding = candidate.groundingMetadata;
+            }
+            const content = convertGeminiContentToLlmContent(candidateContent);
+            if (!responseRole) {
+              responseRole = content.role;
+            }
+            for (const part of content.parts) {
+              if (part.type === "text") {
+                pushDelta(part.thought === true ? "thought" : "response", part.text);
+              } else {
+                pushInline(part.data, part.mimeType);
+              }
+            }
+          }
+        }
+        grounding = latestGrounding;
+      }, modelForProvider);
+    }
+
+    const mergedParts = mergeConsecutiveTextParts(responseParts);
+    const content =
+      mergedParts.length > 0
+        ? { role: responseRole ?? "assistant", parts: mergedParts }
+        : undefined;
+    const { text, thoughts } = extractTextByChannel(content);
+
+    const costUsd = estimateCallCostUsd({
+      modelId: modelVersion,
+      tokens: latestUsage,
+      responseImages,
+      imageSize: request.imageSize,
+    });
+
+    if (latestUsage) {
+      queue.push({ type: "usage", usage: latestUsage, costUsd, modelVersion });
+    }
+
+    callLogger?.complete({
+      provider,
+      model: request.model,
+      modelVersion,
+      blocked,
+      costUsd,
+      usage: latestUsage,
+      grounding: grounding ? sanitiseLogValue(grounding) : undefined,
+      responseChars: text.length,
+      thoughtChars: thoughts.length,
+      responseImages,
+    });
+
+    return {
+      provider,
+      model: request.model,
+      modelVersion,
+      content,
+      text,
+      thoughts,
+      blocked,
+      usage: latestUsage,
+      costUsd,
+      grounding,
+    };
+  } catch (error) {
+    callLogger?.fail(error, {
+      provider,
+      model: request.model,
+      modelVersion,
+      blocked,
+      usage: latestUsage,
+      partialResponseParts: responseParts.length,
+      responseImages,
+    });
+    throw error;
   }
-
-  const mergedParts = mergeConsecutiveTextParts(responseParts);
-  const content =
-    mergedParts.length > 0 ? { role: responseRole ?? "assistant", parts: mergedParts } : undefined;
-  const { text, thoughts } = extractTextByChannel(content);
-
-  const costUsd = estimateCallCostUsd({
-    modelId: modelVersion,
-    tokens: latestUsage,
-    responseImages,
-    imageSize: request.imageSize,
-  });
-
-  if (latestUsage) {
-    queue.push({ type: "usage", usage: latestUsage, costUsd, modelVersion });
-  }
-
-  return {
-    provider,
-    model: request.model,
-    modelVersion,
-    content,
-    text,
-    thoughts,
-    blocked,
-    usage: latestUsage,
-    costUsd,
-    grounding,
-  };
 }
 
 export function streamText(request: LlmTextRequest): LlmTextStream {
@@ -3441,6 +3718,23 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let modelVersion: string = request.model;
         let usageTokens: LlmUsageTokens | undefined;
         let thoughtDeltaEmitted = false;
+        let blocked = false;
+        const stepRequestPayload = {
+          model: providerInfo.model,
+          input,
+          ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+          ...(openAiTools.length > 0 ? { tools: openAiTools } : {}),
+          ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
+          reasoning,
+          text: textConfig,
+          include: ["reasoning.encrypted_content"],
+        };
+        const stepCallLogger = startLlmCallLoggerFromPayload({
+          provider: "openai",
+          modelId: request.model,
+          requestPayload: stepRequestPayload,
+          step: turn,
+        });
 
         const emitEvent = (ev: LlmStreamEvent) => {
           onEvent?.(ev);
@@ -3452,101 +3746,250 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
         };
 
-        const finalResponse = await runOpenAiCall(
-          async (client) => {
-            const stream = client.responses.stream(
-              {
-                model: providerInfo.model,
-                input,
-                ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-                ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
-                ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
-                reasoning,
-                text: textConfig as any,
-                include: ["reasoning.encrypted_content"] as any,
-              },
-              { signal: abortController.signal } as any,
-            );
+        try {
+          const finalResponse = await runOpenAiCall(
+            async (client) => {
+              const stream = client.responses.stream(
+                {
+                  model: providerInfo.model,
+                  input,
+                  ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+                  ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
+                  ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
+                  reasoning,
+                  text: textConfig as any,
+                  include: ["reasoning.encrypted_content"] as any,
+                },
+                { signal: abortController.signal } as any,
+              );
 
-            for await (const event of stream as any) {
-              markFirstModelEvent();
-              switch (event.type) {
-                case "response.output_text.delta":
-                  emitEvent({
-                    type: "delta",
-                    channel: "response",
-                    text: typeof event.delta === "string" ? event.delta : "",
-                  });
-                  break;
-                case "response.reasoning_summary_text.delta":
-                  thoughtDeltaEmitted = true;
-                  emitEvent({
-                    type: "delta",
-                    channel: "thought",
-                    text: typeof event.delta === "string" ? event.delta : "",
-                  });
-                  break;
-                case "response.refusal.delta":
-                  emitEvent({ type: "blocked" });
-                  break;
-                default:
-                  break;
+              for await (const event of stream as any) {
+                markFirstModelEvent();
+                switch (event.type) {
+                  case "response.output_text.delta": {
+                    const text = typeof event.delta === "string" ? event.delta : "";
+                    if (text.length > 0) {
+                      stepCallLogger?.appendResponseDelta(text);
+                    }
+                    emitEvent({
+                      type: "delta",
+                      channel: "response",
+                      text,
+                    });
+                    break;
+                  }
+                  case "response.reasoning_summary_text.delta": {
+                    thoughtDeltaEmitted = true;
+                    const text = typeof event.delta === "string" ? event.delta : "";
+                    if (text.length > 0) {
+                      stepCallLogger?.appendThoughtDelta(text);
+                    }
+                    emitEvent({
+                      type: "delta",
+                      channel: "thought",
+                      text,
+                    });
+                    break;
+                  }
+                  case "response.refusal.delta":
+                    blocked = true;
+                    emitEvent({ type: "blocked" });
+                    break;
+                  default:
+                    break;
+                }
               }
-            }
-            return await (stream as any).finalResponse();
-          },
-          providerInfo.model,
-          {
-            onSettled: (metrics) => {
-              schedulerMetrics = metrics;
+              return await (stream as any).finalResponse();
             },
-          },
-        );
+            providerInfo.model,
+            {
+              onSettled: (metrics) => {
+                schedulerMetrics = metrics;
+              },
+            },
+          );
 
-        modelVersion =
-          typeof (finalResponse as any).model === "string"
-            ? (finalResponse as any).model
-            : request.model;
-        emitEvent({ type: "model", modelVersion });
-        if ((finalResponse as any).error) {
-          const message =
-            typeof (finalResponse as any).error.message === "string"
-              ? (finalResponse as any).error.message
-              : "OpenAI response failed";
-          throw new Error(message);
-        }
-        usageTokens = extractOpenAiUsageTokens((finalResponse as any).usage);
+          modelVersion =
+            typeof (finalResponse as any).model === "string"
+              ? (finalResponse as any).model
+              : request.model;
+          emitEvent({ type: "model", modelVersion });
+          if ((finalResponse as any).error) {
+            const message =
+              typeof (finalResponse as any).error.message === "string"
+                ? (finalResponse as any).error.message
+                : "OpenAI response failed";
+            throw new Error(message);
+          }
+          usageTokens = extractOpenAiUsageTokens((finalResponse as any).usage);
 
-        const responseText = extractOpenAiResponseParts(finalResponse)
-          .parts.filter((p) => p.type === "text" && p.thought !== true)
-          .map((p) => (p as any).text as string)
-          .join("")
-          .trim();
-        const reasoningSummary = extractOpenAiReasoningSummary(finalResponse).trim();
-        if (!thoughtDeltaEmitted && reasoningSummary.length > 0) {
-          emitEvent({ type: "delta", channel: "thought", text: reasoningSummary });
-        }
-        const modelCompletedAtMs = Date.now();
+          const responseText = extractOpenAiResponseParts(finalResponse)
+            .parts.filter((p) => p.type === "text" && p.thought !== true)
+            .map((p) => (p as any).text as string)
+            .join("")
+            .trim();
+          const reasoningSummary = extractOpenAiReasoningSummary(finalResponse).trim();
+          if (!thoughtDeltaEmitted && reasoningSummary.length > 0) {
+            stepCallLogger?.appendThoughtDelta(reasoningSummary);
+            emitEvent({ type: "delta", channel: "thought", text: reasoningSummary });
+          }
+          const modelCompletedAtMs = Date.now();
 
-        const stepCostUsd = estimateCallCostUsd({
-          modelId: modelVersion,
-          tokens: usageTokens,
-          responseImages: 0,
-        });
-        totalCostUsd += stepCostUsd;
+          const stepCostUsd = estimateCallCostUsd({
+            modelId: modelVersion,
+            tokens: usageTokens,
+            responseImages: 0,
+          });
+          totalCostUsd += stepCostUsd;
 
-        if (usageTokens) {
-          emitEvent({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
-        }
+          if (usageTokens) {
+            emitEvent({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
+          }
 
-        const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
+          const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
 
-        const stepToolCalls: LlmToolCallResult[] = [];
-        if (responseToolCalls.length === 0) {
-          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-          const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
-          finalText = responseText;
-          finalThoughts = reasoningSummary;
+          const stepToolCalls: LlmToolCallResult[] = [];
+          if (responseToolCalls.length === 0) {
+            const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+            const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
+            finalText = responseText;
+            finalThoughts = reasoningSummary;
+            const stepCompletedAtMs = Date.now();
+            const timing = buildStepTiming({
+              stepStartedAtMs,
+              stepCompletedAtMs,
+              modelCompletedAtMs,
+              firstModelEventAtMs,
+              schedulerMetrics,
+              toolExecutionMs: 0,
+              waitToolMs: 0,
+            });
+            steps.push({
+              step: steps.length + 1,
+              modelVersion,
+              text: responseText || undefined,
+              thoughts: reasoningSummary || undefined,
+              toolCalls: [],
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              timing,
+            });
+            stepCallLogger?.complete({
+              provider: "openai",
+              model: request.model,
+              modelVersion,
+              step: turn,
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              blocked,
+              responseChars: responseText.length,
+              thoughtChars: reasoningSummary.length,
+              toolCalls: 0,
+              finalStep: steeringItems.length === 0,
+            });
+            if (steeringItems.length === 0) {
+              return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            }
+            previousResponseId = (finalResponse as any).id;
+            input = steeringItems;
+            continue;
+          }
+
+          const callInputs = responseToolCalls.map((call, index) => {
+            const toolIndex = index + 1;
+            const toolId = buildToolLogId(turn, toolIndex);
+            const toolName = call.name;
+            if (call.kind === "custom") {
+              return {
+                call,
+                toolName,
+                value: call.input,
+                parseError: undefined,
+                toolId,
+                turn,
+                toolIndex,
+              };
+            }
+            const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
+            return { call, toolName, value, parseError, toolId, turn, toolIndex };
+          });
+
+          for (const entry of callInputs) {
+            emitEvent({
+              type: "tool_call",
+              phase: "started",
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: entry.call.kind,
+              callId: entry.call.call_id,
+              input: entry.value,
+            });
+          }
+
+          const callResults = await Promise.all(
+            callInputs.map(async (entry) => {
+              return await toolCallContextStorage.run(
+                {
+                  toolName: entry.toolName,
+                  toolId: entry.toolId,
+                  turn: entry.turn,
+                  toolIndex: entry.toolIndex,
+                },
+                async () => {
+                  const { result, outputPayload } = await executeToolCall({
+                    callKind: entry.call.kind,
+                    toolName: entry.toolName,
+                    tool: request.tools[entry.toolName],
+                    rawInput: entry.value,
+                    parseError: entry.parseError,
+                  });
+                  return { entry, result, outputPayload };
+                },
+              );
+            }),
+          );
+
+          const toolOutputs: any[] = [];
+          let toolExecutionMs = 0;
+          let waitToolMs = 0;
+          for (const { entry, result, outputPayload } of callResults) {
+            stepToolCalls.push({ ...result, callId: entry.call.call_id });
+            const callDurationMs = toToolResultDuration(result);
+            toolExecutionMs += callDurationMs;
+            if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+              waitToolMs += callDurationMs;
+            }
+            emitEvent({
+              type: "tool_call",
+              phase: "completed",
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: entry.call.kind,
+              callId: entry.call.call_id,
+              input: entry.value,
+              output: result.output,
+              error: result.error,
+              durationMs: result.durationMs,
+            });
+            if (entry.call.kind === "custom") {
+              toolOutputs.push({
+                type: "custom_tool_call_output",
+                call_id: entry.call.call_id,
+                output: toOpenAiToolOutput(outputPayload),
+              });
+            } else {
+              toolOutputs.push({
+                type: "function_call_output",
+                call_id: entry.call.call_id,
+                output: toOpenAiToolOutput(outputPayload),
+              });
+            }
+          }
+
           const stepCompletedAtMs = Date.now();
           const timing = buildStepTiming({
             stepStartedAtMs,
@@ -3554,147 +3997,48 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             modelCompletedAtMs,
             firstModelEventAtMs,
             schedulerMetrics,
-            toolExecutionMs: 0,
-            waitToolMs: 0,
+            toolExecutionMs,
+            waitToolMs,
           });
           steps.push({
             step: steps.length + 1,
             modelVersion,
             text: responseText || undefined,
             thoughts: reasoningSummary || undefined,
-            toolCalls: [],
+            toolCalls: stepToolCalls,
             usage: usageTokens,
             costUsd: stepCostUsd,
             timing,
           });
-          if (steeringItems.length === 0) {
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
-          }
+
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
+          stepCallLogger?.complete({
+            provider: "openai",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            blocked,
+            responseChars: responseText.length,
+            thoughtChars: reasoningSummary.length,
+            toolCalls: stepToolCalls.length,
+            finalStep: false,
+          });
           previousResponseId = (finalResponse as any).id;
-          input = steeringItems;
-          continue;
-        }
-
-        const callInputs = responseToolCalls.map((call, index) => {
-          const toolIndex = index + 1;
-          const toolId = buildToolLogId(turn, toolIndex);
-          const toolName = call.name;
-          if (call.kind === "custom") {
-            return {
-              call,
-              toolName,
-              value: call.input,
-              parseError: undefined,
-              toolId,
-              turn,
-              toolIndex,
-            };
-          }
-          const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
-          return { call, toolName, value, parseError, toolId, turn, toolIndex };
-        });
-
-        for (const entry of callInputs) {
-          emitEvent({
-            type: "tool_call",
-            phase: "started",
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            callKind: entry.call.kind,
-            callId: entry.call.call_id,
-            input: entry.value,
+          input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
+        } catch (error) {
+          stepCallLogger?.fail(error, {
+            provider: "openai",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
+            blocked,
           });
+          throw error;
         }
-
-        const callResults = await Promise.all(
-          callInputs.map(async (entry) => {
-            return await toolCallContextStorage.run(
-              {
-                toolName: entry.toolName,
-                toolId: entry.toolId,
-                turn: entry.turn,
-                toolIndex: entry.toolIndex,
-              },
-              async () => {
-                const { result, outputPayload } = await executeToolCall({
-                  callKind: entry.call.kind,
-                  toolName: entry.toolName,
-                  tool: request.tools[entry.toolName],
-                  rawInput: entry.value,
-                  parseError: entry.parseError,
-                });
-                return { entry, result, outputPayload };
-              },
-            );
-          }),
-        );
-
-        const toolOutputs: any[] = [];
-        let toolExecutionMs = 0;
-        let waitToolMs = 0;
-        for (const { entry, result, outputPayload } of callResults) {
-          stepToolCalls.push({ ...result, callId: entry.call.call_id });
-          const callDurationMs = toToolResultDuration(result);
-          toolExecutionMs += callDurationMs;
-          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-            waitToolMs += callDurationMs;
-          }
-          emitEvent({
-            type: "tool_call",
-            phase: "completed",
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            callKind: entry.call.kind,
-            callId: entry.call.call_id,
-            input: entry.value,
-            output: result.output,
-            error: result.error,
-            durationMs: result.durationMs,
-          });
-          if (entry.call.kind === "custom") {
-            toolOutputs.push({
-              type: "custom_tool_call_output",
-              call_id: entry.call.call_id,
-              output: toOpenAiToolOutput(outputPayload),
-            });
-          } else {
-            toolOutputs.push({
-              type: "function_call_output",
-              call_id: entry.call.call_id,
-              output: toOpenAiToolOutput(outputPayload),
-            });
-          }
-        }
-
-        const stepCompletedAtMs = Date.now();
-        const timing = buildStepTiming({
-          stepStartedAtMs,
-          stepCompletedAtMs,
-          modelCompletedAtMs,
-          firstModelEventAtMs,
-          schedulerMetrics,
-          toolExecutionMs,
-          waitToolMs,
-        });
-        steps.push({
-          step: steps.length + 1,
-          modelVersion,
-          text: responseText || undefined,
-          thoughts: reasoningSummary || undefined,
-          toolCalls: stepToolCalls,
-          usage: usageTokens,
-          costUsd: stepCostUsd,
-          timing,
-        });
-
-        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
-        previousResponseId = (finalResponse as any).id;
-        input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
       }
 
       throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
@@ -3719,230 +4063,285 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         const stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let thoughtDeltaEmitted = false;
+        let sawResponseDelta = false;
+        let modelVersion: string = request.model;
+        let usageTokens: LlmUsageTokens | undefined;
+        let responseText = "";
+        let reasoningSummaryText = "";
         const markFirstModelEvent = () => {
           if (firstModelEventAtMs === undefined) {
             firstModelEventAtMs = Date.now();
           }
         };
-        const response = await collectChatGptCodexResponseWithRetry({
-          sessionId: conversationId,
-          request: {
-            model: providerInfo.model,
-            store: false,
-            stream: true,
-            instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
-            input,
-            prompt_cache_key: promptCacheKey,
-            include: ["reasoning.encrypted_content"],
-            tools: openAiTools,
-            tool_choice: "auto" as const,
-            parallel_tool_calls: true,
-            reasoning: {
-              effort: toOpenAiReasoningEffort(reasoningEffort),
-              summary: "detailed" as const,
-            },
-            text: { verbosity: resolveOpenAiVerbosity(request.model) },
-          } as any,
-          signal: request.signal,
-          onDelta: (delta) => {
-            if (delta.thoughtDelta) {
-              markFirstModelEvent();
-              thoughtDeltaEmitted = true;
-              request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
-            }
-            if (delta.textDelta) {
-              markFirstModelEvent();
-              request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
-            }
+        const stepRequestPayload = {
+          model: providerInfo.model,
+          store: false,
+          stream: true,
+          instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
+          input,
+          prompt_cache_key: promptCacheKey,
+          include: ["reasoning.encrypted_content"],
+          tools: openAiTools,
+          tool_choice: "auto" as const,
+          parallel_tool_calls: true,
+          reasoning: {
+            effort: toOpenAiReasoningEffort(reasoningEffort),
+            summary: "detailed" as const,
           },
+          text: { verbosity: resolveOpenAiVerbosity(request.model) },
+        };
+        const stepCallLogger = startLlmCallLoggerFromPayload({
+          provider: "chatgpt",
+          modelId: request.model,
+          requestPayload: stepRequestPayload,
+          step: turn,
         });
-        const modelCompletedAtMs = Date.now();
+        try {
+          const response = await collectChatGptCodexResponseWithRetry({
+            sessionId: conversationId,
+            request: stepRequestPayload as any,
+            signal: request.signal,
+            onDelta: (delta) => {
+              if (delta.thoughtDelta) {
+                markFirstModelEvent();
+                thoughtDeltaEmitted = true;
+                stepCallLogger?.appendThoughtDelta(delta.thoughtDelta);
+                request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
+              }
+              if (delta.textDelta) {
+                markFirstModelEvent();
+                sawResponseDelta = true;
+                stepCallLogger?.appendResponseDelta(delta.textDelta);
+                request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
+              }
+            },
+          });
+          const modelCompletedAtMs = Date.now();
 
-        const modelVersion = response.model ? `chatgpt-${response.model}` : request.model;
-        const usageTokens = extractChatGptUsageTokens(response.usage);
-        const stepCostUsd = estimateCallCostUsd({
-          modelId: modelVersion,
-          tokens: usageTokens,
-          responseImages: 0,
-        });
-        totalCostUsd += stepCostUsd;
+          modelVersion = response.model ? `chatgpt-${response.model}` : request.model;
+          usageTokens = extractChatGptUsageTokens(response.usage);
+          const stepCostUsd = estimateCallCostUsd({
+            modelId: modelVersion,
+            tokens: usageTokens,
+            responseImages: 0,
+          });
+          totalCostUsd += stepCostUsd;
 
-        const responseText = (response.text ?? "").trim();
-        const reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
-        if (!thoughtDeltaEmitted && reasoningSummaryText.length > 0) {
-          request.onEvent?.({ type: "delta", channel: "thought", text: reasoningSummaryText });
-        }
+          responseText = (response.text ?? "").trim();
+          reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
+          if (!thoughtDeltaEmitted && reasoningSummaryText.length > 0) {
+            stepCallLogger?.appendThoughtDelta(reasoningSummaryText);
+            request.onEvent?.({ type: "delta", channel: "thought", text: reasoningSummaryText });
+          }
+          if (!sawResponseDelta && responseText.length > 0) {
+            stepCallLogger?.appendResponseDelta(responseText);
+          }
 
-        const responseToolCalls = response.toolCalls ?? [];
-        if (responseToolCalls.length === 0) {
-          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-          const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
-          finalText = responseText;
-          finalThoughts = reasoningSummaryText;
+          const responseToolCalls = response.toolCalls ?? [];
+          if (responseToolCalls.length === 0) {
+            const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+            const steeringItems =
+              steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+            finalText = responseText;
+            finalThoughts = reasoningSummaryText;
+            const stepCompletedAtMs = Date.now();
+            const timing = buildStepTiming({
+              stepStartedAtMs,
+              stepCompletedAtMs,
+              modelCompletedAtMs,
+              firstModelEventAtMs,
+              toolExecutionMs: 0,
+              waitToolMs: 0,
+            });
+            steps.push({
+              step: steps.length + 1,
+              modelVersion,
+              text: responseText || undefined,
+              thoughts: reasoningSummaryText || undefined,
+              toolCalls: [],
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              timing,
+            });
+            stepCallLogger?.complete({
+              provider: "chatgpt",
+              model: request.model,
+              modelVersion,
+              step: turn,
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              responseChars: responseText.length,
+              thoughtChars: reasoningSummaryText.length,
+              toolCalls: 0,
+              finalStep: steeringItems.length === 0,
+            });
+            if (steeringItems.length === 0) {
+              return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            }
+            const assistantItem = toChatGptAssistantMessage(responseText);
+            input = assistantItem
+              ? input.concat(assistantItem, steeringItems)
+              : input.concat(steeringItems);
+            continue;
+          }
+
+          const toolCalls: LlmToolCallResult[] = [];
+          const toolOutputs: ChatGptInputItem[] = [];
+          const callInputs = responseToolCalls.map((call, index) => {
+            const toolIndex = index + 1;
+            const toolId = buildToolLogId(turn, toolIndex);
+            const toolName = call.name;
+            const { value, error: parseError } =
+              call.kind === "custom"
+                ? { value: call.input, error: undefined }
+                : parseOpenAiToolArguments(call.arguments);
+            const ids = normalizeChatGptToolIds({
+              callKind: call.kind,
+              callId: call.callId,
+              itemId: call.id,
+            });
+            return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
+          });
+
+          for (const entry of callInputs) {
+            request.onEvent?.({
+              type: "tool_call",
+              phase: "started",
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: entry.call.kind,
+              callId: entry.ids.callId,
+              input: entry.value,
+            });
+          }
+
+          const callResults = await Promise.all(
+            callInputs.map(async (entry) => {
+              return await toolCallContextStorage.run(
+                {
+                  toolName: entry.toolName,
+                  toolId: entry.toolId,
+                  turn: entry.turn,
+                  toolIndex: entry.toolIndex,
+                },
+                async () => {
+                  const { result, outputPayload } = await executeToolCall({
+                    callKind: entry.call.kind,
+                    toolName: entry.toolName,
+                    tool: request.tools[entry.toolName],
+                    rawInput: entry.value,
+                    parseError: entry.parseError,
+                  });
+                  return { entry, result, outputPayload };
+                },
+              );
+            }),
+          );
+
+          let toolExecutionMs = 0;
+          let waitToolMs = 0;
+          for (const { entry, result, outputPayload } of callResults) {
+            toolCalls.push({ ...result, callId: entry.ids.callId });
+            const callDurationMs = toToolResultDuration(result);
+            toolExecutionMs += callDurationMs;
+            if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+              waitToolMs += callDurationMs;
+            }
+            request.onEvent?.({
+              type: "tool_call",
+              phase: "completed",
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: entry.call.kind,
+              callId: entry.ids.callId,
+              input: entry.value,
+              output: result.output,
+              error: result.error,
+              durationMs: result.durationMs,
+            });
+            if (entry.call.kind === "custom") {
+              toolOutputs.push({
+                type: "custom_tool_call",
+                id: entry.ids.itemId,
+                call_id: entry.ids.callId,
+                name: entry.toolName,
+                input: entry.call.input,
+                status: "completed",
+              } as ChatGptInputItem);
+              toolOutputs.push({
+                type: "custom_tool_call_output",
+                call_id: entry.ids.callId,
+                output: toOpenAiToolOutput(outputPayload),
+              } as ChatGptInputItem);
+            } else {
+              toolOutputs.push({
+                type: "function_call",
+                id: entry.ids.itemId,
+                call_id: entry.ids.callId,
+                name: entry.toolName,
+                arguments: entry.call.arguments,
+                status: "completed",
+              } as ChatGptInputItem);
+              toolOutputs.push({
+                type: "function_call_output",
+                call_id: entry.ids.callId,
+                output: toOpenAiToolOutput(outputPayload),
+              } as ChatGptInputItem);
+            }
+          }
+
           const stepCompletedAtMs = Date.now();
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
             modelCompletedAtMs,
             firstModelEventAtMs,
-            toolExecutionMs: 0,
-            waitToolMs: 0,
+            toolExecutionMs,
+            waitToolMs,
           });
           steps.push({
             step: steps.length + 1,
             modelVersion,
             text: responseText || undefined,
             thoughts: reasoningSummaryText || undefined,
-            toolCalls: [],
+            toolCalls,
             usage: usageTokens,
             costUsd: stepCostUsd,
             timing,
           });
-          if (steeringItems.length === 0) {
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
-          }
-          const assistantItem = toChatGptAssistantMessage(responseText);
-          input = assistantItem
-            ? input.concat(assistantItem, steeringItems)
-            : input.concat(steeringItems);
-          continue;
-        }
 
-        const toolCalls: LlmToolCallResult[] = [];
-        const toolOutputs: ChatGptInputItem[] = [];
-        const callInputs = responseToolCalls.map((call, index) => {
-          const toolIndex = index + 1;
-          const toolId = buildToolLogId(turn, toolIndex);
-          const toolName = call.name;
-          const { value, error: parseError } =
-            call.kind === "custom"
-              ? { value: call.input, error: undefined }
-              : parseOpenAiToolArguments(call.arguments);
-          const ids = normalizeChatGptToolIds({
-            callKind: call.kind,
-            callId: call.callId,
-            itemId: call.id,
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+          stepCallLogger?.complete({
+            provider: "chatgpt",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            responseChars: responseText.length,
+            thoughtChars: reasoningSummaryText.length,
+            toolCalls: toolCalls.length,
+            finalStep: false,
           });
-          return { call, toolName, value, parseError, ids, toolId, turn, toolIndex };
-        });
-
-        for (const entry of callInputs) {
-          request.onEvent?.({
-            type: "tool_call",
-            phase: "started",
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            callKind: entry.call.kind,
-            callId: entry.ids.callId,
-            input: entry.value,
+          input =
+            steeringItems.length > 0
+              ? input.concat(toolOutputs, steeringItems)
+              : input.concat(toolOutputs);
+        } catch (error) {
+          stepCallLogger?.fail(error, {
+            provider: "chatgpt",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
           });
+          throw error;
         }
-
-        const callResults = await Promise.all(
-          callInputs.map(async (entry) => {
-            return await toolCallContextStorage.run(
-              {
-                toolName: entry.toolName,
-                toolId: entry.toolId,
-                turn: entry.turn,
-                toolIndex: entry.toolIndex,
-              },
-              async () => {
-                const { result, outputPayload } = await executeToolCall({
-                  callKind: entry.call.kind,
-                  toolName: entry.toolName,
-                  tool: request.tools[entry.toolName],
-                  rawInput: entry.value,
-                  parseError: entry.parseError,
-                });
-                return { entry, result, outputPayload };
-              },
-            );
-          }),
-        );
-
-        let toolExecutionMs = 0;
-        let waitToolMs = 0;
-        for (const { entry, result, outputPayload } of callResults) {
-          toolCalls.push({ ...result, callId: entry.ids.callId });
-          const callDurationMs = toToolResultDuration(result);
-          toolExecutionMs += callDurationMs;
-          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-            waitToolMs += callDurationMs;
-          }
-          request.onEvent?.({
-            type: "tool_call",
-            phase: "completed",
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            callKind: entry.call.kind,
-            callId: entry.ids.callId,
-            input: entry.value,
-            output: result.output,
-            error: result.error,
-            durationMs: result.durationMs,
-          });
-          if (entry.call.kind === "custom") {
-            toolOutputs.push({
-              type: "custom_tool_call",
-              id: entry.ids.itemId,
-              call_id: entry.ids.callId,
-              name: entry.toolName,
-              input: entry.call.input,
-              status: "completed",
-            } as ChatGptInputItem);
-            toolOutputs.push({
-              type: "custom_tool_call_output",
-              call_id: entry.ids.callId,
-              output: toOpenAiToolOutput(outputPayload),
-            } as ChatGptInputItem);
-          } else {
-            toolOutputs.push({
-              type: "function_call",
-              id: entry.ids.itemId,
-              call_id: entry.ids.callId,
-              name: entry.toolName,
-              arguments: entry.call.arguments,
-              status: "completed",
-            } as ChatGptInputItem);
-            toolOutputs.push({
-              type: "function_call_output",
-              call_id: entry.ids.callId,
-              output: toOpenAiToolOutput(outputPayload),
-            } as ChatGptInputItem);
-          }
-        }
-
-        const stepCompletedAtMs = Date.now();
-        const timing = buildStepTiming({
-          stepStartedAtMs,
-          stepCompletedAtMs,
-          modelCompletedAtMs,
-          firstModelEventAtMs,
-          toolExecutionMs,
-          waitToolMs,
-        });
-        steps.push({
-          step: steps.length + 1,
-          modelVersion,
-          text: responseText || undefined,
-          thoughts: reasoningSummaryText || undefined,
-          toolCalls,
-          usage: usageTokens,
-          costUsd: stepCostUsd,
-          timing,
-        });
-
-        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
-        input =
-          steeringItems.length > 0
-            ? input.concat(toolOutputs, steeringItems)
-            : input.concat(toolOutputs);
       }
 
       throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
@@ -3962,208 +4361,265 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         const turn = stepIndex + 1;
         const stepStartedAtMs = Date.now();
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
-        const response = await runFireworksCall(
-          async (client) => {
-            return await client.chat.completions.create(
-              {
-                model: providerInfo.model,
-                messages: messages as any,
-                tools: fireworksTools as any,
-                tool_choice: "auto" as const,
-                parallel_tool_calls: true,
-              } as any,
-              { signal: request.signal } as any,
-            );
-          },
-          providerInfo.model,
-          {
-            onSettled: (metrics) => {
-              schedulerMetrics = metrics;
-            },
-          },
-        );
-        const modelCompletedAtMs = Date.now();
-
-        const modelVersion = typeof response.model === "string" ? response.model : request.model;
-        request.onEvent?.({ type: "model", modelVersion });
-
-        const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
-        if (choice?.finish_reason === "content_filter") {
-          request.onEvent?.({ type: "blocked" });
-        }
-        const message = (choice as { message?: unknown } | undefined)?.message;
-        const responseText = extractFireworksMessageText(message).trim();
-        if (responseText.length > 0) {
-          request.onEvent?.({ type: "delta", channel: "response", text: responseText });
-        }
-
-        const usageTokens = extractFireworksUsageTokens(response.usage);
-        const stepCostUsd = estimateCallCostUsd({
-          modelId: modelVersion,
-          tokens: usageTokens,
-          responseImages: 0,
+        let modelVersion: string = request.model;
+        let usageTokens: LlmUsageTokens | undefined;
+        let responseText = "";
+        let blocked = false;
+        const stepRequestPayload = {
+          model: providerInfo.model,
+          messages,
+          tools: fireworksTools,
+          tool_choice: "auto" as const,
+          parallel_tool_calls: true,
+        };
+        const stepCallLogger = startLlmCallLoggerFromPayload({
+          provider: "fireworks",
+          modelId: request.model,
+          requestPayload: stepRequestPayload,
+          step: turn,
         });
-        totalCostUsd += stepCostUsd;
+        try {
+          const response = await runFireworksCall(
+            async (client) => {
+              return await client.chat.completions.create(
+                {
+                  model: providerInfo.model,
+                  messages: messages as any,
+                  tools: fireworksTools as any,
+                  tool_choice: "auto" as const,
+                  parallel_tool_calls: true,
+                } as any,
+                { signal: request.signal } as any,
+              );
+            },
+            providerInfo.model,
+            {
+              onSettled: (metrics) => {
+                schedulerMetrics = metrics;
+              },
+            },
+          );
+          const modelCompletedAtMs = Date.now();
 
-        if (usageTokens) {
-          request.onEvent?.({
-            type: "usage",
-            usage: usageTokens,
-            costUsd: stepCostUsd,
-            modelVersion,
+          modelVersion = typeof response.model === "string" ? response.model : request.model;
+          request.onEvent?.({ type: "model", modelVersion });
+
+          const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+          if (choice?.finish_reason === "content_filter") {
+            blocked = true;
+            request.onEvent?.({ type: "blocked" });
+          }
+          const message = (choice as { message?: unknown } | undefined)?.message;
+          responseText = extractFireworksMessageText(message).trim();
+          if (responseText.length > 0) {
+            stepCallLogger?.appendResponseDelta(responseText);
+            request.onEvent?.({ type: "delta", channel: "response", text: responseText });
+          }
+
+          usageTokens = extractFireworksUsageTokens(response.usage);
+          const stepCostUsd = estimateCallCostUsd({
+            modelId: modelVersion,
+            tokens: usageTokens,
+            responseImages: 0,
           });
-        }
+          totalCostUsd += stepCostUsd;
 
-        const responseToolCalls = extractFireworksToolCalls(message);
-        if (responseToolCalls.length === 0) {
-          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-          const steeringMessages =
-            steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
-          finalText = responseText;
-          finalThoughts = "";
+          if (usageTokens) {
+            request.onEvent?.({
+              type: "usage",
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              modelVersion,
+            });
+          }
+
+          const responseToolCalls = extractFireworksToolCalls(message);
+          if (responseToolCalls.length === 0) {
+            const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+            const steeringMessages =
+              steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
+            finalText = responseText;
+            finalThoughts = "";
+            const stepCompletedAtMs = Date.now();
+            const timing = buildStepTiming({
+              stepStartedAtMs,
+              stepCompletedAtMs,
+              modelCompletedAtMs,
+              schedulerMetrics,
+              toolExecutionMs: 0,
+              waitToolMs: 0,
+            });
+            steps.push({
+              step: steps.length + 1,
+              modelVersion,
+              text: responseText || undefined,
+              thoughts: undefined,
+              toolCalls: [],
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              timing,
+            });
+            stepCallLogger?.complete({
+              provider: "fireworks",
+              model: request.model,
+              modelVersion,
+              step: turn,
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              blocked,
+              responseChars: responseText.length,
+              thoughtChars: 0,
+              toolCalls: 0,
+              finalStep: steeringMessages.length === 0,
+            });
+            if (steeringMessages.length === 0) {
+              return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            }
+            if (responseText.length > 0) {
+              messages.push({ role: "assistant", content: responseText });
+            }
+            messages.push(...steeringMessages);
+            continue;
+          }
+
+          const stepToolCalls: LlmToolCallResult[] = [];
+          const callInputs = responseToolCalls.map((call, index) => {
+            const toolIndex = index + 1;
+            const toolId = buildToolLogId(turn, toolIndex);
+            const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
+            return { call, toolName: call.name, value, parseError, toolId, turn, toolIndex };
+          });
+
+          for (const entry of callInputs) {
+            request.onEvent?.({
+              type: "tool_call",
+              phase: "started",
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: "function",
+              callId: entry.call.id,
+              input: entry.value,
+            });
+          }
+
+          const callResults = await Promise.all(
+            callInputs.map(async (entry) => {
+              return await toolCallContextStorage.run(
+                {
+                  toolName: entry.toolName,
+                  toolId: entry.toolId,
+                  turn: entry.turn,
+                  toolIndex: entry.toolIndex,
+                },
+                async () => {
+                  const { result, outputPayload } = await executeToolCall({
+                    callKind: "function",
+                    toolName: entry.toolName,
+                    tool: request.tools[entry.toolName],
+                    rawInput: entry.value,
+                    parseError: entry.parseError,
+                  });
+                  return { entry, result, outputPayload };
+                },
+              );
+            }),
+          );
+
+          const assistantToolCalls: Array<Record<string, unknown>> = [];
+          const toolMessages: Array<Record<string, unknown>> = [];
+          let toolExecutionMs = 0;
+          let waitToolMs = 0;
+          for (const { entry, result, outputPayload } of callResults) {
+            stepToolCalls.push({ ...result, callId: entry.call.id });
+            const callDurationMs = toToolResultDuration(result);
+            toolExecutionMs += callDurationMs;
+            if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+              waitToolMs += callDurationMs;
+            }
+            request.onEvent?.({
+              type: "tool_call",
+              phase: "completed",
+              turn: entry.turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: "function",
+              callId: entry.call.id,
+              input: entry.value,
+              output: result.output,
+              error: result.error,
+              durationMs: result.durationMs,
+            });
+            assistantToolCalls.push({
+              id: entry.call.id,
+              type: "function",
+              function: {
+                name: entry.toolName,
+                arguments: entry.call.arguments,
+              },
+            });
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: entry.call.id,
+              content: mergeToolOutput(outputPayload),
+            });
+          }
+
           const stepCompletedAtMs = Date.now();
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
             modelCompletedAtMs,
             schedulerMetrics,
-            toolExecutionMs: 0,
-            waitToolMs: 0,
+            toolExecutionMs,
+            waitToolMs,
           });
           steps.push({
             step: steps.length + 1,
             modelVersion,
             text: responseText || undefined,
             thoughts: undefined,
-            toolCalls: [],
+            toolCalls: stepToolCalls,
             usage: usageTokens,
             costUsd: stepCostUsd,
             timing,
           });
-          if (steeringMessages.length === 0) {
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          stepCallLogger?.complete({
+            provider: "fireworks",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            blocked,
+            responseChars: responseText.length,
+            thoughtChars: 0,
+            toolCalls: stepToolCalls.length,
+            finalStep: false,
+          });
+
+          messages.push({
+            role: "assistant",
+            ...(responseText.length > 0 ? { content: responseText } : {}),
+            tool_calls: assistantToolCalls,
+          });
+          messages.push(...toolMessages);
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          if (steeringInput.length > 0) {
+            messages.push(...toFireworksMessages(steeringInput));
           }
-          if (responseText.length > 0) {
-            messages.push({ role: "assistant", content: responseText });
-          }
-          messages.push(...steeringMessages);
-          continue;
-        }
-
-        const stepToolCalls: LlmToolCallResult[] = [];
-        const callInputs = responseToolCalls.map((call, index) => {
-          const toolIndex = index + 1;
-          const toolId = buildToolLogId(turn, toolIndex);
-          const { value, error: parseError } = parseOpenAiToolArguments(call.arguments);
-          return { call, toolName: call.name, value, parseError, toolId, turn, toolIndex };
-        });
-
-        for (const entry of callInputs) {
-          request.onEvent?.({
-            type: "tool_call",
-            phase: "started",
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            callKind: "function",
-            callId: entry.call.id,
-            input: entry.value,
+        } catch (error) {
+          stepCallLogger?.fail(error, {
+            provider: "fireworks",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
+            blocked,
           });
-        }
-
-        const callResults = await Promise.all(
-          callInputs.map(async (entry) => {
-            return await toolCallContextStorage.run(
-              {
-                toolName: entry.toolName,
-                toolId: entry.toolId,
-                turn: entry.turn,
-                toolIndex: entry.toolIndex,
-              },
-              async () => {
-                const { result, outputPayload } = await executeToolCall({
-                  callKind: "function",
-                  toolName: entry.toolName,
-                  tool: request.tools[entry.toolName],
-                  rawInput: entry.value,
-                  parseError: entry.parseError,
-                });
-                return { entry, result, outputPayload };
-              },
-            );
-          }),
-        );
-
-        const assistantToolCalls: Array<Record<string, unknown>> = [];
-        const toolMessages: Array<Record<string, unknown>> = [];
-        let toolExecutionMs = 0;
-        let waitToolMs = 0;
-        for (const { entry, result, outputPayload } of callResults) {
-          stepToolCalls.push({ ...result, callId: entry.call.id });
-          const callDurationMs = toToolResultDuration(result);
-          toolExecutionMs += callDurationMs;
-          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-            waitToolMs += callDurationMs;
-          }
-          request.onEvent?.({
-            type: "tool_call",
-            phase: "completed",
-            turn: entry.turn,
-            toolIndex: entry.toolIndex,
-            toolName: entry.toolName,
-            toolId: entry.toolId,
-            callKind: "function",
-            callId: entry.call.id,
-            input: entry.value,
-            output: result.output,
-            error: result.error,
-            durationMs: result.durationMs,
-          });
-          assistantToolCalls.push({
-            id: entry.call.id,
-            type: "function",
-            function: {
-              name: entry.toolName,
-              arguments: entry.call.arguments,
-            },
-          });
-          toolMessages.push({
-            role: "tool",
-            tool_call_id: entry.call.id,
-            content: mergeToolOutput(outputPayload),
-          });
-        }
-
-        const stepCompletedAtMs = Date.now();
-        const timing = buildStepTiming({
-          stepStartedAtMs,
-          stepCompletedAtMs,
-          modelCompletedAtMs,
-          schedulerMetrics,
-          toolExecutionMs,
-          waitToolMs,
-        });
-        steps.push({
-          step: steps.length + 1,
-          modelVersion,
-          text: responseText || undefined,
-          thoughts: undefined,
-          toolCalls: stepToolCalls,
-          usage: usageTokens,
-          costUsd: stepCostUsd,
-          timing,
-        });
-
-        messages.push({
-          role: "assistant",
-          ...(responseText.length > 0 ? { content: responseText } : {}),
-          tool_calls: assistantToolCalls,
-        });
-        messages.push(...toolMessages);
-        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        if (steeringInput.length > 0) {
-          messages.push(...toFireworksMessages(steeringInput));
+          throw error;
         }
       }
 
@@ -4179,9 +4635,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     const geminiContents = contents.map(convertLlmContentToGeminiContent);
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+      const turn = stepIndex + 1;
       const stepStartedAtMs = Date.now();
       let firstModelEventAtMs: number | undefined;
       let schedulerMetrics: CallSchedulerRunMetrics | undefined;
+      let modelVersion: string = request.model;
+      let usageTokens: LlmUsageTokens | undefined;
+      let responseText = "";
+      let thoughtsText = "";
       const markFirstModelEvent = () => {
         if (firstModelEventAtMs === undefined) {
           firstModelEventAtMs = Date.now();
@@ -4200,118 +4661,278 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       };
 
       const onEvent = request.onEvent;
-
-      type GeminiToolLoopResponse = {
-        readonly responseText: string;
-        readonly thoughtsText: string;
-        readonly functionCalls: Array<NonNullable<GeminiPart["functionCall"]>>;
-        readonly modelParts: GeminiPart[];
-        readonly usageMetadata?: unknown;
-        readonly modelVersion?: string;
+      const stepRequestPayload = {
+        model: request.model,
+        contents: geminiContents,
+        config,
       };
+      const stepCallLogger = startLlmCallLoggerFromPayload({
+        provider: "gemini",
+        modelId: request.model,
+        requestPayload: stepRequestPayload,
+        step: turn,
+      });
+      try {
+        type GeminiToolLoopResponse = {
+          readonly responseText: string;
+          readonly thoughtsText: string;
+          readonly functionCalls: Array<NonNullable<GeminiPart["functionCall"]>>;
+          readonly modelParts: GeminiPart[];
+          readonly usageMetadata?: unknown;
+          readonly modelVersion?: string;
+        };
 
-      const response: GeminiToolLoopResponse = await runGeminiCall(
-        async (client) => {
-          const stream = await client.models.generateContentStream({
-            model: request.model,
-            contents: geminiContents,
-            config,
-          });
-          let responseText = "";
-          let thoughtsText = "";
-          const modelParts: GeminiPart[] = [];
-          const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
-          const seenFunctionCallIds = new Set<string>();
-          const seenFunctionCallKeys = new Set<string>();
-          let latestUsageMetadata: unknown;
-          let resolvedModelVersion: string | undefined;
+        const response: GeminiToolLoopResponse = await runGeminiCall(
+          async (client) => {
+            const stream = await client.models.generateContentStream({
+              model: request.model,
+              contents: geminiContents,
+              config,
+            });
+            let responseText = "";
+            let thoughtsText = "";
+            const modelParts: GeminiPart[] = [];
+            const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
+            const seenFunctionCallIds = new Set<string>();
+            const seenFunctionCallKeys = new Set<string>();
+            let latestUsageMetadata: unknown;
+            let resolvedModelVersion: string | undefined;
 
-          for await (const chunk of stream) {
-            markFirstModelEvent();
-            if (chunk.modelVersion) {
-              resolvedModelVersion = chunk.modelVersion;
-              onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
-            }
-            if (chunk.usageMetadata) {
-              latestUsageMetadata = chunk.usageMetadata;
-            }
-            const candidates = chunk.candidates;
-            if (!candidates || candidates.length === 0) {
-              continue;
-            }
-            const primary = candidates[0];
-            const parts = primary?.content?.parts;
-            if (!parts || parts.length === 0) {
-              continue;
-            }
+            for await (const chunk of stream) {
+              markFirstModelEvent();
+              if (chunk.modelVersion) {
+                resolvedModelVersion = chunk.modelVersion;
+                onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
+              }
+              if (chunk.usageMetadata) {
+                latestUsageMetadata = chunk.usageMetadata;
+              }
+              const candidates = chunk.candidates;
+              if (!candidates || candidates.length === 0) {
+                continue;
+              }
+              const primary = candidates[0];
+              const parts = primary?.content?.parts;
+              if (!parts || parts.length === 0) {
+                continue;
+              }
 
-            for (const part of parts) {
-              modelParts.push(part);
-              const call = part.functionCall;
-              if (call) {
-                const id = typeof call.id === "string" ? call.id : "";
-                const shouldAdd = (() => {
-                  if (id.length > 0) {
-                    if (seenFunctionCallIds.has(id)) {
+              for (const part of parts) {
+                modelParts.push(part);
+                const call = part.functionCall;
+                if (call) {
+                  const id = typeof call.id === "string" ? call.id : "";
+                  const shouldAdd = (() => {
+                    if (id.length > 0) {
+                      if (seenFunctionCallIds.has(id)) {
+                        return false;
+                      }
+                      seenFunctionCallIds.add(id);
+                      return true;
+                    }
+                    const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
+                    if (seenFunctionCallKeys.has(key)) {
                       return false;
                     }
-                    seenFunctionCallIds.add(id);
+                    seenFunctionCallKeys.add(key);
                     return true;
+                  })();
+                  if (shouldAdd) {
+                    functionCalls.push(call);
                   }
-                  const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
-                  if (seenFunctionCallKeys.has(key)) {
-                    return false;
-                  }
-                  seenFunctionCallKeys.add(key);
-                  return true;
-                })();
-                if (shouldAdd) {
-                  functionCalls.push(call);
                 }
-              }
-              if (typeof part.text === "string" && part.text.length > 0) {
-                if (part.thought) {
-                  thoughtsText += part.text;
-                  onEvent?.({ type: "delta", channel: "thought", text: part.text });
-                } else {
-                  responseText += part.text;
-                  onEvent?.({ type: "delta", channel: "response", text: part.text });
+                if (typeof part.text === "string" && part.text.length > 0) {
+                  if (part.thought) {
+                    thoughtsText += part.text;
+                    stepCallLogger?.appendThoughtDelta(part.text);
+                    onEvent?.({ type: "delta", channel: "thought", text: part.text });
+                  } else {
+                    responseText += part.text;
+                    stepCallLogger?.appendResponseDelta(part.text);
+                    onEvent?.({ type: "delta", channel: "response", text: part.text });
+                  }
                 }
               }
             }
-          }
 
-          return {
-            responseText,
-            thoughtsText,
-            functionCalls,
-            modelParts,
-            usageMetadata: latestUsageMetadata,
-            modelVersion: resolvedModelVersion ?? request.model,
-          };
-        },
-        request.model,
-        {
-          onSettled: (metrics) => {
-            schedulerMetrics = metrics;
+            return {
+              responseText,
+              thoughtsText,
+              functionCalls,
+              modelParts,
+              usageMetadata: latestUsageMetadata,
+              modelVersion: resolvedModelVersion ?? request.model,
+            };
           },
-        },
-      );
-      const modelCompletedAtMs = Date.now();
+          request.model,
+          {
+            onSettled: (metrics) => {
+              schedulerMetrics = metrics;
+            },
+          },
+        );
+        const modelCompletedAtMs = Date.now();
 
-      const usageTokens = extractGeminiUsageTokens(response.usageMetadata);
-      const modelVersion = response.modelVersion ?? request.model;
-      const stepCostUsd = estimateCallCostUsd({
-        modelId: modelVersion,
-        tokens: usageTokens,
-        responseImages: 0,
-      });
-      totalCostUsd += stepCostUsd;
+        usageTokens = extractGeminiUsageTokens(response.usageMetadata);
+        modelVersion = response.modelVersion ?? request.model;
+        responseText = response.responseText.trim();
+        thoughtsText = response.thoughtsText.trim();
+        const stepCostUsd = estimateCallCostUsd({
+          modelId: modelVersion,
+          tokens: usageTokens,
+          responseImages: 0,
+        });
+        totalCostUsd += stepCostUsd;
 
-      if (response.functionCalls.length === 0) {
-        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-        finalText = response.responseText.trim();
-        finalThoughts = response.thoughtsText.trim();
+        if (response.functionCalls.length === 0) {
+          const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+          finalText = responseText;
+          finalThoughts = thoughtsText;
+          const stepCompletedAtMs = Date.now();
+          const timing = buildStepTiming({
+            stepStartedAtMs,
+            stepCompletedAtMs,
+            modelCompletedAtMs,
+            firstModelEventAtMs,
+            schedulerMetrics,
+            toolExecutionMs: 0,
+            waitToolMs: 0,
+          });
+          steps.push({
+            step: steps.length + 1,
+            modelVersion,
+            text: finalText || undefined,
+            thoughts: finalThoughts || undefined,
+            toolCalls: [],
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            timing,
+          });
+          stepCallLogger?.complete({
+            provider: "gemini",
+            model: request.model,
+            modelVersion,
+            step: turn,
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            responseChars: responseText.length,
+            thoughtChars: thoughtsText.length,
+            toolCalls: 0,
+            finalStep: steeringInput.length === 0,
+          });
+          if (steeringInput.length === 0) {
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
+          const modelPartsForHistory = response.modelParts.filter(
+            (part) => !(typeof part.text === "string" && part.thought === true),
+          );
+          if (modelPartsForHistory.length > 0) {
+            geminiContents.push({ role: "model", parts: modelPartsForHistory });
+          } else if (response.responseText.length > 0) {
+            geminiContents.push({ role: "model", parts: [{ text: response.responseText }] });
+          }
+          geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
+          continue;
+        }
+
+        const toolCalls: LlmToolCallResult[] = [];
+
+        const modelPartsForHistory = response.modelParts.filter(
+          (part) => !(typeof part.text === "string" && part.thought === true),
+        );
+        if (modelPartsForHistory.length > 0) {
+          geminiContents.push({ role: "model", parts: modelPartsForHistory });
+        } else {
+          const parts: GeminiPart[] = [];
+          if (response.responseText) {
+            parts.push({ text: response.responseText });
+          }
+          for (const call of response.functionCalls) {
+            parts.push({ functionCall: call });
+          }
+          geminiContents.push({ role: "model", parts });
+        }
+
+        const responseParts: GeminiPart[] = [];
+        const callInputs = response.functionCalls.map((call, index) => {
+          const toolIndex = index + 1;
+          const toolId = buildToolLogId(turn, toolIndex);
+          const toolName = call.name ?? "unknown";
+          const rawInput = call.args ?? {};
+          return { call, toolName, rawInput, toolId, turn, toolIndex };
+        });
+
+        for (const entry of callInputs) {
+          onEvent?.({
+            type: "tool_call",
+            phase: "started",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: "function",
+            callId: entry.call.id,
+            input: entry.rawInput,
+          });
+        }
+
+        const callResults = await Promise.all(
+          callInputs.map(async (entry) => {
+            return await toolCallContextStorage.run(
+              {
+                toolName: entry.toolName,
+                toolId: entry.toolId,
+                turn: entry.turn,
+                toolIndex: entry.toolIndex,
+              },
+              async () => {
+                const { result, outputPayload } = await executeToolCall({
+                  callKind: "function",
+                  toolName: entry.toolName,
+                  tool: request.tools[entry.toolName],
+                  rawInput: entry.rawInput,
+                });
+                return { entry, result, outputPayload };
+              },
+            );
+          }),
+        );
+
+        let toolExecutionMs = 0;
+        let waitToolMs = 0;
+        for (const { entry, result, outputPayload } of callResults) {
+          toolCalls.push({ ...result, callId: entry.call.id });
+          const callDurationMs = toToolResultDuration(result);
+          toolExecutionMs += callDurationMs;
+          if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
+            waitToolMs += callDurationMs;
+          }
+          onEvent?.({
+            type: "tool_call",
+            phase: "completed",
+            turn: entry.turn,
+            toolIndex: entry.toolIndex,
+            toolName: entry.toolName,
+            toolId: entry.toolId,
+            callKind: "function",
+            callId: entry.call.id,
+            input: entry.rawInput,
+            output: result.output,
+            error: result.error,
+            durationMs: result.durationMs,
+          });
+          const responsePayload = isPlainRecord(outputPayload)
+            ? outputPayload
+            : { output: outputPayload };
+          responseParts.push({
+            functionResponse: {
+              name: entry.toolName,
+              response: responsePayload,
+              ...(entry.call.id ? { id: entry.call.id } : {}),
+            },
+          });
+        }
+
         const stepCompletedAtMs = Date.now();
         const timing = buildStepTiming({
           stepStartedAtMs,
@@ -4319,158 +4940,48 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           modelCompletedAtMs,
           firstModelEventAtMs,
           schedulerMetrics,
-          toolExecutionMs: 0,
-          waitToolMs: 0,
+          toolExecutionMs,
+          waitToolMs,
         });
         steps.push({
           step: steps.length + 1,
           modelVersion,
-          text: finalText || undefined,
-          thoughts: finalThoughts || undefined,
-          toolCalls: [],
+          text: responseText || undefined,
+          thoughts: thoughtsText || undefined,
+          toolCalls,
           usage: usageTokens,
           costUsd: stepCostUsd,
           timing,
         });
-        if (steeringInput.length === 0) {
-          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
-        }
-        const modelPartsForHistory = response.modelParts.filter(
-          (part) => !(typeof part.text === "string" && part.thought === true),
-        );
-        if (modelPartsForHistory.length > 0) {
-          geminiContents.push({ role: "model", parts: modelPartsForHistory });
-        } else if (response.responseText.length > 0) {
-          geminiContents.push({ role: "model", parts: [{ text: response.responseText }] });
-        }
-        geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
-        continue;
-      }
-
-      const toolCalls: LlmToolCallResult[] = [];
-
-      const modelPartsForHistory = response.modelParts.filter(
-        (part) => !(typeof part.text === "string" && part.thought === true),
-      );
-      if (modelPartsForHistory.length > 0) {
-        geminiContents.push({ role: "model", parts: modelPartsForHistory });
-      } else {
-        const parts: GeminiPart[] = [];
-        if (response.responseText) {
-          parts.push({ text: response.responseText });
-        }
-        for (const call of response.functionCalls) {
-          parts.push({ functionCall: call });
-        }
-        geminiContents.push({ role: "model", parts });
-      }
-
-      const responseParts: GeminiPart[] = [];
-      const callInputs = response.functionCalls.map((call, index) => {
-        const turn = stepIndex + 1;
-        const toolIndex = index + 1;
-        const toolId = buildToolLogId(turn, toolIndex);
-        const toolName = call.name ?? "unknown";
-        const rawInput = call.args ?? {};
-        return { call, toolName, rawInput, toolId, turn, toolIndex };
-      });
-
-      for (const entry of callInputs) {
-        onEvent?.({
-          type: "tool_call",
-          phase: "started",
-          turn: entry.turn,
-          toolIndex: entry.toolIndex,
-          toolName: entry.toolName,
-          toolId: entry.toolId,
-          callKind: "function",
-          callId: entry.call.id,
-          input: entry.rawInput,
+        stepCallLogger?.complete({
+          provider: "gemini",
+          model: request.model,
+          modelVersion,
+          step: turn,
+          usage: usageTokens,
+          costUsd: stepCostUsd,
+          responseChars: responseText.length,
+          thoughtChars: thoughtsText.length,
+          toolCalls: toolCalls.length,
+          finalStep: false,
         });
-      }
 
-      const callResults = await Promise.all(
-        callInputs.map(async (entry) => {
-          return await toolCallContextStorage.run(
-            {
-              toolName: entry.toolName,
-              toolId: entry.toolId,
-              turn: entry.turn,
-              toolIndex: entry.toolIndex,
-            },
-            async () => {
-              const { result, outputPayload } = await executeToolCall({
-                callKind: "function",
-                toolName: entry.toolName,
-                tool: request.tools[entry.toolName],
-                rawInput: entry.rawInput,
-              });
-              return { entry, result, outputPayload };
-            },
-          );
-        }),
-      );
-
-      let toolExecutionMs = 0;
-      let waitToolMs = 0;
-      for (const { entry, result, outputPayload } of callResults) {
-        toolCalls.push({ ...result, callId: entry.call.id });
-        const callDurationMs = toToolResultDuration(result);
-        toolExecutionMs += callDurationMs;
-        if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) {
-          waitToolMs += callDurationMs;
+        geminiContents.push({ role: "user", parts: responseParts });
+        const steeringInput = steeringInternal?.drainPendingContents() ?? [];
+        if (steeringInput.length > 0) {
+          geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
         }
-        onEvent?.({
-          type: "tool_call",
-          phase: "completed",
-          turn: entry.turn,
-          toolIndex: entry.toolIndex,
-          toolName: entry.toolName,
-          toolId: entry.toolId,
-          callKind: "function",
-          callId: entry.call.id,
-          input: entry.rawInput,
-          output: result.output,
-          error: result.error,
-          durationMs: result.durationMs,
+      } catch (error) {
+        stepCallLogger?.fail(error, {
+          provider: "gemini",
+          model: request.model,
+          modelVersion,
+          step: turn,
+          usage: usageTokens,
+          responseChars: responseText.length,
+          thoughtChars: thoughtsText.length,
         });
-        const responsePayload = isPlainRecord(outputPayload)
-          ? outputPayload
-          : { output: outputPayload };
-        responseParts.push({
-          functionResponse: {
-            name: entry.toolName,
-            response: responsePayload,
-            ...(entry.call.id ? { id: entry.call.id } : {}),
-          },
-        });
-      }
-
-      const stepCompletedAtMs = Date.now();
-      const timing = buildStepTiming({
-        stepStartedAtMs,
-        stepCompletedAtMs,
-        modelCompletedAtMs,
-        firstModelEventAtMs,
-        schedulerMetrics,
-        toolExecutionMs,
-        waitToolMs,
-      });
-      steps.push({
-        step: steps.length + 1,
-        modelVersion,
-        text: response.responseText.trim() || undefined,
-        thoughts: response.thoughtsText.trim() || undefined,
-        toolCalls,
-        usage: usageTokens,
-        costUsd: stepCostUsd,
-        timing,
-      });
-
-      geminiContents.push({ role: "user", parts: responseParts });
-      const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-      if (steeringInput.length > 0) {
-        geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
+        throw error;
       }
     }
 
