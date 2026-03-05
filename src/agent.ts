@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import path from "node:path";
 
 import {
   createToolLoopSteeringChannel,
@@ -25,6 +26,14 @@ import {
   type AgentFilesystemToolProfile,
   type AgentFilesystemToolsOptions,
 } from "./tools/filesystemTools.js";
+import {
+  appendAgentStreamEventLog,
+  createAgentLoggingSession,
+  runWithAgentLoggingSession,
+  type AgentLoggingConfig,
+  type AgentLoggingSelection,
+  type AgentLoggingSession,
+} from "./agentLogging.js";
 import { createAsyncQueue } from "./utils/asyncQueue.js";
 
 export type AgentFilesystemToolConfig = {
@@ -43,6 +52,11 @@ export type {
   AgentSubagentToolPromptPattern,
   AgentSubagentToolSelection,
 } from "./agent/subagents.js";
+export type {
+  AgentLogLineSink,
+  AgentLoggingConfig,
+  AgentLoggingSelection,
+} from "./agentLogging.js";
 
 export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
   readonly tools?: LlmToolSet;
@@ -52,6 +66,7 @@ export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
   readonly subagent_tool?: AgentSubagentToolSelection;
   readonly subagents?: AgentSubagentToolSelection;
   readonly telemetry?: AgentTelemetrySelection;
+  readonly logging?: AgentLoggingSelection;
 };
 
 export type AgentLoopStream = {
@@ -65,10 +80,18 @@ export type AgentLoopStream = {
 
 export async function runAgentLoop(request: RunAgentLoopRequest): Promise<LlmToolLoopResult> {
   const telemetry = createAgentTelemetrySession(request.telemetry);
+  const logging = createRootAgentLoggingSession(request);
   try {
-    return await runAgentLoopInternal(request, { depth: 0, telemetry });
+    return await runWithAgentLoggingSession(logging, async () => {
+      return await runAgentLoopInternal(request, {
+        depth: 0,
+        telemetry,
+        logging,
+      });
+    });
   } finally {
     await telemetry?.flush();
+    await logging?.flush();
   }
 }
 
@@ -142,6 +165,7 @@ type RunAgentLoopInternalContext = {
   readonly depth: number;
   readonly parentRunId?: string;
   readonly telemetry?: AgentTelemetrySession;
+  readonly logging?: AgentLoggingSession;
 };
 
 type AgentTelemetryBaseEvent = {
@@ -217,10 +241,12 @@ async function runAgentLoopInternal(
     subagent_tool,
     subagents,
     telemetry,
+    logging: _logging,
     ...toolLoopRequest
   } = request;
 
   const telemetrySession = context.telemetry ?? createAgentTelemetrySession(telemetry);
+  const loggingSession = context.logging;
   const runId = randomRunId();
   const startedAtMs = Date.now();
   const steeringChannel = toolLoopRequest.steering ?? createToolLoopSteeringChannel();
@@ -237,6 +263,7 @@ async function runAgentLoopInternal(
     model: request.model,
     depth: context.depth,
     telemetry: telemetrySession,
+    logging: loggingSession,
     customTools: customTools ?? {},
     filesystemSelection,
     subagentSelection,
@@ -276,6 +303,16 @@ async function runAgentLoopInternal(
     filesystemToolsEnabled: Object.keys(filesystemTools).length > 0,
     subagentToolsEnabled: resolvedSubagentConfig.enabled,
   });
+  loggingSession?.logLine(
+    [
+      `[agent:${runId}] run_started`,
+      `depth=${context.depth.toString()}`,
+      `model=${request.model}`,
+      `tools=${Object.keys(mergedTools).length.toString()}`,
+      `filesystemTools=${Object.keys(filesystemTools).length > 0 ? "true" : "false"}`,
+      `subagentTools=${resolvedSubagentConfig.enabled ? "true" : "false"}`,
+    ].join(" "),
+  );
 
   const sourceOnEvent = toolLoopRequestWithSteering.onEvent;
   const includeLlmStreamEvents = telemetrySession?.includeLlmStreamEvents === true;
@@ -285,6 +322,14 @@ async function runAgentLoopInternal(
           sourceOnEvent?.(event);
           if (includeLlmStreamEvents) {
             emitTelemetry({ type: "agent.run.stream", event });
+          }
+          if (loggingSession) {
+            appendAgentStreamEventLog({
+              event,
+              append: (line) => {
+                loggingSession.logLine(`[agent:${runId}] ${line}`);
+              },
+            });
           }
         }
       : undefined;
@@ -305,6 +350,27 @@ async function runAgentLoopInternal(
       totalCostUsd: result.totalCostUsd,
       usage: summarizeResultUsage(result),
     });
+    loggingSession?.logLine(
+      [
+        `[agent:${runId}] run_completed`,
+        `status=ok`,
+        `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
+        `steps=${result.steps.length.toString()}`,
+        `toolCalls=${countToolCalls(result).toString()}`,
+        `totalCostUsd=${(result.totalCostUsd ?? 0).toFixed(6)}`,
+      ].join(" "),
+    );
+    for (const step of result.steps) {
+      loggingSession?.logLine(
+        [
+          `[agent:${runId}] step_completed`,
+          `step=${step.step.toString()}`,
+          `modelVersion=${step.modelVersion}`,
+          `toolCalls=${step.toolCalls.length.toString()}`,
+          `costUsd=${(step.costUsd ?? 0).toFixed(6)}`,
+        ].join(" "),
+      );
+    }
     return result;
   } catch (error) {
     emitTelemetry({
@@ -313,6 +379,14 @@ async function runAgentLoopInternal(
       durationMs: Math.max(0, Date.now() - startedAtMs),
       error: toErrorMessage(error),
     });
+    loggingSession?.logLine(
+      [
+        `[agent:${runId}] run_completed`,
+        `status=error`,
+        `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
+        `error=${toErrorMessage(error)}`,
+      ].join(" "),
+    );
     throw error;
   } finally {
     await subagentController?.closeAll();
@@ -362,6 +436,7 @@ function createSubagentController(params: {
   readonly model: LlmToolLoopRequest["model"];
   readonly depth: number;
   readonly telemetry: AgentTelemetrySession | undefined;
+  readonly logging: AgentLoggingSession | undefined;
   readonly customTools: LlmToolSet;
   readonly filesystemSelection: AgentFilesystemToolSelection | undefined;
   readonly subagentSelection: AgentSubagentToolSelection | undefined;
@@ -407,6 +482,7 @@ function createSubagentController(params: {
           depth: params.depth + 1,
           parentRunId: params.runId,
           telemetry: params.telemetry,
+          logging: params.logging,
         },
       );
     },
@@ -543,6 +619,52 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
     value !== null &&
     typeof (value as { then?: unknown }).then === "function"
   );
+}
+
+function resolveAgentLoggingSelection(
+  value: AgentLoggingSelection | undefined,
+): AgentLoggingConfig | undefined {
+  if (value === false) {
+    return undefined;
+  }
+  if (value === undefined || value === true) {
+    return {
+      mirrorToConsole: true,
+    };
+  }
+  return value;
+}
+
+function resolveWorkspaceDirForLogging(request: RunAgentLoopRequest): string {
+  const explicitSelection = request.filesystemTool ?? request.filesystem_tool;
+  if (
+    explicitSelection &&
+    typeof explicitSelection === "object" &&
+    !Array.isArray(explicitSelection)
+  ) {
+    const cwd = explicitSelection.options?.cwd;
+    if (typeof cwd === "string" && cwd.trim().length > 0) {
+      return path.resolve(cwd);
+    }
+  }
+  return process.cwd();
+}
+
+function createRootAgentLoggingSession(
+  request: RunAgentLoopRequest,
+): AgentLoggingSession | undefined {
+  const selected = resolveAgentLoggingSelection(request.logging);
+  if (!selected) {
+    return undefined;
+  }
+  return createAgentLoggingSession({
+    ...selected,
+    workspaceDir:
+      typeof selected.workspaceDir === "string" && selected.workspaceDir.trim().length > 0
+        ? path.resolve(selected.workspaceDir)
+        : resolveWorkspaceDirForLogging(request),
+    mirrorToConsole: selected.mirrorToConsole !== false,
+  });
 }
 
 function isAgentTelemetrySink(value: unknown): value is AgentTelemetrySink {

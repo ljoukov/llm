@@ -1,7 +1,9 @@
 #!/usr/bin/env tsx
 
+import path from "node:path";
 import readline from "node:readline";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
 import {
@@ -21,6 +23,14 @@ const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
 const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
 const MODEL = CLI_OPTIONS.model;
 const THINKING_LEVEL = CLI_OPTIONS.thinkingLevel;
+const EXAMPLES_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(EXAMPLES_DIR, "..");
+const RUN_OUTPUT_DIR = path.join(
+  REPO_ROOT,
+  "output",
+  "cli-chat-steering",
+  new Date().toISOString().replace(/[:.]/g, "-"),
+);
 
 const ANSI = {
   reset: "\u001B[0m",
@@ -69,7 +79,11 @@ function resolveCliOptions(args: readonly string[]): {
     .name("cli-chat-steering")
     .description("Interactive local CLI chat with steering and tool loop telemetry.")
     .option("--model <id>", "Model id to run.")
-    .option("--thinking-level <level>", "Thinking level: low, medium, high.", DEFAULT_THINKING_LEVEL)
+    .option(
+      "--thinking-level <level>",
+      "Thinking level: low, medium, high.",
+      DEFAULT_THINKING_LEVEL,
+    )
     .showHelpAfterError();
 
   program.parse(args, { from: "user" });
@@ -275,6 +289,10 @@ function startRun(): void {
       enabled: true,
       model: MODEL,
     },
+    logging: {
+      workspaceDir: RUN_OUTPUT_DIR,
+      mirrorToConsole: false,
+    },
     maxSteps: 100,
   });
 
@@ -363,7 +381,9 @@ function renderEvent(state: ActiveRunState, event: LlmStreamEvent): void {
     } else {
       const status = event.error ? `error: ${event.error}` : "ok";
       const duration =
-        typeof event.durationMs === "number" ? ` (${Math.max(0, Math.round(event.durationMs))}ms)` : "";
+        typeof event.durationMs === "number"
+          ? ` (${Math.max(0, Math.round(event.durationMs))}ms)`
+          : "";
       printSystem(`tool ${event.toolName} ${status}${duration}`);
     }
     return;
@@ -397,7 +417,9 @@ function appendDeltaChunk(
   }
   state.pendingDeltaChannel = channel;
   const normalisedChunk =
-    channel === "thought" ? normaliseThoughtText(chunk) : chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    channel === "thought"
+      ? normaliseThoughtText(chunk)
+      : chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   state.pendingDeltaText += normalisedChunk;
 
   while (true) {

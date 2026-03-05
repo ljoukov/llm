@@ -1502,6 +1502,7 @@ async function runCase(params: {
   graderModel: LlmTextModelId;
   maxSteps: number;
   promptTemplates: PromptTemplates;
+  agentOutputRoot: string;
 }): Promise<CaseResult> {
   const caseName = `${sanitizeForPath(params.model)}-${params.task.id}-${params.variant}-run-${params.runIndex}`;
   const workspacePath = normalizeSlashes(join("workspaces", caseName));
@@ -1571,6 +1572,10 @@ async function runCase(params: {
               maxWaitTimeoutMs: 120_000,
             }
           : false,
+      logging: {
+        workspaceDir: join(params.agentOutputRoot, caseName),
+        mirrorToConsole: false,
+      },
     });
 
     agentFinalText = sanitizePathLikeText(result.text, layout.rootAbs);
@@ -2912,6 +2917,7 @@ async function main(): Promise<void> {
   const runId = `agent-fs-${timestamp}`;
   const outDir = resolve(values["out-dir"] ?? "benchmarks/agent/results");
   const runRoot = join(outDir, runId);
+  const agentOutputRoot = resolve("output", "benchmark-agent", runId);
   await mkdir(runRoot, { recursive: true });
 
   const modelCaseGroups = await Promise.all(
@@ -2933,6 +2939,7 @@ async function main(): Promise<void> {
               graderModel,
               maxSteps,
               promptTemplates,
+              agentOutputRoot,
             });
             modelResults.push(result);
 

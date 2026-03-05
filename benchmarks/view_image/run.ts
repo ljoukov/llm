@@ -24,6 +24,12 @@ const BENCH_ROOT = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = resolve(BENCH_ROOT, "..", "..");
 const WORKSPACES_ROOT = resolve(BENCH_ROOT, "workspaces");
 const FIXTURE_IMAGE_PATH = resolve(BENCH_ROOT, "input", "rome-colosseum.jpg");
+const AGENT_OUTPUT_ROOT = resolve(
+  REPO_ROOT,
+  "output",
+  "benchmark-view-image",
+  new Date().toISOString().replace(/[:.]/g, "-"),
+);
 const DEFAULT_MODELS = [...LLM_TEXT_MODEL_IDS] as const;
 
 type BenchmarkCaseResult = {
@@ -220,6 +226,10 @@ async function runSingleModel(model: LlmTextModelId): Promise<BenchmarkCaseResul
       maxSteps: 20,
       thinkingLevel: "low",
       onEvent: (event) => logEvent(model, event),
+      logging: {
+        workspaceDir: AGENT_OUTPUT_ROOT,
+        mirrorToConsole: false,
+      },
     });
 
     const outputRaw = await readFile(outputPath, "utf8");

@@ -85,6 +85,9 @@ export type { ModelConcurrencyConfig, ModelConcurrencyProvider } from "./utils/m
 export { runAgentLoop, streamAgentLoop } from "./agent.js";
 export type {
   AgentLoopStream,
+  AgentLoggingConfig,
+  AgentLoggingSelection,
+  AgentLogLineSink,
   AgentRunCompletedTelemetryEvent,
   AgentRunStartedTelemetryEvent,
   AgentRunStreamTelemetryEvent,
