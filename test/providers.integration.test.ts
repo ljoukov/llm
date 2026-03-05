@@ -42,7 +42,7 @@ describe("integration: text model matrix", () => {
         model,
         input: "Return exactly: OK",
         ...(isOpenAiModelId(model) || isChatGptModelId(model)
-          ? { openAiReasoningEffort: "low" as const }
+          ? { thinkingLevel: "low" as const }
           : {}),
       });
       const streamed = await streamToStrings(call);
@@ -79,7 +79,7 @@ describe("integration: structured output", () => {
       model: chatGptModel,
       input: 'Return exactly this JSON object: {"ok":true,"message":"hello"}. Return only JSON.',
       schema,
-      openAiReasoningEffort: "low",
+      thinkingLevel: "low",
     });
 
     expect(value.ok).toBe(true);

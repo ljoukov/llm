@@ -46,7 +46,7 @@ describe(`integration: runAgentLoop subagent tools (${runtime})`, () => {
           maxWaitTimeoutMs: 20_000,
         },
         maxSteps: 16,
-        openAiReasoningEffort: "low",
+        thinkingLevel: "low",
       });
 
       const allToolCalls = result.steps.flatMap((step) => step.toolCalls);

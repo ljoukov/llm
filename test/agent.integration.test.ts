@@ -41,7 +41,7 @@ describe(`integration: runAgentLoop hello-world (${runtime})`, () => {
           },
         },
         maxSteps: 6,
-        openAiReasoningEffort: "low",
+        thinkingLevel: "low",
       });
 
       const sawSuccessfulHelloCall = result.steps.some((step) =>

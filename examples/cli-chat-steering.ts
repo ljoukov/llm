@@ -3,6 +3,7 @@
 import readline from "node:readline";
 import process from "node:process";
 
+import { Command } from "commander";
 import {
   createNodeAgentFilesystem,
   isLlmTextModelId,
@@ -10,12 +11,16 @@ import {
   streamAgentLoop,
   type AgentLoopStream,
   type LlmInputMessage,
+  type LlmThinkingLevel,
   type LlmStreamEvent,
   type LlmTextModelId,
 } from "../src/index.js";
 
 const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.3-codex";
-const MODEL = resolveModelFromArgs(process.argv.slice(2));
+const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
+const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
+const MODEL = CLI_OPTIONS.model;
+const THINKING_LEVEL = CLI_OPTIONS.thinkingLevel;
 
 const ANSI = {
   reset: "\u001B[0m",
@@ -52,34 +57,40 @@ let rawModeEnabled = false;
 let inputBuffer = "";
 let composerRendered = false;
 
-function resolveModelFromArgs(args: readonly string[]): LlmTextModelId {
-  let requestedModel: string | undefined;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--model") {
-      requestedModel = args[index + 1];
-      break;
-    }
-    if (arg.startsWith("--model=")) {
-      requestedModel = arg.slice("--model=".length);
-      break;
-    }
-  }
+function isThinkingLevel(value: string): value is LlmThinkingLevel {
+  return value === "low" || value === "medium" || value === "high";
+}
 
-  if (requestedModel === undefined) {
-    return DEFAULT_MODEL;
-  }
+function resolveCliOptions(args: readonly string[]): {
+  readonly model: LlmTextModelId;
+  readonly thinkingLevel: LlmThinkingLevel;
+} {
+  const program = new Command()
+    .name("cli-chat-steering")
+    .description("Interactive local CLI chat with steering and tool loop telemetry.")
+    .option("--model <id>", "Model id to run.")
+    .option("--thinking-level <level>", "Thinking level: low, medium, high.", DEFAULT_THINKING_LEVEL)
+    .showHelpAfterError();
 
-  const model = requestedModel.trim();
-  if (model.length === 0) {
-    process.stderr.write("Invalid --model flag: expected a non-empty model id.\n");
+  program.parse(args, { from: "user" });
+  const options = program.opts<{ model?: string; thinkingLevel?: string }>();
+
+  const modelRaw = options.model?.trim() ?? DEFAULT_MODEL;
+  if (!isLlmTextModelId(modelRaw)) {
+    process.stderr.write(`Unsupported --model value: ${modelRaw}\n`);
     process.exit(1);
   }
-  if (!isLlmTextModelId(model)) {
-    process.stderr.write(`Unsupported --model value: ${model}\n`);
+
+  const thinkingLevelRaw = options.thinkingLevel?.trim().toLowerCase() ?? DEFAULT_THINKING_LEVEL;
+  if (!isThinkingLevel(thinkingLevelRaw)) {
+    process.stderr.write(`Unsupported --thinking-level value: ${thinkingLevelRaw}\n`);
     process.exit(1);
   }
-  return model;
+
+  return {
+    model: modelRaw,
+    thinkingLevel: thinkingLevelRaw,
+  };
 }
 
 loadLocalEnv();
@@ -251,7 +262,7 @@ function startRun(): void {
   const call = streamAgentLoop({
     model: MODEL,
     input: history,
-    openAiReasoningEffort: "xhigh",
+    thinkingLevel: THINKING_LEVEL,
     filesystemTool: {
       profile: "auto",
       options: {
@@ -451,7 +462,7 @@ function printBanner(): void {
   process.stdout.write(
     `${ANSI.bold}CLI Chat Steering Example${ANSI.reset}\n` +
       `${ANSI.dim}model:${ANSI.reset} ${MODEL}  ` +
-      `${ANSI.dim}reasoning:${ANSI.reset} xhigh  ` +
+      `${ANSI.dim}thinking:${ANSI.reset} ${THINKING_LEVEL}  ` +
       `${ANSI.dim}cwd:${ANSI.reset} ${process.cwd()}\n` +
       `${ANSI.dim}filesystem:${ANSI.reset} current directory and below\n` +
       `${ANSI.dim}subagents:${ANSI.reset} enabled (${MODEL})\n\n`,
@@ -467,6 +478,7 @@ function printHelp(usePromptAwareOutput = true): void {
     `${ANSI.dim}  /exit${ANSI.reset} quit\n` +
     `${ANSI.dim}Startup flags:${ANSI.reset}\n` +
     `${ANSI.dim}  --model <id>${ANSI.reset} choose model (default: ${DEFAULT_MODEL})\n` +
+    `${ANSI.dim}  --thinking-level <level>${ANSI.reset} low|medium|high (default: ${DEFAULT_THINKING_LEVEL})\n` +
     `${ANSI.dim}During a run: type a message and press Enter to append steering without interrupting.${ANSI.reset}\n`;
 
   if (!usePromptAwareOutput || !interactiveTty || shuttingDown) {

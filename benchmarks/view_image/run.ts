@@ -211,14 +211,14 @@ async function runSingleModel(model: LlmTextModelId): Promise<BenchmarkCaseResul
                   ],
                 },
               ],
-              openAiReasoningEffort: "low",
+              thinkingLevel: "low",
             }).result;
             return inspection.text;
           },
         }),
       },
       maxSteps: 20,
-      openAiReasoningEffort: "low",
+      thinkingLevel: "low",
       onEvent: (event) => logEvent(model, event),
     });
 

@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import {
   FinishReason,
   FunctionCallingConfigMode,
+  ThinkingLevel,
   type Content as GeminiContent,
   type GenerateContentConfig,
   type GroundingMetadata,
@@ -100,6 +101,7 @@ export type LlmToolOutputContentItem =
     };
 
 export type LlmImageSize = "1K" | "2K" | "4K";
+export type LlmThinkingLevel = "low" | "medium" | "high";
 
 export type LlmWebSearchMode = "cached" | "live";
 
@@ -274,7 +276,7 @@ export type LlmBaseRequest = {
   readonly responseModalities?: readonly string[];
   readonly imageAspectRatio?: string;
   readonly imageSize?: LlmImageSize;
-  readonly openAiReasoningEffort?: OpenAiReasoningEffort;
+  readonly thinkingLevel?: LlmThinkingLevel;
   readonly openAiTextFormat?: ResponseTextConfig["format"];
   readonly signal?: AbortSignal;
 };
@@ -458,7 +460,7 @@ export type LlmToolLoopRequest = LlmInput & {
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
-  readonly openAiReasoningEffort?: OpenAiReasoningEffort;
+  readonly thinkingLevel?: LlmThinkingLevel;
   readonly steering?: LlmToolLoopSteeringChannel;
   readonly onEvent?: (event: LlmStreamEvent) => void;
   readonly signal?: AbortSignal;
@@ -872,10 +874,17 @@ function isOpenAiCodexModel(modelId: string): boolean {
 
 function resolveOpenAiReasoningEffort(
   modelId: string,
-  override?: OpenAiReasoningEffort,
+  thinkingLevel?: LlmThinkingLevel,
 ): OpenAiReasoningEffort {
-  if (override) {
-    return override;
+  if (thinkingLevel) {
+    switch (thinkingLevel) {
+      case "low":
+        return "low";
+      case "medium":
+        return "medium";
+      case "high":
+        return "xhigh";
+    }
   }
   if (isOpenAiCodexModel(modelId)) {
     return "medium";
@@ -2440,9 +2449,46 @@ function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[
   }
   return calls;
 }
-function resolveGeminiThinkingConfig(modelId: string): GenerateContentConfig["thinkingConfig"] {
+function toGeminiThinkingLevel(thinkingLevel: LlmThinkingLevel): ThinkingLevel {
+  switch (thinkingLevel) {
+    case "low":
+      return ThinkingLevel.LOW;
+    case "medium":
+      return ThinkingLevel.MEDIUM;
+    case "high":
+      return ThinkingLevel.HIGH;
+  }
+}
+
+function toGemini25ProThinkingBudget(thinkingLevel: LlmThinkingLevel): number {
+  switch (thinkingLevel) {
+    case "low":
+      return 256;
+    case "medium":
+      return 4096;
+    case "high":
+      return 32_768;
+  }
+}
+
+function resolveGeminiThinkingConfig(
+  modelId: string,
+  thinkingLevel?: LlmThinkingLevel,
+): GenerateContentConfig["thinkingConfig"] {
   if (isGeminiImageModelId(modelId)) {
     return undefined;
+  }
+  if (thinkingLevel) {
+    if (modelId === "gemini-2.5-pro") {
+      return {
+        includeThoughts: true,
+        thinkingBudget: toGemini25ProThinkingBudget(thinkingLevel),
+      } as const;
+    }
+    return {
+      includeThoughts: true,
+      thinkingLevel: toGeminiThinkingLevel(thinkingLevel),
+    } as const;
   }
   switch (modelId) {
     case "gemini-3.1-pro-preview":
@@ -2544,10 +2590,7 @@ async function runTextCall(params: {
   if (provider === "openai") {
     const openAiInput = toOpenAiInput(contents);
     const openAiTools = toOpenAiTools(request.tools);
-    const reasoningEffort = resolveOpenAiReasoningEffort(
-      modelForProvider,
-      request.openAiReasoningEffort,
-    );
+    const reasoningEffort = resolveOpenAiReasoningEffort(modelForProvider, request.thinkingLevel);
     const openAiTextConfig = {
       format: request.openAiTextFormat ?? { type: "text" },
       verbosity: resolveOpenAiVerbosity(modelForProvider),
@@ -2629,10 +2672,7 @@ async function runTextCall(params: {
     }, modelForProvider);
   } else if (provider === "chatgpt") {
     const chatGptInput = toChatGptInput(contents);
-    const reasoningEffort = resolveOpenAiReasoningEffort(
-      request.model,
-      request.openAiReasoningEffort,
-    );
+    const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
     const openAiTools = toOpenAiTools(request.tools);
     const requestPayload = {
       model: modelForProvider,
@@ -2744,7 +2784,7 @@ async function runTextCall(params: {
     }, modelForProvider);
   } else {
     const geminiContents = contents.map(convertLlmContentToGeminiContent);
-    const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider);
+    const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
     const config: GenerateContentConfig = {
       maxOutputTokens: 32_000,
       ...(thinkingConfig ? { thinkingConfig } : {}),
@@ -2959,7 +2999,7 @@ export function streamJson<T>(request: LlmJsonStreamRequest<T>): LlmJsonStream<T
           tools: request.tools,
           responseMimeType: request.responseMimeType ?? "application/json",
           responseJsonSchema,
-          openAiReasoningEffort: request.openAiReasoningEffort,
+          thinkingLevel: request.thinkingLevel,
           ...(openAiTextFormatForAttempt ? { openAiTextFormat: openAiTextFormatForAttempt } : {}),
           signal,
         });
@@ -3050,7 +3090,7 @@ export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
         tools: request.tools,
         responseMimeType: request.responseMimeType ?? "application/json",
         responseJsonSchema,
-        openAiReasoningEffort: request.openAiReasoningEffort,
+        thinkingLevel: request.thinkingLevel,
         ...(openAiTextFormatForAttempt ? { openAiTextFormat: openAiTextFormatForAttempt } : {}),
         signal: request.signal,
       });
@@ -3365,7 +3405,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         : [...openAiAgentTools];
       const reasoningEffort = resolveOpenAiReasoningEffort(
         providerInfo.model,
-        request.openAiReasoningEffort,
+        request.thinkingLevel,
       );
       const textConfig = {
         format: { type: "text" },
@@ -3667,10 +3707,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         ? [...openAiNativeTools, ...openAiAgentTools]
         : [...openAiAgentTools];
 
-      const reasoningEffort = resolveOpenAiReasoningEffort(
-        request.model,
-        request.openAiReasoningEffort,
-      );
+      const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
       const toolLoopInput = toChatGptInput(contents);
       // ChatGPT Codex prompt caching is keyed by both prompt_cache_key and session_id.
       const conversationId = `tool-loop-${randomBytes(8).toString("hex")}`;
@@ -4150,7 +4187,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           firstModelEventAtMs = Date.now();
         }
       };
-      const thinkingConfig = resolveGeminiThinkingConfig(request.model);
+      const thinkingConfig = resolveGeminiThinkingConfig(request.model, request.thinkingLevel);
       const config: GenerateContentConfig = {
         maxOutputTokens: 32_000,
         tools: geminiTools,
