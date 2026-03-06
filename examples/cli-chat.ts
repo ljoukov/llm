@@ -18,7 +18,7 @@ import {
   type LlmTextModelId,
 } from "../src/index.js";
 
-const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.3-codex";
+const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.4-fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
 const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
 const MODEL = CLI_OPTIONS.model;
@@ -28,7 +28,7 @@ const REPO_ROOT = path.resolve(EXAMPLES_DIR, "..");
 const RUN_OUTPUT_DIR = path.join(
   REPO_ROOT,
   "output",
-  "cli-chat-steering",
+  "cli-chat",
   new Date().toISOString().replace(/[:.]/g, "-"),
 );
 
@@ -76,8 +76,8 @@ function resolveCliOptions(args: readonly string[]): {
   readonly thinkingLevel: LlmThinkingLevel;
 } {
   const program = new Command()
-    .name("cli-chat-steering")
-    .description("Interactive local CLI chat with steering and tool loop telemetry.")
+    .name("cli-chat")
+    .description("Interactive local CLI chat with tool loop telemetry.")
     .option("--model <id>", "Model id to run.")
     .option(
       "--thinking-level <level>",
