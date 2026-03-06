@@ -20,6 +20,10 @@ import {
 
 const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.4-fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
+const DEFAULT_MODEL_TOOLS = [
+  { type: "web-search", mode: "live" },
+  { type: "code-execution" },
+] as const;
 const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
 const MODEL = CLI_OPTIONS.model;
 const THINKING_LEVEL = CLI_OPTIONS.thinkingLevel;
@@ -277,6 +281,7 @@ function startRun(): void {
     model: MODEL,
     input: history,
     thinkingLevel: THINKING_LEVEL,
+    modelTools: DEFAULT_MODEL_TOOLS,
     filesystemTool: {
       profile: "auto",
       options: {
