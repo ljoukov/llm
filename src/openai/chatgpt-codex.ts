@@ -97,6 +97,7 @@ export type ChatGptCodexRequest = {
   model: string;
   store: boolean;
   stream: boolean;
+  service_tier?: string;
   instructions?: string;
   input: ChatGptInputItem[];
   text?: { verbosity?: string; format?: unknown };

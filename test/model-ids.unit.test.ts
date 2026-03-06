@@ -18,7 +18,10 @@ import {
 
 describe("model id lists", () => {
   it("defines provider model ids as explicit const lists", () => {
+    expect(OPENAI_MODEL_IDS).toContain("gpt-5.4");
     expect(OPENAI_MODEL_IDS).toContain("gpt-5.2");
+    expect(CHATGPT_MODEL_IDS).toContain("chatgpt-gpt-5.4");
+    expect(CHATGPT_MODEL_IDS).toContain("chatgpt-gpt-5.4-fast");
     expect(CHATGPT_MODEL_IDS).toContain("chatgpt-gpt-5.3-codex");
     expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
     expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.1-pro-preview");
@@ -35,6 +38,15 @@ describe("model id lists", () => {
     expect(isChatGptModelId("chatgpt-gpt-5-codex")).toBe(false);
     expect(isLlmTextModelId("gpt-5-codex")).toBe(false);
     expect(isLlmModelId("gpt-5-codex")).toBe(false);
+  });
+
+  it("recognizes GPT-5.4 model aliases", () => {
+    expect(isOpenAiModelId("gpt-5.4")).toBe(true);
+    expect(isChatGptModelId("chatgpt-gpt-5.4")).toBe(true);
+    expect(isChatGptModelId("chatgpt-gpt-5.4-fast")).toBe(true);
+    expect(isLlmTextModelId("gpt-5.4")).toBe(true);
+    expect(isLlmTextModelId("chatgpt-gpt-5.4-fast")).toBe(true);
+    expect(isLlmModelId("chatgpt-gpt-5.4-fast")).toBe(true);
   });
 
   it("aggregates text and image model ids", () => {
