@@ -102,4 +102,20 @@ describe("streamText (ChatGPT)", () => {
     expect(result.text).toBe("Hello");
     expect(chatGptCallCount).toBe(2);
   });
+
+  it("maps chatgpt-gpt-5.4-fast to gpt-5.4 with priority service tier", async () => {
+    capturedRequest = null;
+    chatGptCallCount = 0;
+    failFirstTerminated = false;
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "chatgpt-gpt-5.4-fast",
+      input: "hi",
+    });
+
+    expect(capturedRequest?.model).toBe("gpt-5.4");
+    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(result.modelVersion).toBe("chatgpt-gpt-5.4-fast");
+  });
 });

@@ -41,9 +41,10 @@ import {
 import {
   CHATGPT_MODEL_IDS,
   OPENAI_MODEL_IDS,
-  stripChatGptPrefix,
   isChatGptModelId,
   isOpenAiModelId,
+  resolveChatGptProviderModel,
+  resolveChatGptServiceTier,
 } from "./openai/models.js";
 import {
   getCurrentAgentLoggingSession,
@@ -855,9 +856,17 @@ function convertLlmContentToGeminiContent(content: LlmContent): GeminiContent {
   };
 }
 
-function resolveProvider(model: LlmModelId): { provider: LlmProvider; model: string } {
+function resolveProvider(model: LlmModelId): {
+  provider: LlmProvider;
+  model: string;
+  serviceTier?: "priority";
+} {
   if (isChatGptModelId(model)) {
-    return { provider: "chatgpt", model: stripChatGptPrefix(model) };
+    return {
+      provider: "chatgpt",
+      model: resolveChatGptProviderModel(model),
+      serviceTier: resolveChatGptServiceTier(model),
+    };
   }
   if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {
     return { provider: "gemini", model };
@@ -2922,6 +2931,7 @@ async function runTextCall(params: {
         model: modelForProvider,
         store: false,
         stream: true,
+        ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
         instructions: chatGptInput.instructions ?? "You are a helpful assistant.",
         input: chatGptInput.input,
         include: ["reasoning.encrypted_content"],
@@ -2958,7 +2968,7 @@ async function runTextCall(params: {
         queue.push({ type: "blocked" });
       }
       if (result.model) {
-        modelVersion = `chatgpt-${result.model}`;
+        modelVersion = providerInfo.serviceTier ? request.model : `chatgpt-${result.model}`;
         queue.push({ type: "model", modelVersion });
       }
       latestUsage = extractChatGptUsageTokens(result.usage);
@@ -4077,6 +4087,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           model: providerInfo.model,
           store: false,
           stream: true,
+          ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
           instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
           input,
           prompt_cache_key: promptCacheKey,
@@ -4118,7 +4129,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           });
           const modelCompletedAtMs = Date.now();
 
-          modelVersion = response.model ? `chatgpt-${response.model}` : request.model;
+          modelVersion =
+            response.model && !providerInfo.serviceTier
+              ? `chatgpt-${response.model}`
+              : request.model;
           usageTokens = extractChatGptUsageTokens(response.usage);
           const stepCostUsd = estimateCallCostUsd({
             modelId: modelVersion,

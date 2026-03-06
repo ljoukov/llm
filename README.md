@@ -333,12 +333,14 @@ Use a `chatgpt-` prefix:
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "chatgpt-gpt-5.1-codex-mini",
+  model: "chatgpt-gpt-5.4",
   input: "Return exactly: OK",
 });
 
 console.log(result.text);
 ```
+
+`chatgpt-gpt-5.4-fast` is also supported as a convenience alias for ChatGPT-authenticated `gpt-5.4` with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics.
 
 ## JSON outputs
 

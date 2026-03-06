@@ -21,6 +21,24 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.01015, 8);
   });
 
+  it("estimates GPT-5.4 costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "gpt-5.4",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (2.5/1M) = 0.00225
+    // cached: 100 * (0.25/1M) = 0.000025
+    // output: 600 * (15/1M) = 0.009
+    expect(cost).toBeCloseTo(0.011275, 8);
+  });
+
   it("estimates ChatGPT codex spark costs (gpt-5.3-codex-spark) at GPT-5 mini rates", () => {
     const cost = estimateCallCostUsd({
       modelId: "chatgpt-gpt-5.3-codex-spark",
@@ -37,6 +55,24 @@ describe("estimateCallCostUsd", () => {
     // cached: 100 * (0.025/1M) = 0.0000025
     // output: 600 * (2/1M) = 0.0012
     expect(cost).toBeCloseTo(0.0014275, 8);
+  });
+
+  it("prices chatgpt-gpt-5.4-fast at GPT-5.4 priority rates", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "chatgpt-gpt-5.4-fast",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (5/1M) = 0.0045
+    // cached: 100 * (0.5/1M) = 0.00005
+    // output: 600 * (30/1M) = 0.018
+    expect(cost).toBeCloseTo(0.02255, 8);
   });
 
   it("estimates Fireworks kimi-k2.5 costs", () => {
