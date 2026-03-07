@@ -68,7 +68,7 @@ describe("agent logging", () => {
       const agentLog = await fs.readFile(path.join(workspaceDir, "agent.log"), "utf8");
       expect(agentLog).toContain("[agent:test-run] run_started");
 
-      const logsRoot = path.join(tempRoot, "logs");
+      const logsRoot = path.join(workspaceDir, "llm_calls");
       const runDirs = await fs.readdir(logsRoot);
       expect(runDirs).toHaveLength(1);
       const runDir = path.join(logsRoot, runDirs[0] ?? "");
@@ -93,6 +93,38 @@ describe("agent logging", () => {
       ) as Record<string, unknown>;
       expect(responseMetadata.status).toBe("completed");
       expect(responseMetadata.costUsd).toBe(0.123);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("supports redirecting per-call artifacts to a custom directory", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-agent-logging-"));
+    try {
+      const workspaceDir = path.join(tempRoot, "logs", "agent");
+      const session = createAgentLoggingSession({
+        workspaceDir,
+        callLogsDir: "../llm-calls",
+        mirrorToConsole: false,
+      });
+
+      session.logLine("[agent:test-run] custom_root");
+      const call = session.startLlmCall({
+        provider: "openai",
+        modelId: "gpt-5.2",
+        requestText: "hello",
+      });
+      call.appendResponseDelta("answer");
+      call.complete();
+      await session.flush();
+
+      expect(await fs.readFile(path.join(workspaceDir, "agent.log"), "utf8")).toContain(
+        "[agent:test-run] custom_root",
+      );
+
+      const logsRoot = path.join(tempRoot, "logs", "llm-calls");
+      const runDirs = await fs.readdir(logsRoot);
+      expect(runDirs).toHaveLength(1);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

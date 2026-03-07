@@ -12,6 +12,7 @@ export type AgentLogLineSink = {
 
 export type AgentLoggingConfig = {
   readonly workspaceDir?: string;
+  readonly callLogsDir?: string;
   readonly mirrorToConsole?: boolean;
   readonly sink?: AgentLogLineSink;
 };
@@ -263,7 +264,12 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
 
   constructor(config: AgentLoggingConfig) {
     this.workspaceDir = path.resolve(config.workspaceDir ?? process.cwd());
-    this.logsRootDir = path.join(path.dirname(this.workspaceDir), "logs");
+    const configuredCallLogsDir =
+      typeof config.callLogsDir === "string" ? config.callLogsDir.trim() : "";
+    this.logsRootDir =
+      configuredCallLogsDir.length > 0
+        ? path.resolve(this.workspaceDir, configuredCallLogsDir)
+        : path.join(this.workspaceDir, "llm_calls");
     this.mirrorToConsole = config.mirrorToConsole !== false;
     this.sink = config.sink;
     this.agentLogPath = path.join(this.workspaceDir, "agent.log");
