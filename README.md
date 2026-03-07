@@ -683,7 +683,7 @@ See `docs/agent-telemetry.md` for event schema, design rationale, and backend ad
 
 - console lines,
 - `<workspace>/agent.log`,
-- per-call artifacts under a sibling logs directory: `<workspace-parent>/logs/<timestamp>-<n>/<model-id>/`.
+- per-call artifacts under `<workspace>/llm_calls/<timestamp>-<n>/<model-id>/` by default.
 
 Each LLM call writes:
 
@@ -694,6 +694,7 @@ Each LLM call writes:
 `image_url` data URLs are redacted in text/metadata logs (`data:...,...`) so base64 payloads are not printed inline.
 
 ```ts
+import path from "node:path";
 import { runAgentLoop } from "@ljoukov/llm";
 
 await runAgentLoop({
@@ -701,7 +702,8 @@ await runAgentLoop({
   input: "Do the task",
   filesystemTool: true,
   logging: {
-    workspaceDir: process.cwd(), // optional; defaults to filesystem cwd or process.cwd()
+    workspaceDir: path.join(process.cwd(), "logs", "agent"), // optional; defaults to filesystem cwd or process.cwd()
+    callLogsDir: "llm_calls", // optional; relative paths resolve from workspaceDir
     mirrorToConsole: false, // useful for CLI UIs that already render stream events
     sink: {
       append: (line) => {

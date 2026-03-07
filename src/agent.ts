@@ -657,12 +657,13 @@ function createRootAgentLoggingSession(
   if (!selected) {
     return undefined;
   }
+  const workspaceDir =
+    typeof selected.workspaceDir === "string" && selected.workspaceDir.trim().length > 0
+      ? path.resolve(selected.workspaceDir)
+      : resolveWorkspaceDirForLogging(request);
   return createAgentLoggingSession({
     ...selected,
-    workspaceDir:
-      typeof selected.workspaceDir === "string" && selected.workspaceDir.trim().length > 0
-        ? path.resolve(selected.workspaceDir)
-        : resolveWorkspaceDirForLogging(request),
+    workspaceDir,
     mirrorToConsole: selected.mirrorToConsole !== false,
   });
 }
