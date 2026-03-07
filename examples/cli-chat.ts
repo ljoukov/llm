@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { Command } from "commander";
 import {
+  createFilesystemToolSetForModel,
   createNodeAgentFilesystem,
   isLlmTextModelId,
   loadLocalEnv,
@@ -20,13 +21,18 @@ import {
 
 const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.4-fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
-const DEFAULT_MODEL_TOOLS = [
-  { type: "web-search", mode: "live" },
-  { type: "code-execution" },
+const DEFAULT_MODEL_TOOLS = [{ type: "web-search", mode: "live" }] as const;
+const DEFAULT_SUBAGENT_TOOL_NAMES = [
+  "spawn_agent",
+  "send_input",
+  "resume_agent",
+  "wait",
+  "close_agent",
 ] as const;
 const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
 const MODEL = CLI_OPTIONS.model;
 const THINKING_LEVEL = CLI_OPTIONS.thinkingLevel;
+const FILESYSTEM_TOOL_NAMES = Object.keys(createFilesystemToolSetForModel(MODEL)).sort();
 const EXAMPLES_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXAMPLES_DIR, "..");
 const RUN_OUTPUT_DIR = path.join(
@@ -486,13 +492,18 @@ function renderUser(text: string, steering: boolean): void {
 }
 
 function printBanner(): void {
+  const modelToolSummary = DEFAULT_MODEL_TOOLS.map((tool) =>
+    tool.type === "web-search" ? `web-search (${tool.mode ?? "cached"})` : tool.type,
+  ).join(", ");
   process.stdout.write(
-    `${ANSI.bold}CLI Chat Steering Example${ANSI.reset}\n` +
+    `${ANSI.bold}CLI Chat Example${ANSI.reset}\n` +
       `${ANSI.dim}model:${ANSI.reset} ${MODEL}  ` +
       `${ANSI.dim}thinking:${ANSI.reset} ${THINKING_LEVEL}  ` +
       `${ANSI.dim}cwd:${ANSI.reset} ${process.cwd()}\n` +
-      `${ANSI.dim}filesystem:${ANSI.reset} current directory and below\n` +
-      `${ANSI.dim}subagents:${ANSI.reset} enabled (${MODEL})\n\n`,
+      `${ANSI.dim}model tools:${ANSI.reset} ${modelToolSummary}\n` +
+      `${ANSI.dim}filesystem tools:${ANSI.reset} ${FILESYSTEM_TOOL_NAMES.join(", ")}\n` +
+      `${ANSI.dim}subagent tools:${ANSI.reset} ${DEFAULT_SUBAGENT_TOOL_NAMES.join(", ")}\n` +
+      `${ANSI.dim}filesystem scope:${ANSI.reset} current directory and below\n\n`,
   );
   printHelp(false);
 }
