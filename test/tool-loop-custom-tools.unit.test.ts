@@ -1,3 +1,7 @@
+import * as fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -215,6 +219,70 @@ describe("runToolLoop custom tools", () => {
     expect(Array.isArray(outputItem?.output)).toBe(true);
     expect(outputItem?.output?.[0]?.type).toBe("input_image");
     expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
+  });
+
+  it("writes tool call artifacts and input media for logged OpenAI tool loops", async () => {
+    openAiScenario = "image_function";
+    openAiRequests = [];
+    openAiCallCount = 0;
+
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-tool-loop-logging-"));
+    try {
+      const { createAgentLoggingSession, runWithAgentLoggingSession } = await import(
+        "../src/agentLogging.js"
+      );
+      const { runToolLoop, tool } = await import("../src/llm.js");
+      const session = createAgentLoggingSession({
+        workspaceDir: tempRoot,
+        mirrorToConsole: false,
+      });
+
+      await runWithAgentLoggingSession(session, async () => {
+        await runToolLoop({
+          model: "gpt-5.2",
+          input: "inspect image",
+          tools: {
+            view_image: tool({
+              inputSchema: z.object({ path: z.string() }),
+              execute: async () => [
+                {
+                  type: "input_image" as const,
+                  image_url: "data:image/png;base64,AAA",
+                },
+              ],
+            }),
+          },
+        });
+      });
+      await session.flush();
+
+      const logsRoot = path.join(tempRoot, "llm_calls");
+      const runDirs = (await fs.readdir(logsRoot)).sort();
+      expect(runDirs).toHaveLength(2);
+
+      const resolveCallDir = async (dirName: string): Promise<string> => {
+        const runDir = path.join(logsRoot, dirName);
+        const modelDirs = await fs.readdir(runDir);
+        expect(modelDirs).toHaveLength(1);
+        return path.join(runDir, modelDirs[0] ?? "");
+      };
+
+      const firstCallDir = await resolveCallDir(runDirs[0] ?? "");
+      const secondCallDir = await resolveCallDir(runDirs[1] ?? "");
+
+      expect(await fs.readFile(path.join(firstCallDir, "tool_call.txt"), "utf8")).toContain(
+        "view_image",
+      );
+      expect(
+        await fs.readFile(path.join(secondCallDir, "tool_call_response.txt"), "utf8"),
+      ).toContain("function_call_output");
+      expect(await fs.readFile(path.join(secondCallDir, "input-1.png"))).toEqual(
+        Buffer.from("AAA", "base64"),
+      );
+      expect(await fs.readFile(path.join(secondCallDir, "response.txt"), "utf8")).toBe("done");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("preserves ChatGPT function_call_output content items for image tool outputs", async () => {

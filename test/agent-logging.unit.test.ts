@@ -54,15 +54,32 @@ describe("agent logging", () => {
         },
         attachments: [
           {
-            filename: "input.png",
+            filename: "input-1.png",
             bytes: Buffer.from([1, 2, 3]),
           },
         ],
+        toolCallResponseText: JSON.stringify([
+          {
+            type: "function_call_output",
+            callId: "call_1",
+            output: { ok: true },
+          },
+        ]),
       });
       call.appendThoughtDelta("thinking...");
-      call.appendResponseDelta("answer");
+      call.appendResponseDelta("ans");
       call.complete({
-        costUsd: 0.123,
+        responseText: "answer",
+        toolCallText: JSON.stringify([{ name: "lookup", arguments: { query: "hello" } }]),
+        attachments: [
+          {
+            filename: "output-1.png",
+            bytes: Buffer.from([4, 5, 6]),
+          },
+        ],
+        metadata: {
+          costUsd: 0.123,
+        },
       });
       await session.flush();
 
@@ -80,7 +97,12 @@ describe("agent logging", () => {
       expect(await fs.readFile(path.join(callDir, "request.txt"), "utf8")).toContain("hello");
       expect(await fs.readFile(path.join(callDir, "thoughts.txt"), "utf8")).toBe("thinking...");
       expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe("answer");
-      expect(await fs.readFile(path.join(callDir, "input.png"))).toEqual(Buffer.from([1, 2, 3]));
+      expect(await fs.readFile(path.join(callDir, "tool_call.txt"), "utf8")).toContain("lookup");
+      expect(await fs.readFile(path.join(callDir, "tool_call_response.txt"), "utf8")).toContain(
+        "function_call_output",
+      );
+      expect(await fs.readFile(path.join(callDir, "input-1.png"))).toEqual(Buffer.from([1, 2, 3]));
+      expect(await fs.readFile(path.join(callDir, "output-1.png"))).toEqual(Buffer.from([4, 5, 6]));
 
       const requestMetadata = JSON.parse(
         await fs.readFile(path.join(callDir, "request.metadata.json"), "utf8"),
@@ -94,6 +116,50 @@ describe("agent logging", () => {
       ) as Record<string, unknown>;
       expect(responseMetadata.status).toBe("completed");
       expect(responseMetadata.costUsd).toBe(0.123);
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("writes error.txt for failed calls", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-agent-logging-"));
+    try {
+      const workspaceDir = path.join(tempRoot, "workspace");
+      const session = createAgentLoggingSession({
+        workspaceDir,
+        mirrorToConsole: false,
+      });
+
+      const call = session.startLlmCall({
+        provider: "chatgpt",
+        modelId: "chatgpt-gpt-5.4",
+        requestText: "hello",
+      });
+      call.appendResponseDelta("partial");
+      call.fail(new Error("boom"), {
+        responseText: "partial",
+        toolCallText: JSON.stringify([{ name: "list_dir" }]),
+        metadata: {
+          costUsd: 0.001,
+        },
+      });
+      await session.flush();
+
+      const logsRoot = path.join(workspaceDir, "llm_calls");
+      const runDirs = await fs.readdir(logsRoot);
+      const runDir = path.join(logsRoot, runDirs[0] ?? "");
+      const modelDirs = await fs.readdir(runDir);
+      const callDir = path.join(runDir, modelDirs[0] ?? "");
+
+      expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe("partial");
+      expect(await fs.readFile(path.join(callDir, "error.txt"), "utf8")).toBe("boom\n");
+      expect(await fs.readFile(path.join(callDir, "tool_call.txt"), "utf8")).toContain("list_dir");
+
+      const responseMetadata = JSON.parse(
+        await fs.readFile(path.join(callDir, "response.metadata.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(responseMetadata.status).toBe("failed");
+      expect(responseMetadata.error).toBe("boom");
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

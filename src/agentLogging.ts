@@ -24,19 +24,27 @@ export type AgentLlmCallAttachment = {
   readonly bytes: Buffer;
 };
 
+export type AgentLlmCallCompletion = {
+  readonly metadata?: Record<string, unknown>;
+  readonly responseText?: string;
+  readonly attachments?: readonly AgentLlmCallAttachment[];
+  readonly toolCallText?: string;
+};
+
 export type AgentLlmCallStartInput = {
   readonly provider: string;
   readonly modelId: string;
   readonly requestText: string;
   readonly requestMetadata?: Record<string, unknown>;
   readonly attachments?: readonly AgentLlmCallAttachment[];
+  readonly toolCallResponseText?: string;
 };
 
 export type AgentLlmCallLogger = {
   readonly appendThoughtDelta: (text: string) => void;
   readonly appendResponseDelta: (text: string) => void;
-  readonly complete: (metadata?: Record<string, unknown>) => void;
-  readonly fail: (error: unknown, metadata?: Record<string, unknown>) => void;
+  readonly complete: (options?: AgentLlmCallCompletion) => void;
+  readonly fail: (error: unknown, options?: AgentLlmCallCompletion) => void;
 };
 
 export type AgentLoggingSession = {
@@ -87,6 +95,10 @@ function normalisePathSegment(value: string): string {
 
 function ensureTrailingNewline(value: string): string {
   return value.endsWith("\n") ? value : `${value}\n`;
+}
+
+function hasNonEmptyText(value: string | undefined): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 export function redactDataUrlPayload(value: string): string {
@@ -383,6 +395,29 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
     this.enqueueLineWrite(timestamped);
   }
 
+  private async writeAttachments(
+    baseDir: string,
+    attachments: readonly AgentLlmCallAttachment[] | undefined,
+  ): Promise<void> {
+    const usedNames = new Set<string>();
+    for (const attachment of attachments ?? []) {
+      let filename = normalisePathSegment(attachment.filename);
+      if (!filename.includes(".")) {
+        filename = `${filename}.bin`;
+      }
+      const ext = path.extname(filename);
+      const base = ext.length > 0 ? filename.slice(0, -ext.length) : filename;
+      let candidate = filename;
+      let duplicateIndex = 2;
+      while (usedNames.has(candidate)) {
+        candidate = `${base}-${duplicateIndex.toString()}${ext}`;
+        duplicateIndex += 1;
+      }
+      usedNames.add(candidate);
+      await writeFile(path.join(baseDir, candidate), attachment.bytes);
+    }
+  }
+
   startLlmCall(input: AgentLlmCallStartInput): AgentLlmCallLogger {
     const callNumber = this.callCounter + 1;
     this.callCounter = callNumber;
@@ -396,6 +431,9 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
 
     const responsePath = path.join(baseDir, "response.txt");
     const thoughtsPath = path.join(baseDir, "thoughts.txt");
+    const toolCallPath = path.join(baseDir, "tool_call.txt");
+    const toolCallResponsePath = path.join(baseDir, "tool_call_response.txt");
+    const errorPath = path.join(baseDir, "error.txt");
     const responseMetadataPath = path.join(baseDir, "response.metadata.json");
 
     let chain: Promise<void> = this.ensureReady
@@ -421,22 +459,14 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           "utf8",
         );
 
-        const usedNames = new Set<string>();
-        for (const attachment of input.attachments ?? []) {
-          let filename = normalisePathSegment(attachment.filename);
-          if (!filename.includes(".")) {
-            filename = `${filename}.bin`;
-          }
-          const ext = path.extname(filename);
-          const base = ext.length > 0 ? filename.slice(0, -ext.length) : filename;
-          let candidate = filename;
-          let duplicateIndex = 2;
-          while (usedNames.has(candidate)) {
-            candidate = `${base}-${duplicateIndex.toString()}${ext}`;
-            duplicateIndex += 1;
-          }
-          usedNames.add(candidate);
-          await writeFile(path.join(baseDir, candidate), attachment.bytes);
+        await this.writeAttachments(baseDir, input.attachments);
+
+        if (hasNonEmptyText(input.toolCallResponseText)) {
+          await writeFile(
+            toolCallResponsePath,
+            ensureTrailingNewline(input.toolCallResponseText),
+            "utf8",
+          );
         }
       })
       .catch(() => undefined);
@@ -468,18 +498,25 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           await appendFile(responsePath, text, "utf8");
         });
       },
-      complete: (metadata?: Record<string, unknown>) => {
+      complete: (options?: AgentLlmCallCompletion) => {
         if (closed) {
           return;
         }
         closed = true;
         enqueue(async () => {
+          if (hasNonEmptyText(options?.responseText)) {
+            await writeFile(responsePath, options.responseText, "utf8");
+          }
+          if (hasNonEmptyText(options?.toolCallText)) {
+            await writeFile(toolCallPath, ensureTrailingNewline(options.toolCallText), "utf8");
+          }
+          await this.writeAttachments(baseDir, options?.attachments);
           const payload: Record<string, unknown> = {
             capturedAt: toIsoNow(),
             status: "completed",
           };
-          if (metadata) {
-            const sanitised = sanitiseLogValue(metadata);
+          if (options?.metadata) {
+            const sanitised = sanitiseLogValue(options.metadata);
             if (sanitised && typeof sanitised === "object" && !Array.isArray(sanitised)) {
               Object.assign(payload, sanitised as Record<string, unknown>);
             } else if (sanitised !== undefined) {
@@ -489,19 +526,27 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           await writeFile(responseMetadataPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
         });
       },
-      fail: (error: unknown, metadata?: Record<string, unknown>) => {
+      fail: (error: unknown, options?: AgentLlmCallCompletion) => {
         if (closed) {
           return;
         }
         closed = true;
         enqueue(async () => {
+          if (hasNonEmptyText(options?.responseText)) {
+            await writeFile(responsePath, options.responseText, "utf8");
+          }
+          if (hasNonEmptyText(options?.toolCallText)) {
+            await writeFile(toolCallPath, ensureTrailingNewline(options.toolCallText), "utf8");
+          }
+          await this.writeAttachments(baseDir, options?.attachments);
+          await writeFile(errorPath, ensureTrailingNewline(toErrorMessage(error)), "utf8");
           const payload: Record<string, unknown> = {
             capturedAt: toIsoNow(),
             status: "failed",
             error: toErrorMessage(error),
           };
-          if (metadata) {
-            const sanitised = sanitiseLogValue(metadata);
+          if (options?.metadata) {
+            const sanitised = sanitiseLogValue(options.metadata);
             if (sanitised && typeof sanitised === "object" && !Array.isArray(sanitised)) {
               Object.assign(payload, sanitised as Record<string, unknown>);
             } else if (sanitised !== undefined) {
