@@ -1,8 +1,13 @@
+import * as fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 let capturedRequest: any = null;
 let chatGptCallCount = 0;
 let failFirstTerminated = false;
+let emitChatGptDeltas = true;
 
 vi.mock("../src/openai/chatgpt-codex.js", () => {
   return {
@@ -12,8 +17,10 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
         throw new Error("terminated");
       }
       capturedRequest = options.request;
-      options.onDelta?.({ thoughtDelta: "Thinking" });
-      options.onDelta?.({ textDelta: "Hello" });
+      if (emitChatGptDeltas) {
+        options.onDelta?.({ thoughtDelta: "Thinking" });
+        options.onDelta?.({ textDelta: "Hello" });
+      }
       return {
         text: "Hello",
         reasoningText: "",
@@ -38,6 +45,7 @@ describe("streamText (ChatGPT)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     chatGptCallCount = 0;
     failFirstTerminated = false;
+    emitChatGptDeltas = true;
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({ model: "chatgpt-gpt-5.1-codex-mini", input: "hi" });
@@ -63,6 +71,7 @@ describe("streamText (ChatGPT)", () => {
     capturedRequest = null;
     chatGptCallCount = 0;
     failFirstTerminated = false;
+    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
@@ -92,6 +101,7 @@ describe("streamText (ChatGPT)", () => {
   it("retries once when ChatGPT transport fails with terminated", async () => {
     chatGptCallCount = 0;
     failFirstTerminated = true;
+    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
@@ -107,6 +117,7 @@ describe("streamText (ChatGPT)", () => {
     capturedRequest = null;
     chatGptCallCount = 0;
     failFirstTerminated = false;
+    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
@@ -117,5 +128,43 @@ describe("streamText (ChatGPT)", () => {
     expect(capturedRequest?.model).toBe("gpt-5.4");
     expect(capturedRequest?.service_tier).toBe("priority");
     expect(result.modelVersion).toBe("chatgpt-gpt-5.4-fast");
+  });
+
+  it("writes response.txt even when ChatGPT emits no response deltas", async () => {
+    capturedRequest = null;
+    chatGptCallCount = 0;
+    failFirstTerminated = false;
+    emitChatGptDeltas = false;
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-stream-chatgpt-"));
+    try {
+      const { createAgentLoggingSession, runWithAgentLoggingSession } = await import(
+        "../src/agentLogging.js"
+      );
+      const { generateText } = await import("../src/llm.js");
+      const session = createAgentLoggingSession({
+        workspaceDir: tempRoot,
+        mirrorToConsole: false,
+      });
+
+      const result = await runWithAgentLoggingSession(session, async () => {
+        return await generateText({
+          model: "chatgpt-gpt-5.1-codex-mini",
+          input: "hi",
+        });
+      });
+      await session.flush();
+
+      expect(result.text).toBe("Hello");
+
+      const logsRoot = path.join(tempRoot, "llm_calls");
+      const runDirs = await fs.readdir(logsRoot);
+      const runDir = path.join(logsRoot, runDirs[0] ?? "");
+      const modelDirs = await fs.readdir(runDir);
+      const callDir = path.join(runDir, modelDirs[0] ?? "");
+      expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe("Hello");
+    } finally {
+      emitChatGptDeltas = true;
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });
