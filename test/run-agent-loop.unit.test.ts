@@ -53,6 +53,28 @@ describe("runAgentLoop", () => {
     ]);
   });
 
+  it("auto-selects codex filesystem tools for gpt-5.4", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "chatgpt-gpt-5.4",
+      input: "test",
+      filesystemTool: true,
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+    };
+    expect(Object.keys(call.tools).sort()).toEqual([
+      "apply_patch",
+      "grep_files",
+      "list_dir",
+      "read_file",
+      "view_image",
+    ]);
+  });
+
   it("accepts filesystem_tool alias and uses gemini tool profile for gemini models", async () => {
     runToolLoopMock.mockClear();
     const { runAgentLoop } = await import("../src/agent.js");
