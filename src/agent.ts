@@ -1,39 +1,38 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-
 import {
-  createToolLoopSteeringChannel,
-  runToolLoop,
-  type LlmStreamEvent,
-  type LlmInputMessage,
-  type LlmToolLoopSteeringAppendResult,
-  type LlmToolLoopSteeringInput,
-  type LlmUsageTokens,
-  type LlmToolLoopRequest,
-  type LlmToolLoopResult,
-  type LlmToolSet,
-} from "./llm.js";
-import {
+  type AgentSubagentToolSelection,
   buildCodexSubagentOrchestratorInstructions,
   buildCodexSubagentWorkerInstructions,
   createSubagentToolController,
-  resolveSubagentToolConfig,
-  type AgentSubagentToolSelection,
   type ResolvedAgentSubagentToolConfig,
+  resolveSubagentToolConfig,
 } from "./agent/subagents.js";
 import {
-  createFilesystemToolSetForModel,
-  type AgentFilesystemToolProfile,
-  type AgentFilesystemToolsOptions,
-} from "./tools/filesystemTools.js";
-import {
-  appendAgentStreamEventLog,
-  createAgentLoggingSession,
-  runWithAgentLoggingSession,
   type AgentLoggingConfig,
   type AgentLoggingSelection,
   type AgentLoggingSession,
+  createAgentLoggingSession,
+  createAgentStreamEventLogger,
+  runWithAgentLoggingSession,
 } from "./agentLogging.js";
+import {
+  createToolLoopSteeringChannel,
+  type LlmInputMessage,
+  type LlmStreamEvent,
+  type LlmToolLoopRequest,
+  type LlmToolLoopResult,
+  type LlmToolLoopSteeringAppendResult,
+  type LlmToolLoopSteeringInput,
+  type LlmToolSet,
+  type LlmUsageTokens,
+  runToolLoop,
+} from "./llm.js";
+import {
+  type AgentFilesystemToolProfile,
+  type AgentFilesystemToolsOptions,
+  createFilesystemToolSetForModel,
+} from "./tools/filesystemTools.js";
 import { createAsyncQueue } from "./utils/asyncQueue.js";
 
 export type AgentFilesystemToolConfig = {
@@ -53,9 +52,9 @@ export type {
   AgentSubagentToolSelection,
 } from "./agent/subagents.js";
 export type {
-  AgentLogLineSink,
   AgentLoggingConfig,
   AgentLoggingSelection,
+  AgentLogLineSink,
 } from "./agentLogging.js";
 
 export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
@@ -316,6 +315,13 @@ async function runAgentLoopInternal(
 
   const sourceOnEvent = toolLoopRequestWithSteering.onEvent;
   const includeLlmStreamEvents = telemetrySession?.includeLlmStreamEvents === true;
+  const streamEventLogger = loggingSession
+    ? createAgentStreamEventLogger({
+        append: (line) => {
+          loggingSession.logLine(`[agent:${runId}] ${line}`);
+        },
+      })
+    : undefined;
   const wrappedOnEvent =
     sourceOnEvent || includeLlmStreamEvents
       ? (event: LlmStreamEvent) => {
@@ -323,14 +329,7 @@ async function runAgentLoopInternal(
           if (includeLlmStreamEvents) {
             emitTelemetry({ type: "agent.run.stream", event });
           }
-          if (loggingSession) {
-            appendAgentStreamEventLog({
-              event,
-              append: (line) => {
-                loggingSession.logLine(`[agent:${runId}] ${line}`);
-              },
-            });
-          }
+          streamEventLogger?.appendEvent(event);
         }
       : undefined;
 
@@ -341,6 +340,7 @@ async function runAgentLoopInternal(
       ...(wrappedOnEvent ? { onEvent: wrappedOnEvent } : {}),
       tools: mergedTools,
     });
+    streamEventLogger?.flush();
     emitTelemetry({
       type: "agent.run.completed",
       success: true,
@@ -373,6 +373,7 @@ async function runAgentLoopInternal(
     }
     return result;
   } catch (error) {
+    streamEventLogger?.flush();
     emitTelemetry({
       type: "agent.run.completed",
       success: false,
@@ -389,6 +390,7 @@ async function runAgentLoopInternal(
     );
     throw error;
   } finally {
+    streamEventLogger?.flush();
     await subagentController?.closeAll();
   }
 }

@@ -47,6 +47,13 @@ export type AgentLoggingSession = {
   readonly flush: () => Promise<void>;
 };
 
+export type AgentStreamEventLogger = {
+  readonly appendEvent: (event: LlmStreamEvent) => void;
+  readonly flush: () => void;
+};
+
+const DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS = 4_000;
+
 function toIsoNow(): string {
   return new Date().toISOString();
 }
@@ -249,6 +256,71 @@ export function appendAgentStreamEventLog(options: {
       return;
     }
   }
+}
+
+export function createAgentStreamEventLogger(options: {
+  readonly append: (line: string) => void;
+  readonly thoughtDeltaThrottleMs?: number;
+}): AgentStreamEventLogger {
+  const thoughtDeltaThrottleMs = Math.max(
+    0,
+    options.thoughtDeltaThrottleMs ?? DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS,
+  );
+  let pendingThoughtDelta = "";
+  let thoughtFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const cancelThoughtFlushTimer = (): void => {
+    if (thoughtFlushTimer === null) {
+      return;
+    }
+    clearTimeout(thoughtFlushTimer);
+    thoughtFlushTimer = null;
+  };
+
+  const flushThoughtDelta = (): void => {
+    cancelThoughtFlushTimer();
+    if (pendingThoughtDelta.length === 0) {
+      return;
+    }
+    options.append(`thought_delta: ${pendingThoughtDelta}`);
+    pendingThoughtDelta = "";
+  };
+
+  const scheduleThoughtFlush = (): void => {
+    if (thoughtFlushTimer !== null || thoughtDeltaThrottleMs === 0) {
+      return;
+    }
+    thoughtFlushTimer = setTimeout(() => {
+      thoughtFlushTimer = null;
+      flushThoughtDelta();
+    }, thoughtDeltaThrottleMs);
+    thoughtFlushTimer.unref?.();
+  };
+
+  return {
+    appendEvent: (event: LlmStreamEvent): void => {
+      if (event.type === "delta" && event.channel === "thought") {
+        if (event.text.length === 0) {
+          return;
+        }
+        pendingThoughtDelta += event.text;
+        if (thoughtDeltaThrottleMs === 0) {
+          flushThoughtDelta();
+          return;
+        }
+        scheduleThoughtFlush();
+        return;
+      }
+      flushThoughtDelta();
+      appendAgentStreamEventLog({
+        event,
+        append: options.append,
+      });
+    },
+    flush: (): void => {
+      flushThoughtDelta();
+    },
+  };
 }
 
 class AgentLoggingSessionImpl implements AgentLoggingSession {

@@ -2,10 +2,11 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createAgentLoggingSession,
+  createAgentStreamEventLogger,
   redactDataUrlPayload,
   sanitiseLogValue,
 } from "../src/agentLogging.js";
@@ -127,6 +128,57 @@ describe("agent logging", () => {
       expect(runDirs).toHaveLength(1);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("throttles thought delta log lines and flushes before response deltas", () => {
+    vi.useFakeTimers();
+    try {
+      const lines: string[] = [];
+      const logger = createAgentStreamEventLogger({
+        append: (line) => {
+          lines.push(line);
+        },
+      });
+
+      logger.appendEvent({ type: "delta", channel: "thought", text: "hel" });
+      logger.appendEvent({ type: "delta", channel: "thought", text: "lo" });
+
+      vi.advanceTimersByTime(3_999);
+      expect(lines).toEqual([]);
+
+      logger.appendEvent({ type: "delta", channel: "response", text: "answer" });
+
+      expect(lines).toEqual(["thought_delta: hello", "response_delta: answer"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits at most one aggregated thought delta log per four seconds", () => {
+    vi.useFakeTimers();
+    try {
+      const lines: string[] = [];
+      const logger = createAgentStreamEventLogger({
+        append: (line) => {
+          lines.push(line);
+        },
+      });
+
+      logger.appendEvent({ type: "delta", channel: "thought", text: "alpha" });
+      logger.appendEvent({ type: "delta", channel: "thought", text: " beta" });
+
+      vi.advanceTimersByTime(4_000);
+      expect(lines).toEqual(["thought_delta: alpha beta"]);
+
+      logger.appendEvent({ type: "delta", channel: "thought", text: " gamma" });
+      vi.advanceTimersByTime(2_000);
+      expect(lines).toEqual(["thought_delta: alpha beta"]);
+
+      logger.flush();
+      expect(lines).toEqual(["thought_delta: alpha beta", "thought_delta:  gamma"]);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
