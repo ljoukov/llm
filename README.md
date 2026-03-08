@@ -556,7 +556,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models: Codex-compatible filesystem tool shape.
+- Codex-like models (`gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `*codex*` variants): Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 

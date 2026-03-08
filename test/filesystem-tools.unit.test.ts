@@ -22,6 +22,9 @@ import {
 
 describe("filesystemTools profiles", () => {
   it("resolves profile by model when profile=auto", () => {
+    expect(resolveFilesystemToolProfile("gpt-5.4")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.4")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.4-fast")).toBe("codex");
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex")).toBe("codex");
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex-spark")).toBe("codex");
     expect(resolveFilesystemToolProfile("gemini-2.5-pro")).toBe("gemini");
@@ -29,8 +32,8 @@ describe("filesystemTools profiles", () => {
     expect(resolveFilesystemToolProfile("gpt-5.2")).toBe("model-agnostic");
   });
 
-  it("creates codex toolset for codex model ids", () => {
-    const toolSet = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex");
+  it("creates codex toolset for codex-like model ids", () => {
+    const toolSet = createFilesystemToolSetForModel("chatgpt-gpt-5.4");
     expect(Object.keys(toolSet).sort()).toEqual([
       "apply_patch",
       "grep_files",
