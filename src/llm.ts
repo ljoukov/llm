@@ -6,11 +6,10 @@ import {
   FinishReason,
   FunctionCallingConfigMode,
   ThinkingLevel,
-  createFunctionResponsePartFromBase64,
-  createFunctionResponsePartFromUri,
+  createPartFromBase64,
   createPartFromFunctionResponse,
+  createPartFromUri,
   type Content as GeminiContent,
-  type FunctionResponsePart as GeminiFunctionResponsePart,
   type GenerateContentConfig,
   type GroundingMetadata,
   type Part as GeminiPart,
@@ -2063,20 +2062,18 @@ function inferToolOutputMimeTypeFromFilename(
   return undefined;
 }
 
-function buildGeminiToolOutputMediaPart(
-  item: LlmToolOutputContentItem,
-): GeminiFunctionResponsePart | null {
+function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiPart | null {
   if (item.type === "input_image") {
     const parsed = parseDataUrlPayload(item.image_url);
     if (!parsed) {
       return null;
     }
-    return createFunctionResponsePartFromBase64(parsed.dataBase64, parsed.mimeType);
+    return createPartFromBase64(parsed.dataBase64, parsed.mimeType);
   }
   if (item.type === "input_file") {
     const dataUrl = typeof item.file_url === "string" ? parseDataUrlPayload(item.file_url) : null;
     if (dataUrl) {
-      const part = createFunctionResponsePartFromBase64(dataUrl.dataBase64, dataUrl.mimeType);
+      const part = createPartFromBase64(dataUrl.dataBase64, dataUrl.mimeType);
       const displayName = item.filename?.trim();
       if (displayName && part.inlineData) {
         part.inlineData.displayName = displayName;
@@ -2089,7 +2086,7 @@ function buildGeminiToolOutputMediaPart(
       item.file_data.trim().length > 0 &&
       inferredMimeType
     ) {
-      const part = createFunctionResponsePartFromBase64(item.file_data, inferredMimeType);
+      const part = createPartFromBase64(item.file_data, inferredMimeType);
       const displayName = item.filename?.trim();
       if (displayName && part.inlineData) {
         part.inlineData.displayName = displayName;
@@ -2097,7 +2094,7 @@ function buildGeminiToolOutputMediaPart(
       return part;
     }
     if (typeof item.file_url === "string" && item.file_url.trim().length > 0 && inferredMimeType) {
-      const part = createFunctionResponsePartFromUri(item.file_url, inferredMimeType);
+      const part = createPartFromUri(item.file_url, inferredMimeType);
       const displayName = item.filename?.trim();
       if (displayName && part.fileData) {
         part.fileData.displayName = displayName;
@@ -2138,48 +2135,44 @@ function toGeminiToolOutputPlaceholder(item: LlmToolOutputContentItem): Record<s
   };
 }
 
-function buildGeminiFunctionResponsePart(options: {
+function buildGeminiFunctionResponseParts(options: {
   toolName: string;
   callId?: string;
   outputPayload: unknown;
-}): GeminiPart {
+}): GeminiPart[] {
   const outputItems = toGeminiToolOutputItems(options.outputPayload);
   if (!outputItems) {
     const responsePayload = isPlainRecord(options.outputPayload)
       ? (sanitiseLogValue(options.outputPayload) as Record<string, unknown>)
       : { output: sanitiseLogValue(options.outputPayload) };
     if (options.callId) {
-      return createPartFromFunctionResponse(options.callId, options.toolName, responsePayload);
+      return [createPartFromFunctionResponse(options.callId, options.toolName, responsePayload)];
     }
-    return {
-      functionResponse: {
-        name: options.toolName,
-        response: responsePayload,
+    return [
+      {
+        functionResponse: {
+          name: options.toolName,
+          response: responsePayload,
+        },
       },
-    };
+    ];
   }
 
   const responseOutput = outputItems.map((item) => toGeminiToolOutputPlaceholder(item));
-  const responseMediaParts = outputItems.flatMap((item) => {
+  const responseParts = outputItems.flatMap((item) => {
     const mediaPart = buildGeminiToolOutputMediaPart(item);
     return mediaPart ? [mediaPart] : [];
   });
-  const responsePayload = { output: responseOutput };
-  if (options.callId) {
-    return createPartFromFunctionResponse(
-      options.callId,
-      options.toolName,
-      responsePayload,
-      responseMediaParts,
-    );
-  }
-  return {
-    functionResponse: {
-      name: options.toolName,
-      response: { output: responseOutput },
-      ...(responseMediaParts.length > 0 ? { parts: responseMediaParts } : {}),
-    },
-  };
+  const responsePayload: Record<string, unknown> = { output: responseOutput };
+  const functionResponsePart = options.callId
+    ? createPartFromFunctionResponse(options.callId, options.toolName, responsePayload)
+    : ({
+        functionResponse: {
+          name: options.toolName,
+          response: responsePayload,
+        },
+      } satisfies GeminiPart);
+  return [functionResponsePart, ...responseParts];
 }
 
 function parseOpenAiToolArguments(raw: string): { value: unknown; error?: string } {
@@ -5469,7 +5462,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             durationMs: result.durationMs,
           });
           responseParts.push(
-            buildGeminiFunctionResponsePart({
+            ...buildGeminiFunctionResponseParts({
               toolName: entry.toolName,
               callId: entry.call.id,
               outputPayload,
