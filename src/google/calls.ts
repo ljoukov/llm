@@ -1,6 +1,7 @@
 import type { GoogleGenAI } from "@google/genai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import {
   createCallScheduler,
   type CallScheduler,
@@ -243,13 +244,15 @@ function retryDelayMs(attempt: number): number {
 }
 
 const DEFAULT_SCHEDULER_KEY = "__default__";
-const schedulerByModel = new Map<string, CallScheduler>();
+const googleCallState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.googleCallState"), () => ({
+  schedulerByModel: new Map<string, CallScheduler>(),
+}));
 
 function getSchedulerForModel(modelId?: string): CallScheduler {
   const normalizedModelId = modelId?.trim();
   const schedulerKey =
     normalizedModelId && normalizedModelId.length > 0 ? normalizedModelId : DEFAULT_SCHEDULER_KEY;
-  const existing = schedulerByModel.get(schedulerKey);
+  const existing = googleCallState.schedulerByModel.get(schedulerKey);
   if (existing) {
     return existing;
   }
@@ -272,7 +275,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
       },
     },
   });
-  schedulerByModel.set(schedulerKey, created);
+  googleCallState.schedulerByModel.set(schedulerKey, created);
   return created;
 }
 

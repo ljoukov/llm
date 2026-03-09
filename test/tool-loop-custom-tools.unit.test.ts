@@ -128,6 +128,10 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
   };
 });
 
+async function importModuleCopy<T>(specifier: string): Promise<T> {
+  return (await import(specifier)) as T;
+}
+
 describe("runToolLoop custom tools", () => {
   it("supports OpenAI custom/freeform tools", async () => {
     openAiScenario = "custom";
@@ -283,6 +287,47 @@ describe("runToolLoop custom tools", () => {
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it("shares tool call context across duplicate llm module instances", async () => {
+    openAiScenario = "image_function";
+    openAiRequests = [];
+    openAiCallCount = 0;
+
+    const [{ runToolLoop, tool }, { getCurrentToolCallContext }] = await Promise.all([
+      importModuleCopy<typeof import("../src/llm.js")>("../src/llm.js?copy=tool-context-a"),
+      importModuleCopy<typeof import("../src/llm.js")>("../src/llm.js?copy=tool-context-b"),
+    ]);
+    const observedContexts: unknown[] = [];
+
+    const result = await runToolLoop({
+      model: "gpt-5.2",
+      input: "inspect image",
+      tools: {
+        view_image: tool({
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => {
+            observedContexts.push(getCurrentToolCallContext());
+            return [
+              {
+                type: "input_image" as const,
+                image_url: "data:image/png;base64,AAA",
+              },
+            ];
+          },
+        }),
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(observedContexts).toEqual([
+      {
+        toolName: "view_image",
+        toolId: "turn1/tool1",
+        turn: 1,
+        toolIndex: 1,
+      },
+    ]);
   });
 
   it("preserves ChatGPT function_call_output content items for image tool outputs", async () => {

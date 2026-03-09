@@ -104,6 +104,10 @@ function createGate(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
+async function importModuleCopy<T>(specifier: string): Promise<T> {
+  return (await import(specifier)) as T;
+}
+
 describe("streamToolLoop steering", () => {
   it("queues steering mid-run for OpenAI and applies it on the next model step", async () => {
     openAiRequests = [];
@@ -203,6 +207,53 @@ describe("streamToolLoop steering", () => {
               typeof part?.text === "string" &&
               part.text.includes("please revise the plan"),
           ),
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts steering channels created by another llm module instance", async () => {
+    openAiRequests = [];
+    openAiCallCount = 0;
+    const gate = createGate();
+    openAiFirstResponseGate = gate.promise;
+
+    const [{ createToolLoopSteeringChannel }, { streamToolLoop, tool }] = await Promise.all([
+      importModuleCopy<typeof import("../src/llm.js")>("../src/llm.js?copy=steering-channel-a"),
+      importModuleCopy<typeof import("../src/llm.js")>("../src/llm.js?copy=steering-channel-b"),
+    ]);
+    const steering = createToolLoopSteeringChannel();
+    const call = streamToolLoop({
+      model: "gpt-5.2",
+      input: "start",
+      steering,
+      tools: {
+        noop: tool({
+          inputSchema: z.object({}),
+          execute: () => "ok",
+        }),
+      },
+    });
+
+    await vi.waitFor(() => expect(openAiRequests).toHaveLength(1));
+    expect(steering.append("cross-copy steering").accepted).toBe(true);
+    gate.resolve();
+
+    await call.result;
+
+    expect(openAiRequests).toHaveLength(2);
+    const secondInput = openAiRequests[1]?.input ?? [];
+    expect(
+      secondInput.some(
+        (item: any) =>
+          item?.role === "user" &&
+          ((typeof item?.content === "string" && item.content.includes("cross-copy steering")) ||
+            (Array.isArray(item?.content) &&
+              item.content.some(
+                (part: any) =>
+                  part?.type === "input_text" &&
+                  typeof part?.text === "string" &&
+                  part.text.includes("cross-copy steering"),
+              ))),
       ),
     ).toBe(true);
   });

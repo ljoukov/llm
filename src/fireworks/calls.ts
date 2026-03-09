@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import {
   createCallScheduler,
   type CallScheduler,
@@ -10,13 +11,18 @@ import {
 import { getFireworksClient } from "./client.js";
 
 const DEFAULT_SCHEDULER_KEY = "__default__";
-const schedulerByModel = new Map<string, CallScheduler>();
+const fireworksCallState = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.fireworksCallState"),
+  () => ({
+    schedulerByModel: new Map<string, CallScheduler>(),
+  }),
+);
 
 function getSchedulerForModel(modelId?: string): CallScheduler {
   const normalizedModelId = modelId?.trim();
   const schedulerKey =
     normalizedModelId && normalizedModelId.length > 0 ? normalizedModelId : DEFAULT_SCHEDULER_KEY;
-  const existing = schedulerByModel.get(schedulerKey);
+  const existing = fireworksCallState.schedulerByModel.get(schedulerKey);
   if (existing) {
     return existing;
   }
@@ -28,7 +34,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
     minIntervalBetweenStartMs: 200,
     startJitterMs: 200,
   });
-  schedulerByModel.set(schedulerKey, created);
+  fireworksCallState.schedulerByModel.set(schedulerKey, created);
   return created;
 }
 

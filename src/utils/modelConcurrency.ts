@@ -1,3 +1,5 @@
+import { getRuntimeSingleton } from "./runtimeSingleton.js";
+
 const MIN_MODEL_CONCURRENCY_CAP = 1;
 export const MAX_MODEL_CONCURRENCY_CAP = 64;
 export const DEFAULT_MODEL_CONCURRENCY_CAP = 3;
@@ -30,7 +32,12 @@ const MODEL_CONCURRENCY_PROVIDERS: readonly ModelConcurrencyProvider[] = [
   "fireworks",
 ];
 
-let configuredModelConcurrency = normalizeModelConcurrencyConfig({});
+const modelConcurrencyState = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.modelConcurrencyState"),
+  () => ({
+    configuredModelConcurrency: normalizeModelConcurrencyConfig({}),
+  }),
+);
 
 export function clampModelConcurrencyCap(value: number): number {
   if (!Number.isFinite(value)) {
@@ -120,11 +127,11 @@ function resolveDefaultProviderCap(
 }
 
 export function configureModelConcurrency(config: ModelConcurrencyConfig = {}): void {
-  configuredModelConcurrency = normalizeModelConcurrencyConfig(config);
+  modelConcurrencyState.configuredModelConcurrency = normalizeModelConcurrencyConfig(config);
 }
 
 export function resetModelConcurrencyConfig(): void {
-  configuredModelConcurrency = normalizeModelConcurrencyConfig({});
+  modelConcurrencyState.configuredModelConcurrency = normalizeModelConcurrencyConfig({});
 }
 
 type ResolveModelConcurrencyCapOptions = {
@@ -138,7 +145,7 @@ export function resolveModelConcurrencyCap(options: ResolveModelConcurrencyCapOp
   const modelId = options.modelId ? normalizeModelIdForConfig(options.modelId) : undefined;
   const config = options.config
     ? normalizeModelConcurrencyConfig(options.config)
-    : configuredModelConcurrency;
+    : modelConcurrencyState.configuredModelConcurrency;
   const providerModelCap = modelId
     ? config.providerModelCaps[options.provider].get(modelId)
     : undefined;

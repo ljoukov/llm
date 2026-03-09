@@ -1,6 +1,7 @@
 import os from "node:os";
 import { TextDecoder } from "node:util";
 
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import { getChatGptAuthProfile } from "./chatgpt-auth.js";
 import {
   OPENAI_BETA_RESPONSES_WEBSOCKETS_V2,
@@ -16,8 +17,10 @@ import {
 const CHATGPT_CODEX_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
 
-let cachedResponsesWebSocketMode: ResponsesWebSocketMode | null = null;
-let chatGptResponsesWebSocketDisabled = false;
+const chatGptCodexState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptCodexState"), () => ({
+  cachedResponsesWebSocketMode: null as ResponsesWebSocketMode | null,
+  chatGptResponsesWebSocketDisabled: false,
+}));
 
 export type ChatGptInputTextPart = {
   type: "input_text";
@@ -207,7 +210,7 @@ export async function streamChatGptCodexResponse(options: {
     };
   };
 
-  if (mode === "off" || chatGptResponsesWebSocketDisabled) {
+  if (mode === "off" || chatGptCodexState.chatGptResponsesWebSocketDisabled) {
     return fallbackStreamFactory();
   }
 
@@ -228,7 +231,7 @@ export async function streamChatGptCodexResponse(options: {
       }),
     createFallbackStream: fallbackStreamFactory,
     onWebSocketFallback: () => {
-      chatGptResponsesWebSocketDisabled = true;
+      chatGptCodexState.chatGptResponsesWebSocketDisabled = true;
     },
   });
 }
@@ -267,14 +270,14 @@ async function streamChatGptCodexResponseSse(options: {
 }
 
 function resolveChatGptResponsesWebSocketMode(): ResponsesWebSocketMode {
-  if (cachedResponsesWebSocketMode) {
-    return cachedResponsesWebSocketMode;
+  if (chatGptCodexState.cachedResponsesWebSocketMode) {
+    return chatGptCodexState.cachedResponsesWebSocketMode;
   }
-  cachedResponsesWebSocketMode = resolveResponsesWebSocketMode(
+  chatGptCodexState.cachedResponsesWebSocketMode = resolveResponsesWebSocketMode(
     process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE ?? process.env.OPENAI_RESPONSES_WEBSOCKET_MODE,
     "auto",
   );
-  return cachedResponsesWebSocketMode;
+  return chatGptCodexState.cachedResponsesWebSocketMode;
 }
 
 function buildChatGptCodexHeaders(options: {
@@ -331,9 +334,9 @@ export async function collectChatGptCodexResponse(options: {
         !sawAnyDelta &&
         !retriedViaSseFallback &&
         shouldRetryViaSseFallback(error) &&
-        !chatGptResponsesWebSocketDisabled
+        !chatGptCodexState.chatGptResponsesWebSocketDisabled
       ) {
-        chatGptResponsesWebSocketDisabled = true;
+        chatGptCodexState.chatGptResponsesWebSocketDisabled = true;
         retriedViaSseFallback = true;
         continue;
       }

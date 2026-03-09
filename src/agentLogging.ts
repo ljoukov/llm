@@ -4,6 +4,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { LlmStreamEvent } from "./llm.js";
+import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export type AgentLogLineSink = {
   readonly append: (line: string) => void | Promise<void>;
@@ -573,7 +574,10 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
   }
 }
 
-const loggingSessionStorage = new AsyncLocalStorage<AgentLoggingSession>();
+const loggingSessionStorage = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.agentLogging.sessionStorage"),
+  () => new AsyncLocalStorage<AgentLoggingSession>(),
+);
 
 export function createAgentLoggingSession(config: AgentLoggingConfig): AgentLoggingSession {
   return new AgentLoggingSessionImpl(config);

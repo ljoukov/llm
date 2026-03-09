@@ -2,41 +2,48 @@ import OpenAI from "openai";
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 const DEFAULT_FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
 const DEFAULT_FIREWORKS_TIMEOUT_MS = 15 * 60_000;
 
-let cachedClient: OpenAI | null = null;
-let cachedFetch: typeof fetch | null = null;
-let cachedBaseUrl: string | null = null;
-let cachedApiKey: string | null = null;
-let cachedTimeoutMs: number | null = null;
+const fireworksClientState = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.fireworksClientState"),
+  () => ({
+    cachedClient: null as OpenAI | null,
+    cachedFetch: null as typeof fetch | null,
+    cachedBaseUrl: null as string | null,
+    cachedApiKey: null as string | null,
+    cachedTimeoutMs: null as number | null,
+  }),
+);
 
 function resolveTimeoutMs(): number {
-  if (cachedTimeoutMs !== null) {
-    return cachedTimeoutMs;
+  if (fireworksClientState.cachedTimeoutMs !== null) {
+    return fireworksClientState.cachedTimeoutMs;
   }
 
   const raw = process.env.FIREWORKS_TIMEOUT_MS;
   const parsed = raw ? Number(raw) : Number.NaN;
-  cachedTimeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_FIREWORKS_TIMEOUT_MS;
-  return cachedTimeoutMs;
+  fireworksClientState.cachedTimeoutMs =
+    Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_FIREWORKS_TIMEOUT_MS;
+  return fireworksClientState.cachedTimeoutMs;
 }
 
 function resolveBaseUrl(): string {
-  if (cachedBaseUrl !== null) {
-    return cachedBaseUrl;
+  if (fireworksClientState.cachedBaseUrl !== null) {
+    return fireworksClientState.cachedBaseUrl;
   }
 
   loadLocalEnv();
   const raw = process.env.FIREWORKS_BASE_URL?.trim();
-  cachedBaseUrl = raw && raw.length > 0 ? raw : DEFAULT_FIREWORKS_BASE_URL;
-  return cachedBaseUrl;
+  fireworksClientState.cachedBaseUrl = raw && raw.length > 0 ? raw : DEFAULT_FIREWORKS_BASE_URL;
+  return fireworksClientState.cachedBaseUrl;
 }
 
 function resolveApiKey(): string {
-  if (cachedApiKey !== null) {
-    return cachedApiKey;
+  if (fireworksClientState.cachedApiKey !== null) {
+    return fireworksClientState.cachedApiKey;
   }
 
   loadLocalEnv();
@@ -48,13 +55,13 @@ function resolveApiKey(): string {
     );
   }
 
-  cachedApiKey = token;
-  return cachedApiKey;
+  fireworksClientState.cachedApiKey = token;
+  return fireworksClientState.cachedApiKey;
 }
 
 function getFireworksFetch(): typeof fetch {
-  if (cachedFetch) {
-    return cachedFetch;
+  if (fireworksClientState.cachedFetch) {
+    return fireworksClientState.cachedFetch;
   }
 
   const timeoutMs = resolveTimeoutMs();
@@ -62,26 +69,26 @@ function getFireworksFetch(): typeof fetch {
     bodyTimeout: timeoutMs,
     headersTimeout: timeoutMs,
   });
-  cachedFetch = ((input: any, init?: any) => {
+  fireworksClientState.cachedFetch = ((input: any, init?: any) => {
     return undiciFetch(input, {
       ...(init ?? {}),
       dispatcher,
     });
   }) as typeof fetch;
 
-  return cachedFetch;
+  return fireworksClientState.cachedFetch;
 }
 
 export function getFireworksClient(): OpenAI {
-  if (cachedClient) {
-    return cachedClient;
+  if (fireworksClientState.cachedClient) {
+    return fireworksClientState.cachedClient;
   }
 
-  cachedClient = new OpenAI({
+  fireworksClientState.cachedClient = new OpenAI({
     apiKey: resolveApiKey(),
     baseURL: resolveBaseUrl(),
     timeout: resolveTimeoutMs(),
     fetch: getFireworksFetch(),
   });
-  return cachedClient;
+  return fireworksClientState.cachedClient;
 }

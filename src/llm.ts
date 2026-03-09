@@ -52,6 +52,7 @@ import {
   type AgentLlmCallAttachment,
   type AgentLlmCallLogger,
 } from "./agentLogging.js";
+import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
 export { estimateCallCostUsd } from "./utils/cost.js";
@@ -66,7 +67,10 @@ export type LlmToolCallContext = {
   readonly toolIndex: number;
 };
 
-const toolCallContextStorage = new AsyncLocalStorage<LlmToolCallContext>();
+const toolCallContextStorage = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.toolCallContextStorage"),
+  () => new AsyncLocalStorage<LlmToolCallContext>(),
+);
 
 export function getCurrentToolCallContext(): LlmToolCallContext | null {
   return toolCallContextStorage.getStore() ?? null;
@@ -3637,10 +3641,10 @@ type ToolLoopSteeringInternalState = {
   readonly close: () => void;
 };
 
-const toolLoopSteeringInternals = new WeakMap<
-  LlmToolLoopSteeringChannel,
-  ToolLoopSteeringInternalState
->();
+const toolLoopSteeringInternals = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.toolLoopSteeringInternals"),
+  () => new WeakMap<LlmToolLoopSteeringChannel, ToolLoopSteeringInternalState>(),
+);
 
 export function createToolLoopSteeringChannel(): LlmToolLoopSteeringChannel {
   const pending: LlmContent[] = [];
