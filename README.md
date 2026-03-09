@@ -687,9 +687,9 @@ See `docs/agent-telemetry.md` for event schema, design rationale, and backend ad
 
 Each LLM call writes:
 
-- `request.txt`, `request.metadata.json`, `tool_call_response.txt` (when the request includes tool outputs), and `input-<n>.<ext>` attachments immediately,
+- `request.txt`, `request.metadata.json`, `tool_call_response.txt` plus `tool_call_response.json` (when the request includes tool outputs), and `input-<n>.<ext>` attachments immediately,
 - streamed `thoughts.txt` deltas during generation,
-- `response.txt` for assistant text responses, `tool_call.txt` when the model asks to call tools, `output-<n>.<ext>` for inline output media, and `response.metadata.json` at completion,
+- `response.txt` for assistant text responses, `tool_call.txt` plus `tool_call.json` when the model asks to call tools, `output-<n>.<ext>` for inline output media, and `response.metadata.json` at completion,
 - `error.txt` plus `response.metadata.json` on failure.
 
 `image_url` data URLs are redacted in text/metadata logs (`data:...,...`) so base64 payloads are not printed inline.
