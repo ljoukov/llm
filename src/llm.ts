@@ -6,7 +6,11 @@ import {
   FinishReason,
   FunctionCallingConfigMode,
   ThinkingLevel,
+  createFunctionResponsePartFromBase64,
+  createFunctionResponsePartFromUri,
+  createPartFromFunctionResponse,
   type Content as GeminiContent,
+  type FunctionResponsePart as GeminiFunctionResponsePart,
   type GenerateContentConfig,
   type GroundingMetadata,
   type Part as GeminiPart,
@@ -2009,6 +2013,175 @@ function toOpenAiToolOutput(value: unknown): string | LlmToolOutputContentItem[]
   return mergeToolOutput(value);
 }
 
+function toGeminiToolOutputItems(value: unknown): readonly LlmToolOutputContentItem[] | null {
+  if (isLlmToolOutputContentItem(value)) {
+    return [value];
+  }
+  if (Array.isArray(value) && value.every((item) => isLlmToolOutputContentItem(item))) {
+    return value;
+  }
+  return null;
+}
+
+function inferToolOutputMimeTypeFromFilename(
+  filename: string | null | undefined,
+): string | undefined {
+  const normalized = filename?.trim().toLowerCase() ?? "";
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  if (normalized.endsWith(".png")) {
+    return "image/png";
+  }
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (normalized.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (normalized.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (normalized.endsWith(".heic")) {
+    return "image/heic";
+  }
+  if (normalized.endsWith(".heif")) {
+    return "image/heif";
+  }
+  if (normalized.endsWith(".pdf")) {
+    return "application/pdf";
+  }
+  if (normalized.endsWith(".json")) {
+    return "application/json";
+  }
+  if (normalized.endsWith(".md")) {
+    return "text/markdown";
+  }
+  if (normalized.endsWith(".txt")) {
+    return "text/plain";
+  }
+  return undefined;
+}
+
+function buildGeminiToolOutputMediaPart(
+  item: LlmToolOutputContentItem,
+): GeminiFunctionResponsePart | null {
+  if (item.type === "input_image") {
+    const parsed = parseDataUrlPayload(item.image_url);
+    if (!parsed) {
+      return null;
+    }
+    return createFunctionResponsePartFromBase64(parsed.dataBase64, parsed.mimeType);
+  }
+  if (item.type === "input_file") {
+    const dataUrl = typeof item.file_url === "string" ? parseDataUrlPayload(item.file_url) : null;
+    if (dataUrl) {
+      const part = createFunctionResponsePartFromBase64(dataUrl.dataBase64, dataUrl.mimeType);
+      const displayName = item.filename?.trim();
+      if (displayName && part.inlineData) {
+        part.inlineData.displayName = displayName;
+      }
+      return part;
+    }
+    const inferredMimeType = inferToolOutputMimeTypeFromFilename(item.filename);
+    if (
+      typeof item.file_data === "string" &&
+      item.file_data.trim().length > 0 &&
+      inferredMimeType
+    ) {
+      const part = createFunctionResponsePartFromBase64(item.file_data, inferredMimeType);
+      const displayName = item.filename?.trim();
+      if (displayName && part.inlineData) {
+        part.inlineData.displayName = displayName;
+      }
+      return part;
+    }
+    if (typeof item.file_url === "string" && item.file_url.trim().length > 0 && inferredMimeType) {
+      const part = createFunctionResponsePartFromUri(item.file_url, inferredMimeType);
+      const displayName = item.filename?.trim();
+      if (displayName && part.fileData) {
+        part.fileData.displayName = displayName;
+      }
+      return part;
+    }
+  }
+  return null;
+}
+
+function toGeminiToolOutputPlaceholder(item: LlmToolOutputContentItem): Record<string, unknown> {
+  if (item.type === "input_text") {
+    return {
+      type: item.type,
+      text: item.text,
+    };
+  }
+  if (item.type === "input_image") {
+    const parsed = parseDataUrlPayload(item.image_url);
+    return {
+      type: item.type,
+      mimeType: parsed?.mimeType ?? undefined,
+      media: "attached-inline-data",
+    };
+  }
+  const dataUrl = typeof item.file_url === "string" ? parseDataUrlPayload(item.file_url) : null;
+  return {
+    type: item.type,
+    filename: item.filename ?? undefined,
+    fileId: item.file_id ?? undefined,
+    mimeType: dataUrl?.mimeType ?? inferToolOutputMimeTypeFromFilename(item.filename) ?? undefined,
+    media:
+      dataUrl || (typeof item.file_data === "string" && item.file_data.trim().length > 0)
+        ? "attached-inline-data"
+        : typeof item.file_url === "string" && item.file_url.trim().length > 0
+          ? "attached-file-data"
+          : undefined,
+  };
+}
+
+function buildGeminiFunctionResponsePart(options: {
+  toolName: string;
+  callId?: string;
+  outputPayload: unknown;
+}): GeminiPart {
+  const outputItems = toGeminiToolOutputItems(options.outputPayload);
+  if (!outputItems) {
+    const responsePayload = isPlainRecord(options.outputPayload)
+      ? (sanitiseLogValue(options.outputPayload) as Record<string, unknown>)
+      : { output: sanitiseLogValue(options.outputPayload) };
+    if (options.callId) {
+      return createPartFromFunctionResponse(options.callId, options.toolName, responsePayload);
+    }
+    return {
+      functionResponse: {
+        name: options.toolName,
+        response: responsePayload,
+      },
+    };
+  }
+
+  const responseOutput = outputItems.map((item) => toGeminiToolOutputPlaceholder(item));
+  const responseMediaParts = outputItems.flatMap((item) => {
+    const mediaPart = buildGeminiToolOutputMediaPart(item);
+    return mediaPart ? [mediaPart] : [];
+  });
+  const responsePayload = { output: responseOutput };
+  if (options.callId) {
+    return createPartFromFunctionResponse(
+      options.callId,
+      options.toolName,
+      responsePayload,
+      responseMediaParts,
+    );
+  }
+  return {
+    functionResponse: {
+      name: options.toolName,
+      response: { output: responseOutput },
+      ...(responseMediaParts.length > 0 ? { parts: responseMediaParts } : {}),
+    },
+  };
+}
+
 function parseOpenAiToolArguments(raw: string): { value: unknown; error?: string } {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
@@ -2592,13 +2765,11 @@ function buildLoggedAttachmentFilename(
   return `${prefix}-${index.toString()}.${resolveAttachmentExtension(mimeType)}`;
 }
 
-function decodeDataUrlAttachment(
-  value: string,
-  options: {
-    readonly prefix: "input" | "output";
-    readonly index: number;
-  },
-): AgentLlmCallAttachment | null {
+function parseDataUrlPayload(value: string): {
+  mimeType: string;
+  dataBase64: string;
+  bytes: Buffer;
+} | null {
   const trimmed = value.trim();
   if (!trimmed.toLowerCase().startsWith("data:")) {
     return null;
@@ -2616,12 +2787,30 @@ function decodeDataUrlAttachment(
       ? Buffer.from(payload, "base64")
       : Buffer.from(decodeURIComponent(payload), "utf8");
     return {
-      filename: buildLoggedAttachmentFilename(options.prefix, options.index, mimeType),
+      mimeType,
+      dataBase64: bytes.toString("base64"),
       bytes,
     };
   } catch {
     return null;
   }
+}
+
+function decodeDataUrlAttachment(
+  value: string,
+  options: {
+    readonly prefix: "input" | "output";
+    readonly index: number;
+  },
+): AgentLlmCallAttachment | null {
+  const parsed = parseDataUrlPayload(value);
+  if (!parsed) {
+    return null;
+  }
+  return {
+    filename: buildLoggedAttachmentFilename(options.prefix, options.index, parsed.mimeType),
+    bytes: parsed.bytes,
+  };
 }
 
 function collectPayloadAttachments(
@@ -5279,16 +5468,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             error: result.error,
             durationMs: result.durationMs,
           });
-          const responsePayload = isPlainRecord(outputPayload)
-            ? outputPayload
-            : { output: outputPayload };
-          responseParts.push({
-            functionResponse: {
-              name: entry.toolName,
-              response: responsePayload,
-              ...(entry.call.id ? { id: entry.call.id } : {}),
-            },
-          });
+          responseParts.push(
+            buildGeminiFunctionResponsePart({
+              toolName: entry.toolName,
+              callId: entry.call.id,
+              outputPayload,
+            }),
+          );
         }
 
         const stepCompletedAtMs = Date.now();
