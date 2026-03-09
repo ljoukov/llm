@@ -9,6 +9,8 @@ let openAiRequests: any[] = [];
 let openAiCallCount = 0;
 let chatGptRequests: any[] = [];
 let chatGptCallCount = 0;
+let geminiRequests: any[] = [];
+let geminiCallCount = 0;
 let openAiScenario: "custom" | "image_function" = "custom";
 let chatGptScenario: "custom" | "image_function" = "custom";
 
@@ -125,6 +127,67 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
         blocked: false,
       };
     },
+  };
+});
+
+vi.mock("../src/google/calls.js", () => {
+  const fakeClient = {
+    models: {
+      generateContentStream: async (request: any) => {
+        geminiRequests.push(request);
+        const callIndex = geminiCallCount++;
+        async function* stream() {
+          if (callIndex === 0) {
+            yield {
+              modelVersion: "gemini-3.1-pro-preview",
+              usageMetadata: {
+                promptTokenCount: 10,
+                candidatesTokenCount: 5,
+                totalTokenCount: 15,
+              },
+              candidates: [
+                {
+                  content: {
+                    role: "model",
+                    parts: [
+                      {
+                        functionCall: {
+                          id: "call_function_1",
+                          name: "view_image",
+                          args: { path: "image.png" },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            };
+            return;
+          }
+          yield {
+            modelVersion: "gemini-3.1-pro-preview",
+            usageMetadata: {
+              promptTokenCount: 8,
+              candidatesTokenCount: 4,
+              totalTokenCount: 12,
+            },
+            candidates: [
+              {
+                content: {
+                  role: "model",
+                  parts: [{ text: "done" }],
+                },
+              },
+            ],
+          };
+        }
+        return stream();
+      },
+    },
+  };
+
+  return {
+    runGeminiCall: async (fn: (client: any) => Promise<any>) => fn(fakeClient),
   };
 });
 
@@ -359,6 +422,55 @@ describe("runToolLoop custom tools", () => {
     expect(Array.isArray(outputItem?.output)).toBe(true);
     expect(outputItem?.output?.[0]?.type).toBe("input_image");
     expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
+  });
+
+  it("encodes Gemini image tool outputs as functionResponse parts instead of data URLs in JSON", async () => {
+    geminiRequests = [];
+    geminiCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "gemini-3.1-pro-preview",
+      input: "inspect image",
+      tools: {
+        view_image: tool({
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => [
+            {
+              type: "input_image" as const,
+              image_url: "data:image/png;base64,AAA",
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(geminiRequests).toHaveLength(2);
+
+    const responseContent = geminiRequests[1]?.contents?.at(-1);
+    expect(responseContent?.role).toBe("user");
+    expect(responseContent?.parts).toHaveLength(1);
+
+    const responsePart = responseContent?.parts?.[0]?.functionResponse;
+    expect(responsePart?.id).toBe("call_function_1");
+    expect(responsePart?.name).toBe("view_image");
+    expect(responsePart?.response?.output).toEqual([
+      {
+        type: "input_image",
+        mimeType: "image/png",
+        media: "attached-inline-data",
+      },
+    ]);
+    expect(responsePart?.parts).toEqual([
+      {
+        inlineData: {
+          data: "AAA=",
+          mimeType: "image/png",
+        },
+      },
+    ]);
+    expect(JSON.stringify(responsePart?.response)).not.toContain("data:image");
   });
 
   it("rejects custom/freeform tools for gemini provider", async () => {
