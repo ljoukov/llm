@@ -30,6 +30,7 @@ export type AgentLlmCallCompletion = {
   readonly responseText?: string;
   readonly attachments?: readonly AgentLlmCallAttachment[];
   readonly toolCallText?: string;
+  readonly toolCallPayload?: unknown;
 };
 
 export type AgentLlmCallStartInput = {
@@ -39,6 +40,7 @@ export type AgentLlmCallStartInput = {
   readonly requestMetadata?: Record<string, unknown>;
   readonly attachments?: readonly AgentLlmCallAttachment[];
   readonly toolCallResponseText?: string;
+  readonly toolCallResponsePayload?: unknown;
 };
 
 export type AgentLlmCallLogger = {
@@ -100,6 +102,33 @@ function ensureTrailingNewline(value: string): string {
 
 function hasNonEmptyText(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
+}
+
+function hasLogArtifactValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+  return true;
+}
+
+function serialiseJsonArtifact(value: unknown): string | undefined {
+  if (!hasLogArtifactValue(value)) {
+    return undefined;
+  }
+  try {
+    return `${JSON.stringify(sanitiseLogValue(value), null, 2)}\n`;
+  } catch {
+    return `${JSON.stringify(String(value), null, 2)}\n`;
+  }
 }
 
 export function redactDataUrlPayload(value: string): string {
@@ -433,7 +462,9 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
     const responsePath = path.join(baseDir, "response.txt");
     const thoughtsPath = path.join(baseDir, "thoughts.txt");
     const toolCallPath = path.join(baseDir, "tool_call.txt");
+    const toolCallJsonPath = path.join(baseDir, "tool_call.json");
     const toolCallResponsePath = path.join(baseDir, "tool_call_response.txt");
+    const toolCallResponseJsonPath = path.join(baseDir, "tool_call_response.json");
     const errorPath = path.join(baseDir, "error.txt");
     const responseMetadataPath = path.join(baseDir, "response.metadata.json");
 
@@ -468,6 +499,10 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
             ensureTrailingNewline(input.toolCallResponseText),
             "utf8",
           );
+        }
+        const toolCallResponseJson = serialiseJsonArtifact(input.toolCallResponsePayload);
+        if (toolCallResponseJson) {
+          await writeFile(toolCallResponseJsonPath, toolCallResponseJson, "utf8");
         }
       })
       .catch(() => undefined);
@@ -511,6 +546,10 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           if (hasNonEmptyText(options?.toolCallText)) {
             await writeFile(toolCallPath, ensureTrailingNewline(options.toolCallText), "utf8");
           }
+          const toolCallJson = serialiseJsonArtifact(options?.toolCallPayload);
+          if (toolCallJson) {
+            await writeFile(toolCallJsonPath, toolCallJson, "utf8");
+          }
           await this.writeAttachments(baseDir, options?.attachments);
           const payload: Record<string, unknown> = {
             capturedAt: toIsoNow(),
@@ -538,6 +577,10 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           }
           if (hasNonEmptyText(options?.toolCallText)) {
             await writeFile(toolCallPath, ensureTrailingNewline(options.toolCallText), "utf8");
+          }
+          const toolCallJson = serialiseJsonArtifact(options?.toolCallPayload);
+          if (toolCallJson) {
+            await writeFile(toolCallJsonPath, toolCallJson, "utf8");
           }
           await this.writeAttachments(baseDir, options?.attachments);
           await writeFile(errorPath, ensureTrailingNewline(toErrorMessage(error)), "utf8");

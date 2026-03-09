@@ -65,12 +65,20 @@ describe("agent logging", () => {
             output: { ok: true },
           },
         ]),
+        toolCallResponsePayload: [
+          {
+            type: "function_call_output",
+            callId: "call_1",
+            output: { ok: true },
+          },
+        ],
       });
       call.appendThoughtDelta("thinking...");
       call.appendResponseDelta("ans");
       call.complete({
         responseText: "answer",
         toolCallText: JSON.stringify([{ name: "lookup", arguments: { query: "hello" } }]),
+        toolCallPayload: [{ name: "lookup", arguments: { query: "hello" } }],
         attachments: [
           {
             filename: "output-1.png",
@@ -98,9 +106,21 @@ describe("agent logging", () => {
       expect(await fs.readFile(path.join(callDir, "thoughts.txt"), "utf8")).toBe("thinking...");
       expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe("answer");
       expect(await fs.readFile(path.join(callDir, "tool_call.txt"), "utf8")).toContain("lookup");
+      expect(JSON.parse(await fs.readFile(path.join(callDir, "tool_call.json"), "utf8"))).toEqual([
+        { name: "lookup", arguments: { query: "hello" } },
+      ]);
       expect(await fs.readFile(path.join(callDir, "tool_call_response.txt"), "utf8")).toContain(
         "function_call_output",
       );
+      expect(
+        JSON.parse(await fs.readFile(path.join(callDir, "tool_call_response.json"), "utf8")),
+      ).toEqual([
+        {
+          type: "function_call_output",
+          callId: "call_1",
+          output: { ok: true },
+        },
+      ]);
       expect(await fs.readFile(path.join(callDir, "input-1.png"))).toEqual(Buffer.from([1, 2, 3]));
       expect(await fs.readFile(path.join(callDir, "output-1.png"))).toEqual(Buffer.from([4, 5, 6]));
 
@@ -139,6 +159,7 @@ describe("agent logging", () => {
       call.fail(new Error("boom"), {
         responseText: "partial",
         toolCallText: JSON.stringify([{ name: "list_dir" }]),
+        toolCallPayload: [{ name: "list_dir" }],
         metadata: {
           costUsd: 0.001,
         },
@@ -154,6 +175,9 @@ describe("agent logging", () => {
       expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe("partial");
       expect(await fs.readFile(path.join(callDir, "error.txt"), "utf8")).toBe("boom\n");
       expect(await fs.readFile(path.join(callDir, "tool_call.txt"), "utf8")).toContain("list_dir");
+      expect(JSON.parse(await fs.readFile(path.join(callDir, "tool_call.json"), "utf8"))).toEqual([
+        { name: "list_dir" },
+      ]);
 
       const responseMetadata = JSON.parse(
         await fs.readFile(path.join(callDir, "response.metadata.json"), "utf8"),

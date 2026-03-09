@@ -2733,6 +2733,11 @@ function collectLoggedAttachmentsFromGeminiParts(
 }
 
 function extractToolCallResponseTextFromOpenAiInput(input: unknown): string | undefined {
+  const responses = extractToolCallResponsePayloadFromOpenAiInput(input);
+  return serialiseLogArtifactText(responses);
+}
+
+function extractToolCallResponsePayloadFromOpenAiInput(input: unknown): unknown[] | undefined {
   if (!Array.isArray(input)) {
     return undefined;
   }
@@ -2751,10 +2756,17 @@ function extractToolCallResponseTextFromOpenAiInput(input: unknown): string | un
         },
       ];
     });
-  return serialiseLogArtifactText(responses);
+  return responses.length > 0 ? responses : undefined;
 }
 
 function extractToolCallResponseTextFromFireworksMessages(messages: unknown): string | undefined {
+  const responses = extractToolCallResponsePayloadFromFireworksMessages(messages);
+  return serialiseLogArtifactText(responses);
+}
+
+function extractToolCallResponsePayloadFromFireworksMessages(
+  messages: unknown,
+): unknown[] | undefined {
   if (!Array.isArray(messages)) {
     return undefined;
   }
@@ -2771,10 +2783,17 @@ function extractToolCallResponseTextFromFireworksMessages(messages: unknown): st
         },
       ];
     });
-  return serialiseLogArtifactText(responses);
+  return responses.length > 0 ? responses : undefined;
 }
 
 function extractToolCallResponseTextFromGeminiContents(contents: unknown): string | undefined {
+  const responses = extractToolCallResponsePayloadFromGeminiContents(contents);
+  return serialiseLogArtifactText(responses);
+}
+
+function extractToolCallResponsePayloadFromGeminiContents(
+  contents: unknown,
+): unknown[] | undefined {
   if (!Array.isArray(contents)) {
     return undefined;
   }
@@ -2797,49 +2816,46 @@ function extractToolCallResponseTextFromGeminiContents(contents: unknown): strin
       }
     }
   }
-  return serialiseLogArtifactText(responses);
+  return responses.length > 0 ? responses : undefined;
 }
 
-function serialiseOpenAiStyleToolCallsForLogging(
-  calls: readonly (
-    | { kind: "function"; name: string; arguments: string; callId?: string; itemId?: string }
-    | { kind: "custom"; name: string; input: string; callId?: string; itemId?: string }
-  )[],
-): string | undefined {
-  return serialiseLogArtifactText(
-    calls.map((call) => {
-      if (call.kind === "custom") {
-        return {
-          kind: call.kind,
-          name: call.name,
-          callId: call.callId,
-          itemId: call.itemId,
-          input: call.input,
-        };
-      }
-      const { value, error } = parseOpenAiToolArguments(call.arguments);
+type LoggedOpenAiStyleToolCall =
+  | { kind: "function"; name: string; arguments: string; callId?: string; itemId?: string }
+  | { kind: "custom"; name: string; input: string; callId?: string; itemId?: string };
+
+function toLoggedOpenAiStyleToolCalls(
+  calls: readonly LoggedOpenAiStyleToolCall[],
+): ReadonlyArray<Record<string, unknown>> {
+  return calls.map((call) => {
+    if (call.kind === "custom") {
       return {
         kind: call.kind,
         name: call.name,
         callId: call.callId,
         itemId: call.itemId,
-        arguments: value,
-        ...(error ? { parseError: error, rawArguments: call.arguments } : {}),
+        input: call.input,
       };
-    }),
-  );
+    }
+    const { value, error } = parseOpenAiToolArguments(call.arguments);
+    return {
+      kind: call.kind,
+      name: call.name,
+      callId: call.callId,
+      itemId: call.itemId,
+      arguments: value,
+      ...(error ? { parseError: error, rawArguments: call.arguments } : {}),
+    };
+  });
 }
 
-function serialiseGeminiToolCallsForLogging(
+function toLoggedGeminiToolCalls(
   calls: ReadonlyArray<NonNullable<GeminiPart["functionCall"]>>,
-): string | undefined {
-  return serialiseLogArtifactText(
-    calls.map((call) => ({
-      name: call.name ?? "unknown",
-      callId: typeof call.id === "string" ? call.id : undefined,
-      arguments: sanitiseLogValue(call.args ?? {}),
-    })),
-  );
+): ReadonlyArray<Record<string, unknown>> {
+  return calls.map((call) => ({
+    name: call.name ?? "unknown",
+    callId: typeof call.id === "string" ? call.id : undefined,
+    arguments: sanitiseLogValue(call.args ?? {}),
+  }));
 }
 
 function startLlmCallLoggerFromContents(options: {
@@ -2948,6 +2964,18 @@ function startLlmCallLoggerFromPayload(options: {
         : extractToolCallResponseTextFromGeminiContents(
             (options.requestPayload as { contents?: unknown }).contents,
           );
+  const toolCallResponsePayload =
+    options.provider === "openai" || options.provider === "chatgpt"
+      ? extractToolCallResponsePayloadFromOpenAiInput(
+          (options.requestPayload as { input?: unknown }).input,
+        )
+      : options.provider === "fireworks"
+        ? extractToolCallResponsePayloadFromFireworksMessages(
+            (options.requestPayload as { messages?: unknown }).messages,
+          )
+        : extractToolCallResponsePayloadFromGeminiContents(
+            (options.requestPayload as { contents?: unknown }).contents,
+          );
   return session.startLlmCall({
     provider: options.provider,
     modelId: options.modelId,
@@ -2958,6 +2986,7 @@ function startLlmCallLoggerFromPayload(options: {
     },
     attachments,
     toolCallResponseText,
+    toolCallResponsePayload,
   });
 }
 
@@ -3939,6 +3968,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let responseText = "";
         let reasoningSummary = "";
         let stepToolCallText: string | undefined;
+        let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
         const stepRequestPayload = {
           model: providerInfo.model,
           input,
@@ -4067,7 +4097,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
 
           const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
-          stepToolCallText = serialiseOpenAiStyleToolCallsForLogging(
+          stepToolCallPayload = toLoggedOpenAiStyleToolCalls(
             responseToolCalls.map((call) =>
               call.kind === "custom"
                 ? {
@@ -4086,6 +4116,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                   },
             ),
           );
+          stepToolCallText = serialiseLogArtifactText(stepToolCallPayload);
 
           const stepToolCalls: LlmToolCallResult[] = [];
           if (responseToolCalls.length === 0) {
@@ -4258,6 +4289,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stepCallLogger?.complete({
             responseText,
             toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
             metadata: {
               provider: "openai",
               model: request.model,
@@ -4278,6 +4310,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stepCallLogger?.fail(error, {
             responseText,
             toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
             metadata: {
               provider: "openai",
               model: request.model,
@@ -4319,6 +4352,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let responseText = "";
         let reasoningSummaryText = "";
         let stepToolCallText: string | undefined;
+        let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
         const markFirstModelEvent = () => {
           if (firstModelEventAtMs === undefined) {
             firstModelEventAtMs = Date.now();
@@ -4393,7 +4427,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
 
           const responseToolCalls = response.toolCalls ?? [];
-          stepToolCallText = serialiseOpenAiStyleToolCallsForLogging(
+          stepToolCallPayload = toLoggedOpenAiStyleToolCalls(
             responseToolCalls.map((call) =>
               call.kind === "custom"
                 ? {
@@ -4412,6 +4446,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                   },
             ),
           );
+          stepToolCallText = serialiseLogArtifactText(stepToolCallPayload);
           if (responseToolCalls.length === 0) {
             const steeringInput = steeringInternal?.drainPendingContents() ?? [];
             const steeringItems =
@@ -4596,6 +4631,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stepCallLogger?.complete({
             responseText,
             toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
             metadata: {
               provider: "chatgpt",
               model: request.model,
@@ -4617,6 +4653,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stepCallLogger?.fail(error, {
             responseText,
             toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
             metadata: {
               provider: "chatgpt",
               model: request.model,
@@ -4651,6 +4688,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let responseText = "";
         let blocked = false;
         let stepToolCallText: string | undefined;
+        let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
         const stepRequestPayload = {
           model: providerInfo.model,
           messages,
@@ -4720,7 +4758,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
 
           const responseToolCalls = extractFireworksToolCalls(message);
-          stepToolCallText = serialiseOpenAiStyleToolCallsForLogging(
+          stepToolCallPayload = toLoggedOpenAiStyleToolCalls(
             responseToolCalls.map((call) => ({
               kind: "function" as const,
               name: call.name,
@@ -4728,6 +4766,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               callId: call.id,
             })),
           );
+          stepToolCallText = serialiseLogArtifactText(stepToolCallPayload);
           if (responseToolCalls.length === 0) {
             const steeringInput = steeringInternal?.drainPendingContents() ?? [];
             const steeringMessages =
@@ -4886,6 +4925,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stepCallLogger?.complete({
             responseText,
             toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
             metadata: {
               provider: "fireworks",
               model: request.model,
@@ -4915,6 +4955,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stepCallLogger?.fail(error, {
             responseText,
             toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
             metadata: {
               provider: "fireworks",
               model: request.model,
@@ -4949,6 +4990,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       let responseText = "";
       let thoughtsText = "";
       let stepToolCallText: string | undefined;
+      let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
       const markFirstModelEvent = () => {
         if (firstModelEventAtMs === undefined) {
           firstModelEventAtMs = Date.now();
@@ -5094,7 +5136,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         });
         totalCostUsd += stepCostUsd;
 
-        stepToolCallText = serialiseGeminiToolCallsForLogging(response.functionCalls);
+        stepToolCallPayload = toLoggedGeminiToolCalls(response.functionCalls);
+        stepToolCallText = serialiseLogArtifactText(stepToolCallPayload);
         if (response.functionCalls.length === 0) {
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
           finalText = responseText;
@@ -5272,6 +5315,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           responseText,
           attachments: responseOutputAttachments,
           toolCallText: stepToolCallText,
+          toolCallPayload: stepToolCallPayload,
           metadata: {
             provider: "gemini",
             model: request.model,
@@ -5295,6 +5339,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         stepCallLogger?.fail(error, {
           responseText,
           toolCallText: stepToolCallText,
+          toolCallPayload: stepToolCallPayload,
           metadata: {
             provider: "gemini",
             model: request.model,
