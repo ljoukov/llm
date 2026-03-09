@@ -450,7 +450,7 @@ describe("runToolLoop custom tools", () => {
 
     const responseContent = geminiRequests[1]?.contents?.at(-1);
     expect(responseContent?.role).toBe("user");
-    expect(responseContent?.parts).toHaveLength(1);
+    expect(responseContent?.parts).toHaveLength(2);
 
     const responsePart = responseContent?.parts?.[0]?.functionResponse;
     expect(responsePart?.id).toBe("call_function_1");
@@ -462,14 +462,13 @@ describe("runToolLoop custom tools", () => {
         media: "attached-inline-data",
       },
     ]);
-    expect(responsePart?.parts).toEqual([
-      {
-        inlineData: {
-          data: "AAA=",
-          mimeType: "image/png",
-        },
+    expect(responsePart?.parts).toBeUndefined();
+    expect(responseContent?.parts?.[1]).toEqual({
+      inlineData: {
+        data: "AAA=",
+        mimeType: "image/png",
       },
-    ]);
+    });
     expect(JSON.stringify(responsePart?.response)).not.toContain("data:image");
   });
 
