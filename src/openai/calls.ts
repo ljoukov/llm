@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import {
   createCallScheduler,
   type CallScheduler,
@@ -13,13 +14,15 @@ export type OpenAiReasoningEffort = "low" | "medium" | "high" | "xhigh";
 export const DEFAULT_OPENAI_REASONING_EFFORT: OpenAiReasoningEffort = "medium";
 
 const DEFAULT_SCHEDULER_KEY = "__default__";
-const schedulerByModel = new Map<string, CallScheduler>();
+const openAiCallState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.openAiCallState"), () => ({
+  schedulerByModel: new Map<string, CallScheduler>(),
+}));
 
 function getSchedulerForModel(modelId?: string): CallScheduler {
   const normalizedModelId = modelId?.trim();
   const schedulerKey =
     normalizedModelId && normalizedModelId.length > 0 ? normalizedModelId : DEFAULT_SCHEDULER_KEY;
-  const existing = schedulerByModel.get(schedulerKey);
+  const existing = openAiCallState.schedulerByModel.get(schedulerKey);
   if (existing) {
     return existing;
   }
@@ -31,7 +34,7 @@ function getSchedulerForModel(modelId?: string): CallScheduler {
     minIntervalBetweenStartMs: 200,
     startJitterMs: 200,
   });
-  schedulerByModel.set(schedulerKey, created);
+  openAiCallState.schedulerByModel.set(schedulerKey, created);
   return created;
 }
 

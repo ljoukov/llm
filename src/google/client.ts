@@ -1,5 +1,6 @@
 import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
 
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import { getGoogleAuthOptions, getGoogleServiceAccount } from "./auth.js";
 
 export const GEMINI_TEXT_MODEL_IDS = [
@@ -41,8 +42,10 @@ export type GeminiConfiguration = {
   readonly location?: string;
 };
 
-let geminiConfiguration: GeminiConfiguration = {};
-let clientPromise: Promise<GoogleGenAI> | undefined;
+const geminiClientState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.geminiClientState"), () => ({
+  geminiConfiguration: {} as GeminiConfiguration,
+  clientPromise: undefined as Promise<GoogleGenAI> | undefined,
+}));
 
 function normaliseConfigValue(value?: string | null): string | undefined {
   if (value === undefined || value === null) {
@@ -55,15 +58,17 @@ function normaliseConfigValue(value?: string | null): string | undefined {
 export function configureGemini(options: GeminiConfiguration = {}): void {
   const nextProjectId = normaliseConfigValue(options.projectId);
   const nextLocation = normaliseConfigValue(options.location);
-  geminiConfiguration = {
-    projectId: nextProjectId !== undefined ? nextProjectId : geminiConfiguration.projectId,
-    location: nextLocation !== undefined ? nextLocation : geminiConfiguration.location,
+  geminiClientState.geminiConfiguration = {
+    projectId:
+      nextProjectId !== undefined ? nextProjectId : geminiClientState.geminiConfiguration.projectId,
+    location:
+      nextLocation !== undefined ? nextLocation : geminiClientState.geminiConfiguration.location,
   };
-  clientPromise = undefined;
+  geminiClientState.clientPromise = undefined;
 }
 
 function resolveProjectId(): string {
-  const override = geminiConfiguration.projectId;
+  const override = geminiClientState.geminiConfiguration.projectId;
   if (override) {
     return override;
   }
@@ -72,7 +77,7 @@ function resolveProjectId(): string {
 }
 
 function resolveLocation(): string {
-  const override = geminiConfiguration.location;
+  const override = geminiClientState.geminiConfiguration.location;
   if (override) {
     return override;
   }
@@ -80,8 +85,8 @@ function resolveLocation(): string {
 }
 
 export async function getGeminiClient(): Promise<GoogleGenAI> {
-  if (!clientPromise) {
-    clientPromise = Promise.resolve().then(() => {
+  if (!geminiClientState.clientPromise) {
+    geminiClientState.clientPromise = Promise.resolve().then(() => {
       const projectId = resolveProjectId();
       const location = resolveLocation();
       const googleAuthOptions = getGoogleAuthOptions(CLOUD_PLATFORM_SCOPE);
@@ -93,5 +98,5 @@ export async function getGeminiClient(): Promise<GoogleGenAI> {
       });
     });
   }
-  return clientPromise;
+  return geminiClientState.clientPromise;
 }

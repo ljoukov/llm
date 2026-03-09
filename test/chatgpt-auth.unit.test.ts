@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
+
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -33,6 +35,7 @@ function writeCodexAuthJson(
 describe("chatgpt-auth", () => {
   it("extracts chatgpt_account_id from the namespaced JWT claim", async () => {
     vi.resetModules();
+    resetRuntimeSingletonsForTesting();
 
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "";
     process.env.CHATGPT_AUTH_API_KEY = "";
@@ -57,6 +60,7 @@ describe("chatgpt-auth", () => {
 
   it("reuses known account id when refreshed tokens are opaque", async () => {
     vi.resetModules();
+    resetRuntimeSingletonsForTesting();
 
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "";
     process.env.CHATGPT_AUTH_API_KEY = "";
@@ -112,6 +116,7 @@ describe("chatgpt-auth", () => {
 
   it("uses CHATGPT_AUTH_TOKEN_PROVIDER_URL when configured (no local refresh)", async () => {
     vi.resetModules();
+    resetRuntimeSingletonsForTesting();
 
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "https://example.invalid";
     process.env.CHATGPT_AUTH_API_KEY = "k_test";

@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 import {
   OPENAI_BETA_RESPONSES_WEBSOCKETS_V2,
@@ -14,29 +15,32 @@ import {
   type ResponsesStreamWithFinal,
 } from "./responses-websocket.js";
 
-let cachedApiKey: string | null = null;
-let cachedClient: OpenAI | null = null;
-let cachedFetch: typeof fetch | null = null;
-let cachedTimeoutMs: number | null = null;
-let openAiResponsesWebSocketMode: "auto" | "off" | "only" | null = null;
-let openAiResponsesWebSocketDisabled = false;
+const openAiClientState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.openAiClientState"), () => ({
+  cachedApiKey: null as string | null,
+  cachedClient: null as OpenAI | null,
+  cachedFetch: null as typeof fetch | null,
+  cachedTimeoutMs: null as number | null,
+  openAiResponsesWebSocketMode: null as "auto" | "off" | "only" | null,
+  openAiResponsesWebSocketDisabled: false,
+}));
 
 const DEFAULT_OPENAI_TIMEOUT_MS = 15 * 60_000;
 
 function resolveOpenAiTimeoutMs(): number {
-  if (cachedTimeoutMs !== null) {
-    return cachedTimeoutMs;
+  if (openAiClientState.cachedTimeoutMs !== null) {
+    return openAiClientState.cachedTimeoutMs;
   }
 
   const raw = process.env.OPENAI_STREAM_TIMEOUT_MS ?? process.env.OPENAI_TIMEOUT_MS;
   const parsed = raw ? Number(raw) : Number.NaN;
-  cachedTimeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_OPENAI_TIMEOUT_MS;
-  return cachedTimeoutMs;
+  openAiClientState.cachedTimeoutMs =
+    Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_OPENAI_TIMEOUT_MS;
+  return openAiClientState.cachedTimeoutMs;
 }
 
 function getOpenAiFetch(): typeof fetch {
-  if (cachedFetch) {
-    return cachedFetch;
+  if (openAiClientState.cachedFetch) {
+    return openAiClientState.cachedFetch;
   }
 
   const timeoutMs = resolveOpenAiTimeoutMs();
@@ -44,14 +48,14 @@ function getOpenAiFetch(): typeof fetch {
     bodyTimeout: timeoutMs,
     headersTimeout: timeoutMs,
   });
-  cachedFetch = ((input: any, init?: any) => {
+  openAiClientState.cachedFetch = ((input: any, init?: any) => {
     return undiciFetch(input, {
       ...(init ?? {}),
       dispatcher,
     });
   }) as typeof fetch;
 
-  return cachedFetch;
+  return openAiClientState.cachedFetch;
 }
 
 function resolveOpenAiBaseUrl(): string {
@@ -60,15 +64,15 @@ function resolveOpenAiBaseUrl(): string {
 }
 
 function resolveOpenAiResponsesWebSocketMode(): "auto" | "off" | "only" {
-  if (openAiResponsesWebSocketMode) {
-    return openAiResponsesWebSocketMode;
+  if (openAiClientState.openAiResponsesWebSocketMode) {
+    return openAiClientState.openAiResponsesWebSocketMode;
   }
   loadLocalEnv();
-  openAiResponsesWebSocketMode = resolveResponsesWebSocketMode(
+  openAiClientState.openAiResponsesWebSocketMode = resolveResponsesWebSocketMode(
     process.env.OPENAI_RESPONSES_WEBSOCKET_MODE,
     "auto",
   );
-  return openAiResponsesWebSocketMode;
+  return openAiClientState.openAiResponsesWebSocketMode;
 }
 
 function wrapFallbackStream<TEvent = unknown, TFinal = unknown>(
@@ -137,7 +141,7 @@ function installResponsesWebSocketTransport(client: OpenAI, apiKey: string): voi
     const fallbackStreamFactory = (): ResponsesStreamWithFinal =>
       wrapFallbackStream(originalStream(request, options) as any);
 
-    if (mode === "off" || openAiResponsesWebSocketDisabled) {
+    if (mode === "off" || openAiClientState.openAiResponsesWebSocketDisabled) {
       return fallbackStreamFactory() as any;
     }
 
@@ -162,7 +166,7 @@ function installResponsesWebSocketTransport(client: OpenAI, apiKey: string): voi
       createFallbackStream: fallbackStreamFactory,
       onWebSocketFallback: (error) => {
         if (isResponsesWebSocketUnsupportedError(error)) {
-          openAiResponsesWebSocketDisabled = true;
+          openAiClientState.openAiResponsesWebSocketDisabled = true;
         }
       },
     }) as any;
@@ -170,8 +174,8 @@ function installResponsesWebSocketTransport(client: OpenAI, apiKey: string): voi
 }
 
 function getOpenAiApiKey(): string {
-  if (cachedApiKey !== null) {
-    return cachedApiKey;
+  if (openAiClientState.cachedApiKey !== null) {
+    return openAiClientState.cachedApiKey;
   }
 
   loadLocalEnv();
@@ -182,23 +186,23 @@ function getOpenAiApiKey(): string {
     throw new Error("OPENAI_API_KEY must be provided to access OpenAI APIs.");
   }
 
-  cachedApiKey = value;
-  return cachedApiKey;
+  openAiClientState.cachedApiKey = value;
+  return openAiClientState.cachedApiKey;
 }
 
 export function getOpenAiClient(): OpenAI {
-  if (cachedClient) {
-    return cachedClient;
+  if (openAiClientState.cachedClient) {
+    return openAiClientState.cachedClient;
   }
 
   loadLocalEnv();
   const apiKey = getOpenAiApiKey();
   const timeoutMs = resolveOpenAiTimeoutMs();
-  cachedClient = new OpenAI({
+  openAiClientState.cachedClient = new OpenAI({
     apiKey,
     fetch: getOpenAiFetch(),
     timeout: timeoutMs,
   });
-  installResponsesWebSocketTransport(cachedClient, apiKey);
-  return cachedClient;
+  installResponsesWebSocketTransport(openAiClientState.cachedClient, apiKey);
+  return openAiClientState.cachedClient;
 }

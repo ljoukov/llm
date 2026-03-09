@@ -6,6 +6,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { loadLocalEnv } from "../utils/env.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 // Optional: fetch access tokens from a centralized token provider over HTTPS (for example a Cloudflare Worker).
 const CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_URL";
@@ -62,8 +63,10 @@ const ExchangeResponseSchema = z.object({
   id_token: z.string().optional(),
 });
 
-let cachedProfile: ChatGptAuthProfile | null = null;
-let refreshPromise: Promise<ChatGptAuthProfile> | null = null;
+const chatGptAuthState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptAuthState"), () => ({
+  cachedProfile: null as ChatGptAuthProfile | null,
+  refreshPromise: null as Promise<ChatGptAuthProfile> | null,
+}));
 
 async function fetchChatGptAuthProfileFromTokenProvider(options: {
   baseUrl: string;
@@ -199,13 +202,13 @@ export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
     tokenProviderKey &&
     tokenProviderKey.trim().length > 0
   ) {
-    if (cachedProfile && !isExpired(cachedProfile)) {
-      return cachedProfile;
+    if (chatGptAuthState.cachedProfile && !isExpired(chatGptAuthState.cachedProfile)) {
+      return chatGptAuthState.cachedProfile;
     }
-    if (refreshPromise) {
-      return refreshPromise;
+    if (chatGptAuthState.refreshPromise) {
+      return chatGptAuthState.refreshPromise;
     }
-    refreshPromise = (async () => {
+    chatGptAuthState.refreshPromise = (async () => {
       try {
         const store = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV];
         const profile = await fetchChatGptAuthProfileFromTokenProvider({
@@ -213,34 +216,34 @@ export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
           apiKey: tokenProviderKey,
           store: store ?? undefined,
         });
-        cachedProfile = profile;
+        chatGptAuthState.cachedProfile = profile;
         return profile;
       } finally {
-        refreshPromise = null;
+        chatGptAuthState.refreshPromise = null;
       }
     })();
-    return refreshPromise;
+    return chatGptAuthState.refreshPromise;
   }
 
-  if (cachedProfile && !isExpired(cachedProfile)) {
-    return cachedProfile;
+  if (chatGptAuthState.cachedProfile && !isExpired(chatGptAuthState.cachedProfile)) {
+    return chatGptAuthState.cachedProfile;
   }
-  if (refreshPromise) {
-    return refreshPromise;
+  if (chatGptAuthState.refreshPromise) {
+    return chatGptAuthState.refreshPromise;
   }
-  refreshPromise = (async () => {
+  chatGptAuthState.refreshPromise = (async () => {
     try {
-      const baseProfile = cachedProfile ?? loadAuthProfileFromCodexStore();
+      const baseProfile = chatGptAuthState.cachedProfile ?? loadAuthProfileFromCodexStore();
       const profile = isExpired(baseProfile)
         ? await refreshAndPersistCodexProfile(baseProfile)
         : baseProfile;
-      cachedProfile = profile;
+      chatGptAuthState.cachedProfile = profile;
       return profile;
     } finally {
-      refreshPromise = null;
+      chatGptAuthState.refreshPromise = null;
     }
   })();
-  return refreshPromise;
+  return chatGptAuthState.refreshPromise;
 }
 
 function resolveCodexHome(): string {

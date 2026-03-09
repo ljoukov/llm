@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-let envLoaded = false;
+import { getRuntimeSingleton } from "./runtimeSingleton.js";
+
+const envState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.envState"), () => ({
+  envLoaded: false,
+}));
 
 /**
  * Loads `.env.local` from `process.cwd()` once.
@@ -10,12 +14,12 @@ let envLoaded = false;
  * - Missing file is silently ignored.
  */
 export function loadLocalEnv(): void {
-  if (envLoaded) {
+  if (envState.envLoaded) {
     return;
   }
   const envPath = path.join(process.cwd(), ".env.local");
   loadEnvFromFile(envPath, { override: false });
-  envLoaded = true;
+  envState.envLoaded = true;
 }
 
 export function loadEnvFromFile(

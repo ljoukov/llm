@@ -2,6 +2,7 @@ import { GoogleAuth, type AnyAuthClient, type GoogleAuthOptions } from "google-a
 import { z } from "zod";
 
 import { loadLocalEnv } from "../utils/env.js";
+import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 export type GoogleServiceAccount = {
   projectId: string;
@@ -24,8 +25,10 @@ const ServiceAccountSchema = z
     tokenUri: token_uri,
   }));
 
-let cachedServiceAccount: GoogleServiceAccount | null = null;
-const authClientCache = new Map<string, GoogleAuth<AnyAuthClient>>();
+const googleAuthState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.googleAuthState"), () => ({
+  cachedServiceAccount: null as GoogleServiceAccount | null,
+  authClientCache: new Map<string, GoogleAuth<AnyAuthClient>>(),
+}));
 
 export function parseGoogleServiceAccount(input: string): GoogleServiceAccount {
   let parsed: unknown;
@@ -38,8 +41,8 @@ export function parseGoogleServiceAccount(input: string): GoogleServiceAccount {
 }
 
 export function getGoogleServiceAccount(): GoogleServiceAccount {
-  if (cachedServiceAccount) {
-    return cachedServiceAccount;
+  if (googleAuthState.cachedServiceAccount) {
+    return googleAuthState.cachedServiceAccount;
   }
 
   loadLocalEnv();
@@ -49,8 +52,8 @@ export function getGoogleServiceAccount(): GoogleServiceAccount {
     throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON must be provided for Google APIs access.");
   }
 
-  cachedServiceAccount = parseGoogleServiceAccount(raw);
-  return cachedServiceAccount;
+  googleAuthState.cachedServiceAccount = parseGoogleServiceAccount(raw);
+  return googleAuthState.cachedServiceAccount;
 }
 
 function normaliseScopes(scopes?: string | readonly string[]): string[] | undefined {
@@ -85,12 +88,12 @@ export function getGoogleAuthOptions(
 export function getGoogleAuth(scopes?: string | readonly string[]): GoogleAuth<AnyAuthClient> {
   const normalised = normaliseScopes(scopes);
   const key = (normalised ?? []).join(" ");
-  const cached = authClientCache.get(key);
+  const cached = googleAuthState.authClientCache.get(key);
   if (cached) {
     return cached;
   }
   const auth = new GoogleAuth(getGoogleAuthOptions(normalised));
-  authClientCache.set(key, auth);
+  googleAuthState.authClientCache.set(key, auth);
   return auth;
 }
 
