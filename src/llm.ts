@@ -5223,8 +5223,6 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             let thoughtsText = "";
             const modelParts: GeminiPart[] = [];
             const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
-            const seenFunctionCallIds = new Set<string>();
-            const seenFunctionCallKeys = new Set<string>();
             let latestUsageMetadata: unknown;
             let resolvedModelVersion: string | undefined;
 
@@ -5242,35 +5240,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 continue;
               }
               const primary = candidates[0];
-              const parts = primary?.content?.parts;
-              if (!parts || parts.length === 0) {
+              const parts = primary?.content?.parts ?? [];
+              const chunkFunctionCalls =
+                (
+                  chunk as {
+                    functionCalls?: Array<NonNullable<GeminiPart["functionCall"]>>;
+                  }
+                ).functionCalls ?? [];
+              if (parts.length === 0 && chunkFunctionCalls.length === 0) {
                 continue;
               }
 
               for (const part of parts) {
                 modelParts.push(part);
-                const call = part.functionCall;
-                if (call) {
-                  const id = typeof call.id === "string" ? call.id : "";
-                  const shouldAdd = (() => {
-                    if (id.length > 0) {
-                      if (seenFunctionCallIds.has(id)) {
-                        return false;
-                      }
-                      seenFunctionCallIds.add(id);
-                      return true;
-                    }
-                    const key = JSON.stringify({ name: call.name ?? "", args: call.args ?? null });
-                    if (seenFunctionCallKeys.has(key)) {
-                      return false;
-                    }
-                    seenFunctionCallKeys.add(key);
-                    return true;
-                  })();
-                  if (shouldAdd) {
-                    functionCalls.push(call);
-                  }
-                }
                 if (typeof part.text === "string" && part.text.length > 0) {
                   if (part.thought) {
                     thoughtsText += part.text;
@@ -5281,6 +5263,15 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                     stepCallLogger?.appendResponseDelta(part.text);
                     onEvent?.({ type: "delta", channel: "response", text: part.text });
                   }
+                }
+              }
+              if (chunkFunctionCalls.length > 0) {
+                functionCalls.push(...chunkFunctionCalls);
+                continue;
+              }
+              for (const part of parts) {
+                if (part.functionCall) {
+                  functionCalls.push(part.functionCall);
                 }
               }
             }

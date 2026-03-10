@@ -13,6 +13,7 @@ let geminiRequests: any[] = [];
 let geminiCallCount = 0;
 let openAiScenario: "custom" | "image_function" = "custom";
 let chatGptScenario: "custom" | "image_function" = "custom";
+let geminiScenario: "image_function" | "duplicate_function_calls" = "image_function";
 
 vi.mock("../src/openai/calls.js", () => {
   const fakeClient = {
@@ -138,6 +139,48 @@ vi.mock("../src/google/calls.js", () => {
         const callIndex = geminiCallCount++;
         async function* stream() {
           if (callIndex === 0) {
+            if (geminiScenario === "duplicate_function_calls") {
+              yield {
+                modelVersion: "gemini-3.1-pro-preview",
+                usageMetadata: {
+                  promptTokenCount: 10,
+                  candidatesTokenCount: 5,
+                  totalTokenCount: 15,
+                },
+                functionCalls: [
+                  {
+                    name: "echo_tool",
+                    args: { value: "repeat" },
+                  },
+                  {
+                    name: "echo_tool",
+                    args: { value: "repeat" },
+                  },
+                ],
+                candidates: [
+                  {
+                    content: {
+                      role: "model",
+                      parts: [
+                        {
+                          functionCall: {
+                            name: "echo_tool",
+                            args: { value: "repeat" },
+                          },
+                        },
+                        {
+                          functionCall: {
+                            name: "echo_tool",
+                            args: { value: "repeat" },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              };
+              return;
+            }
             yield {
               modelVersion: "gemini-3.1-pro-preview",
               usageMetadata: {
@@ -425,6 +468,7 @@ describe("runToolLoop custom tools", () => {
   });
 
   it("encodes Gemini image tool outputs as functionResponse parts instead of data URLs in JSON", async () => {
+    geminiScenario = "image_function";
     geminiRequests = [];
     geminiCallCount = 0;
 
@@ -470,6 +514,37 @@ describe("runToolLoop custom tools", () => {
       },
     });
     expect(JSON.stringify(responsePart?.response)).not.toContain("data:image");
+  });
+
+  it("preserves duplicate Gemini function calls with identical args", async () => {
+    geminiScenario = "duplicate_function_calls";
+    geminiRequests = [];
+    geminiCallCount = 0;
+    const executedValues: string[] = [];
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "gemini-3.1-pro-preview",
+      input: "repeat twice",
+      tools: {
+        echo_tool: tool({
+          inputSchema: z.object({ value: z.string() }),
+          execute: async ({ value }) => {
+            executedValues.push(value);
+            return { echoed: value };
+          },
+        }),
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(executedValues).toEqual(["repeat", "repeat"]);
+    expect(geminiRequests).toHaveLength(2);
+    const responseContent = geminiRequests[1]?.contents?.at(-1);
+    expect(responseContent?.role).toBe("user");
+    expect(
+      responseContent?.parts?.filter((part: any) => part?.functionResponse?.name === "echo_tool"),
+    ).toHaveLength(2);
   });
 
   it("rejects custom/freeform tools for gemini provider", async () => {
