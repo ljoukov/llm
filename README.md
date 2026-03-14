@@ -525,6 +525,57 @@ const { value } = await generateJson({
 });
 ```
 
+## Telemetry
+
+Telemetry is one shared API across the library:
+
+- direct calls: `generateText()`, `streamText()`, `generateJson()`, `streamJson()`, `generateImages()`
+- agent loops: `runAgentLoop()`, `streamAgentLoop()`
+
+Configure it once for the process with `configureTelemetry()` and override or disable it per call with `telemetry`.
+
+```ts
+import { configureTelemetry, generateJson, runAgentLoop } from "@ljoukov/llm";
+import { z } from "zod";
+
+configureTelemetry({
+  includeStreamEvents: false,
+  sink: {
+    emit: (event) => {
+      // event.type:
+      //   "llm.call.started" | "llm.call.stream" | "llm.call.completed" |
+      //   "agent.run.started" | "agent.run.stream" | "agent.run.completed"
+    },
+    flush: async () => {},
+  },
+});
+
+const { value } = await generateJson({
+  model: "gpt-5.2",
+  input: "Return { ok: true }.",
+  schema: z.object({ ok: z.boolean() }),
+});
+
+await runAgentLoop({
+  model: "gpt-5.2",
+  input: "Inspect the repo and update the file.",
+  filesystemTool: true,
+});
+```
+
+Per-call opt-out:
+
+```ts
+await generateJson({
+  model: "gpt-5.2",
+  input: "Return { ok: true }.",
+  schema: z.object({ ok: z.boolean() }),
+  telemetry: false,
+});
+```
+
+See `docs/telemetry.md` for the event schema and adapter guidance.
+
 ## Tools
 
 There are three tool-enabled call patterns:
@@ -742,38 +793,6 @@ const result = await runAgentLoop({
 
 console.log(result.text);
 ```
-
-### Agent Telemetry (Pluggable Backends)
-
-`runAgentLoop()` supports optional telemetry hooks that keep default behavior unchanged.
-You can attach any backend by implementing a sink with `emit(event)` and optional `flush()`.
-
-```ts
-import { runAgentLoop } from "@ljoukov/llm";
-
-const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
-  input: "Summarize the report and update output JSON files.",
-  filesystemTool: true,
-  telemetry: {
-    includeLlmStreamEvents: false, // enable only if you need token/delta event fan-out
-    sink: {
-      emit: (event) => {
-        // Forward to your backend (Cloud Logging, OpenTelemetry, Datadog, etc.)
-        // event.type: "agent.run.started" | "agent.run.stream" | "agent.run.completed"
-        // agent.run.completed also includes uploadCount, uploadBytes, and uploadLatencyMs
-        // event carries runId, parentRunId, depth, model, timestamp + payload
-      },
-      flush: async () => {
-        // Optional: flush buffered telemetry on run completion.
-      },
-    },
-  },
-});
-```
-
-Telemetry emits parent/child run correlation (`runId` + `parentRunId`) for subagents.
-See `docs/agent-telemetry.md` for event schema, design rationale, and backend adapter guidance.
 
 ### Agent Logging (Console + Files + Redirects)
 
