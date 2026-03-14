@@ -8,7 +8,7 @@
 Unified TypeScript wrapper over:
 
 - **OpenAI Responses API** (`openai`)
-- **Google Gemini via Vertex AI** (`@google/genai`)
+- **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`@google/genai`)
 - **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
 - **Agentic orchestration with subagents** via `runAgentLoop()` + built-in delegation control tools
@@ -38,11 +38,22 @@ See Node.js docs on environment variables and dotenv files: https://nodejs.org/a
 - `OPENAI_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
 - `OPENAI_BASE_URL` (optional; defaults to `https://api.openai.com/v1`)
 
-### Gemini (Vertex AI)
+### Gemini
 
-- `GOOGLE_SERVICE_ACCOUNT_JSON` (the contents of a service account JSON key file, not a file path)
+Use one backend:
 
-#### Get a service account key JSON
+- `GEMINI_API_KEY` or `GOOGLE_API_KEY` for the Gemini Developer API
+- `GOOGLE_SERVICE_ACCOUNT_JSON` for Vertex AI (the contents of a service account JSON key file, not a file path)
+- `VERTEX_GCS_BUCKET` for Vertex-backed Gemini file attachments / `file_id` inputs
+- `VERTEX_GCS_PREFIX` (optional object-name prefix inside `VERTEX_GCS_BUCKET`)
+
+If a Gemini API key is present, the library uses the Gemini Developer API. Otherwise it falls back to Vertex AI.
+
+For Vertex-backed Gemini file inputs, the library mirrors OpenAI-backed canonical files into GCS and then passes the
+resulting `gs://...` URI to Vertex. Configure a lifecycle rule on that bucket to delete objects after 2 days if you
+want hard 48-hour cleanup for mirrored objects.
+
+#### Vertex AI service account setup
 
 You need a **Google service account key JSON** for your Firebase / GCP project (this is what you put into
 `GOOGLE_SERVICE_ACCOUNT_JSON`).
@@ -219,15 +230,71 @@ const result = await generateText({ model: "gpt-5.2", input });
 console.log(result.text);
 ```
 
+### Files API
+
+The library now exposes an OpenAI-like canonical files API:
+
+```ts
+import fs from "node:fs";
+import { files, generateText, type LlmInputMessage } from "@ljoukov/llm";
+
+const stored = await files.create({
+  data: fs.readFileSync("report.pdf"),
+  filename: "report.pdf",
+  mimeType: "application/pdf",
+});
+
+const input: LlmInputMessage[] = [
+  {
+    role: "user",
+    content: [
+      { type: "text", text: "Summarize the PDF in 5 bullets." },
+      { type: "input_file", file_id: stored.id, filename: stored.filename },
+    ],
+  },
+];
+
+const result = await generateText({ model: "gpt-5.2", input });
+console.log(result.text);
+```
+
+Canonical storage defaults to OpenAI Files with `purpose: "user_data"` and a `48h` TTL.
+
+- OpenAI models use that `file_id` directly.
+- Gemini Developer API mirrors the file lazily into Gemini Files when needed.
+- Vertex-backed Gemini mirrors the file lazily into `VERTEX_GCS_BUCKET` and uses `gs://...` URIs.
+
+Available methods:
+
+- `files.create({ path | data, filename?, mimeType? })`
+- `files.retrieve(fileId)`
+- `files.delete(fileId)`
+- `files.content(fileId)`
+
 ### Attachments (files / images)
 
 Use `inlineData` parts to attach base64-encoded bytes (intermixed with text). `inlineData.data` is base64 (not a data
 URL).
 
+Optional: set `filename` on `inlineData` to preserve the original file name when the provider supports it.
+
 Note: `inlineData` is mapped based on `mimeType`.
 
 - `image/*` -> image input (`input_image`)
 - otherwise -> file input (`input_file`, e.g. `application/pdf`)
+
+You can also pass OpenAI-style file/image parts directly:
+
+- `input_file` with `file_id`
+- `input_image` with `file_id`
+
+When the combined inline attachment payload in a single request would exceed about `20 MiB` of base64/data-URL text,
+the library automatically uploads those attachments to the canonical files store first and swaps the prompt to file
+references:
+
+- OpenAI: uses canonical OpenAI `file_id`s directly
+- Gemini Developer API: mirrors to Gemini Files and sends `fileData.fileUri`
+- Vertex AI: mirrors to `VERTEX_GCS_BUCKET` and sends `gs://...` URIs
 
 ```ts
 import fs from "node:fs";
@@ -246,6 +313,34 @@ const input: LlmInputMessage[] = [
 ];
 
 const result = await generateText({ model: "gpt-5.2", input });
+console.log(result.text);
+```
+
+You can mix direct `file_id` parts with `inlineData`. Small attachments stay inline; oversized turns are upgraded to
+canonical files automatically. Tool loops do the same for large tool outputs, and they also re-check the combined size
+after parallel tool calls so a batch of individually-small images/files still gets upgraded to `file_id` references
+before the next model request if the aggregate payload is too large.
+
+OpenAI-style direct file-id example:
+
+```ts
+import { files, generateText, type LlmInputMessage } from "@ljoukov/llm";
+
+const stored = await files.create({
+  path: "doc.pdf",
+});
+
+const input: LlmInputMessage[] = [
+  {
+    role: "user",
+    content: [
+      { type: "text", text: "Summarize the attachment." },
+      { type: "input_file", file_id: stored.id, filename: stored.filename },
+    ],
+  },
+];
+
+const result = await generateText({ model: "gemini-2.5-pro", input });
 console.log(result.text);
 ```
 
@@ -664,6 +759,7 @@ const result = await runAgentLoop({
       emit: (event) => {
         // Forward to your backend (Cloud Logging, OpenTelemetry, Datadog, etc.)
         // event.type: "agent.run.started" | "agent.run.stream" | "agent.run.completed"
+        // agent.run.completed also includes uploadCount, uploadBytes, and uploadLatencyMs
         // event carries runId, parentRunId, depth, model, timestamp + payload
       },
       flush: async () => {
@@ -693,6 +789,9 @@ Each LLM call writes:
 - `error.txt` plus `response.metadata.json` on failure.
 
 `image_url` data URLs are redacted in text/metadata logs (`data:...,...`) so base64 payloads are not printed inline.
+Every canonical upload or provider mirror is also appended to `agent.log` as a `[upload] ...` line with source,
+backend, bytes, and latency. Direct `generateText()` / `streamText()` calls inherit the same upload logging when you run
+them inside an agent logging session, and their `response.metadata.json` includes an `uploads` summary.
 
 ```ts
 import path from "node:path";
@@ -770,6 +869,30 @@ the current directory, subagents enabled, and `Esc` interrupt support:
 ```bash
 npm run example:cli-chat
 ```
+
+## Testing
+
+Unit tests:
+
+```bash
+npm run test:unit
+```
+
+Standard integration suite:
+
+```bash
+npm run test:integration
+```
+
+Large-file live integration tests are opt-in because they upload multi-megabyte fixtures to real provider file stores:
+
+```bash
+LLM_INTEGRATION_LARGE_FILES=1 npm run test:integration
+```
+
+Those tests generate valid PDFs programmatically so the canonical upload path, `file_id` reuse, and automatic large
+attachment offload all exercise real provider APIs. The unit suite also covers direct-call upload logging plus
+`runAgentLoop()` upload telemetry/logging for combined-image overflow.
 
 ## License
 

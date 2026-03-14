@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
+import path from "node:path";
 
 import {
   FinishReason,
@@ -33,6 +34,7 @@ import { runGeminiCall } from "./google/calls.js";
 import {
   GEMINI_IMAGE_MODEL_IDS,
   GEMINI_TEXT_MODEL_IDS,
+  getGeminiBackend,
   isGeminiImageModelId,
   isGeminiTextModelId,
 } from "./google/client.js";
@@ -55,6 +57,16 @@ import {
   type AgentLlmCallAttachment,
   type AgentLlmCallLogger,
 } from "./agentLogging.js";
+import {
+  collectFileUploadMetrics,
+  DEFAULT_FILE_TTL_SECONDS,
+  ensureGeminiFileMirror,
+  ensureVertexFileMirror,
+  getCurrentFileUploadMetrics,
+  filesCreate,
+  getCanonicalFileMetadata,
+  runWithFileUploadSource,
+} from "./files.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
@@ -87,13 +99,42 @@ type LlmInlineDataPart = {
   type: "inlineData";
   data: string;
   mimeType?: string;
+  filename?: string;
 };
 
-export type LlmContentPart = { type: "text"; text: string; thought?: boolean } | LlmInlineDataPart;
+export type LlmInputImagePart = {
+  type: "input_image";
+  image_url?: string | null;
+  file_id?: string | null;
+  detail?: "auto" | "low" | "high";
+  filename?: string | null;
+};
+
+export type LlmInputFilePart = {
+  type: "input_file";
+  file_data?: string | null;
+  file_id?: string | null;
+  file_url?: string | null;
+  filename?: string | null;
+};
+
+export type LlmContentPart =
+  | { type: "text"; text: string; thought?: boolean }
+  | LlmInlineDataPart
+  | LlmInputImagePart
+  | LlmInputFilePart;
 
 export type LlmContent = {
   readonly role: LlmRole;
   readonly parts: readonly LlmContentPart[];
+};
+
+const INLINE_ATTACHMENT_FILENAME_SYMBOL = Symbol.for("@ljoukov/llm.inlineAttachmentFilename");
+const INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES = 20 * 1024 * 1024;
+const TOOL_OUTPUT_SPILL_THRESHOLD_BYTES = 1 * 1024 * 1024;
+
+type InternalFilenameCarrier = {
+  [INLINE_ATTACHMENT_FILENAME_SYMBOL]?: string;
 };
 
 export type LlmToolOutputContentItem =
@@ -101,18 +142,8 @@ export type LlmToolOutputContentItem =
       readonly type: "input_text";
       readonly text: string;
     }
-  | {
-      readonly type: "input_image";
-      readonly image_url: string;
-      readonly detail?: "auto";
-    }
-  | {
-      readonly type: "input_file";
-      readonly file_data?: string | null;
-      readonly file_id?: string | null;
-      readonly file_url?: string | null;
-      readonly filename?: string | null;
-    };
+  | LlmInputImagePart
+  | LlmInputFilePart;
 
 export type LlmImageSize = "1K" | "2K" | "4K";
 export type LlmThinkingLevel = "low" | "medium" | "high";
@@ -761,6 +792,56 @@ function isJsonSchemaObject(schema: JsonSchema | undefined): boolean {
   return false;
 }
 
+const CANONICAL_GEMINI_FILE_URI_PREFIX = "openai://file/";
+
+function buildCanonicalGeminiFileUri(fileId: string): string {
+  return `${CANONICAL_GEMINI_FILE_URI_PREFIX}${fileId}`;
+}
+
+function parseCanonicalGeminiFileId(fileUri: string | undefined): string | undefined {
+  if (!fileUri?.startsWith(CANONICAL_GEMINI_FILE_URI_PREFIX)) {
+    return undefined;
+  }
+  const fileId = fileUri.slice(CANONICAL_GEMINI_FILE_URI_PREFIX.length).trim();
+  return fileId.length > 0 ? fileId : undefined;
+}
+
+function cloneContentPart(part: LlmContentPart): LlmContentPart {
+  switch (part.type) {
+    case "text":
+      return {
+        type: "text",
+        text: part.text,
+        thought: part.thought === true ? true : undefined,
+      };
+    case "inlineData":
+      return {
+        type: "inlineData",
+        data: part.data,
+        mimeType: part.mimeType,
+        filename: part.filename,
+      };
+    case "input_image":
+      return {
+        type: "input_image",
+        image_url: part.image_url ?? undefined,
+        file_id: part.file_id ?? undefined,
+        detail: part.detail,
+        filename: part.filename ?? undefined,
+      };
+    case "input_file":
+      return {
+        type: "input_file",
+        file_data: part.file_data ?? undefined,
+        file_id: part.file_id ?? undefined,
+        file_url: part.file_url ?? undefined,
+        filename: part.filename ?? undefined,
+      };
+    default:
+      return part;
+  }
+}
+
 export function sanitisePartForLogging(part: LlmContentPart): unknown {
   switch (part.type) {
     case "text":
@@ -779,9 +860,39 @@ export function sanitisePartForLogging(part: LlmContentPart): unknown {
       return {
         type: "inlineData",
         mimeType: part.mimeType,
+        filename: part.filename,
         data: `[omitted:${omittedBytes}b]`,
       };
     }
+    case "input_image":
+      return {
+        type: "input_image",
+        file_id: part.file_id ?? undefined,
+        filename: part.filename ?? undefined,
+        detail: part.detail ?? undefined,
+        image_url:
+          typeof part.image_url === "string"
+            ? part.image_url.startsWith("data:")
+              ? "[omitted:data-url]"
+              : part.image_url
+            : undefined,
+      };
+    case "input_file":
+      return {
+        type: "input_file",
+        file_id: part.file_id ?? undefined,
+        filename: part.filename ?? undefined,
+        file_url:
+          typeof part.file_url === "string"
+            ? part.file_url.startsWith("data:")
+              ? "[omitted:data-url]"
+              : part.file_url
+            : undefined,
+        file_data:
+          typeof part.file_data === "string"
+            ? `[omitted:${Buffer.byteLength(part.file_data, "utf8")}b]`
+            : undefined,
+      };
     default:
       return "[unknown part]";
   }
@@ -804,11 +915,16 @@ export function convertGooglePartsToLlmParts(parts: readonly GeminiPart[]): LlmC
         type: "inlineData",
         data: inline.data,
         mimeType: inline.mimeType,
+        filename: inline.displayName,
       });
       continue;
     }
     if (part.fileData?.fileUri) {
-      throw new Error("fileData parts are not supported");
+      result.push({
+        type: "input_file",
+        file_url: part.fileData.fileUri,
+        filename: part.fileData.displayName,
+      });
     }
   }
   return result;
@@ -843,13 +959,90 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
         text: part.text,
         thought: part.thought === true ? true : undefined,
       };
-    case "inlineData":
+    case "inlineData": {
+      const inlineData = {
+        data: part.data,
+        mimeType: part.mimeType,
+      };
+      setInlineAttachmentFilename(inlineData, part.filename);
       return {
         inlineData: {
-          data: part.data,
-          mimeType: part.mimeType,
+          ...inlineData,
         },
       };
+    }
+    case "input_image": {
+      if (part.file_id) {
+        return {
+          fileData: {
+            fileUri: buildCanonicalGeminiFileUri(part.file_id),
+            mimeType:
+              inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+            displayName: part.filename ?? undefined,
+          },
+        };
+      }
+      if (typeof part.image_url !== "string" || part.image_url.trim().length === 0) {
+        throw new Error("input_image requires image_url or file_id.");
+      }
+      const parsed = parseDataUrlPayload(part.image_url);
+      if (parsed) {
+        const geminiPart = createPartFromBase64(parsed.dataBase64, parsed.mimeType);
+        if (part.filename && geminiPart.inlineData) {
+          geminiPart.inlineData.displayName = part.filename;
+        }
+        return geminiPart;
+      }
+      return {
+        fileData: {
+          fileUri: part.image_url,
+          mimeType:
+            inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+          displayName: part.filename ?? undefined,
+        },
+      };
+    }
+    case "input_file": {
+      if (part.file_id) {
+        return {
+          fileData: {
+            fileUri: buildCanonicalGeminiFileUri(part.file_id),
+            mimeType:
+              inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+            displayName: part.filename ?? undefined,
+          },
+        };
+      }
+      if (typeof part.file_data === "string" && part.file_data.trim().length > 0) {
+        const geminiPart = createPartFromBase64(
+          part.file_data,
+          inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+        );
+        if (part.filename && geminiPart.inlineData) {
+          geminiPart.inlineData.displayName = part.filename;
+        }
+        return geminiPart;
+      }
+      if (typeof part.file_url === "string" && part.file_url.trim().length > 0) {
+        const parsed = parseDataUrlPayload(part.file_url);
+        if (parsed) {
+          const geminiPart = createPartFromBase64(parsed.dataBase64, parsed.mimeType);
+          if (part.filename && geminiPart.inlineData) {
+            geminiPart.inlineData.displayName = part.filename;
+          }
+          return geminiPart;
+        }
+        return {
+          fileData: {
+            fileUri: part.file_url,
+            mimeType:
+              inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+            displayName: part.filename ?? undefined,
+          },
+        };
+      }
+      throw new Error("input_file requires file_id, file_data, or file_url.");
+    }
     default:
       throw new Error("Unsupported LLM content part");
   }
@@ -974,6 +1167,14 @@ function isInlineImageMime(mimeType: string | undefined): boolean {
 
 function guessInlineDataFilename(mimeType: string | undefined): string {
   switch (mimeType) {
+    case "image/jpeg":
+      return "image.jpg";
+    case "image/png":
+      return "image.png";
+    case "image/webp":
+      return "image.webp";
+    case "image/gif":
+      return "image.gif";
     case "application/pdf":
       return "document.pdf";
     case "application/json":
@@ -987,6 +1188,314 @@ function guessInlineDataFilename(mimeType: string | undefined): string {
   }
 }
 
+function normaliseAttachmentFilename(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  const basename = path.basename(trimmed).replace(/[^\w.-]+/g, "-");
+  return basename.length > 0 ? basename : fallback;
+}
+
+function setInlineAttachmentFilename(target: object, filename: string | undefined): void {
+  const normalized = filename?.trim();
+  if (!normalized) {
+    return;
+  }
+  (target as InternalFilenameCarrier)[INLINE_ATTACHMENT_FILENAME_SYMBOL] = normalized;
+}
+
+function getInlineAttachmentFilename(target: unknown): string | undefined {
+  if (!target || typeof target !== "object") {
+    return undefined;
+  }
+  const value = (target as InternalFilenameCarrier)[INLINE_ATTACHMENT_FILENAME_SYMBOL];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function estimateInlinePayloadBytes(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+function isOpenAiNativeContentItem(value: unknown): value is Record<string, any> {
+  return (
+    !!value && typeof value === "object" && typeof (value as { type?: unknown }).type === "string"
+  );
+}
+
+function estimateOpenAiInlinePromptBytes(input: readonly unknown[]): number {
+  let total = 0;
+  const visitItems = (items: readonly unknown[]): void => {
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      if (Array.isArray((item as { content?: unknown }).content)) {
+        visitItems((item as { content: unknown[] }).content);
+      }
+      if (Array.isArray((item as { output?: unknown }).output)) {
+        visitItems((item as { output: unknown[] }).output);
+      }
+      if (!isOpenAiNativeContentItem(item)) {
+        continue;
+      }
+      if (
+        item.type === "input_image" &&
+        typeof item.image_url === "string" &&
+        item.image_url.trim().toLowerCase().startsWith("data:")
+      ) {
+        total += estimateInlinePayloadBytes(item.image_url);
+      }
+      if (
+        item.type === "input_file" &&
+        typeof item.file_data === "string" &&
+        item.file_data.trim().length > 0
+      ) {
+        total += estimateInlinePayloadBytes(item.file_data);
+      }
+      if (
+        item.type === "input_file" &&
+        typeof item.file_url === "string" &&
+        item.file_url.trim().toLowerCase().startsWith("data:")
+      ) {
+        total += estimateInlinePayloadBytes(item.file_url);
+      }
+    }
+  };
+  visitItems(input);
+  return total;
+}
+
+async function storeCanonicalPromptFile(options: {
+  bytes: Buffer;
+  mimeType: string;
+  filename: string;
+}): Promise<{ readonly fileId: string; readonly filename: string; readonly mimeType: string }> {
+  const file = await runWithFileUploadSource("prompt_inline_offload", async () => {
+    return await filesCreate({
+      data: options.bytes,
+      filename: options.filename,
+      mimeType: options.mimeType,
+      expiresAfterSeconds: DEFAULT_FILE_TTL_SECONDS,
+    });
+  });
+  return {
+    fileId: file.id,
+    filename: file.filename,
+    mimeType: options.mimeType,
+  };
+}
+
+async function prepareOpenAiPromptContentItem(item: unknown): Promise<unknown> {
+  if (!isOpenAiNativeContentItem(item)) {
+    return item;
+  }
+
+  if (
+    item.type === "input_image" &&
+    typeof item.image_url === "string" &&
+    item.image_url.trim().toLowerCase().startsWith("data:")
+  ) {
+    const parsed = parseDataUrlPayload(item.image_url);
+    if (!parsed) {
+      return item;
+    }
+    const uploaded = await storeCanonicalPromptFile({
+      bytes: parsed.bytes,
+      mimeType: parsed.mimeType ?? "application/octet-stream",
+      filename: normaliseAttachmentFilename(
+        getInlineAttachmentFilename(item),
+        guessInlineDataFilename(parsed.mimeType),
+      ),
+    });
+    return {
+      type: "input_image",
+      detail: item.detail === "high" || item.detail === "low" ? item.detail : "auto",
+      file_id: uploaded.fileId,
+    };
+  }
+
+  if (item.type !== "input_file" || item.file_id) {
+    return item;
+  }
+
+  if (typeof item.file_data === "string" && item.file_data.trim().length > 0) {
+    const filename = normaliseAttachmentFilename(
+      typeof item.filename === "string" ? item.filename : undefined,
+      guessInlineDataFilename(undefined),
+    );
+    const mimeType = inferToolOutputMimeTypeFromFilename(filename) ?? "application/octet-stream";
+    const uploaded = await storeCanonicalPromptFile({
+      bytes: decodeInlineDataBuffer(item.file_data),
+      mimeType,
+      filename,
+    });
+    return { type: "input_file", file_id: uploaded.fileId, filename: uploaded.filename };
+  }
+
+  if (typeof item.file_url === "string" && item.file_url.trim().toLowerCase().startsWith("data:")) {
+    const parsed = parseDataUrlPayload(item.file_url);
+    if (!parsed) {
+      return item;
+    }
+    const uploaded = await storeCanonicalPromptFile({
+      bytes: parsed.bytes,
+      mimeType: parsed.mimeType ?? "application/octet-stream",
+      filename: normaliseAttachmentFilename(
+        typeof item.filename === "string" ? item.filename : undefined,
+        guessInlineDataFilename(parsed.mimeType),
+      ),
+    });
+    return { type: "input_file", file_id: uploaded.fileId, filename: uploaded.filename };
+  }
+
+  return item;
+}
+
+async function prepareOpenAiPromptInput(input: readonly unknown[]): Promise<unknown[]> {
+  const prepareItem = async (item: unknown): Promise<unknown> => {
+    if (!item || typeof item !== "object") {
+      return item;
+    }
+    const record = item as Record<string, unknown>;
+    if (Array.isArray(record.content)) {
+      return {
+        ...record,
+        content: await Promise.all(
+          record.content.map((part) => prepareOpenAiPromptContentItem(part)),
+        ),
+      };
+    }
+    if (Array.isArray(record.output)) {
+      return {
+        ...record,
+        output: await Promise.all(
+          record.output.map((part) => prepareOpenAiPromptContentItem(part)),
+        ),
+      };
+    }
+    return await prepareOpenAiPromptContentItem(item);
+  };
+
+  return await Promise.all(input.map((item) => prepareItem(item)));
+}
+
+async function maybePrepareOpenAiPromptInput(input: readonly unknown[]): Promise<unknown[]> {
+  if (estimateOpenAiInlinePromptBytes(input) <= INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES) {
+    return Array.from(input);
+  }
+  return await prepareOpenAiPromptInput(input);
+}
+
+function estimateGeminiInlinePromptBytes(contents: readonly GeminiContent[]): number {
+  let total = 0;
+  for (const content of contents) {
+    for (const part of content.parts ?? []) {
+      if (part.inlineData?.data) {
+        total += estimateInlinePayloadBytes(part.inlineData.data);
+      }
+    }
+  }
+  return total;
+}
+
+function hasCanonicalGeminiFileReferences(contents: readonly GeminiContent[]): boolean {
+  for (const content of contents) {
+    for (const part of content.parts ?? []) {
+      if (parseCanonicalGeminiFileId(part.fileData?.fileUri)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function prepareGeminiPromptContents(
+  contents: readonly GeminiContent[],
+): Promise<GeminiContent[]> {
+  const backend = getGeminiBackend();
+  const preparedContents: GeminiContent[] = [];
+  for (const content of contents) {
+    const parts: GeminiPart[] = [];
+    for (const part of content.parts ?? []) {
+      const canonicalFileId = parseCanonicalGeminiFileId(part.fileData?.fileUri);
+      if (canonicalFileId) {
+        const metadata = await getCanonicalFileMetadata(canonicalFileId);
+        if (backend === "api") {
+          const mirrored = await ensureGeminiFileMirror(canonicalFileId);
+          const mirroredPart = createPartFromUri(mirrored.uri, mirrored.mimeType);
+          if (metadata.filename && mirroredPart.fileData) {
+            mirroredPart.fileData.displayName = metadata.filename;
+          }
+          parts.push(mirroredPart);
+        } else {
+          const mirrored = await ensureVertexFileMirror(canonicalFileId);
+          parts.push({
+            fileData: {
+              fileUri: mirrored.fileUri,
+              mimeType: mirrored.mimeType,
+              displayName: metadata.filename,
+            },
+          });
+        }
+        continue;
+      }
+
+      if (part.inlineData?.data) {
+        const mimeType = part.inlineData.mimeType ?? "application/octet-stream";
+        const filename = normaliseAttachmentFilename(
+          getInlineAttachmentFilename(part.inlineData) ??
+            part.inlineData.displayName ??
+            guessInlineDataFilename(mimeType),
+          guessInlineDataFilename(mimeType),
+        );
+        const stored = await storeCanonicalPromptFile({
+          bytes: decodeInlineDataBuffer(part.inlineData.data),
+          mimeType,
+          filename,
+        });
+        if (backend === "api") {
+          const mirrored = await ensureGeminiFileMirror(stored.fileId);
+          const mirroredPart = createPartFromUri(mirrored.uri, mirrored.mimeType);
+          if (filename && mirroredPart.fileData) {
+            mirroredPart.fileData.displayName = filename;
+          }
+          parts.push(mirroredPart);
+        } else {
+          const mirrored = await ensureVertexFileMirror(stored.fileId);
+          parts.push({
+            fileData: {
+              fileUri: mirrored.fileUri,
+              mimeType: mirrored.mimeType,
+              displayName: filename,
+            },
+          });
+        }
+        continue;
+      }
+
+      parts.push(part);
+    }
+    preparedContents.push({
+      ...content,
+      parts,
+    });
+  }
+  return preparedContents;
+}
+
+async function maybePrepareGeminiPromptContents(
+  contents: readonly GeminiContent[],
+): Promise<GeminiContent[]> {
+  if (
+    !hasCanonicalGeminiFileReferences(contents) &&
+    estimateGeminiInlinePromptBytes(contents) <= INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES
+  ) {
+    return Array.from(contents);
+  }
+  return await prepareGeminiPromptContents(contents);
+}
+
 function mergeConsecutiveTextParts(parts: readonly LlmContentPart[]): LlmContentPart[] {
   if (parts.length === 0) {
     return [];
@@ -994,7 +1503,7 @@ function mergeConsecutiveTextParts(parts: readonly LlmContentPart[]): LlmContent
   const merged: LlmContentPart[] = [];
   for (const part of parts) {
     if (part.type !== "text") {
-      merged.push({ type: "inlineData", data: part.data, mimeType: part.mimeType });
+      merged.push(cloneContentPart(part));
       continue;
     }
     const isThought = part.thought === true;
@@ -1487,15 +1996,7 @@ function resolveTextContents(input: LlmInput): readonly LlmContent[] {
         : message.content;
     contents.push({
       role: message.role,
-      parts: parts.map((part) =>
-        part.type === "text"
-          ? {
-              type: "text",
-              text: part.text,
-              thought: "thought" in part && part.thought === true ? true : undefined,
-            }
-          : { type: "inlineData", data: part.data, mimeType: part.mimeType },
-      ),
+      parts: parts.map((part) => cloneContentPart(part)),
     });
   }
 
@@ -1515,22 +2016,58 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
   return contents.map((content) => {
     const parts: Array<Record<string, unknown>> = [];
     for (const part of content.parts) {
-      if (part.type === "text") {
-        parts.push({ type: "input_text", text: part.text });
-        continue;
+      switch (part.type) {
+        case "text":
+          parts.push({ type: "input_text", text: part.text });
+          break;
+        case "inlineData": {
+          const mimeType = part.mimeType;
+          if (isInlineImageMime(mimeType)) {
+            const dataUrl = `data:${mimeType};base64,${part.data}`;
+            const imagePart: Record<string, unknown> = {
+              type: "input_image",
+              image_url: dataUrl,
+              detail: "auto",
+            };
+            setInlineAttachmentFilename(
+              imagePart,
+              normaliseAttachmentFilename(part.filename, guessInlineDataFilename(mimeType)),
+            );
+            parts.push(imagePart);
+            break;
+          }
+          parts.push({
+            type: "input_file",
+            filename: normaliseAttachmentFilename(part.filename, guessInlineDataFilename(mimeType)),
+            file_data: part.data,
+          });
+          break;
+        }
+        case "input_image": {
+          const imagePart: Record<string, unknown> = {
+            type: "input_image",
+            ...(part.file_id ? { file_id: part.file_id } : {}),
+            ...(part.image_url ? { image_url: part.image_url } : {}),
+            detail: part.detail === "high" || part.detail === "low" ? part.detail : "auto",
+          };
+          if (part.filename) {
+            setInlineAttachmentFilename(imagePart, part.filename);
+          }
+          parts.push(imagePart);
+          break;
+        }
+        case "input_file":
+          parts.push({
+            type: "input_file",
+            ...(part.file_id ? { file_id: part.file_id } : {}),
+            ...(part.file_data ? { file_data: part.file_data } : {}),
+            ...(part.file_url ? { file_url: part.file_url } : {}),
+            ...(part.filename ? { filename: part.filename } : {}),
+          });
+          break;
+        default:
+          throw new Error("Unsupported LLM content part");
       }
-      const mimeType = part.mimeType;
-      if (isInlineImageMime(mimeType)) {
-        const dataUrl = `data:${mimeType};base64,${part.data}`;
-        parts.push({ type: "input_image", image_url: dataUrl, detail: "auto" });
-        continue;
-      }
-      const fileData = decodeInlineDataBuffer(part.data).toString("base64");
-      parts.push({
-        type: "input_file",
-        filename: guessInlineDataFilename(mimeType),
-        file_data: fileData,
-      });
     }
     if (
       parts.length === 1 &&
@@ -1575,28 +2112,60 @@ function toChatGptInput(contents: readonly LlmContent[]): {
         continue;
       }
       if (isAssistant) {
-        const mimeType = part.mimeType ?? "application/octet-stream";
+        const mimeType =
+          part.type === "inlineData"
+            ? (part.mimeType ?? "application/octet-stream")
+            : (inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream");
         parts.push({
           type: "output_text",
-          text: isInlineImageMime(part.mimeType) ? `[image:${mimeType}]` : `[file:${mimeType}]`,
+          text:
+            part.type === "input_image" || isInlineImageMime((part as LlmInlineDataPart).mimeType)
+              ? `[image:${mimeType}]`
+              : `[file:${mimeType}]`,
         });
-      } else {
-        if (isInlineImageMime(part.mimeType)) {
-          const mimeType = part.mimeType ?? "application/octet-stream";
-          const dataUrl = `data:${mimeType};base64,${part.data}`;
+        continue;
+      }
+      switch (part.type) {
+        case "inlineData": {
+          if (isInlineImageMime(part.mimeType)) {
+            const mimeType = part.mimeType ?? "application/octet-stream";
+            const dataUrl = `data:${mimeType};base64,${part.data}`;
+            parts.push({
+              type: "input_image",
+              image_url: dataUrl,
+              detail: "auto",
+            });
+          } else {
+            parts.push({
+              type: "input_file",
+              filename: normaliseAttachmentFilename(
+                part.filename,
+                guessInlineDataFilename(part.mimeType),
+              ),
+              file_data: part.data,
+            });
+          }
+          break;
+        }
+        case "input_image":
           parts.push({
             type: "input_image",
-            image_url: dataUrl,
-            detail: "auto",
+            ...(part.file_id ? { file_id: part.file_id } : {}),
+            ...(part.image_url ? { image_url: part.image_url } : {}),
+            detail: part.detail === "high" || part.detail === "low" ? part.detail : "auto",
           });
-        } else {
-          const fileData = decodeInlineDataBuffer(part.data).toString("base64");
+          break;
+        case "input_file":
           parts.push({
             type: "input_file",
-            filename: guessInlineDataFilename(part.mimeType),
-            file_data: fileData,
+            ...(part.file_id ? { file_id: part.file_id } : {}),
+            ...(part.file_data ? { file_data: part.file_data } : {}),
+            ...(part.file_url ? { file_url: part.file_url } : {}),
+            ...(part.filename ? { filename: part.filename } : {}),
           });
-        }
+          break;
+        default:
+          throw new Error("Unsupported LLM content part");
       }
     }
     if (parts.length === 0) {
@@ -1650,8 +2219,11 @@ ${JSON.stringify(options.responseJsonSchema)}`);
         if (part.type === "text") {
           return part.text;
         }
-        const mimeType = part.mimeType ?? "application/octet-stream";
-        if (isInlineImageMime(mimeType)) {
+        const mimeType =
+          part.type === "inlineData"
+            ? (part.mimeType ?? "application/octet-stream")
+            : (inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream");
+        if (part.type === "input_image" || isInlineImageMime(mimeType)) {
           return `[image:${mimeType}]`;
         }
         return `[file:${mimeType}]`;
@@ -1987,7 +2559,14 @@ function isLlmToolOutputContentItem(value: unknown): value is LlmToolOutputConte
     return typeof value.text === "string";
   }
   if (itemType === "input_image") {
-    return typeof value.image_url === "string";
+    const keys = ["image_url", "file_id", "filename"] as const;
+    for (const key of keys) {
+      const part = value[key];
+      if (part !== undefined && part !== null && typeof part !== "string") {
+        return false;
+      }
+    }
+    return value.image_url !== undefined || value.file_id !== undefined;
   }
   if (itemType === "input_file") {
     const keys = ["file_data", "file_id", "file_url", "filename"] as const;
@@ -2062,15 +2641,300 @@ function inferToolOutputMimeTypeFromFilename(
   return undefined;
 }
 
-function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiPart | null {
+function estimateToolOutputItemBytes(item: LlmToolOutputContentItem): number {
+  if (item.type === "input_text") {
+    return Buffer.byteLength(item.text, "utf8");
+  }
   if (item.type === "input_image") {
+    return typeof item.image_url === "string" ? estimateInlinePayloadBytes(item.image_url) : 0;
+  }
+  if (typeof item.file_data === "string" && item.file_data.trim().length > 0) {
+    return estimateInlinePayloadBytes(item.file_data);
+  }
+  if (typeof item.file_url === "string" && item.file_url.trim().length > 0) {
+    return estimateInlinePayloadBytes(item.file_url);
+  }
+  return 0;
+}
+
+async function spillTextToolOutputToFile(options: {
+  text: string;
+  filename: string;
+  mimeType: string;
+}): Promise<LlmToolOutputContentItem[]> {
+  const stored = await runWithFileUploadSource("tool_output_spill", async () => {
+    return await filesCreate({
+      data: options.text,
+      filename: options.filename,
+      mimeType: options.mimeType,
+      expiresAfterSeconds: DEFAULT_FILE_TTL_SECONDS,
+    });
+  });
+  return [
+    {
+      type: "input_text",
+      text: `Tool output was attached as ${stored.filename} (${stored.id}) because it exceeded the inline payload threshold.`,
+    },
+    {
+      type: "input_file",
+      file_id: stored.id,
+      filename: stored.filename,
+    },
+  ];
+}
+
+async function maybeSpillToolOutputItem(
+  item: LlmToolOutputContentItem,
+  toolName: string,
+  options?: {
+    readonly force?: boolean;
+  },
+): Promise<LlmToolOutputContentItem | LlmToolOutputContentItem[]> {
+  if (
+    options?.force !== true &&
+    estimateToolOutputItemBytes(item) <= TOOL_OUTPUT_SPILL_THRESHOLD_BYTES
+  ) {
+    return item;
+  }
+
+  if (item.type === "input_text") {
+    return await spillTextToolOutputToFile({
+      text: item.text,
+      filename: normaliseAttachmentFilename(`${toolName}.txt`, "tool-output.txt"),
+      mimeType: "text/plain",
+    });
+  }
+
+  if (item.type === "input_image") {
+    if (item.file_id || !item.image_url) {
+      return item;
+    }
     const parsed = parseDataUrlPayload(item.image_url);
     if (!parsed) {
+      return item;
+    }
+    const stored = await runWithFileUploadSource("tool_output_spill", async () => {
+      return await filesCreate({
+        data: parsed.bytes,
+        filename: normaliseAttachmentFilename(
+          item.filename ?? guessInlineDataFilename(parsed.mimeType),
+          guessInlineDataFilename(parsed.mimeType),
+        ),
+        mimeType: parsed.mimeType,
+        expiresAfterSeconds: DEFAULT_FILE_TTL_SECONDS,
+      });
+    });
+    return {
+      type: "input_image",
+      file_id: stored.id,
+      detail: item.detail ?? "auto",
+      filename: stored.filename,
+    };
+  }
+
+  if (item.file_id) {
+    return item;
+  }
+
+  if (typeof item.file_data === "string" && item.file_data.trim().length > 0) {
+    const fileData = item.file_data;
+    const filename = normaliseAttachmentFilename(
+      item.filename ?? `${toolName}.bin`,
+      `${toolName}.bin`,
+    );
+    const stored = await runWithFileUploadSource("tool_output_spill", async () => {
+      return await filesCreate({
+        data: decodeInlineDataBuffer(fileData),
+        filename,
+        mimeType: inferToolOutputMimeTypeFromFilename(filename) ?? "application/octet-stream",
+        expiresAfterSeconds: DEFAULT_FILE_TTL_SECONDS,
+      });
+    });
+    return {
+      type: "input_file",
+      file_id: stored.id,
+      filename: stored.filename,
+    };
+  }
+
+  if (typeof item.file_url === "string" && item.file_url.trim().length > 0) {
+    const parsed = parseDataUrlPayload(item.file_url);
+    if (!parsed) {
+      return item;
+    }
+    const stored = await runWithFileUploadSource("tool_output_spill", async () => {
+      return await filesCreate({
+        data: parsed.bytes,
+        filename: normaliseAttachmentFilename(
+          item.filename ?? guessInlineDataFilename(parsed.mimeType),
+          guessInlineDataFilename(parsed.mimeType),
+        ),
+        mimeType: parsed.mimeType,
+        expiresAfterSeconds: DEFAULT_FILE_TTL_SECONDS,
+      });
+    });
+    return {
+      type: "input_file",
+      file_id: stored.id,
+      filename: stored.filename,
+    };
+  }
+
+  return item;
+}
+
+async function maybeSpillToolOutput(
+  value: unknown,
+  toolName: string,
+  options?: {
+    readonly force?: boolean;
+  },
+): Promise<unknown> {
+  if (typeof value === "string") {
+    if (
+      options?.force !== true &&
+      Buffer.byteLength(value, "utf8") <= TOOL_OUTPUT_SPILL_THRESHOLD_BYTES
+    ) {
+      return value;
+    }
+    return await spillTextToolOutputToFile({
+      text: value,
+      filename: normaliseAttachmentFilename(`${toolName}.txt`, "tool-output.txt"),
+      mimeType: "text/plain",
+    });
+  }
+
+  if (isLlmToolOutputContentItem(value)) {
+    return await maybeSpillToolOutputItem(value, toolName, options);
+  }
+
+  if (Array.isArray(value) && value.every((item) => isLlmToolOutputContentItem(item))) {
+    const spilledItems: LlmToolOutputContentItem[] = [];
+    for (const item of value) {
+      const maybeSpilled = await maybeSpillToolOutputItem(item, toolName, options);
+      if (Array.isArray(maybeSpilled)) {
+        spilledItems.push(...maybeSpilled);
+      } else {
+        spilledItems.push(maybeSpilled);
+      }
+    }
+    return spilledItems;
+  }
+
+  try {
+    const serialized = JSON.stringify(value, null, 2);
+    if (
+      options?.force !== true &&
+      Buffer.byteLength(serialized, "utf8") <= TOOL_OUTPUT_SPILL_THRESHOLD_BYTES
+    ) {
+      return value;
+    }
+    return await spillTextToolOutputToFile({
+      text: serialized,
+      filename: normaliseAttachmentFilename(`${toolName}.json`, "tool-output.json"),
+      mimeType: "application/json",
+    });
+  } catch {
+    return value;
+  }
+}
+
+function estimateToolOutputPayloadBytes(value: unknown): number {
+  if (typeof value === "string") {
+    return Buffer.byteLength(value, "utf8");
+  }
+  if (isLlmToolOutputContentItem(value)) {
+    return value.type === "input_text" ? 0 : estimateToolOutputItemBytes(value);
+  }
+  if (Array.isArray(value) && value.every((item) => isLlmToolOutputContentItem(item))) {
+    return value.reduce((total, item) => {
+      return total + (item.type === "input_text" ? 0 : estimateToolOutputItemBytes(item));
+    }, 0);
+  }
+  return 0;
+}
+
+async function maybeSpillCombinedToolCallOutputs<
+  T extends {
+    readonly entry: { readonly toolName: string };
+    readonly result: LlmToolCallResult;
+    readonly outputPayload: unknown;
+  },
+>(callResults: readonly T[]): Promise<T[]> {
+  const totalBytes = callResults.reduce(
+    (sum, callResult) => sum + estimateToolOutputPayloadBytes(callResult.outputPayload),
+    0,
+  );
+  if (totalBytes <= INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES) {
+    return Array.from(callResults);
+  }
+  return await Promise.all(
+    callResults.map(async (callResult) => {
+      if (estimateToolOutputPayloadBytes(callResult.outputPayload) === 0) {
+        return callResult;
+      }
+      const outputPayload = await maybeSpillToolOutput(
+        callResult.outputPayload,
+        callResult.entry.toolName,
+        {
+          force: true,
+        },
+      );
+      return {
+        ...callResult,
+        outputPayload,
+        result: {
+          ...callResult.result,
+          output: outputPayload,
+        },
+      };
+    }),
+  );
+}
+
+function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiPart | null {
+  if (item.type === "input_image") {
+    if (typeof item.file_id === "string" && item.file_id.trim().length > 0) {
+      return {
+        fileData: {
+          fileUri: buildCanonicalGeminiFileUri(item.file_id),
+          mimeType:
+            inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
+          displayName: item.filename ?? undefined,
+        },
+      };
+    }
+    if (typeof item.image_url !== "string" || item.image_url.trim().length === 0) {
       return null;
     }
-    return createPartFromBase64(parsed.dataBase64, parsed.mimeType);
+    const parsed = parseDataUrlPayload(item.image_url);
+    if (parsed) {
+      const part = createPartFromBase64(parsed.dataBase64, parsed.mimeType);
+      const displayName = item.filename?.trim();
+      if (displayName && part.inlineData) {
+        part.inlineData.displayName = displayName;
+      }
+      return part;
+    }
+    return {
+      fileData: {
+        fileUri: item.image_url,
+        mimeType: inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
+        displayName: item.filename ?? undefined,
+      },
+    };
   }
   if (item.type === "input_file") {
+    if (typeof item.file_id === "string" && item.file_id.trim().length > 0) {
+      return {
+        fileData: {
+          fileUri: buildCanonicalGeminiFileUri(item.file_id),
+          mimeType:
+            inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
+          displayName: item.filename ?? undefined,
+        },
+      };
+    }
     const dataUrl = typeof item.file_url === "string" ? parseDataUrlPayload(item.file_url) : null;
     if (dataUrl) {
       const part = createPartFromBase64(dataUrl.dataBase64, dataUrl.mimeType);
@@ -2113,11 +2977,18 @@ function toGeminiToolOutputPlaceholder(item: LlmToolOutputContentItem): Record<s
     };
   }
   if (item.type === "input_image") {
-    const parsed = parseDataUrlPayload(item.image_url);
+    const parsed = typeof item.image_url === "string" ? parseDataUrlPayload(item.image_url) : null;
     return {
       type: item.type,
+      fileId: item.file_id ?? undefined,
       mimeType: parsed?.mimeType ?? undefined,
-      media: "attached-inline-data",
+      media: item.file_id
+        ? "attached-file-id"
+        : parsed
+          ? "attached-inline-data"
+          : item.image_url
+            ? "attached-file-data"
+            : undefined,
     };
   }
   const dataUrl = typeof item.file_url === "string" ? parseDataUrlPayload(item.file_url) : null;
@@ -2126,8 +2997,9 @@ function toGeminiToolOutputPlaceholder(item: LlmToolOutputContentItem): Record<s
     filename: item.filename ?? undefined,
     fileId: item.file_id ?? undefined,
     mimeType: dataUrl?.mimeType ?? inferToolOutputMimeTypeFromFilename(item.filename) ?? undefined,
-    media:
-      dataUrl || (typeof item.file_data === "string" && item.file_data.trim().length > 0)
+    media: item.file_id
+      ? "attached-file-id"
+      : dataUrl || (typeof item.file_data === "string" && item.file_data.trim().length > 0)
         ? "attached-inline-data"
         : typeof item.file_url === "string" && item.file_url.trim().length > 0
           ? "attached-file-data"
@@ -2351,8 +3223,10 @@ async function executeToolCall(params: {
     const input = typeof rawInput === "string" ? rawInput : String(rawInput ?? "");
     try {
       const output = await tool.execute(input);
-      const metrics = toolName === "spawn_agent" ? extractSpawnStartupMetrics(output) : undefined;
-      return finalize({ toolName, input, output }, output, metrics);
+      const outputPayload = await maybeSpillToolOutput(output, toolName);
+      const metrics =
+        toolName === "spawn_agent" ? extractSpawnStartupMetrics(outputPayload) : undefined;
+      return finalize({ toolName, input, output: outputPayload }, outputPayload, metrics);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const outputPayload = buildToolErrorOutput(`Tool ${toolName} failed: ${message}`);
@@ -2386,8 +3260,14 @@ async function executeToolCall(params: {
   }
   try {
     const output = await tool.execute(parsed.data);
-    const metrics = toolName === "spawn_agent" ? extractSpawnStartupMetrics(output) : undefined;
-    return finalize({ toolName, input: parsed.data, output }, output, metrics);
+    const outputPayload = await maybeSpillToolOutput(output, toolName);
+    const metrics =
+      toolName === "spawn_agent" ? extractSpawnStartupMetrics(outputPayload) : undefined;
+    return finalize(
+      { toolName, input: parsed.data, output: outputPayload },
+      outputPayload,
+      metrics,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const outputPayload = buildToolErrorOutput(`Tool ${toolName} failed: ${message}`);
@@ -2660,7 +3540,7 @@ function resolveGeminiThinkingConfig(
   modelId: string,
   thinkingLevel?: LlmThinkingLevel,
 ): GenerateContentConfig["thinkingConfig"] {
-  if (isGeminiImageModelId(modelId)) {
+  if (isGeminiImageModelId(modelId) || modelId === "gemini-flash-lite-latest") {
     return undefined;
   }
   if (thinkingLevel) {
@@ -2899,7 +3779,10 @@ function collectLoggedAttachmentsFromLlmParts(
       continue;
     }
     attachments.push({
-      filename: buildLoggedAttachmentFilename(prefix, index, part.mimeType),
+      filename: normaliseAttachmentFilename(
+        part.filename,
+        buildLoggedAttachmentFilename(prefix, index, part.mimeType),
+      ),
       bytes: decodeInlineDataBuffer(part.data),
     });
     index += 1;
@@ -3061,15 +3944,19 @@ function startLlmCallLoggerFromContents(options: {
         sections.push(part.text);
         continue;
       }
-      const filename = buildLoggedAttachmentFilename("input", attachmentIndex, part.mimeType);
-      attachments.push({
-        filename,
-        bytes: decodeInlineDataBuffer(part.data),
-      });
-      attachmentIndex += 1;
-      sections.push(
-        `[inlineData] file=${filename} mime=${part.mimeType ?? "application/octet-stream"} bytes=${attachments[attachments.length - 1]?.bytes.byteLength ?? 0}`,
-      );
+      if (part.type === "inlineData") {
+        const filename = buildLoggedAttachmentFilename("input", attachmentIndex, part.mimeType);
+        attachments.push({
+          filename,
+          bytes: decodeInlineDataBuffer(part.data),
+        });
+        attachmentIndex += 1;
+        sections.push(
+          `[inlineData] file=${filename} mime=${part.mimeType ?? "application/octet-stream"} bytes=${attachments[attachments.length - 1]?.bytes.byteLength ?? 0}`,
+        );
+        continue;
+      }
+      sections.push(`[${part.type}] file_id=${"file_id" in part ? (part.file_id ?? "") : ""}`);
     }
     sections.push("");
   }
@@ -3241,356 +4128,367 @@ async function runTextCall(params: {
 
   const signal = resolveAbortSignal();
 
-  try {
-    if (provider === "openai") {
-      const openAiInput = toOpenAiInput(contents);
-      const openAiTools = toOpenAiTools(request.tools);
-      const reasoningEffort = resolveOpenAiReasoningEffort(modelForProvider, request.thinkingLevel);
-      const openAiTextConfig = {
-        format: request.openAiTextFormat ?? { type: "text" },
-        verbosity: resolveOpenAiVerbosity(modelForProvider),
-      };
-      const reasoning = {
-        effort: toOpenAiReasoningEffort(reasoningEffort),
-        summary: "detailed" as const,
-      };
-
-      await runOpenAiCall(async (client) => {
-        const stream = client.responses.stream(
-          {
-            model: modelForProvider,
-            input: openAiInput as any,
-            reasoning,
-            text: openAiTextConfig as any,
-            ...(openAiTools ? { tools: openAiTools as any } : {}),
-            include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
-          },
-          { signal } as any,
+  const { result } = await collectFileUploadMetrics(async () => {
+    try {
+      if (provider === "openai") {
+        const openAiInput = await maybePrepareOpenAiPromptInput(toOpenAiInput(contents));
+        const openAiTools = toOpenAiTools(request.tools);
+        const reasoningEffort = resolveOpenAiReasoningEffort(
+          modelForProvider,
+          request.thinkingLevel,
         );
-
-        for await (const event of stream as any) {
-          switch (event.type) {
-            case "response.output_text.delta": {
-              const delta = event.delta ?? "";
-              pushDelta("response", typeof delta === "string" ? delta : "");
-              break;
-            }
-            case "response.reasoning_summary_text.delta": {
-              const delta = event.delta ?? "";
-              pushDelta("thought", typeof delta === "string" ? delta : "");
-              break;
-            }
-            case "response.refusal.delta": {
-              blocked = true;
-              queue.push({ type: "blocked" });
-              break;
-            }
-            default:
-              break;
-          }
-        }
-
-        const finalResponse = await (stream as any).finalResponse();
-        modelVersion =
-          typeof finalResponse.model === "string" ? finalResponse.model : request.model;
-        queue.push({ type: "model", modelVersion });
-        if (finalResponse.error) {
-          const message =
-            typeof finalResponse.error.message === "string"
-              ? finalResponse.error.message
-              : "OpenAI response failed";
-          throw new Error(message);
-        }
-        if (
-          finalResponse.status &&
-          finalResponse.status !== "completed" &&
-          finalResponse.status !== "in_progress"
-        ) {
-          const detail = finalResponse.incomplete_details?.reason;
-          throw new Error(
-            `OpenAI response status ${finalResponse.status}${detail ? ` (${detail})` : ""}`,
-          );
-        }
-        latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
-
-        // Fallback: if the stream did not deliver deltas (rare), extract from final output.
-        if (responseParts.length === 0) {
-          const fallback = extractOpenAiResponseParts(finalResponse);
-          blocked = blocked || fallback.blocked;
-          for (const part of fallback.parts) {
-            if (part.type === "text") {
-              pushDelta(part.thought === true ? "thought" : "response", part.text);
-            } else {
-              pushInline(part.data, part.mimeType);
-            }
-          }
-        }
-      }, modelForProvider);
-    } else if (provider === "chatgpt") {
-      const chatGptInput = toChatGptInput(contents);
-      const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
-      const openAiTools = toOpenAiTools(request.tools);
-      const requestPayload = {
-        model: modelForProvider,
-        store: false,
-        stream: true,
-        ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
-        instructions: chatGptInput.instructions ?? "You are a helpful assistant.",
-        input: chatGptInput.input,
-        include: ["reasoning.encrypted_content"],
-        reasoning: {
+        const openAiTextConfig = {
+          format: request.openAiTextFormat ?? { type: "text" },
+          verbosity: resolveOpenAiVerbosity(modelForProvider),
+        };
+        const reasoning = {
           effort: toOpenAiReasoningEffort(reasoningEffort),
           summary: "detailed" as const,
-        },
-        text: {
-          format: request.openAiTextFormat ?? { type: "text" },
-          verbosity: resolveOpenAiVerbosity(request.model),
-        },
-        ...(openAiTools ? { tools: openAiTools as any } : {}),
-      };
+        };
 
-      let sawResponseDelta = false;
-      let sawThoughtDelta = false;
-      const result = await collectChatGptCodexResponseWithRetry({
-        request: requestPayload as any,
-        signal,
-        onDelta: (delta) => {
-          if (delta.thoughtDelta) {
-            sawThoughtDelta = true;
-            pushDelta("thought", delta.thoughtDelta);
-          }
-          if (delta.textDelta) {
-            sawResponseDelta = true;
-            pushDelta("response", delta.textDelta);
-          }
-        },
-      });
-
-      blocked = blocked || result.blocked;
-      if (blocked) {
-        queue.push({ type: "blocked" });
-      }
-      if (result.model) {
-        modelVersion = providerInfo.serviceTier ? request.model : `chatgpt-${result.model}`;
-        queue.push({ type: "model", modelVersion });
-      }
-      latestUsage = extractChatGptUsageTokens(result.usage);
-
-      // Fallback for rare cases where the SSE stream does not emit deltas.
-      const fallbackText = typeof result.text === "string" ? result.text : "";
-      const fallbackThoughts =
-        typeof result.reasoningSummaryText === "string" && result.reasoningSummaryText.length > 0
-          ? result.reasoningSummaryText
-          : typeof result.reasoningText === "string"
-            ? result.reasoningText
-            : "";
-      if (!sawThoughtDelta && fallbackThoughts.length > 0) {
-        pushDelta("thought", fallbackThoughts);
-      }
-      if (!sawResponseDelta && fallbackText.length > 0) {
-        pushDelta("response", fallbackText);
-      }
-    } else if (provider === "fireworks") {
-      if (request.tools && request.tools.length > 0) {
-        throw new Error(
-          "Fireworks provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
-        );
-      }
-
-      const fireworksMessages = toFireworksMessages(contents, {
-        responseMimeType: request.responseMimeType,
-        responseJsonSchema: request.responseJsonSchema,
-      });
-
-      await runFireworksCall(async (client) => {
-        const responseFormat = request.responseJsonSchema
-          ? {
-              type: "json_schema" as const,
-              json_schema: {
-                name: "llm-response",
-                schema: request.responseJsonSchema,
-              },
-            }
-          : request.responseMimeType === "application/json"
-            ? { type: "json_object" as const }
-            : undefined;
-
-        const response = await client.chat.completions.create(
-          {
-            model: modelForProvider,
-            messages: fireworksMessages as any,
-            ...(responseFormat ? { response_format: responseFormat } : {}),
-          } as any,
-          { signal } as any,
-        );
-
-        modelVersion = typeof response.model === "string" ? response.model : request.model;
-        queue.push({ type: "model", modelVersion });
-
-        const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
-        if (choice?.finish_reason === "content_filter") {
-          blocked = true;
-          queue.push({ type: "blocked" });
-        }
-
-        const textOutput = extractFireworksMessageText(
-          (choice as { message?: unknown } | undefined)?.message,
-        );
-        if (textOutput.length > 0) {
-          pushDelta("response", textOutput);
-        }
-
-        latestUsage = extractFireworksUsageTokens(response.usage);
-      }, modelForProvider);
-    } else {
-      const geminiContents = contents.map(convertLlmContentToGeminiContent);
-      const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
-      const config: GenerateContentConfig = {
-        maxOutputTokens: 32_000,
-        ...(thinkingConfig ? { thinkingConfig } : {}),
-        ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
-        ...(request.responseJsonSchema ? { responseJsonSchema: request.responseJsonSchema } : {}),
-        ...(request.responseModalities
-          ? { responseModalities: Array.from(request.responseModalities) }
-          : {}),
-        ...(request.imageAspectRatio || request.imageSize
-          ? {
-              imageConfig: {
-                ...(request.imageAspectRatio ? { aspectRatio: request.imageAspectRatio } : {}),
-                ...(request.imageSize ? { imageSize: request.imageSize } : {}),
-              },
-            }
-          : {}),
-      };
-      const geminiTools = toGeminiTools(request.tools);
-      if (geminiTools) {
-        config.tools = geminiTools;
-      }
-
-      await runGeminiCall(async (client) => {
-        const stream = await client.models.generateContentStream({
-          model: modelForProvider,
-          contents: geminiContents,
-          config,
-        });
-        let latestGrounding: GroundingMetadata | undefined;
-        for await (const chunk of stream) {
-          if (chunk.modelVersion) {
-            modelVersion = chunk.modelVersion;
-            queue.push({ type: "model", modelVersion });
-          }
-          if (chunk.promptFeedback?.blockReason) {
-            blocked = true;
-            queue.push({ type: "blocked" });
-          }
-          latestUsage = mergeTokenUpdates(
-            latestUsage,
-            extractGeminiUsageTokens(chunk.usageMetadata),
+        await runOpenAiCall(async (client) => {
+          const stream = client.responses.stream(
+            {
+              model: modelForProvider,
+              input: openAiInput as any,
+              reasoning,
+              text: openAiTextConfig as any,
+              ...(openAiTools ? { tools: openAiTools as any } : {}),
+              include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
+            },
+            { signal } as any,
           );
-          const candidates = chunk.candidates;
-          if (!candidates || candidates.length === 0) {
-            continue;
+
+          for await (const event of stream as any) {
+            switch (event.type) {
+              case "response.output_text.delta": {
+                const delta = event.delta ?? "";
+                pushDelta("response", typeof delta === "string" ? delta : "");
+                break;
+              }
+              case "response.reasoning_summary_text.delta": {
+                const delta = event.delta ?? "";
+                pushDelta("thought", typeof delta === "string" ? delta : "");
+                break;
+              }
+              case "response.refusal.delta": {
+                blocked = true;
+                queue.push({ type: "blocked" });
+                break;
+              }
+              default:
+                break;
+            }
           }
-          const primary = candidates[0];
-          if (primary && isModerationFinish(primary.finishReason)) {
-            blocked = true;
-            queue.push({ type: "blocked" });
+
+          const finalResponse = await (stream as any).finalResponse();
+          modelVersion =
+            typeof finalResponse.model === "string" ? finalResponse.model : request.model;
+          queue.push({ type: "model", modelVersion });
+          if (finalResponse.error) {
+            const message =
+              typeof finalResponse.error.message === "string"
+                ? finalResponse.error.message
+                : "OpenAI response failed";
+            throw new Error(message);
           }
-          for (const candidate of candidates) {
-            const candidateContent = candidate.content;
-            if (!candidateContent) {
-              continue;
-            }
-            if (candidate.groundingMetadata) {
-              latestGrounding = candidate.groundingMetadata;
-            }
-            const content = convertGeminiContentToLlmContent(candidateContent);
-            if (!responseRole) {
-              responseRole = content.role;
-            }
-            for (const part of content.parts) {
+          if (
+            finalResponse.status &&
+            finalResponse.status !== "completed" &&
+            finalResponse.status !== "in_progress"
+          ) {
+            const detail = finalResponse.incomplete_details?.reason;
+            throw new Error(
+              `OpenAI response status ${finalResponse.status}${detail ? ` (${detail})` : ""}`,
+            );
+          }
+          latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
+
+          // Fallback: if the stream did not deliver deltas (rare), extract from final output.
+          if (responseParts.length === 0) {
+            const fallback = extractOpenAiResponseParts(finalResponse);
+            blocked = blocked || fallback.blocked;
+            for (const part of fallback.parts) {
               if (part.type === "text") {
                 pushDelta(part.thought === true ? "thought" : "response", part.text);
-              } else {
+              } else if (part.type === "inlineData") {
                 pushInline(part.data, part.mimeType);
               }
             }
           }
+        }, modelForProvider);
+      } else if (provider === "chatgpt") {
+        const chatGptInput = toChatGptInput(contents);
+        const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
+        const openAiTools = toOpenAiTools(request.tools);
+        const requestPayload = {
+          model: modelForProvider,
+          store: false,
+          stream: true,
+          ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
+          instructions: chatGptInput.instructions ?? "You are a helpful assistant.",
+          input: chatGptInput.input,
+          include: ["reasoning.encrypted_content"],
+          reasoning: {
+            effort: toOpenAiReasoningEffort(reasoningEffort),
+            summary: "detailed" as const,
+          },
+          text: {
+            format: request.openAiTextFormat ?? { type: "text" },
+            verbosity: resolveOpenAiVerbosity(request.model),
+          },
+          ...(openAiTools ? { tools: openAiTools as any } : {}),
+        };
+
+        let sawResponseDelta = false;
+        let sawThoughtDelta = false;
+        const result = await collectChatGptCodexResponseWithRetry({
+          request: requestPayload as any,
+          signal,
+          onDelta: (delta) => {
+            if (delta.thoughtDelta) {
+              sawThoughtDelta = true;
+              pushDelta("thought", delta.thoughtDelta);
+            }
+            if (delta.textDelta) {
+              sawResponseDelta = true;
+              pushDelta("response", delta.textDelta);
+            }
+          },
+        });
+
+        blocked = blocked || result.blocked;
+        if (blocked) {
+          queue.push({ type: "blocked" });
         }
-        grounding = latestGrounding;
-      }, modelForProvider);
-    }
+        if (result.model) {
+          modelVersion = providerInfo.serviceTier ? request.model : `chatgpt-${result.model}`;
+          queue.push({ type: "model", modelVersion });
+        }
+        latestUsage = extractChatGptUsageTokens(result.usage);
 
-    const mergedParts = mergeConsecutiveTextParts(responseParts);
-    const content =
-      mergedParts.length > 0
-        ? { role: responseRole ?? "assistant", parts: mergedParts }
-        : undefined;
-    const { text, thoughts } = extractTextByChannel(content);
-    const outputAttachments = collectLoggedAttachmentsFromLlmParts(mergedParts, "output");
+        // Fallback for rare cases where the SSE stream does not emit deltas.
+        const fallbackText = typeof result.text === "string" ? result.text : "";
+        const fallbackThoughts =
+          typeof result.reasoningSummaryText === "string" && result.reasoningSummaryText.length > 0
+            ? result.reasoningSummaryText
+            : typeof result.reasoningText === "string"
+              ? result.reasoningText
+              : "";
+        if (!sawThoughtDelta && fallbackThoughts.length > 0) {
+          pushDelta("thought", fallbackThoughts);
+        }
+        if (!sawResponseDelta && fallbackText.length > 0) {
+          pushDelta("response", fallbackText);
+        }
+      } else if (provider === "fireworks") {
+        if (request.tools && request.tools.length > 0) {
+          throw new Error(
+            "Fireworks provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
+          );
+        }
 
-    const costUsd = estimateCallCostUsd({
-      modelId: modelVersion,
-      tokens: latestUsage,
-      responseImages,
-      imageSize: request.imageSize,
-    });
+        const fireworksMessages = toFireworksMessages(contents, {
+          responseMimeType: request.responseMimeType,
+          responseJsonSchema: request.responseJsonSchema,
+        });
 
-    if (latestUsage) {
-      queue.push({ type: "usage", usage: latestUsage, costUsd, modelVersion });
-    }
+        await runFireworksCall(async (client) => {
+          const responseFormat = request.responseJsonSchema
+            ? {
+                type: "json_schema" as const,
+                json_schema: {
+                  name: "llm-response",
+                  schema: request.responseJsonSchema,
+                },
+              }
+            : request.responseMimeType === "application/json"
+              ? { type: "json_object" as const }
+              : undefined;
 
-    callLogger?.complete({
-      responseText: text,
-      attachments: outputAttachments,
-      metadata: {
+          const response = await client.chat.completions.create(
+            {
+              model: modelForProvider,
+              messages: fireworksMessages as any,
+              ...(responseFormat ? { response_format: responseFormat } : {}),
+            } as any,
+            { signal } as any,
+          );
+
+          modelVersion = typeof response.model === "string" ? response.model : request.model;
+          queue.push({ type: "model", modelVersion });
+
+          const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+          if (choice?.finish_reason === "content_filter") {
+            blocked = true;
+            queue.push({ type: "blocked" });
+          }
+
+          const textOutput = extractFireworksMessageText(
+            (choice as { message?: unknown } | undefined)?.message,
+          );
+          if (textOutput.length > 0) {
+            pushDelta("response", textOutput);
+          }
+
+          latestUsage = extractFireworksUsageTokens(response.usage);
+        }, modelForProvider);
+      } else {
+        const geminiContents = await maybePrepareGeminiPromptContents(
+          contents.map(convertLlmContentToGeminiContent),
+        );
+        const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
+        const config: GenerateContentConfig = {
+          maxOutputTokens: 32_000,
+          ...(thinkingConfig ? { thinkingConfig } : {}),
+          ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
+          ...(request.responseJsonSchema ? { responseJsonSchema: request.responseJsonSchema } : {}),
+          ...(request.responseModalities
+            ? { responseModalities: Array.from(request.responseModalities) }
+            : {}),
+          ...(request.imageAspectRatio || request.imageSize
+            ? {
+                imageConfig: {
+                  ...(request.imageAspectRatio ? { aspectRatio: request.imageAspectRatio } : {}),
+                  ...(request.imageSize ? { imageSize: request.imageSize } : {}),
+                },
+              }
+            : {}),
+        };
+        const geminiTools = toGeminiTools(request.tools);
+        if (geminiTools) {
+          config.tools = geminiTools;
+        }
+
+        await runGeminiCall(async (client) => {
+          const stream = await client.models.generateContentStream({
+            model: modelForProvider,
+            contents: geminiContents,
+            config,
+          });
+          let latestGrounding: GroundingMetadata | undefined;
+          for await (const chunk of stream) {
+            if (chunk.modelVersion) {
+              modelVersion = chunk.modelVersion;
+              queue.push({ type: "model", modelVersion });
+            }
+            if (chunk.promptFeedback?.blockReason) {
+              blocked = true;
+              queue.push({ type: "blocked" });
+            }
+            latestUsage = mergeTokenUpdates(
+              latestUsage,
+              extractGeminiUsageTokens(chunk.usageMetadata),
+            );
+            const candidates = chunk.candidates;
+            if (!candidates || candidates.length === 0) {
+              continue;
+            }
+            const primary = candidates[0];
+            if (primary && isModerationFinish(primary.finishReason)) {
+              blocked = true;
+              queue.push({ type: "blocked" });
+            }
+            for (const candidate of candidates) {
+              const candidateContent = candidate.content;
+              if (!candidateContent) {
+                continue;
+              }
+              if (candidate.groundingMetadata) {
+                latestGrounding = candidate.groundingMetadata;
+              }
+              const content = convertGeminiContentToLlmContent(candidateContent);
+              if (!responseRole) {
+                responseRole = content.role;
+              }
+              for (const part of content.parts) {
+                if (part.type === "text") {
+                  pushDelta(part.thought === true ? "thought" : "response", part.text);
+                } else if (part.type === "inlineData") {
+                  pushInline(part.data, part.mimeType);
+                }
+              }
+            }
+          }
+          grounding = latestGrounding;
+        }, modelForProvider);
+      }
+
+      const mergedParts = mergeConsecutiveTextParts(responseParts);
+      const content =
+        mergedParts.length > 0
+          ? { role: responseRole ?? "assistant", parts: mergedParts }
+          : undefined;
+      const { text, thoughts } = extractTextByChannel(content);
+      const outputAttachments = collectLoggedAttachmentsFromLlmParts(mergedParts, "output");
+
+      const costUsd = estimateCallCostUsd({
+        modelId: modelVersion,
+        tokens: latestUsage,
+        responseImages,
+        imageSize: request.imageSize,
+      });
+
+      if (latestUsage) {
+        queue.push({ type: "usage", usage: latestUsage, costUsd, modelVersion });
+      }
+
+      callLogger?.complete({
+        responseText: text,
+        attachments: outputAttachments,
+        metadata: {
+          provider,
+          model: request.model,
+          modelVersion,
+          blocked,
+          costUsd,
+          usage: latestUsage,
+          grounding: grounding ? sanitiseLogValue(grounding) : undefined,
+          responseChars: text.length,
+          thoughtChars: thoughts.length,
+          responseImages,
+          uploads: getCurrentFileUploadMetrics(),
+        },
+      });
+
+      return {
         provider,
         model: request.model,
         modelVersion,
+        content,
+        text,
+        thoughts,
         blocked,
+        usage: latestUsage,
         costUsd,
-        usage: latestUsage,
-        grounding: grounding ? sanitiseLogValue(grounding) : undefined,
-        responseChars: text.length,
-        thoughtChars: thoughts.length,
-        responseImages,
-      },
-    });
+        grounding,
+      };
+    } catch (error) {
+      const partialParts = mergeConsecutiveTextParts(responseParts);
+      const partialContent =
+        partialParts.length > 0
+          ? { role: responseRole ?? "assistant", parts: partialParts }
+          : undefined;
+      const { text: partialText } = extractTextByChannel(partialContent);
+      callLogger?.fail(error, {
+        responseText: partialText,
+        attachments: collectLoggedAttachmentsFromLlmParts(partialParts, "output"),
+        metadata: {
+          provider,
+          model: request.model,
+          modelVersion,
+          blocked,
+          usage: latestUsage,
+          partialResponseParts: responseParts.length,
+          responseImages,
+          uploads: getCurrentFileUploadMetrics(),
+        },
+      });
+      throw error;
+    }
+  });
 
-    return {
-      provider,
-      model: request.model,
-      modelVersion,
-      content,
-      text,
-      thoughts,
-      blocked,
-      usage: latestUsage,
-      costUsd,
-      grounding,
-    };
-  } catch (error) {
-    const partialParts = mergeConsecutiveTextParts(responseParts);
-    const partialContent =
-      partialParts.length > 0
-        ? { role: responseRole ?? "assistant", parts: partialParts }
-        : undefined;
-    const { text: partialText } = extractTextByChannel(partialContent);
-    callLogger?.fail(error, {
-      responseText: partialText,
-      attachments: collectLoggedAttachmentsFromLlmParts(partialParts, "output"),
-      metadata: {
-        provider,
-        model: request.model,
-        modelVersion,
-        blocked,
-        usage: latestUsage,
-        partialResponseParts: responseParts.length,
-        responseImages,
-      },
-    });
-    throw error;
-  }
+  return result;
 }
 
 export function streamText(request: LlmTextRequest): LlmTextStream {
@@ -3944,7 +4842,12 @@ function normalizeToolLoopSteeringInput(input: LlmToolLoopSteeringInput): LlmCon
       if (part.type === "text") {
         parts.push({ type: "text", text: part.text });
       } else {
-        parts.push({ type: "inlineData", data: part.data, mimeType: part.mimeType });
+        parts.push({
+          type: "inlineData",
+          data: part.data,
+          mimeType: part.mimeType,
+          filename: part.filename,
+        });
       }
     }
     if (parts.length > 0) {
@@ -4151,9 +5054,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let reasoningSummary = "";
         let stepToolCallText: string | undefined;
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
+        const preparedInput = await maybePrepareOpenAiPromptInput(input);
         const stepRequestPayload = {
           model: providerInfo.model,
-          input,
+          input: preparedInput,
           ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
           ...(openAiTools.length > 0 ? { tools: openAiTools } : {}),
           ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
@@ -4184,7 +5088,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               const stream = client.responses.stream(
                 {
                   model: providerInfo.model,
-                  input,
+                  input: preparedInput as any,
                   ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
                   ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
                   ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
@@ -4383,27 +5287,29 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             });
           }
 
-          const callResults = await Promise.all(
-            callInputs.map(async (entry) => {
-              return await toolCallContextStorage.run(
-                {
-                  toolName: entry.toolName,
-                  toolId: entry.toolId,
-                  turn: entry.turn,
-                  toolIndex: entry.toolIndex,
-                },
-                async () => {
-                  const { result, outputPayload } = await executeToolCall({
-                    callKind: entry.call.kind,
+          const callResults = await maybeSpillCombinedToolCallOutputs(
+            await Promise.all(
+              callInputs.map(async (entry) => {
+                return await toolCallContextStorage.run(
+                  {
                     toolName: entry.toolName,
-                    tool: request.tools[entry.toolName],
-                    rawInput: entry.value,
-                    parseError: entry.parseError,
-                  });
-                  return { entry, result, outputPayload };
-                },
-              );
-            }),
+                    toolId: entry.toolId,
+                    turn: entry.turn,
+                    toolIndex: entry.toolIndex,
+                  },
+                  async () => {
+                    const { result, outputPayload } = await executeToolCall({
+                      callKind: entry.call.kind,
+                      toolName: entry.toolName,
+                      tool: request.tools[entry.toolName],
+                      rawInput: entry.value,
+                      parseError: entry.parseError,
+                    });
+                    return { entry, result, outputPayload };
+                  },
+                );
+              }),
+            ),
           );
 
           const toolOutputs: any[] = [];
@@ -4711,27 +5617,29 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             });
           }
 
-          const callResults = await Promise.all(
-            callInputs.map(async (entry) => {
-              return await toolCallContextStorage.run(
-                {
-                  toolName: entry.toolName,
-                  toolId: entry.toolId,
-                  turn: entry.turn,
-                  toolIndex: entry.toolIndex,
-                },
-                async () => {
-                  const { result, outputPayload } = await executeToolCall({
-                    callKind: entry.call.kind,
+          const callResults = await maybeSpillCombinedToolCallOutputs(
+            await Promise.all(
+              callInputs.map(async (entry) => {
+                return await toolCallContextStorage.run(
+                  {
                     toolName: entry.toolName,
-                    tool: request.tools[entry.toolName],
-                    rawInput: entry.value,
-                    parseError: entry.parseError,
-                  });
-                  return { entry, result, outputPayload };
-                },
-              );
-            }),
+                    toolId: entry.toolId,
+                    turn: entry.turn,
+                    toolIndex: entry.toolIndex,
+                  },
+                  async () => {
+                    const { result, outputPayload } = await executeToolCall({
+                      callKind: entry.call.kind,
+                      toolName: entry.toolName,
+                      tool: request.tools[entry.toolName],
+                      rawInput: entry.value,
+                      parseError: entry.parseError,
+                    });
+                    return { entry, result, outputPayload };
+                  },
+                );
+              }),
+            ),
           );
 
           let toolExecutionMs = 0;
@@ -5022,27 +5930,29 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             });
           }
 
-          const callResults = await Promise.all(
-            callInputs.map(async (entry) => {
-              return await toolCallContextStorage.run(
-                {
-                  toolName: entry.toolName,
-                  toolId: entry.toolId,
-                  turn: entry.turn,
-                  toolIndex: entry.toolIndex,
-                },
-                async () => {
-                  const { result, outputPayload } = await executeToolCall({
-                    callKind: "function",
+          const callResults = await maybeSpillCombinedToolCallOutputs(
+            await Promise.all(
+              callInputs.map(async (entry) => {
+                return await toolCallContextStorage.run(
+                  {
                     toolName: entry.toolName,
-                    tool: request.tools[entry.toolName],
-                    rawInput: entry.value,
-                    parseError: entry.parseError,
-                  });
-                  return { entry, result, outputPayload };
-                },
-              );
-            }),
+                    toolId: entry.toolId,
+                    turn: entry.turn,
+                    toolIndex: entry.toolIndex,
+                  },
+                  async () => {
+                    const { result, outputPayload } = await executeToolCall({
+                      callKind: "function",
+                      toolName: entry.toolName,
+                      tool: request.tools[entry.toolName],
+                      rawInput: entry.value,
+                      parseError: entry.parseError,
+                    });
+                    return { entry, result, outputPayload };
+                  },
+                );
+              }),
+            ),
           );
 
           const assistantToolCalls: Array<Record<string, unknown>> = [];
@@ -5191,9 +6101,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       };
 
       const onEvent = request.onEvent;
+      const preparedGeminiContents = await maybePrepareGeminiPromptContents(geminiContents);
       const stepRequestPayload = {
         model: request.model,
-        contents: geminiContents,
+        contents: preparedGeminiContents,
         config,
       };
       const stepCallLogger = startLlmCallLoggerFromPayload({
@@ -5216,7 +6127,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           async (client) => {
             const stream = await client.models.generateContentStream({
               model: request.model,
-              contents: geminiContents,
+              contents: preparedGeminiContents,
               config,
             });
             let responseText = "";
@@ -5407,26 +6318,28 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           });
         }
 
-        const callResults = await Promise.all(
-          callInputs.map(async (entry) => {
-            return await toolCallContextStorage.run(
-              {
-                toolName: entry.toolName,
-                toolId: entry.toolId,
-                turn: entry.turn,
-                toolIndex: entry.toolIndex,
-              },
-              async () => {
-                const { result, outputPayload } = await executeToolCall({
-                  callKind: "function",
+        const callResults = await maybeSpillCombinedToolCallOutputs(
+          await Promise.all(
+            callInputs.map(async (entry) => {
+              return await toolCallContextStorage.run(
+                {
                   toolName: entry.toolName,
-                  tool: request.tools[entry.toolName],
-                  rawInput: entry.rawInput,
-                });
-                return { entry, result, outputPayload };
-              },
-            );
-          }),
+                  toolId: entry.toolId,
+                  turn: entry.turn,
+                  toolIndex: entry.toolIndex,
+                },
+                async () => {
+                  const { result, outputPayload } = await executeToolCall({
+                    callKind: "function",
+                    toolName: entry.toolName,
+                    tool: request.tools[entry.toolName],
+                    rawInput: entry.rawInput,
+                  });
+                  return { entry, result, outputPayload };
+                },
+              );
+            }),
+          ),
         );
 
         let toolExecutionMs = 0;
