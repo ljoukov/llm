@@ -162,7 +162,7 @@ describe("streamText (OpenAI)", () => {
     const filePart = input?.[0]?.content?.find((p: any) => p?.type === "input_file");
     expect(filePart?.file_id).toBe("file_123");
     expect(filePart?.file_data).toBeUndefined();
-    expect(filePart?.filename).toBe("report.pdf");
+    expect(filePart?.filename).toBeUndefined();
     expect(uploadedFiles).toHaveLength(1);
     expect(uploadedFiles[0]?.purpose).toBe("user_data");
   });
