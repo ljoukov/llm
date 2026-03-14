@@ -978,7 +978,6 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
             fileUri: buildCanonicalGeminiFileUri(part.file_id),
             mimeType:
               inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
-            displayName: part.filename ?? undefined,
           },
         };
       }
@@ -998,7 +997,6 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
           fileUri: part.image_url,
           mimeType:
             inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
-          displayName: part.filename ?? undefined,
         },
       };
     }
@@ -1009,7 +1007,6 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
             fileUri: buildCanonicalGeminiFileUri(part.file_id),
             mimeType:
               inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
-            displayName: part.filename ?? undefined,
           },
         };
       }
@@ -1037,7 +1034,6 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
             fileUri: part.file_url,
             mimeType:
               inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
-            displayName: part.filename ?? undefined,
           },
         };
       }
@@ -1330,7 +1326,7 @@ async function prepareOpenAiPromptContentItem(item: unknown): Promise<unknown> {
       mimeType,
       filename,
     });
-    return { type: "input_file", file_id: uploaded.fileId, filename: uploaded.filename };
+    return { type: "input_file", file_id: uploaded.fileId };
   }
 
   if (typeof item.file_url === "string" && item.file_url.trim().toLowerCase().startsWith("data:")) {
@@ -1346,7 +1342,7 @@ async function prepareOpenAiPromptContentItem(item: unknown): Promise<unknown> {
         guessInlineDataFilename(parsed.mimeType),
       ),
     });
-    return { type: "input_file", file_id: uploaded.fileId, filename: uploaded.filename };
+    return { type: "input_file", file_id: uploaded.fileId };
   }
 
   return item;
@@ -1420,21 +1416,16 @@ async function prepareGeminiPromptContents(
     for (const part of content.parts ?? []) {
       const canonicalFileId = parseCanonicalGeminiFileId(part.fileData?.fileUri);
       if (canonicalFileId) {
-        const metadata = await getCanonicalFileMetadata(canonicalFileId);
+        await getCanonicalFileMetadata(canonicalFileId);
         if (backend === "api") {
           const mirrored = await ensureGeminiFileMirror(canonicalFileId);
-          const mirroredPart = createPartFromUri(mirrored.uri, mirrored.mimeType);
-          if (metadata.filename && mirroredPart.fileData) {
-            mirroredPart.fileData.displayName = metadata.filename;
-          }
-          parts.push(mirroredPart);
+          parts.push(createPartFromUri(mirrored.uri, mirrored.mimeType));
         } else {
           const mirrored = await ensureVertexFileMirror(canonicalFileId);
           parts.push({
             fileData: {
               fileUri: mirrored.fileUri,
               mimeType: mirrored.mimeType,
-              displayName: metadata.filename,
             },
           });
         }
@@ -1456,18 +1447,13 @@ async function prepareGeminiPromptContents(
         });
         if (backend === "api") {
           const mirrored = await ensureGeminiFileMirror(stored.fileId);
-          const mirroredPart = createPartFromUri(mirrored.uri, mirrored.mimeType);
-          if (filename && mirroredPart.fileData) {
-            mirroredPart.fileData.displayName = filename;
-          }
-          parts.push(mirroredPart);
+          parts.push(createPartFromUri(mirrored.uri, mirrored.mimeType));
         } else {
           const mirrored = await ensureVertexFileMirror(stored.fileId);
           parts.push({
             fileData: {
               fileUri: mirrored.fileUri,
               mimeType: mirrored.mimeType,
-              displayName: filename,
             },
           });
         }
@@ -2062,7 +2048,7 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
             ...(part.file_id ? { file_id: part.file_id } : {}),
             ...(part.file_data ? { file_data: part.file_data } : {}),
             ...(part.file_url ? { file_url: part.file_url } : {}),
-            ...(part.filename ? { filename: part.filename } : {}),
+            ...(!part.file_id && part.filename ? { filename: part.filename } : {}),
           });
           break;
         default:
@@ -2161,7 +2147,7 @@ function toChatGptInput(contents: readonly LlmContent[]): {
             ...(part.file_id ? { file_id: part.file_id } : {}),
             ...(part.file_data ? { file_data: part.file_data } : {}),
             ...(part.file_url ? { file_url: part.file_url } : {}),
-            ...(part.filename ? { filename: part.filename } : {}),
+            ...(!part.file_id && part.filename ? { filename: part.filename } : {}),
           });
           break;
         default:
@@ -2900,7 +2886,6 @@ function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiP
           fileUri: buildCanonicalGeminiFileUri(item.file_id),
           mimeType:
             inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
-          displayName: item.filename ?? undefined,
         },
       };
     }
@@ -2920,7 +2905,6 @@ function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiP
       fileData: {
         fileUri: item.image_url,
         mimeType: inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
-        displayName: item.filename ?? undefined,
       },
     };
   }
@@ -2931,7 +2915,6 @@ function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiP
           fileUri: buildCanonicalGeminiFileUri(item.file_id),
           mimeType:
             inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
-          displayName: item.filename ?? undefined,
         },
       };
     }
@@ -2958,12 +2941,7 @@ function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiP
       return part;
     }
     if (typeof item.file_url === "string" && item.file_url.trim().length > 0 && inferredMimeType) {
-      const part = createPartFromUri(item.file_url, inferredMimeType);
-      const displayName = item.filename?.trim();
-      if (displayName && part.fileData) {
-        part.fileData.displayName = displayName;
-      }
-      return part;
+      return createPartFromUri(item.file_url, inferredMimeType);
     }
   }
   return null;

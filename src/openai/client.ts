@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
@@ -49,7 +49,7 @@ function getOpenAiFetch(): typeof fetch {
     headersTimeout: timeoutMs,
   });
   openAiClientState.cachedFetch = ((input: any, init?: any) => {
-    return undiciFetch(input, {
+    return fetch(input, {
       ...(init ?? {}),
       dispatcher,
     });

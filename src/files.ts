@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { Buffer, File as NodeFile } from "node:buffer";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, openAsBlob } from "node:fs";
-import { mkdir, mkdtemp, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -25,6 +25,9 @@ const OPENAI_UPLOAD_PART_MAX_BYTES = 64 * 1024 * 1024;
 const GEMINI_FILE_POLL_INTERVAL_MS = 1_000;
 const GEMINI_FILE_POLL_TIMEOUT_MS = 60_000;
 const FILES_TEMP_ROOT = path.join(os.tmpdir(), "ljoukov-llm-files");
+const FILES_CACHE_ROOT = path.join(FILES_TEMP_ROOT, "cache");
+const FILES_CACHE_CONTENT_ROOT = path.join(FILES_CACHE_ROOT, "content");
+const FILES_CACHE_METADATA_ROOT = path.join(FILES_CACHE_ROOT, "metadata");
 
 export type LlmFilePurpose = "user_data";
 
@@ -124,6 +127,15 @@ type MaterializedOpenAiFile = {
   readonly mimeType: string;
   readonly sha256Hex: string;
   readonly localPath: string;
+};
+
+type PersistedFileMetadata = {
+  readonly file: LlmStoredFile;
+  readonly filename: string;
+  readonly bytes: number;
+  readonly mimeType?: string;
+  readonly sha256Hex?: string;
+  readonly localPath?: string;
 };
 
 type FileUploadCollector = {
@@ -311,6 +323,14 @@ function buildCacheKey(filename: string, mimeType: string, sha256Hex: string): s
   return `${sha256Hex}\u0000${filename}\u0000${mimeType}`;
 }
 
+function buildCachedContentPath(sha256Hex: string): string {
+  return path.join(FILES_CACHE_CONTENT_ROOT, sha256Hex);
+}
+
+function buildCachedMetadataPath(fileId: string): string {
+  return path.join(FILES_CACHE_METADATA_ROOT, `${fileId}.json`);
+}
+
 function isFresh(file: LlmStoredFile): boolean {
   if (!file.expires_at) {
     return true;
@@ -331,6 +351,86 @@ function recordMetadata(metadata: CachedFileMetadata): CachedFileMetadata {
     );
   }
   return metadata;
+}
+
+async function ensureFilesCacheReady(): Promise<void> {
+  await mkdir(FILES_CACHE_CONTENT_ROOT, { recursive: true });
+  await mkdir(FILES_CACHE_METADATA_ROOT, { recursive: true });
+}
+
+async function cacheBufferLocally(bytes: Buffer, sha256Hex: string): Promise<string> {
+  await ensureFilesCacheReady();
+  const localPath = buildCachedContentPath(sha256Hex);
+  try {
+    await writeFile(localPath, bytes, { flag: "wx" });
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code !== "EEXIST") {
+      throw error;
+    }
+  }
+  return localPath;
+}
+
+async function cacheFileLocally(filePath: string, sha256Hex: string): Promise<string> {
+  await ensureFilesCacheReady();
+  const localPath = buildCachedContentPath(sha256Hex);
+  try {
+    await copyFile(filePath, localPath);
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code !== "EEXIST") {
+      throw error;
+    }
+  }
+  return localPath;
+}
+
+async function persistMetadataToDisk(metadata: CachedFileMetadata): Promise<void> {
+  await ensureFilesCacheReady();
+  const payload: PersistedFileMetadata = {
+    file: metadata.file,
+    filename: metadata.filename,
+    bytes: metadata.bytes,
+    mimeType: metadata.mimeType,
+    sha256Hex: metadata.sha256Hex,
+    localPath: metadata.localPath,
+  };
+  await writeFile(
+    buildCachedMetadataPath(metadata.file.id),
+    `${JSON.stringify(payload, null, 2)}\n`,
+  );
+}
+
+async function loadPersistedMetadata(fileId: string): Promise<CachedFileMetadata | undefined> {
+  try {
+    const payload = JSON.parse(
+      await readFile(buildCachedMetadataPath(fileId), "utf8"),
+    ) as PersistedFileMetadata;
+    if (!payload || typeof payload !== "object" || !payload.file) {
+      return undefined;
+    }
+    if (payload.localPath) {
+      try {
+        const localStats = await stat(payload.localPath);
+        if (!localStats.isFile()) {
+          return undefined;
+        }
+      } catch {
+        return undefined;
+      }
+    }
+    return recordMetadata({
+      file: payload.file,
+      filename: payload.filename,
+      bytes: payload.bytes,
+      mimeType: payload.mimeType,
+      sha256Hex: payload.sha256Hex,
+      localPath: payload.localPath,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 async function uploadOpenAiFileFromBytes(params: {
@@ -502,17 +602,23 @@ async function retrieveOpenAiFile(fileId: string): Promise<CachedFileMetadata> {
   if (cached && isFresh(cached.file)) {
     return cached;
   }
+  const persisted = await loadPersistedMetadata(fileId);
+  if (persisted && isFresh(persisted.file)) {
+    return persisted;
+  }
   const client = getOpenAiClient();
   const retrieved = await client.files.retrieve(fileId);
   const file = toStoredFile(retrieved);
-  return recordMetadata({
+  const metadata = recordMetadata({
     file,
     filename: file.filename,
     bytes: file.bytes,
-    mimeType: cached?.mimeType ?? resolveMimeType(file.filename, undefined),
-    sha256Hex: cached?.sha256Hex,
-    localPath: cached?.localPath,
+    mimeType: cached?.mimeType ?? persisted?.mimeType ?? resolveMimeType(file.filename, undefined),
+    sha256Hex: cached?.sha256Hex ?? persisted?.sha256Hex,
+    localPath: cached?.localPath ?? persisted?.localPath,
   });
+  await persistMetadataToDisk(metadata);
+  return metadata;
 }
 
 function buildGeminiMirrorName(sha256Hex: string): string {
@@ -635,6 +741,7 @@ async function materializeOpenAiFile(fileId: string): Promise<MaterializedOpenAi
       sha256Hex,
       localPath,
     });
+    await persistMetadataToDisk(updated);
     return {
       file: updated.file,
       filename: updated.filename,
@@ -809,7 +916,13 @@ export async function filesCreate(params: LlmFileCreateParams): Promise<LlmStore
       sha256Hex,
       bytes: info.size,
     });
-    return uploaded.file;
+    const localPath = await cacheFileLocally(filePath, sha256Hex);
+    const cached = recordMetadata({
+      ...uploaded,
+      localPath,
+    });
+    await persistMetadataToDisk(cached);
+    return cached.file;
   }
 
   const filename = normaliseFilename(params.filename);
@@ -824,7 +937,13 @@ export async function filesCreate(params: LlmFileCreateParams): Promise<LlmStore
     expiresAfterSeconds,
     sha256Hex,
   });
-  return uploaded.file;
+  const localPath = await cacheBufferLocally(bytes, sha256Hex);
+  const cached = recordMetadata({
+    ...uploaded,
+    localPath,
+  });
+  await persistMetadataToDisk(cached);
+  return cached.file;
 }
 
 export async function filesRetrieve(fileId: string): Promise<LlmStoredFile> {
@@ -868,6 +987,11 @@ export async function filesDelete(fileId: string): Promise<LlmFileDeleted> {
   const response = await getOpenAiClient().files.delete(fileId);
   filesState.metadataById.delete(fileId);
   filesState.materializedById.delete(fileId);
+  try {
+    await unlink(buildCachedMetadataPath(fileId));
+  } catch {
+    // Ignore cache metadata cleanup failures.
+  }
   return {
     id: response.id,
     deleted: response.deleted,
