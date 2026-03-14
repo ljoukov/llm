@@ -26,6 +26,7 @@ export {
   toGeminiJsonSchema,
   tool,
 } from "./llm.js";
+export { DEFAULT_FILE_TTL_SECONDS, emptyFileUploadMetrics, files } from "./files.js";
 
 export type {
   JsonSchema,
@@ -41,6 +42,8 @@ export type {
   LlmImageModelId,
   LlmImageSize,
   LlmInput,
+  LlmInputFilePart,
+  LlmInputImagePart,
   LlmInputMessage,
   LlmJsonRequest,
   LlmJsonStream,
@@ -75,6 +78,16 @@ export type {
   LlmUsageTokens,
   LlmWebSearchMode,
 } from "./llm.js";
+export type {
+  LlmFileCreateParams,
+  LlmFileDeleted,
+  LlmFileUploadBackend,
+  LlmFileUploadEvent,
+  LlmFileUploadMetrics,
+  LlmFileUploadMode,
+  LlmFileUploadSource,
+  LlmStoredFile,
+} from "./files.js";
 
 export { loadEnvFromFile, loadLocalEnv } from "./utils/env.js";
 export {

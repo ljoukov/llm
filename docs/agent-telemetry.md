@@ -23,7 +23,7 @@ Types:
 - `AgentTelemetryEvent` union:
   - `agent.run.started`
   - `agent.run.stream` (optional fan-out of `LlmStreamEvent`)
-  - `agent.run.completed`
+- `agent.run.completed`
 
 Each event includes:
 
@@ -32,6 +32,12 @@ Each event includes:
 - `parentRunId` (for subagents)
 - `depth`
 - `model`
+
+`agent.run.completed` also includes aggregate file-upload metrics for that run:
+
+- `uploadCount`
+- `uploadBytes`
+- `uploadLatencyMs`
 
 ## Architectural Approaches Evaluated
 

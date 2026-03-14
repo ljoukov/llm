@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 let geminiRequests: any[] = [];
+let geminiUploadedFiles: any[] = [];
+let geminiStoredFiles = new Map<string, any>();
+let openAiStoredFiles = new Map<string, { file: any; bytes: Buffer; mimeType: string }>();
 
 vi.mock("../src/google/calls.js", () => {
   async function* stream() {
@@ -36,6 +39,89 @@ vi.mock("../src/google/calls.js", () => {
     runGeminiCall: async (fn: (client: any) => Promise<any>) => fn(fakeClient),
   };
 });
+
+vi.mock("../src/google/client.js", async () => {
+  const actual = await vi.importActual("../src/google/client.js");
+  const fakeClient = {
+    files: {
+      upload: async (params: any) => {
+        geminiUploadedFiles.push(params);
+        const uploaded = {
+          name: params?.config?.name ?? "files/test-file",
+          uri: "https://generativelanguage.googleapis.com/v1beta/files/test-file",
+          mimeType: params?.config?.mimeType ?? "application/pdf",
+          state: "ACTIVE",
+        };
+        geminiStoredFiles.set(uploaded.name, uploaded);
+        return uploaded;
+      },
+      get: async (params: any) => {
+        const file = geminiStoredFiles.get(params?.name);
+        if (!file) {
+          throw new Error(`Missing file: ${String(params?.name)}`);
+        }
+        return file;
+      },
+    },
+  };
+  return {
+    ...actual,
+    getGeminiBackend: () => "api",
+    getGeminiClient: async () => fakeClient,
+  };
+});
+
+vi.mock("../src/openai/client.js", () => ({
+  getOpenAiClient: () => ({
+    files: {
+      create: async (body: any) => {
+        const file = {
+          id: "file_123",
+          bytes: body?.file?.size ?? 0,
+          created_at: 1,
+          filename: body?.file?.name ?? "uploaded.bin",
+          object: "file",
+          purpose: body?.purpose ?? "user_data",
+          status: "processed",
+          expires_at: 1 + 48 * 60 * 60,
+        };
+        const bytes = Buffer.from(await body.file.arrayBuffer());
+        openAiStoredFiles.set(file.id, {
+          file,
+          bytes,
+          mimeType: body?.file?.type ?? "application/octet-stream",
+        });
+        return file;
+      },
+      retrieve: async (fileId: string) => {
+        const stored = openAiStoredFiles.get(fileId);
+        if (!stored) {
+          throw new Error(`Missing OpenAI file: ${fileId}`);
+        }
+        return stored.file;
+      },
+      content: async (fileId: string) => {
+        const stored = openAiStoredFiles.get(fileId);
+        if (!stored) {
+          throw new Error(`Missing OpenAI file: ${fileId}`);
+        }
+        return new Response(stored.bytes, {
+          status: 200,
+          headers: {
+            "content-type": stored.mimeType,
+          },
+        });
+      },
+    },
+    uploads: {
+      create: async () => ({ id: "upload_123" }),
+      parts: {
+        create: async (_uploadId: string, _body: any) => ({ id: "part_123" }),
+      },
+      complete: async () => ({ file: { id: "file_123" } }),
+    },
+  }),
+}));
 
 describe("streamText (Gemini)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
@@ -119,5 +205,40 @@ describe("streamText (Gemini)", () => {
     expect(result.provider).toBe("gemini");
     expect(geminiRequests[0]?.model).toBe("gemini-3.1-flash-image-preview");
     expect(geminiRequests[0]?.config?.thinkingConfig).toBeUndefined();
+  });
+
+  it("uploads large prompt attachments and replaces inlineData with fileData uri", async () => {
+    geminiRequests = [];
+    geminiUploadedFiles = [];
+    geminiStoredFiles = new Map();
+    openAiStoredFiles = new Map();
+    const { generateText } = await import("../src/llm.js");
+
+    const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
+    await generateText({
+      model: "gemini-2.5-pro",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Summarize the PDF." },
+            {
+              type: "inlineData",
+              mimeType: "application/pdf",
+              filename: "report.pdf",
+              data: largePdfB64,
+            },
+          ],
+        },
+      ],
+    });
+
+    const filePart = geminiRequests[0]?.contents?.[0]?.parts?.find((part: any) => part?.fileData);
+    expect(filePart?.fileData?.fileUri).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/files/test-file",
+    );
+    expect(filePart?.fileData?.mimeType).toBe("application/pdf");
+    expect(geminiUploadedFiles).toHaveLength(1);
+    expect(geminiUploadedFiles[0]?.config?.displayName).toBe("report.pdf");
   });
 });

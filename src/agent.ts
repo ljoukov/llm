@@ -29,6 +29,11 @@ import {
   runToolLoop,
 } from "./llm.js";
 import {
+  collectFileUploadMetrics,
+  emptyFileUploadMetrics,
+  getCurrentFileUploadMetrics,
+} from "./files.js";
+import {
   type AgentFilesystemToolProfile,
   type AgentFilesystemToolsOptions,
   createFilesystemToolSetForModel,
@@ -197,6 +202,9 @@ export type AgentRunCompletedTelemetryEvent = AgentTelemetryBaseEvent & {
   readonly toolCallCount?: number;
   readonly totalCostUsd?: number;
   readonly usage?: LlmUsageTokens;
+  readonly uploadCount?: number;
+  readonly uploadBytes?: number;
+  readonly uploadLatencyMs?: number;
   readonly error?: string;
 };
 
@@ -332,14 +340,25 @@ async function runAgentLoopInternal(
           streamEventLogger?.appendEvent(event);
         }
       : undefined;
+  let uploadMetrics = emptyFileUploadMetrics();
 
   try {
-    const result = await runToolLoop({
-      ...toolLoopRequestWithSteering,
-      ...(instructions ? { instructions } : {}),
-      ...(wrappedOnEvent ? { onEvent: wrappedOnEvent } : {}),
-      tools: mergedTools,
+    let result: LlmToolLoopResult | undefined;
+    await collectFileUploadMetrics(async () => {
+      try {
+        result = await runToolLoop({
+          ...toolLoopRequestWithSteering,
+          ...(instructions ? { instructions } : {}),
+          ...(wrappedOnEvent ? { onEvent: wrappedOnEvent } : {}),
+          tools: mergedTools,
+        });
+      } finally {
+        uploadMetrics = getCurrentFileUploadMetrics();
+      }
     });
+    if (!result) {
+      throw new Error("runToolLoop returned no result.");
+    }
     streamEventLogger?.flush();
     emitTelemetry({
       type: "agent.run.completed",
@@ -349,6 +368,9 @@ async function runAgentLoopInternal(
       toolCallCount: countToolCalls(result),
       totalCostUsd: result.totalCostUsd,
       usage: summarizeResultUsage(result),
+      uploadCount: uploadMetrics.count,
+      uploadBytes: uploadMetrics.totalBytes,
+      uploadLatencyMs: uploadMetrics.totalLatencyMs,
     });
     loggingSession?.logLine(
       [
@@ -358,6 +380,9 @@ async function runAgentLoopInternal(
         `steps=${result.steps.length.toString()}`,
         `toolCalls=${countToolCalls(result).toString()}`,
         `totalCostUsd=${(result.totalCostUsd ?? 0).toFixed(6)}`,
+        `uploadCount=${uploadMetrics.count.toString()}`,
+        `uploadBytes=${uploadMetrics.totalBytes.toString()}`,
+        `uploadLatencyMs=${uploadMetrics.totalLatencyMs.toString()}`,
       ].join(" "),
     );
     for (const step of result.steps) {
@@ -378,6 +403,9 @@ async function runAgentLoopInternal(
       type: "agent.run.completed",
       success: false,
       durationMs: Math.max(0, Date.now() - startedAtMs),
+      uploadCount: uploadMetrics.count,
+      uploadBytes: uploadMetrics.totalBytes,
+      uploadLatencyMs: uploadMetrics.totalLatencyMs,
       error: toErrorMessage(error),
     });
     loggingSession?.logLine(
@@ -385,6 +413,9 @@ async function runAgentLoopInternal(
         `[agent:${runId}] run_completed`,
         `status=error`,
         `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
+        `uploadCount=${uploadMetrics.count.toString()}`,
+        `uploadBytes=${uploadMetrics.totalBytes.toString()}`,
+        `uploadLatencyMs=${uploadMetrics.totalLatencyMs.toString()}`,
         `error=${toErrorMessage(error)}`,
       ].join(" "),
     );

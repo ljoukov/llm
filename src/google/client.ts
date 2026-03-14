@@ -1,5 +1,6 @@
 import { GoogleGenAI, type GoogleGenAIOptions } from "@google/genai";
 
+import { loadLocalEnv } from "../utils/env.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import { getGoogleAuthOptions, getGoogleServiceAccount } from "./auth.js";
 
@@ -42,6 +43,8 @@ export type GeminiConfiguration = {
   readonly location?: string;
 };
 
+export type GeminiBackend = "vertex" | "api";
+
 const geminiClientState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.geminiClientState"), () => ({
   geminiConfiguration: {} as GeminiConfiguration,
   clientPromise: undefined as Promise<GoogleGenAI> | undefined,
@@ -53,6 +56,16 @@ function normaliseConfigValue(value?: string | null): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveGeminiApiKey(): string | undefined {
+  loadLocalEnv();
+  const raw = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+  return normaliseConfigValue(raw);
+}
+
+export function getGeminiBackend(): GeminiBackend {
+  return resolveGeminiApiKey() ? "api" : "vertex";
 }
 
 export function configureGemini(options: GeminiConfiguration = {}): void {
@@ -87,6 +100,10 @@ function resolveLocation(): string {
 export async function getGeminiClient(): Promise<GoogleGenAI> {
   if (!geminiClientState.clientPromise) {
     geminiClientState.clientPromise = Promise.resolve().then(() => {
+      const apiKey = resolveGeminiApiKey();
+      if (apiKey) {
+        return new GoogleGenAI({ apiKey });
+      }
       const projectId = resolveProjectId();
       const location = resolveLocation();
       const googleAuthOptions = getGoogleAuthOptions(CLOUD_PLATFORM_SCOPE);
