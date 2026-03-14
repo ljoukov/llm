@@ -255,7 +255,7 @@ describe("runAgentLoop", () => {
       filesystemTool: true,
       onEvent,
       telemetry: {
-        includeLlmStreamEvents: true,
+        includeStreamEvents: true,
         sink: {
           emit: (event) => {
             events.push(event);

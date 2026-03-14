@@ -38,6 +38,14 @@ import {
   type AgentFilesystemToolsOptions,
   createFilesystemToolSetForModel,
 } from "./tools/filesystemTools.js";
+import {
+  createTelemetrySession,
+  type AgentRunCompletedTelemetryEvent,
+  type AgentRunStartedTelemetryEvent,
+  type AgentRunStreamTelemetryEvent,
+  type TelemetrySelection,
+  type TelemetrySession,
+} from "./telemetry.js";
 import { createAsyncQueue } from "./utils/asyncQueue.js";
 
 export type AgentFilesystemToolConfig = {
@@ -69,7 +77,7 @@ export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
   readonly subagentTool?: AgentSubagentToolSelection;
   readonly subagent_tool?: AgentSubagentToolSelection;
   readonly subagents?: AgentSubagentToolSelection;
-  readonly telemetry?: AgentTelemetrySelection;
+  readonly telemetry?: TelemetrySelection;
   readonly logging?: AgentLoggingSelection;
 };
 
@@ -83,7 +91,7 @@ export type AgentLoopStream = {
 };
 
 export async function runAgentLoop(request: RunAgentLoopRequest): Promise<LlmToolLoopResult> {
-  const telemetry = createAgentTelemetrySession(request.telemetry);
+  const telemetry = createTelemetrySession(request.telemetry);
   const logging = createRootAgentLoggingSession(request);
   try {
     return await runWithAgentLoggingSession(logging, async () => {
@@ -168,73 +176,17 @@ export function streamAgentLoop(request: RunAgentLoopRequest): AgentLoopStream {
 type RunAgentLoopInternalContext = {
   readonly depth: number;
   readonly parentRunId?: string;
-  readonly telemetry?: AgentTelemetrySession;
+  readonly telemetry?: TelemetrySession;
   readonly logging?: AgentLoggingSession;
 };
 
-type AgentTelemetryBaseEvent = {
-  readonly timestamp: string;
-  readonly runId: string;
-  readonly parentRunId?: string;
-  readonly depth: number;
-  readonly model: LlmToolLoopRequest["model"];
-};
-
-export type AgentRunStartedTelemetryEvent = AgentTelemetryBaseEvent & {
-  readonly type: "agent.run.started";
-  readonly inputMode: "string" | "messages";
-  readonly customToolCount: number;
-  readonly mergedToolCount: number;
-  readonly filesystemToolsEnabled: boolean;
-  readonly subagentToolsEnabled: boolean;
-};
-
-export type AgentRunStreamTelemetryEvent = AgentTelemetryBaseEvent & {
-  readonly type: "agent.run.stream";
-  readonly event: LlmStreamEvent;
-};
-
-export type AgentRunCompletedTelemetryEvent = AgentTelemetryBaseEvent & {
-  readonly type: "agent.run.completed";
-  readonly success: boolean;
-  readonly durationMs: number;
-  readonly stepCount?: number;
-  readonly toolCallCount?: number;
-  readonly totalCostUsd?: number;
-  readonly usage?: LlmUsageTokens;
-  readonly uploadCount?: number;
-  readonly uploadBytes?: number;
-  readonly uploadLatencyMs?: number;
-  readonly error?: string;
-};
-
-export type AgentTelemetryEvent =
-  | AgentRunStartedTelemetryEvent
-  | AgentRunStreamTelemetryEvent
-  | AgentRunCompletedTelemetryEvent;
-
-export type AgentTelemetrySink = {
-  readonly emit: (event: AgentTelemetryEvent) => void | Promise<void>;
-  readonly flush?: () => void | Promise<void>;
-};
-
-export type AgentTelemetryConfig = {
-  readonly sink: AgentTelemetrySink;
-  readonly includeLlmStreamEvents?: boolean;
-};
-
-export type AgentTelemetrySelection = AgentTelemetrySink | AgentTelemetryConfig;
-
-type AgentTelemetrySession = {
-  readonly includeLlmStreamEvents: boolean;
-  readonly emit: (event: AgentTelemetryEvent) => void;
-  readonly flush: () => Promise<void>;
-};
-
 type AgentTelemetryEventPayload =
-  | Omit<AgentRunStartedTelemetryEvent, keyof AgentTelemetryBaseEvent>
-  | Omit<AgentRunStreamTelemetryEvent, keyof AgentTelemetryBaseEvent>
-  | Omit<AgentRunCompletedTelemetryEvent, keyof AgentTelemetryBaseEvent>;
+  | Omit<AgentRunStartedTelemetryEvent, "timestamp" | "runId" | "parentRunId" | "depth" | "model">
+  | Omit<AgentRunStreamTelemetryEvent, "timestamp" | "runId" | "parentRunId" | "depth" | "model">
+  | Omit<
+      AgentRunCompletedTelemetryEvent,
+      "timestamp" | "runId" | "parentRunId" | "depth" | "model"
+    >;
 
 async function runAgentLoopInternal(
   request: RunAgentLoopRequest,
@@ -252,7 +204,7 @@ async function runAgentLoopInternal(
     ...toolLoopRequest
   } = request;
 
-  const telemetrySession = context.telemetry ?? createAgentTelemetrySession(telemetry);
+  const telemetrySession = context.telemetry ?? createTelemetrySession(telemetry);
   const loggingSession = context.logging;
   const runId = randomRunId();
   const startedAtMs = Date.now();
@@ -322,7 +274,7 @@ async function runAgentLoopInternal(
   );
 
   const sourceOnEvent = toolLoopRequestWithSteering.onEvent;
-  const includeLlmStreamEvents = telemetrySession?.includeLlmStreamEvents === true;
+  const includeStreamEvents = telemetrySession?.includeStreamEvents === true;
   const streamEventLogger = loggingSession
     ? createAgentStreamEventLogger({
         append: (line) => {
@@ -331,10 +283,10 @@ async function runAgentLoopInternal(
       })
     : undefined;
   const wrappedOnEvent =
-    sourceOnEvent || includeLlmStreamEvents
+    sourceOnEvent || includeStreamEvents
       ? (event: LlmStreamEvent) => {
           sourceOnEvent?.(event);
-          if (includeLlmStreamEvents) {
+          if (includeStreamEvents) {
             emitTelemetry({ type: "agent.run.stream", event });
           }
           streamEventLogger?.appendEvent(event);
@@ -468,7 +420,7 @@ function createSubagentController(params: {
   readonly runId: string;
   readonly model: LlmToolLoopRequest["model"];
   readonly depth: number;
-  readonly telemetry: AgentTelemetrySession | undefined;
+  readonly telemetry: TelemetrySession | undefined;
   readonly logging: AgentLoggingSession | undefined;
   readonly customTools: LlmToolSet;
   readonly filesystemSelection: AgentFilesystemToolSelection | undefined;
@@ -646,14 +598,6 @@ function summarizeResultUsage(result: LlmToolLoopResult): LlmUsageTokens | undef
   return summary;
 }
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    (typeof value === "object" || typeof value === "function") &&
-    value !== null &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
-}
-
 function resolveAgentLoggingSelection(
   value: AgentLoggingSelection | undefined,
 ): AgentLoggingConfig | undefined {
@@ -701,79 +645,8 @@ function createRootAgentLoggingSession(
   });
 }
 
-function isAgentTelemetrySink(value: unknown): value is AgentTelemetrySink {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { emit?: unknown }).emit === "function"
-  );
-}
-
-function resolveTelemetrySelection(
-  telemetry: AgentTelemetrySelection | undefined,
-): AgentTelemetryConfig | undefined {
-  if (!telemetry) {
-    return undefined;
-  }
-  if (isAgentTelemetrySink(telemetry)) {
-    return { sink: telemetry };
-  }
-  if (isAgentTelemetrySink(telemetry.sink)) {
-    return telemetry;
-  }
-  throw new Error("Invalid runAgentLoop telemetry config: expected a sink with emit(event).");
-}
-
-function createAgentTelemetrySession(
-  telemetry: AgentTelemetrySelection | undefined,
-): AgentTelemetrySession | undefined {
-  const config = resolveTelemetrySelection(telemetry);
-  if (!config) {
-    return undefined;
-  }
-
-  const pending = new Set<Promise<void>>();
-  const trackPromise = (promise: Promise<void>): void => {
-    pending.add(promise);
-    promise.finally(() => {
-      pending.delete(promise);
-    });
-  };
-  const emit = (event: AgentTelemetryEvent): void => {
-    try {
-      const output = config.sink.emit(event);
-      if (isPromiseLike(output)) {
-        const task = Promise.resolve(output)
-          .then(() => undefined)
-          .catch(() => undefined);
-        trackPromise(task);
-      }
-    } catch {
-      // Telemetry failures must never break agent execution.
-    }
-  };
-  const flush = async (): Promise<void> => {
-    while (pending.size > 0) {
-      await Promise.allSettled([...pending]);
-    }
-    if (typeof config.sink.flush === "function") {
-      try {
-        await config.sink.flush();
-      } catch {
-        // Telemetry failures must never break agent execution.
-      }
-    }
-  };
-
-  return {
-    includeLlmStreamEvents: config.includeLlmStreamEvents === true,
-    emit,
-    flush,
-  };
-}
-
 function createAgentTelemetryEmitter(params: {
-  session: AgentTelemetrySession | undefined;
+  session: TelemetrySession | undefined;
   runId: string;
   parentRunId?: string;
   depth: number;
@@ -790,6 +663,6 @@ function createAgentTelemetryEmitter(params: {
       ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       depth: params.depth,
       model: params.model,
-    } as AgentTelemetryEvent);
+    });
   };
 }

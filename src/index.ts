@@ -27,6 +27,7 @@ export {
   tool,
 } from "./llm.js";
 export { DEFAULT_FILE_TTL_SECONDS, emptyFileUploadMetrics, files } from "./files.js";
+export { configureTelemetry, resetTelemetry } from "./telemetry.js";
 
 export type {
   JsonSchema,
@@ -79,6 +80,19 @@ export type {
   LlmWebSearchMode,
 } from "./llm.js";
 export type {
+  AgentRunCompletedTelemetryEvent,
+  AgentRunStartedTelemetryEvent,
+  AgentRunStreamTelemetryEvent,
+  LlmCallCompletedTelemetryEvent,
+  LlmCallStartedTelemetryEvent,
+  LlmCallStreamTelemetryEvent,
+  LlmTelemetryOperation,
+  TelemetryConfig,
+  TelemetryEvent,
+  TelemetrySelection,
+  TelemetrySink,
+} from "./telemetry.js";
+export type {
   LlmFileCreateParams,
   LlmFileDeleted,
   LlmFileUploadBackend,
@@ -101,13 +115,6 @@ export type {
   AgentLoggingConfig,
   AgentLoggingSelection,
   AgentLogLineSink,
-  AgentRunCompletedTelemetryEvent,
-  AgentRunStartedTelemetryEvent,
-  AgentRunStreamTelemetryEvent,
-  AgentTelemetryConfig,
-  AgentTelemetryEvent,
-  AgentTelemetrySelection,
-  AgentTelemetrySink,
   AgentFilesystemToolConfig,
   AgentFilesystemToolSelection,
   AgentSubagentToolConfig,

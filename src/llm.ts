@@ -60,6 +60,7 @@ import {
 import {
   collectFileUploadMetrics,
   DEFAULT_FILE_TTL_SECONDS,
+  emptyFileUploadMetrics,
   ensureGeminiFileMirror,
   ensureVertexFileMirror,
   getCurrentFileUploadMetrics,
@@ -67,6 +68,14 @@ import {
   getCanonicalFileMetadata,
   runWithFileUploadSource,
 } from "./files.js";
+import {
+  createTelemetrySession,
+  type LlmCallCompletedTelemetryEvent,
+  type LlmCallStartedTelemetryEvent,
+  type LlmCallStreamTelemetryEvent,
+  type LlmTelemetryOperation,
+  type TelemetrySelection,
+} from "./telemetry.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
@@ -323,6 +332,7 @@ export type LlmBaseRequest = {
   readonly imageSize?: LlmImageSize;
   readonly thinkingLevel?: LlmThinkingLevel;
   readonly openAiTextFormat?: ResponseTextConfig["format"];
+  readonly telemetry?: TelemetrySelection;
   readonly signal?: AbortSignal;
 };
 
@@ -381,6 +391,7 @@ export type LlmGenerateImagesRequest = {
   readonly maxAttempts?: number;
   readonly imageAspectRatio?: string;
   readonly imageSize?: LlmImageSize;
+  readonly telemetry?: TelemetrySelection;
   readonly signal?: AbortSignal;
 };
 
@@ -2304,6 +2315,89 @@ function mergeTokenUpdates(
   };
 }
 
+function sumUsageValue(current: number | undefined, next: number | undefined): number | undefined {
+  if (typeof next !== "number" || !Number.isFinite(next)) {
+    return current;
+  }
+  const normalizedNext = Math.max(0, next);
+  if (typeof current !== "number" || !Number.isFinite(current)) {
+    return normalizedNext;
+  }
+  return Math.max(0, current) + normalizedNext;
+}
+
+function sumUsageTokens(
+  current: LlmUsageTokens | undefined,
+  next: LlmUsageTokens | undefined,
+): LlmUsageTokens | undefined {
+  if (!next) {
+    return current;
+  }
+  return {
+    promptTokens: sumUsageValue(current?.promptTokens, next.promptTokens),
+    cachedTokens: sumUsageValue(current?.cachedTokens, next.cachedTokens),
+    responseTokens: sumUsageValue(current?.responseTokens, next.responseTokens),
+    responseImageTokens: sumUsageValue(current?.responseImageTokens, next.responseImageTokens),
+    thinkingTokens: sumUsageValue(current?.thinkingTokens, next.thinkingTokens),
+    totalTokens: sumUsageValue(current?.totalTokens, next.totalTokens),
+    toolUsePromptTokens: sumUsageValue(current?.toolUsePromptTokens, next.toolUsePromptTokens),
+  };
+}
+
+function countInlineImagesInContent(content: LlmContent | undefined): number {
+  if (!content) {
+    return 0;
+  }
+  let count = 0;
+  for (const part of content.parts) {
+    if (part.type === "inlineData" && isInlineImageMime(part.mimeType)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+type LlmTelemetryEventPayload =
+  | Omit<LlmCallStartedTelemetryEvent, "timestamp" | "callId" | "operation" | "provider" | "model">
+  | Omit<LlmCallStreamTelemetryEvent, "timestamp" | "callId" | "operation" | "provider" | "model">
+  | Omit<
+      LlmCallCompletedTelemetryEvent,
+      "timestamp" | "callId" | "operation" | "provider" | "model"
+    >;
+
+function createLlmTelemetryEmitter(params: {
+  telemetry: TelemetrySelection | undefined;
+  operation: LlmTelemetryOperation;
+  provider: LlmProvider;
+  model: LlmModelId;
+}): {
+  readonly includeStreamEvents: boolean;
+  readonly emit: (event: LlmTelemetryEventPayload) => void;
+  readonly flush: () => Promise<void>;
+} {
+  const session = createTelemetrySession(params.telemetry);
+  const callId = randomBytes(8).toString("hex");
+  return {
+    includeStreamEvents: session?.includeStreamEvents === true,
+    emit: (event) => {
+      if (!session) {
+        return;
+      }
+      session.emit({
+        ...event,
+        timestamp: new Date().toISOString(),
+        callId,
+        operation: params.operation,
+        provider: params.provider,
+        model: params.model,
+      });
+    },
+    flush: async () => {
+      await session?.flush();
+    },
+  };
+}
+
 function toMaybeNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -4041,6 +4135,7 @@ async function runTextCall(params: {
   request: LlmTextRequest;
   queue: AsyncQueue<LlmStreamEvent>;
   abortController: AbortController;
+  onEvent?: (event: LlmStreamEvent) => void;
 }): Promise<LlmTextResult> {
   const { request, queue, abortController } = params;
   const providerInfo = resolveProvider(request.model);
@@ -4064,6 +4159,11 @@ async function runTextCall(params: {
   let latestUsage: LlmUsageTokens | undefined;
   let responseImages = 0;
 
+  const pushEvent = (event: LlmStreamEvent): void => {
+    queue.push(event);
+    params.onEvent?.(event);
+  };
+
   const pushDelta = (channel: "response" | "thought", text: string): void => {
     if (!text) {
       return;
@@ -4074,7 +4174,7 @@ async function runTextCall(params: {
     } else {
       callLogger?.appendResponseDelta(text);
     }
-    queue.push({ type: "delta", channel, text });
+    pushEvent({ type: "delta", channel, text });
   };
 
   const pushInline = (data: string, mimeType: string | undefined): void => {
@@ -4151,7 +4251,7 @@ async function runTextCall(params: {
               }
               case "response.refusal.delta": {
                 blocked = true;
-                queue.push({ type: "blocked" });
+                pushEvent({ type: "blocked" });
                 break;
               }
               default:
@@ -4162,7 +4262,7 @@ async function runTextCall(params: {
           const finalResponse = await (stream as any).finalResponse();
           modelVersion =
             typeof finalResponse.model === "string" ? finalResponse.model : request.model;
-          queue.push({ type: "model", modelVersion });
+          pushEvent({ type: "model", modelVersion });
           if (finalResponse.error) {
             const message =
               typeof finalResponse.error.message === "string"
@@ -4237,11 +4337,11 @@ async function runTextCall(params: {
 
         blocked = blocked || result.blocked;
         if (blocked) {
-          queue.push({ type: "blocked" });
+          pushEvent({ type: "blocked" });
         }
         if (result.model) {
           modelVersion = providerInfo.serviceTier ? request.model : `chatgpt-${result.model}`;
-          queue.push({ type: "model", modelVersion });
+          pushEvent({ type: "model", modelVersion });
         }
         latestUsage = extractChatGptUsageTokens(result.usage);
 
@@ -4294,12 +4394,12 @@ async function runTextCall(params: {
           );
 
           modelVersion = typeof response.model === "string" ? response.model : request.model;
-          queue.push({ type: "model", modelVersion });
+          pushEvent({ type: "model", modelVersion });
 
           const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
           if (choice?.finish_reason === "content_filter") {
             blocked = true;
-            queue.push({ type: "blocked" });
+            pushEvent({ type: "blocked" });
           }
 
           const textOutput = extractFireworksMessageText(
@@ -4348,11 +4448,11 @@ async function runTextCall(params: {
           for await (const chunk of stream) {
             if (chunk.modelVersion) {
               modelVersion = chunk.modelVersion;
-              queue.push({ type: "model", modelVersion });
+              pushEvent({ type: "model", modelVersion });
             }
             if (chunk.promptFeedback?.blockReason) {
               blocked = true;
-              queue.push({ type: "blocked" });
+              pushEvent({ type: "blocked" });
             }
             latestUsage = mergeTokenUpdates(
               latestUsage,
@@ -4365,7 +4465,7 @@ async function runTextCall(params: {
             const primary = candidates[0];
             if (primary && isModerationFinish(primary.finishReason)) {
               blocked = true;
-              queue.push({ type: "blocked" });
+              pushEvent({ type: "blocked" });
             }
             for (const candidate of candidates) {
               const candidateContent = candidate.content;
@@ -4408,7 +4508,7 @@ async function runTextCall(params: {
       });
 
       if (latestUsage) {
-        queue.push({ type: "usage", usage: latestUsage, costUsd, modelVersion });
+        pushEvent({ type: "usage", usage: latestUsage, costUsd, modelVersion });
       }
 
       callLogger?.complete({
@@ -4469,19 +4569,83 @@ async function runTextCall(params: {
   return result;
 }
 
-export function streamText(request: LlmTextRequest): LlmTextStream {
+function startTextStream(
+  request: LlmTextRequest,
+  operation: "generateText" | "streamText",
+): LlmTextStream {
   const queue = createAsyncQueue<LlmStreamEvent>();
   const abortController = new AbortController();
+  const provider = resolveProvider(request.model).provider;
+  const telemetry = createLlmTelemetryEmitter({
+    telemetry: request.telemetry,
+    operation,
+    provider,
+    model: request.model,
+  });
+  const startedAtMs = Date.now();
+
+  telemetry.emit({
+    type: "llm.call.started",
+    inputMode: typeof request.input === "string" ? "string" : "messages",
+    toolCount: request.tools?.length ?? 0,
+    responseModalities: request.responseModalities,
+  });
 
   const result = (async () => {
+    let uploadMetrics = emptyFileUploadMetrics();
     try {
-      const output = await runTextCall({ request, queue, abortController });
+      let output: LlmTextResult | undefined;
+      await collectFileUploadMetrics(async () => {
+        try {
+          output = await runTextCall({
+            request,
+            queue,
+            abortController,
+            onEvent: telemetry.includeStreamEvents
+              ? (event) => {
+                  telemetry.emit({ type: "llm.call.stream", event });
+                }
+              : undefined,
+          });
+        } finally {
+          uploadMetrics = getCurrentFileUploadMetrics();
+        }
+      });
+      if (!output) {
+        throw new Error("LLM text call returned no result.");
+      }
+      telemetry.emit({
+        type: "llm.call.completed",
+        success: true,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
+        modelVersion: output.modelVersion,
+        blocked: output.blocked,
+        usage: output.usage,
+        costUsd: output.costUsd,
+        outputTextChars: output.text.length,
+        thoughtChars: output.thoughts.length,
+        responseImages: countInlineImagesInContent(output.content),
+        uploadCount: uploadMetrics.count,
+        uploadBytes: uploadMetrics.totalBytes,
+        uploadLatencyMs: uploadMetrics.totalLatencyMs,
+      });
       queue.close();
       return output;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
+      telemetry.emit({
+        type: "llm.call.completed",
+        success: false,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
+        uploadCount: uploadMetrics.count,
+        uploadBytes: uploadMetrics.totalBytes,
+        uploadLatencyMs: uploadMetrics.totalLatencyMs,
+        error: err.message,
+      });
       queue.fail(err);
       throw err;
+    } finally {
+      await telemetry.flush();
     }
   })();
 
@@ -4492,8 +4656,12 @@ export function streamText(request: LlmTextRequest): LlmTextStream {
   };
 }
 
+export function streamText(request: LlmTextRequest): LlmTextStream {
+  return startTextStream(request, "streamText");
+}
+
 export async function generateText(request: LlmTextRequest): Promise<LlmTextResult> {
-  const call = streamText(request);
+  const call = startTextStream(request, "generateText");
   // Drain events so the call runs even if the caller doesn't.
   for await (const _event of call.events) {
     // no-op
@@ -4537,9 +4705,30 @@ function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
   return { providerInfo, responseJsonSchema, openAiTextFormat };
 }
 
-export function streamJson<T>(request: LlmJsonStreamRequest<T>): LlmJsonStream<T> {
+function startJsonStream<T>(
+  request: LlmJsonStreamRequest<T>,
+  operation: "generateJson" | "streamJson",
+): LlmJsonStream<T> {
   const queue = createAsyncQueue<LlmJsonStreamEvent<T>>();
   const abortController = new AbortController();
+  const provider = resolveProvider(request.model).provider;
+  const telemetry = createLlmTelemetryEmitter({
+    telemetry: request.telemetry,
+    operation,
+    provider,
+    model: request.model,
+  });
+  const startedAtMs = Date.now();
+  const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 2));
+  const streamMode = request.streamMode ?? "partial";
+
+  telemetry.emit({
+    type: "llm.call.started",
+    inputMode: typeof request.input === "string" ? "string" : "messages",
+    toolCount: request.tools?.length ?? 0,
+    maxAttempts,
+    streamMode,
+  });
 
   const resolveAbortSignal = (): AbortSignal => {
     if (!request.signal) {
@@ -4561,87 +4750,146 @@ export function streamJson<T>(request: LlmJsonStreamRequest<T>): LlmJsonStream<T
   };
 
   const result = (async () => {
-    const signal = resolveAbortSignal();
-    const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 2));
-    const { providerInfo, responseJsonSchema, openAiTextFormat } = buildJsonSchemaConfig(request);
-    const streamMode = request.streamMode ?? "partial";
-
-    const failures: Array<{ attempt: number; rawText: string; error: unknown }> = [];
-    let openAiTextFormatForAttempt: ResponseTextConfig["format"] | undefined = openAiTextFormat;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      let rawText = "";
-      let lastPartial = "";
-      try {
-        const call = streamText({
-          model: request.model,
-          input: request.input,
-          instructions: request.instructions,
-          tools: request.tools,
-          responseMimeType: request.responseMimeType ?? "application/json",
-          responseJsonSchema,
-          thinkingLevel: request.thinkingLevel,
-          ...(openAiTextFormatForAttempt ? { openAiTextFormat: openAiTextFormatForAttempt } : {}),
-          signal,
-        });
-
+    let uploadMetrics = emptyFileUploadMetrics();
+    let attemptsUsed = 0;
+    try {
+      let output:
+        | {
+            readonly value: T;
+            readonly rawText: string;
+            readonly result: LlmTextResult;
+          }
+        | undefined;
+      await collectFileUploadMetrics(async () => {
         try {
-          for await (const event of call.events) {
-            queue.push(event);
-            if (event.type === "delta" && event.channel === "response") {
-              rawText += event.text;
-              if (streamMode === "partial") {
-                const partial = parsePartialJsonFromLlmText(rawText);
-                if (partial !== null) {
-                  const serialized = JSON.stringify(partial);
-                  if (serialized !== lastPartial) {
-                    lastPartial = serialized;
-                    queue.push({
-                      type: "json",
-                      stage: "partial",
-                      value: partial as DeepPartial<T>,
-                    });
+          const signal = resolveAbortSignal();
+          const { providerInfo, responseJsonSchema, openAiTextFormat } =
+            buildJsonSchemaConfig(request);
+          const failures: Array<{ attempt: number; rawText: string; error: unknown }> = [];
+          let openAiTextFormatForAttempt: ResponseTextConfig["format"] | undefined =
+            openAiTextFormat;
+
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            attemptsUsed = attempt;
+            let rawText = "";
+            let lastPartial = "";
+            try {
+              const call = streamText({
+                model: request.model,
+                input: request.input,
+                instructions: request.instructions,
+                tools: request.tools,
+                responseMimeType: request.responseMimeType ?? "application/json",
+                responseJsonSchema,
+                thinkingLevel: request.thinkingLevel,
+                ...(openAiTextFormatForAttempt
+                  ? { openAiTextFormat: openAiTextFormatForAttempt }
+                  : {}),
+                telemetry: false,
+                signal,
+              });
+
+              try {
+                for await (const event of call.events) {
+                  queue.push(event);
+                  if (telemetry.includeStreamEvents) {
+                    telemetry.emit({ type: "llm.call.stream", event });
+                  }
+                  if (event.type === "delta" && event.channel === "response") {
+                    rawText += event.text;
+                    if (streamMode === "partial") {
+                      const partial = parsePartialJsonFromLlmText(rawText);
+                      if (partial !== null) {
+                        const serialized = JSON.stringify(partial);
+                        if (serialized !== lastPartial) {
+                          lastPartial = serialized;
+                          queue.push({
+                            type: "json",
+                            stage: "partial",
+                            value: partial as DeepPartial<T>,
+                          });
+                        }
+                      }
+                    }
                   }
                 }
+              } catch (streamError) {
+                // Ensure the rejected result promise is observed before we retry.
+                await call.result.catch(() => undefined);
+                throw streamError;
+              }
+              const result = await call.result;
+              rawText = rawText || result.text;
+
+              const cleanedText = normalizeJsonText(rawText);
+              const repairedText = escapeNewlinesInStrings(cleanedText);
+              const payload: unknown = JSON.parse(repairedText);
+              const normalized =
+                typeof request.normalizeJson === "function"
+                  ? request.normalizeJson(payload)
+                  : payload;
+              const parsed = request.schema.parse(normalized);
+              queue.push({ type: "json", stage: "final", value: parsed });
+              output = { value: parsed, rawText, result };
+              return;
+            } catch (error) {
+              const handled = error instanceof Error ? error : new Error(String(error));
+              failures.push({ attempt, rawText, error: handled });
+              if (providerInfo.provider === "chatgpt" && openAiTextFormatForAttempt) {
+                // Best-effort fallback: some ChatGPT accounts/models may not support json_schema.
+                openAiTextFormatForAttempt = undefined;
+              }
+              if (attempt >= maxAttempts) {
+                throw new LlmJsonCallError(
+                  `LLM JSON call failed after ${attempt} attempt(s)`,
+                  failures,
+                );
               }
             }
           }
-        } catch (streamError) {
-          // Ensure the rejected result promise is observed before we retry.
-          await call.result.catch(() => undefined);
-          throw streamError;
-        }
-        const result = await call.result;
-        rawText = rawText || result.text;
 
-        const cleanedText = normalizeJsonText(rawText);
-        const repairedText = escapeNewlinesInStrings(cleanedText);
-        const payload: unknown = JSON.parse(repairedText);
-        const normalized =
-          typeof request.normalizeJson === "function" ? request.normalizeJson(payload) : payload;
-        const parsed = request.schema.parse(normalized);
-        queue.push({ type: "json", stage: "final", value: parsed });
-        queue.close();
-        return { value: parsed, rawText, result };
-      } catch (error) {
-        const handled = error instanceof Error ? error : new Error(String(error));
-        failures.push({ attempt, rawText, error: handled });
-        if (providerInfo.provider === "chatgpt" && openAiTextFormatForAttempt) {
-          // Best-effort fallback: some ChatGPT accounts/models may not support json_schema.
-          openAiTextFormatForAttempt = undefined;
+          throw new LlmJsonCallError("LLM JSON call failed", failures);
+        } finally {
+          uploadMetrics = getCurrentFileUploadMetrics();
         }
-        if (attempt >= maxAttempts) {
-          throw new LlmJsonCallError(`LLM JSON call failed after ${attempt} attempt(s)`, failures);
-        }
+      });
+      if (!output) {
+        throw new Error("LLM JSON call returned no result.");
       }
+      telemetry.emit({
+        type: "llm.call.completed",
+        success: true,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
+        modelVersion: output.result.modelVersion,
+        blocked: output.result.blocked,
+        usage: output.result.usage,
+        costUsd: output.result.costUsd,
+        rawTextChars: output.rawText.length,
+        attempts: attemptsUsed,
+        uploadCount: uploadMetrics.count,
+        uploadBytes: uploadMetrics.totalBytes,
+        uploadLatencyMs: uploadMetrics.totalLatencyMs,
+      });
+      queue.close();
+      return output;
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      telemetry.emit({
+        type: "llm.call.completed",
+        success: false,
+        durationMs: Math.max(0, Date.now() - startedAtMs),
+        attempts: attemptsUsed > 0 ? attemptsUsed : undefined,
+        uploadCount: uploadMetrics.count,
+        uploadBytes: uploadMetrics.totalBytes,
+        uploadLatencyMs: uploadMetrics.totalLatencyMs,
+        error: err.message,
+      });
+      queue.fail(err);
+      throw err;
+    } finally {
+      await telemetry.flush();
     }
-
-    throw new LlmJsonCallError("LLM JSON call failed", failures);
-  })().catch((error) => {
-    const err = error instanceof Error ? error : new Error(String(error));
-    queue.fail(err);
-    throw err;
-  });
+  })();
 
   return {
     events: queue.iterable,
@@ -4650,69 +4898,33 @@ export function streamJson<T>(request: LlmJsonStreamRequest<T>): LlmJsonStream<T
   };
 }
 
+export function streamJson<T>(request: LlmJsonStreamRequest<T>): LlmJsonStream<T> {
+  return startJsonStream(request, "streamJson");
+}
+
 export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
   readonly value: T;
   readonly rawText: string;
   readonly result: LlmTextResult;
 }> {
-  const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 2));
-  const { providerInfo, responseJsonSchema, openAiTextFormat } = buildJsonSchemaConfig(request);
-  let openAiTextFormatForAttempt: ResponseTextConfig["format"] | undefined = openAiTextFormat;
-
-  const failures: Array<{ attempt: number; rawText: string; error: unknown }> = [];
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    let rawText = "";
-    try {
-      const call = streamText({
-        model: request.model,
-        input: request.input,
-        instructions: request.instructions,
-        tools: request.tools,
-        responseMimeType: request.responseMimeType ?? "application/json",
-        responseJsonSchema,
-        thinkingLevel: request.thinkingLevel,
-        ...(openAiTextFormatForAttempt ? { openAiTextFormat: openAiTextFormatForAttempt } : {}),
-        signal: request.signal,
-      });
-
-      // Collect the raw text output (response channel only).
-      try {
-        for await (const event of call.events) {
-          request.onEvent?.(event);
-          if (event.type === "delta" && event.channel === "response") {
-            rawText += event.text;
-          }
-        }
-      } catch (streamError) {
-        // Ensure the rejected result promise is observed before we retry.
-        await call.result.catch(() => undefined);
-        throw streamError;
-      }
-      const result = await call.result;
-      rawText = rawText || result.text;
-
-      const cleanedText = normalizeJsonText(rawText);
-      const repairedText = escapeNewlinesInStrings(cleanedText);
-      const payload: unknown = JSON.parse(repairedText);
-      const normalized =
-        typeof request.normalizeJson === "function" ? request.normalizeJson(payload) : payload;
-      const parsed = request.schema.parse(normalized);
-      return { value: parsed, rawText, result };
-    } catch (error) {
-      const handled = error instanceof Error ? error : new Error(String(error));
-      failures.push({ attempt, rawText, error: handled });
-      if (providerInfo.provider === "chatgpt" && openAiTextFormatForAttempt) {
-        // Best-effort fallback: some ChatGPT accounts/models may not support json_schema.
-        openAiTextFormatForAttempt = undefined;
-      }
-      if (attempt >= maxAttempts) {
-        throw new LlmJsonCallError(`LLM JSON call failed after ${attempt} attempt(s)`, failures);
+  const call = startJsonStream(
+    {
+      ...request,
+      streamMode: "final",
+    },
+    "generateJson",
+  );
+  try {
+    for await (const event of call.events) {
+      if (event.type !== "json") {
+        request.onEvent?.(event);
       }
     }
+  } catch (streamError) {
+    await call.result.catch(() => undefined);
+    throw streamError;
   }
-
-  throw new LlmJsonCallError("LLM JSON call failed", failures);
+  return await call.result;
 }
 
 // --- Tool Loop ---
@@ -6489,14 +6701,20 @@ export function streamToolLoop(request: LlmToolLoopRequest): LlmToolLoopStream {
 
 // --- Images (Gemini image-preview) ---
 
-const IMAGE_GRADE_SCHEMA = z.enum(["pass", "fail"]);
+const IMAGE_GRADE_VALUE_SCHEMA = z.enum(["pass", "fail"]);
+const IMAGE_GRADE_SCHEMA = z.object({
+  grade: IMAGE_GRADE_VALUE_SCHEMA,
+});
 
 async function gradeGeneratedImage(params: {
   gradingPrompt: string;
   imagePrompt: string;
   image: LlmImageData;
   model: LlmTextModelId;
-}): Promise<z.infer<typeof IMAGE_GRADE_SCHEMA>> {
+}): Promise<{
+  readonly grade: z.infer<typeof IMAGE_GRADE_VALUE_SCHEMA>;
+  readonly result: LlmTextResult;
+}> {
   const parts: LlmContentPart[] = [
     {
       type: "text",
@@ -6506,7 +6724,7 @@ async function gradeGeneratedImage(params: {
         "Image prompt to grade:",
         params.imagePrompt,
         "",
-        'Respond with the JSON string "pass" or "fail".',
+        'Respond with JSON like {"grade":"pass"} or {"grade":"fail"}.',
       ].join("\\n"),
     },
     {
@@ -6515,12 +6733,13 @@ async function gradeGeneratedImage(params: {
       mimeType: params.image.mimeType ?? "image/png",
     },
   ];
-  const { value } = await generateJson({
+  const { value, result } = await generateJson({
     model: params.model,
     input: [{ role: "user", content: parts }],
     schema: IMAGE_GRADE_SCHEMA,
+    telemetry: false,
   });
-  return value;
+  return { grade: value.grade, result };
 }
 
 export async function generateImages(request: LlmGenerateImagesRequest): Promise<LlmImageData[]> {
@@ -6544,6 +6763,21 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
   if (!gradingPrompt) {
     throw new Error("imageGradingPrompt must be a non-empty string");
   }
+
+  const telemetry = createLlmTelemetryEmitter({
+    telemetry: request.telemetry,
+    operation: "generateImages",
+    provider: resolveProvider(request.model).provider,
+    model: request.model,
+  });
+  const startedAtMs = Date.now();
+
+  telemetry.emit({
+    type: "llm.call.started",
+    imagePromptCount: promptList.length,
+    styleImageCount: request.styleImages?.length ?? 0,
+    maxAttempts,
+  });
 
   const addText = (parts: LlmContentPart[], text: string) => {
     const lastPart = parts[parts.length - 1];
@@ -6606,6 +6840,9 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
 
   const orderedEntries = [...promptEntries];
   const resolvedImages = new Map<number, LlmImageData>();
+  let totalCostUsd = 0;
+  let totalUsage: LlmUsageTokens | undefined;
+  let attemptsUsed = 0;
 
   const removeResolvedEntries = (resolved: ReadonlySet<number>) => {
     if (resolved.size === 0) {
@@ -6622,72 +6859,120 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
     }
   };
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = await generateText({
-      model: request.model,
-      input: inputMessages,
-      responseModalities: ["IMAGE", "TEXT"],
-      imageAspectRatio: request.imageAspectRatio,
-      imageSize: request.imageSize ?? "2K",
-    });
-    if (result.blocked || !result.content) {
-      continue;
-    }
-    const images = extractImages(result.content);
-    if (images.length > 0 && promptEntries.length > 0) {
-      const assignedCount = Math.min(images.length, promptEntries.length);
-      const pendingAssignments = promptEntries.slice(0, assignedCount);
-      const assignedImages = images.slice(0, assignedCount);
-      const gradeResults = await Promise.all(
-        pendingAssignments.map((entry, index) =>
-          gradeGeneratedImage({
-            gradingPrompt,
-            imagePrompt: entry.prompt,
-            image: (() => {
-              const image = assignedImages[index];
-              if (!image) {
-                throw new Error("Image generation returned fewer images than expected.");
+  let uploadMetrics = emptyFileUploadMetrics();
+  try {
+    await collectFileUploadMetrics(async () => {
+      try {
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          attemptsUsed = attempt;
+          const result = await generateText({
+            model: request.model,
+            input: inputMessages,
+            responseModalities: ["IMAGE", "TEXT"],
+            imageAspectRatio: request.imageAspectRatio,
+            imageSize: request.imageSize ?? "2K",
+            telemetry: false,
+          });
+          totalCostUsd += result.costUsd;
+          totalUsage = sumUsageTokens(totalUsage, result.usage);
+          if (result.blocked || !result.content) {
+            continue;
+          }
+          const images = extractImages(result.content);
+          if (images.length > 0 && promptEntries.length > 0) {
+            const assignedCount = Math.min(images.length, promptEntries.length);
+            const pendingAssignments = promptEntries.slice(0, assignedCount);
+            const assignedImages = images.slice(0, assignedCount);
+            const gradeResults = await Promise.all(
+              pendingAssignments.map((entry, index) =>
+                gradeGeneratedImage({
+                  gradingPrompt,
+                  imagePrompt: entry.prompt,
+                  image: (() => {
+                    const image = assignedImages[index];
+                    if (!image) {
+                      throw new Error("Image generation returned fewer images than expected.");
+                    }
+                    return image as LlmImageData;
+                  })(),
+                  model: "gpt-5.2",
+                }),
+              ),
+            );
+            const passedEntries = new Set<number>();
+            for (let i = 0; i < gradeResults.length; i += 1) {
+              const gradeResult = gradeResults[i];
+              const entry = pendingAssignments[i];
+              const image = assignedImages[i];
+              if (!gradeResult || !entry || !image) {
+                continue;
               }
-              return image as LlmImageData;
-            })(),
-            model: "gpt-5.2",
-          }),
-        ),
-      );
-      const passedEntries = new Set<number>();
-      for (let i = 0; i < gradeResults.length; i += 1) {
-        const grade = gradeResults[i];
-        const entry = pendingAssignments[i];
-        const image = assignedImages[i];
-        if (!grade || !entry || !image) {
-          continue;
+              totalCostUsd += gradeResult.result.costUsd;
+              totalUsage = sumUsageTokens(totalUsage, gradeResult.result.usage);
+              if (gradeResult.grade === "pass") {
+                resolvedImages.set(entry.index, image as LlmImageData);
+                passedEntries.add(entry.index);
+              }
+            }
+            removeResolvedEntries(passedEntries);
+          }
+          if (promptEntries.length === 0) {
+            break;
+          }
+          inputMessages.push({
+            role: "assistant",
+            content: result.content.parts,
+          });
+          inputMessages.push({
+            role: "user",
+            content: buildContinuationPromptParts(promptEntries),
+          });
         }
-        if (grade === "pass") {
-          resolvedImages.set(entry.index, image as LlmImageData);
-          passedEntries.add(entry.index);
-        }
+      } finally {
+        uploadMetrics = getCurrentFileUploadMetrics();
       }
-      removeResolvedEntries(passedEntries);
-    }
-    if (promptEntries.length === 0) {
-      break;
-    }
-    inputMessages.push({
-      role: "assistant",
-      content: result.content.parts,
     });
-    inputMessages.push({ role: "user", content: buildContinuationPromptParts(promptEntries) });
-  }
 
-  const orderedImages: LlmImageData[] = [];
-  for (const entry of orderedEntries) {
-    const image = resolvedImages.get(entry.index);
-    if (image) {
-      orderedImages.push(image);
+    const orderedImages: LlmImageData[] = [];
+    for (const entry of orderedEntries) {
+      const image = resolvedImages.get(entry.index);
+      if (image) {
+        orderedImages.push(image);
+      }
     }
-  }
 
-  return orderedImages.slice(0, numImages);
+    const outputImages = orderedImages.slice(0, numImages);
+    telemetry.emit({
+      type: "llm.call.completed",
+      success: true,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      usage: totalUsage,
+      costUsd: totalCostUsd,
+      imageCount: outputImages.length,
+      attempts: attemptsUsed,
+      uploadCount: uploadMetrics.count,
+      uploadBytes: uploadMetrics.totalBytes,
+      uploadLatencyMs: uploadMetrics.totalLatencyMs,
+    });
+    return outputImages;
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    telemetry.emit({
+      type: "llm.call.completed",
+      success: false,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      usage: totalUsage,
+      costUsd: totalCostUsd,
+      attempts: attemptsUsed > 0 ? attemptsUsed : undefined,
+      uploadCount: uploadMetrics.count,
+      uploadBytes: uploadMetrics.totalBytes,
+      uploadLatencyMs: uploadMetrics.totalLatencyMs,
+      error: err.message,
+    });
+    throw err;
+  } finally {
+    await telemetry.flush();
+  }
 }
 
 export async function generateImageInBatches(
