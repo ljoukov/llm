@@ -25,6 +25,8 @@ Designed around a single streaming API that yields:
 npm i @ljoukov/llm
 ```
 
+Requires Node.js 22 or newer.
+
 ## Environment variables
 
 This package optionally loads a `.env.local` file from `process.cwd()` (Node.js) on first use (dotenv-style `KEY=value`
