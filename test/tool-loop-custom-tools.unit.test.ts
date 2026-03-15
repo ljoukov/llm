@@ -276,7 +276,7 @@ describe("runToolLoop custom tools", () => {
 
     const { customTool, runToolLoop } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.3-codex-spark",
+      model: "chatgpt-gpt-5.4",
       input: "apply a patch",
       tools: {
         apply_patch: customTool({
@@ -443,7 +443,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.3-codex-spark",
+      model: "chatgpt-gpt-5.4",
       input: "inspect image",
       tools: {
         view_image: tool({
@@ -465,6 +465,41 @@ describe("runToolLoop custom tools", () => {
     expect(Array.isArray(outputItem?.output)).toBe(true);
     expect(outputItem?.output?.[0]?.type).toBe("input_image");
     expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
+  });
+
+  it("omits filename on ChatGPT function_call_output image file references", async () => {
+    chatGptScenario = "image_function";
+    chatGptRequests = [];
+    chatGptCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "chatgpt-gpt-5.4",
+      input: "inspect image",
+      tools: {
+        view_image: tool({
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => [
+            {
+              type: "input_image" as const,
+              file_id: "file_image_1",
+              filename: "image.png",
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(result.text).toBe("done");
+    expect(chatGptRequests).toHaveLength(2);
+    const appendedInput = chatGptRequests[1]?.input ?? [];
+    const outputItem = appendedInput.find((item: any) => item?.type === "function_call_output");
+    expect(Array.isArray(outputItem?.output)).toBe(true);
+    expect(outputItem?.output?.[0]).toMatchObject({
+      type: "input_image",
+      file_id: "file_image_1",
+    });
+    expect(outputItem?.output?.[0]?.filename).toBeUndefined();
   });
 
   it("encodes Gemini image tool outputs as functionResponse parts instead of data URLs in JSON", async () => {

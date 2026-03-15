@@ -23,7 +23,11 @@ import type { ResponseTextConfig } from "openai/resources/responses/responses";
 import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
 import { estimateCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
 import type { CallSchedulerRunMetrics } from "./utils/scheduler.js";
-import { collectChatGptCodexResponse, type ChatGptInputItem } from "./openai/chatgpt-codex.js";
+import {
+  collectChatGptCodexResponse,
+  type ChatGptInputItem,
+  type ChatGptInputMessagePart,
+} from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
 import {
   FIREWORKS_MODEL_IDS,
@@ -2669,6 +2673,24 @@ function toOpenAiToolOutput(value: unknown): string | LlmToolOutputContentItem[]
     return value;
   }
   return mergeToolOutput(value);
+}
+
+function toChatGptToolOutput(value: unknown): string | ChatGptInputMessagePart[] {
+  const toolOutput = toOpenAiToolOutput(value);
+  if (typeof toolOutput === "string") {
+    return toolOutput;
+  }
+  return toolOutput.map((item) => {
+    if (item.type !== "input_image") {
+      return item;
+    }
+    return {
+      type: "input_image",
+      ...(item.file_id ? { file_id: item.file_id } : {}),
+      ...(item.image_url ? { image_url: item.image_url } : {}),
+      ...(item.detail ? { detail: item.detail } : {}),
+    };
+  });
 }
 
 function toGeminiToolOutputItems(value: unknown): readonly LlmToolOutputContentItem[] | null {
@@ -5867,7 +5889,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               toolOutputs.push({
                 type: "custom_tool_call_output",
                 call_id: entry.ids.callId,
-                output: toOpenAiToolOutput(outputPayload),
+                output: toChatGptToolOutput(outputPayload),
               } as ChatGptInputItem);
             } else {
               toolOutputs.push({
@@ -5881,7 +5903,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               toolOutputs.push({
                 type: "function_call_output",
                 call_id: entry.ids.callId,
-                output: toOpenAiToolOutput(outputPayload),
+                output: toChatGptToolOutput(outputPayload),
               } as ChatGptInputItem);
             }
           }

@@ -34,8 +34,9 @@ export type ChatGptOutputTextPart = {
 
 export type ChatGptInputImagePart = {
   type: "input_image";
-  image_url: string | { url: string };
-  detail?: "auto";
+  image_url?: string | { url: string } | null;
+  file_id?: string | null;
+  detail?: "auto" | "low" | "high";
 };
 
 export type ChatGptInputFilePart = {
