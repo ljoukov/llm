@@ -17,9 +17,9 @@ const chatGptToolOutputIt = requestedChatGptModel ? it : it.skip;
 
 assertIntegrationCredentialsForModels([chatGptModel]);
 
-const FIXTURE_IMAGE_BASE64 = fs.readFileSync(
-  path.join(import.meta.dirname, "../benchmarks/view_image/input/rome-colosseum.jpg"),
-).toString("base64");
+const FIXTURE_IMAGE_BASE64 = fs
+  .readFileSync(path.join(import.meta.dirname, "../benchmarks/view_image/input/rome-colosseum.jpg"))
+  .toString("base64");
 
 describe("integration: ChatGPT tool outputs", () => {
   chatGptToolOutputIt(
