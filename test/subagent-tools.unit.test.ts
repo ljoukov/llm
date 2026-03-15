@@ -9,12 +9,32 @@ import {
 function getExecutableTool(
   tools: Record<string, unknown>,
   name: string,
-): { execute: (input: any) => Promise<any> } {
-  const value = tools[name] as { execute?: unknown } | undefined;
+): {
+  inputSchema: {
+    safeParse: (
+      input: unknown,
+    ) => { success: true; data: Record<string, unknown> } | { success: false };
+  };
+  execute: (input: any) => Promise<any>;
+} {
+  const value = tools[name] as { inputSchema?: unknown; execute?: unknown } | undefined;
   if (!value || typeof value.execute !== "function") {
     throw new Error(`Expected function tool "${name}" to exist.`);
   }
-  return value as { execute: (input: any) => Promise<any> };
+  if (
+    !value.inputSchema ||
+    typeof (value.inputSchema as { safeParse?: unknown }).safeParse !== "function"
+  ) {
+    throw new Error(`Expected function tool "${name}" to expose an inputSchema.`);
+  }
+  return value as {
+    inputSchema: {
+      safeParse: (
+        input: unknown,
+      ) => { success: true; data: Record<string, unknown> } | { success: false };
+    };
+    execute: (input: any) => Promise<any>;
+  };
 }
 
 function asSingleLineText(content: unknown): string {
@@ -384,6 +404,31 @@ describe("subagent tools", () => {
         agent_type: "missing-role",
       }),
     ).rejects.toThrow("unknown agent_type 'missing-role'");
+  });
+
+  it("ignores model override fields supplied to spawn_agent input", async () => {
+    const runSubagent = vi.fn(async () => ({
+      text: "done",
+      thoughts: "",
+      steps: [],
+      totalCostUsd: 0,
+    }));
+
+    const controller = createSubagentToolController({
+      config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
+      parentDepth: 0,
+      parentModel: "gpt-5.2",
+      runSubagent,
+    });
+
+    const spawn = getExecutableTool(controller.tools, "spawn_agent");
+    const parsed = spawn.inputSchema.safeParse({ message: "task", model: "gpt-5" });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect("model" in parsed.data).toBe(false);
+      const spawned = await spawn.execute(parsed.data);
+      expect(spawned.agent?.model).toBe("gpt-5.2");
+    }
   });
 
   it("supports fork_context by seeding child history from parent context snapshot", async () => {
