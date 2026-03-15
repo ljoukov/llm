@@ -5,6 +5,8 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 let openAiRequests: any[] = [];
+let chatGptRequests: any[] = [];
+let chatGptCallCount = 0;
 let uploadedFiles: any[] = [];
 
 vi.mock("../src/openai/calls.js", () => {
@@ -66,6 +68,43 @@ vi.mock("../src/openai/calls.js", () => {
   };
 });
 
+vi.mock("../src/openai/chatgpt-codex.js", () => ({
+  collectChatGptCodexResponse: async (options: any) => {
+    chatGptRequests.push(options.request);
+    const callIndex = chatGptCallCount++;
+    if (callIndex === 0) {
+      return {
+        text: "",
+        reasoningText: "",
+        reasoningSummaryText: "",
+        toolCalls: Array.from({ length: 22 }, (_value, index) => ({
+          kind: "function" as const,
+          id: `fc_${index + 1}`,
+          callId: `call_${index + 1}`,
+          name: "view_image",
+          arguments: JSON.stringify({ path: `image-${index + 1}.png` }),
+        })),
+        webSearchCalls: [],
+        usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+        model: "gpt-5.4",
+        status: "completed",
+        blocked: false,
+      };
+    }
+    return {
+      text: "done",
+      reasoningText: "",
+      reasoningSummaryText: "",
+      toolCalls: [],
+      webSearchCalls: [],
+      usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+      model: "gpt-5.4",
+      status: "completed",
+      blocked: false,
+    };
+  },
+}));
+
 vi.mock("../src/openai/client.js", () => ({
   getOpenAiClient: () => ({
     files: {
@@ -110,6 +149,8 @@ function createPngBuffer(bytes: number): Buffer {
 describe("runAgentLoop uploads", () => {
   it("logs uploads and reports telemetry when many images exceed the combined prompt threshold", async () => {
     openAiRequests = [];
+    chatGptRequests = [];
+    chatGptCallCount = 0;
     uploadedFiles = [];
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-run-agent-uploads-"));
     try {
@@ -179,6 +220,67 @@ describe("runAgentLoop uploads", () => {
         .filter((line) => line.includes("[upload]") && line.includes("source=tool_output_spill"));
       expect(uploadLines).toHaveLength(22);
       expect(agentLog).toContain("uploadCount=22");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps ChatGPT image tool outputs inline when the combined prompt threshold is exceeded", async () => {
+    openAiRequests = [];
+    chatGptRequests = [];
+    chatGptCallCount = 0;
+    uploadedFiles = [];
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-run-agent-chatgpt-uploads-"));
+    try {
+      const workspaceDir = path.join(tempRoot, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const imageBytes = 720 * 1024;
+      await Promise.all(
+        Array.from({ length: 22 }, async (_value, index) => {
+          await fs.writeFile(
+            path.join(workspaceDir, `image-${index + 1}.png`),
+            createPngBuffer(imageBytes),
+          );
+        }),
+      );
+
+      const { runAgentLoop } = await import("../src/agent.js");
+      const result = await runAgentLoop({
+        model: "chatgpt-gpt-5.4",
+        input: "Inspect all of the images and finish.",
+        filesystemTool: {
+          profile: "codex",
+          options: { cwd: workspaceDir },
+        },
+        logging: {
+          workspaceDir,
+          mirrorToConsole: false,
+        },
+      });
+
+      expect(result.text).toBe("done");
+      expect(chatGptRequests).toHaveLength(2);
+      expect(uploadedFiles).toHaveLength(0);
+
+      const secondRequestInput = chatGptRequests[1]?.input;
+      expect(Array.isArray(secondRequestInput)).toBe(true);
+      const toolOutputs = secondRequestInput.filter(
+        (item: any) => item?.type === "function_call_output",
+      );
+      expect(toolOutputs).toHaveLength(22);
+      for (const output of toolOutputs) {
+        expect(Array.isArray(output.output)).toBe(true);
+        expect(output.output[0]?.type).toBe("input_image");
+        expect(output.output[0]?.file_id).toBeUndefined();
+        expect(output.output[0]?.image_url).toMatch(/^data:image\/png;base64,/u);
+      }
+
+      const agentLog = await fs.readFile(path.join(workspaceDir, "agent.log"), "utf8");
+      const uploadLines = agentLog
+        .split("\n")
+        .filter((line) => line.includes("[upload]") && line.includes("source=tool_output_spill"));
+      expect(uploadLines).toHaveLength(0);
+      expect(agentLog).toContain("uploadCount=0");
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

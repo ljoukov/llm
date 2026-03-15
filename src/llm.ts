@@ -2890,8 +2890,15 @@ async function maybeSpillToolOutput(
   toolName: string,
   options?: {
     readonly force?: boolean;
+    readonly provider?: LlmProvider;
   },
 ): Promise<unknown> {
+  if (options?.provider === "chatgpt") {
+    // ChatGPT tool outputs cannot reliably reference files uploaded through the OpenAI
+    // Files API. Keep tool outputs inline until a ChatGPT-native upload path exists.
+    return value;
+  }
+
   if (typeof value === "string") {
     if (
       options?.force !== true &&
@@ -2962,7 +2969,12 @@ async function maybeSpillCombinedToolCallOutputs<
     readonly result: LlmToolCallResult;
     readonly outputPayload: unknown;
   },
->(callResults: readonly T[]): Promise<T[]> {
+>(
+  callResults: readonly T[],
+  options?: {
+    readonly provider?: LlmProvider;
+  },
+): Promise<T[]> {
   const totalBytes = callResults.reduce(
     (sum, callResult) => sum + estimateToolOutputPayloadBytes(callResult.outputPayload),
     0,
@@ -2980,6 +2992,7 @@ async function maybeSpillCombinedToolCallOutputs<
         callResult.entry.toolName,
         {
           force: true,
+          provider: options?.provider,
         },
       );
       return {
@@ -3277,8 +3290,9 @@ async function executeToolCall(params: {
   tool: LlmExecutableTool<z.ZodType, unknown> | undefined;
   rawInput: unknown;
   parseError?: string;
+  provider?: LlmProvider;
 }): Promise<{ result: LlmToolCallResult; outputPayload: unknown }> {
-  const { callKind, toolName, tool, rawInput, parseError } = params;
+  const { callKind, toolName, tool, rawInput, parseError, provider } = params;
   const startedAtMs = Date.now();
   const finalize = (
     base: Omit<LlmToolCallResult, "startedAt" | "completedAt" | "durationMs" | "metrics">,
@@ -3317,7 +3331,7 @@ async function executeToolCall(params: {
     const input = typeof rawInput === "string" ? rawInput : String(rawInput ?? "");
     try {
       const output = await tool.execute(input);
-      const outputPayload = await maybeSpillToolOutput(output, toolName);
+      const outputPayload = await maybeSpillToolOutput(output, toolName, { provider });
       const metrics =
         toolName === "spawn_agent" ? extractSpawnStartupMetrics(outputPayload) : undefined;
       return finalize({ toolName, input, output: outputPayload }, outputPayload, metrics);
@@ -3354,7 +3368,7 @@ async function executeToolCall(params: {
   }
   try {
     const output = await tool.execute(parsed.data);
-    const outputPayload = await maybeSpillToolOutput(output, toolName);
+    const outputPayload = await maybeSpillToolOutput(output, toolName, { provider });
     const metrics =
       toolName === "spawn_agent" ? extractSpawnStartupMetrics(outputPayload) : undefined;
     return finalize(
@@ -5516,12 +5530,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                       tool: request.tools[entry.toolName],
                       rawInput: entry.value,
                       parseError: entry.parseError,
+                      provider: providerInfo.provider,
                     });
                     return { entry, result, outputPayload };
                   },
                 );
               }),
             ),
+            { provider: providerInfo.provider },
           );
 
           const toolOutputs: any[] = [];
@@ -5846,12 +5862,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                       tool: request.tools[entry.toolName],
                       rawInput: entry.value,
                       parseError: entry.parseError,
+                      provider: "chatgpt",
                     });
                     return { entry, result, outputPayload };
                   },
                 );
               }),
             ),
+            { provider: "chatgpt" },
           );
 
           let toolExecutionMs = 0;
@@ -6159,12 +6177,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                       tool: request.tools[entry.toolName],
                       rawInput: entry.value,
                       parseError: entry.parseError,
+                      provider: providerInfo.provider,
                     });
                     return { entry, result, outputPayload };
                   },
                 );
               }),
             ),
+            { provider: providerInfo.provider },
           );
 
           const assistantToolCalls: Array<Record<string, unknown>> = [];
@@ -6546,12 +6566,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                     toolName: entry.toolName,
                     tool: request.tools[entry.toolName],
                     rawInput: entry.rawInput,
+                    provider: "gemini",
                   });
                   return { entry, result, outputPayload };
                 },
               );
             }),
           ),
+          { provider: "gemini" },
         );
 
         let toolExecutionMs = 0;
