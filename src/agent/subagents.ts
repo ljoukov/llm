@@ -3,7 +3,6 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 import {
-  isLlmTextModelId,
   tool,
   type LlmInputMessage,
   type LlmTextModelId,
@@ -211,10 +210,6 @@ const spawnAgentInputSchema = z.object({
     .string()
     .nullish()
     .describe("Optional extra instructions for this subagent instance."),
-  model: z
-    .string()
-    .nullish()
-    .describe("Optional model override. Must be one of this package's supported text model ids."),
   max_steps: z
     .number()
     .int()
@@ -412,13 +407,7 @@ export function createSubagentToolController(
           );
         }
 
-        let model: LlmTextModelId = options.config.model ?? options.parentModel;
-        if (input.model) {
-          if (!isLlmTextModelId(input.model)) {
-            throw new Error(`Unsupported subagent model id: ${input.model}`);
-          }
-          model = input.model;
-        }
+        const model: LlmTextModelId = options.config.model ?? options.parentModel;
 
         const id = `agent_${randomBytes(6).toString("hex")}`;
         const now = Date.now();
