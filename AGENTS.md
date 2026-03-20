@@ -14,6 +14,12 @@
 3. Create and push tag `vX.Y.Z`.
 4. GitHub Actions `Publish` workflow performs `npm publish`.
 
+## Git Push Semantics
+
+- In this repo, a user request to `push` means: integrate the current work onto local `main` first if needed, then push to `origin/main`.
+- If local `main` has moved on, rebase or cherry-pick intelligently instead of pushing a side branch or overwriting `main`.
+- Do not create or leave behind extra local or remote branches unless the user explicitly asks for one.
+
 ## OpenAI Model Policy
 
 - OpenAI text model ids are a closed literal allowlist. Do not add support for arbitrary strings.
