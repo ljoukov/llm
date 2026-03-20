@@ -13,3 +13,17 @@
 2. Commit and push to `main`.
 3. Create and push tag `vX.Y.Z`.
 4. GitHub Actions `Publish` workflow performs `npm publish`.
+
+## OpenAI Model Policy
+
+- OpenAI text model ids are a closed literal allowlist. Do not add support for arbitrary strings.
+- Supported OpenAI API model ids: `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
+- Supported ChatGPT-authenticated model ids: `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`.
+- Remove old aliases instead of keeping backward-compatibility shims.
+- Subagents must inherit the parent model. Do not add agent-facing model override fields for subagents or other model-invoked tools.
+
+### Model Change Checks
+
+- Do not run the full OpenAI integration matrix on every commit.
+- Run `npm run test:integration:openai-models` when changing model ids, OpenAI or ChatGPT request routing, pricing, auth, transport, tool-loop behavior, or any agent model-selection path.
+- Keep the OpenAI integration matrix parallelized so all supported OpenAI and ChatGPT model ids are exercised in one targeted run.

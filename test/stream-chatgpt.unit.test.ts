@@ -33,7 +33,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           output_tokens_details: { reasoning_tokens: 2 },
           total_tokens: 16,
         },
-        model: "gpt-5.1-codex-mini",
+        model: "gpt-5.4-mini",
         status: "completed",
         blocked: false,
       };
@@ -48,7 +48,7 @@ describe("streamText (ChatGPT)", () => {
     emitChatGptDeltas = true;
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "chatgpt-gpt-5.1-codex-mini", input: "hi" });
+    const call = streamText({ model: "chatgpt-gpt-5.4-mini", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -76,7 +76,7 @@ describe("streamText (ChatGPT)", () => {
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
-      model: "chatgpt-gpt-5.1-codex-mini",
+      model: "chatgpt-gpt-5.4-mini",
       input: [
         {
           role: "user",
@@ -105,7 +105,7 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-5.1-codex-mini",
+      model: "chatgpt-gpt-5.4-mini",
       input: "hi",
     });
 
@@ -148,7 +148,7 @@ describe("streamText (ChatGPT)", () => {
 
       const result = await runWithAgentLoggingSession(session, async () => {
         return await generateText({
-          model: "chatgpt-gpt-5.1-codex-mini",
+          model: "chatgpt-gpt-5.4-mini",
           input: "hi",
         });
       });

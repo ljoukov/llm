@@ -4,9 +4,9 @@ import { LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
-  it("estimates OpenAI costs (known model)", () => {
+  it("estimates GPT-5.4 mini costs", () => {
     const cost = estimateCallCostUsd({
-      modelId: "gpt-5.2",
+      modelId: "gpt-5.4-mini",
       tokens: {
         promptTokens: 1000,
         cachedTokens: 0,
@@ -16,9 +16,9 @@ describe("estimateCallCostUsd", () => {
       responseImages: 0,
     });
 
-    // input: 1000 * (1.75/1M) = 0.00175
-    // output: 600 * (14/1M) = 0.0084
-    expect(cost).toBeCloseTo(0.01015, 8);
+    // input: 1000 * (0.25/1M) = 0.00025
+    // output: 600 * (2/1M) = 0.0012
+    expect(cost).toBeCloseTo(0.00145, 8);
   });
 
   it("estimates GPT-5.4 costs", () => {
@@ -55,6 +55,24 @@ describe("estimateCallCostUsd", () => {
     // cached: 100 * (0.025/1M) = 0.0000025
     // output: 600 * (2/1M) = 0.0012
     expect(cost).toBeCloseTo(0.0014275, 8);
+  });
+
+  it("estimates GPT-5.4 nano costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "gpt-5.4-nano",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (0.05/1M) = 0.000045
+    // cached: 100 * (0.005/1M) = 0.0000005
+    // output: 600 * (0.4/1M) = 0.00024
+    expect(cost).toBeCloseTo(0.0002855, 8);
   });
 
   it("prices chatgpt-gpt-5.4-fast at GPT-5.4 priority rates", () => {

@@ -47,7 +47,7 @@ describe("agent logging", () => {
       session.logLine("[agent:test-run] run_started");
       const call = session.startLlmCall({
         provider: "openai",
-        modelId: "gpt-5.2",
+        modelId: "gpt-5.4-mini",
         requestText: "hello",
         requestMetadata: {
           image_url: "data:image/png;base64,QUJDRA==",
@@ -202,7 +202,7 @@ describe("agent logging", () => {
       session.logLine("[agent:test-run] custom_root");
       const call = session.startLlmCall({
         provider: "openai",
-        modelId: "gpt-5.2",
+        modelId: "gpt-5.4-mini",
         requestText: "hello",
       });
       call.appendResponseDelta("answer");

@@ -14,7 +14,7 @@ describe("model concurrency config", () => {
   });
 
   it("normalizes model ids for config keys", () => {
-    expect(normalizeModelIdForConfig("gpt-5.2")).toBe("gpt-5.2");
+    expect(normalizeModelIdForConfig("gpt-5.4-mini")).toBe("gpt-5.4-mini");
     expect(normalizeModelIdForConfig(" GEMINI-2.5-PRO ")).toBe("gemini-2.5-pro");
   });
 
@@ -29,22 +29,22 @@ describe("model concurrency config", () => {
     configureModelConcurrency({
       globalCap: 4,
       providerCaps: { openai: 5 },
-      modelCaps: { "gpt-5.2": 6 },
+      modelCaps: { "gpt-5.4-mini": 6 },
       providerModelCaps: {
-        openai: { "gpt-5.2": 7 },
+        openai: { "gpt-5.4-mini": 7 },
       },
     });
 
     expect(
       resolveModelConcurrencyCap({
         provider: "openai",
-        modelId: "gpt-5.2",
+        modelId: "gpt-5.4-mini",
       }),
     ).toBe(7);
   });
 
   it("uses higher OpenAI default and lower Gemini preview default", () => {
-    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.3-codex" })).toBe(12);
+    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.4" })).toBe(12);
     expect(
       resolveModelConcurrencyCap({ provider: "google", modelId: "gemini-3.1-pro-preview" }),
     ).toBe(2);
@@ -72,9 +72,9 @@ describe("model concurrency config", () => {
         openai: 9,
       },
     });
-    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.2" })).toBe(9);
+    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.4-mini" })).toBe(9);
 
     resetModelConcurrencyConfig();
-    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.2" })).toBe(12);
+    expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-5.4-mini" })).toBe(12);
   });
 });

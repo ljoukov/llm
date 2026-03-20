@@ -438,7 +438,7 @@ function createSubagentController(params: {
   return createSubagentToolController({
     config: params.resolvedSubagentConfig,
     parentDepth: params.depth,
-    parentModel: params.resolvedSubagentConfig.model ?? params.model,
+    parentModel: params.model,
     forkContextMessages: normalizeForkContextMessages(params.toolLoopRequest.input),
     onBackgroundMessage: (message) => {
       params.steering?.append({ role: "user", content: message });

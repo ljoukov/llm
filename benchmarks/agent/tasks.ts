@@ -259,9 +259,9 @@ export const AGENT_BENCHMARK_TASKS: readonly AgentBenchmarkTask[] = [
 ];
 
 export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
-  "chatgpt-gpt-5.3-codex",
   "chatgpt-gpt-5.3-codex-spark",
-  "gpt-5.2",
+  "gpt-5.4",
+  "gpt-5.4-mini",
   "kimi-k2.5",
   "glm-5",
   "minimax-m2.1",

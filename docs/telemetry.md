@@ -135,7 +135,7 @@ await generateImages({
 });
 
 await runAgentLoop({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Inspect the repo and update files.",
   filesystemTool: true,
 });

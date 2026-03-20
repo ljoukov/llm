@@ -29,7 +29,7 @@ vi.mock("../src/openai/calls.js", () => {
           callIndex === 0
             ? {
                 id: "resp_1",
-                model: "gpt-5.2",
+                model: "gpt-5.4-mini",
                 usage: {
                   input_tokens: 10,
                   output_tokens: 5,
@@ -39,7 +39,7 @@ vi.mock("../src/openai/calls.js", () => {
               }
             : {
                 id: "resp_2",
-                model: "gpt-5.2",
+                model: "gpt-5.4-mini",
                 usage: {
                   input_tokens: 8,
                   output_tokens: 4,
@@ -169,7 +169,7 @@ describe("runAgentLoop uploads", () => {
       const telemetryEvents: any[] = [];
       const { runAgentLoop } = await import("../src/agent.js");
       const result = await runAgentLoop({
-        model: "gpt-5.2",
+        model: "gpt-5.4-mini",
         input: "Inspect all of the images and finish.",
         filesystemTool: {
           profile: "codex",

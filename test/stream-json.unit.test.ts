@@ -42,7 +42,7 @@ describe("streamJson", () => {
     ];
     finalResponse = {
       id: "resp_123",
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       status: "completed",
       usage: {
         input_tokens: 10,
@@ -57,7 +57,7 @@ describe("streamJson", () => {
     const { streamJson } = await import("../src/llm.js");
 
     const schema = z.object({ ok: z.boolean(), message: z.string() });
-    const call = streamJson({ model: "gpt-5.2", input: "hi", schema });
+    const call = streamJson({ model: "gpt-5.4-mini", input: "hi", schema });
 
     const partials: any[] = [];
     let finalFromEvents: any = null;
@@ -99,7 +99,7 @@ describe("streamJson", () => {
     ];
 
     const schema = z.object({ key1: z.string(), key2: z.string() });
-    const call = streamJson({ model: "gpt-5.2", input: "hi", schema });
+    const call = streamJson({ model: "gpt-5.4-mini", input: "hi", schema });
     const partials: any[] = [];
 
     for await (const ev of call.events) {
@@ -127,7 +127,7 @@ describe("streamJson", () => {
     ];
 
     const schema = z.object({ a: z.number() });
-    const call = streamJson({ model: "gpt-5.2", input: "hi", schema });
+    const call = streamJson({ model: "gpt-5.4-mini", input: "hi", schema });
     const partials: any[] = [];
 
     for await (const ev of call.events) {
@@ -145,7 +145,7 @@ describe("streamJson", () => {
     const { streamJson } = await import("../src/llm.js");
 
     const schema = z.object({ ok: z.boolean(), message: z.string() });
-    const call = streamJson({ model: "gpt-5.2", input: "hi", schema, streamMode: "final" });
+    const call = streamJson({ model: "gpt-5.4-mini", input: "hi", schema, streamMode: "final" });
 
     let partialCount = 0;
     let sawFinal = false;

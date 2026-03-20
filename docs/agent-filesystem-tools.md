@@ -39,7 +39,7 @@ Currently the same toolset as `gemini` (JSON function tools).
 
 Resolved by model id:
 
-- contains `codex` -> `codex`
+- `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, or `chatgpt-gpt-5.3-codex-spark` -> `codex`
 - starts with `gemini-` -> `gemini`
 - otherwise -> `model-agnostic`
 
@@ -77,7 +77,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Change value from 1 to 2.",
   filesystemTool: {
     profile: "auto",

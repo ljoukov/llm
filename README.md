@@ -137,7 +137,7 @@ configureModelConcurrency({
     fireworks: 8,
   },
   modelCaps: {
-    "gpt-5.2": 24,
+    "gpt-5.4-mini": 24,
   },
   providerModelCaps: {
     google: {
@@ -168,7 +168,7 @@ Use OpenAI-style request fields:
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Write one sentence about TypeScript.",
 });
 
@@ -182,7 +182,7 @@ console.log(result.usage, result.costUsd);
 import { streamText } from "@ljoukov/llm";
 
 const call = streamText({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Explain what a hash function is in one paragraph.",
 });
 
@@ -228,7 +228,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", input });
+const result = await generateText({ model: "gpt-5.4-mini", input });
 console.log(result.text);
 ```
 
@@ -256,7 +256,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", input });
+const result = await generateText({ model: "gpt-5.4-mini", input });
 console.log(result.text);
 ```
 
@@ -314,7 +314,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", input });
+const result = await generateText({ model: "gpt-5.4-mini", input });
 console.log(result.text);
 ```
 
@@ -364,7 +364,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", input });
+const result = await generateText({ model: "gpt-5.4-mini", input });
 console.log(result.text);
 ```
 
@@ -390,7 +390,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.2", input });
+const result = await generateText({ model: "gpt-5.4-mini", input });
 console.log(result.text);
 ```
 
@@ -439,6 +439,11 @@ console.log(result.text);
 
 `chatgpt-gpt-5.4-fast` is also supported as a convenience alias for ChatGPT-authenticated `gpt-5.4` with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics.
 
+Supported OpenAI text model ids are fixed literal unions in code, not arbitrary strings:
+
+- OpenAI API: `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
+- ChatGPT auth: `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
+
 ## JSON outputs
 
 `generateJson()` validates the output with Zod and returns the parsed value.
@@ -458,7 +463,7 @@ const schema = z.object({
 });
 
 const { value } = await generateJson({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
 });
@@ -481,7 +486,7 @@ const schema = z.object({
 });
 
 const call = streamJson({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
 });
@@ -503,7 +508,7 @@ If you only want thought deltas (no partial JSON), set `streamMode: "final"`.
 
 ```ts
 const call = streamJson({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
   streamMode: "final",
@@ -514,7 +519,7 @@ If you want to keep `generateJson()` but still stream thoughts, pass an `onEvent
 
 ```ts
 const { value } = await generateJson({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
   onEvent: (event) => {
@@ -551,13 +556,13 @@ configureTelemetry({
 });
 
 const { value } = await generateJson({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Return { ok: true }.",
   schema: z.object({ ok: z.boolean() }),
 });
 
 await runAgentLoop({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Inspect the repo and update the file.",
   filesystemTool: true,
 });
@@ -567,7 +572,7 @@ Per-call opt-out:
 
 ```ts
 await generateJson({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Return { ok: true }.",
   schema: z.object({ ok: z.boolean() }),
   telemetry: false,
@@ -598,7 +603,7 @@ Use this when the model provider executes the tool remotely (for example search/
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "Find 3 relevant sources about X and summarize them.",
   tools: [{ type: "web-search", mode: "live" }, { type: "code-execution" }],
 });
@@ -615,7 +620,7 @@ import { runToolLoop, tool } from "@ljoukov/llm";
 import { z } from "zod";
 
 const result = await runToolLoop({
-  model: "gpt-5.2",
+  model: "gpt-5.4-mini",
   input: "What is 12 * 9? Use the tool.",
   tools: {
     multiply: tool({
@@ -641,7 +646,7 @@ import { streamToolLoop, tool } from "@ljoukov/llm";
 import { z } from "zod";
 
 const call = streamToolLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Start implementing the feature.",
   tools: {
     echo: tool({
@@ -665,7 +670,7 @@ import { createToolLoopSteeringChannel, runAgentLoop } from "@ljoukov/llm";
 
 const steering = createToolLoopSteeringChannel();
 const run = runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Implement the task.",
   filesystemTool: true,
   steering,
@@ -683,13 +688,15 @@ const result = await run;
 - built-in subagent orchestration (delegate work across spawned agents),
 - your own custom runtime tools.
 
+Subagents always inherit the parent run model. The subagent control tools do not expose a model override.
+
 For interactive runs where you want to stream events and inject steering mid-run, use `streamAgentLoop()`:
 
 ```ts
 import { streamAgentLoop } from "@ljoukov/llm";
 
 const call = streamAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Start implementation.",
   filesystemTool: true,
 });
@@ -704,7 +711,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models (`gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `*codex*` variants): Codex-compatible filesystem tool shape.
+- Codex-like models (`gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 
@@ -727,7 +734,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -753,7 +760,7 @@ Enable `subagentTool` to allow delegation via Codex-style control tools:
 import { runAgentLoop } from "@ljoukov/llm";
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Plan the work, delegate in parallel where useful, and return a final merged result.",
   subagentTool: {
     enabled: true,
@@ -775,7 +782,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -819,7 +826,7 @@ import path from "node:path";
 import { runAgentLoop } from "@ljoukov/llm";
 
 await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Do the task",
   filesystemTool: true,
   logging: {
@@ -848,13 +855,13 @@ import {
 } from "@ljoukov/llm";
 
 const fs = createInMemoryAgentFilesystem({ "/repo/a.ts": "export const n = 1;\n" });
-const tools = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex", {
+const tools = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex-spark", {
   cwd: "/repo",
   fs,
 });
 
 const result = await runToolLoop({
-  model: "chatgpt-gpt-5.3-codex",
+  model: "chatgpt-gpt-5.3-codex-spark",
   input: "Update n to 2.",
   tools,
 });
