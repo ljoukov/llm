@@ -64,7 +64,7 @@ describe("LLM telemetry", () => {
     openAiStreamedEvents = [{ type: "response.output_text.delta", delta: "hello" }];
     openAiFinalResponse = {
       id: "resp_123",
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       status: "completed",
       usage: {
         input_tokens: 10,
@@ -92,13 +92,13 @@ describe("LLM telemetry", () => {
       },
     });
 
-    const result = await generateText({ model: "gpt-5.2", input: "hi" });
+    const result = await generateText({ model: "gpt-5.4-mini", input: "hi" });
     expect(result.text).toBe("hello");
     expect(events[0]).toMatchObject({
       type: "llm.call.started",
       operation: "generateText",
       provider: "openai",
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
     });
     expect(events.some((event) => event.type === "llm.call.stream")).toBe(true);
     expect(events.at(-1)).toMatchObject({
@@ -109,7 +109,7 @@ describe("LLM telemetry", () => {
     });
 
     events.length = 0;
-    await generateText({ model: "gpt-5.2", input: "hi", telemetry: false });
+    await generateText({ model: "gpt-5.4-mini", input: "hi", telemetry: false });
     expect(events).toEqual([]);
   });
 
@@ -132,9 +132,9 @@ describe("LLM telemetry", () => {
     });
 
     try {
-      await generateText({ model: "gpt-5.2", input: "hi" });
+      await generateText({ model: "gpt-5.4-mini", input: "hi" });
       await runAgentLoop({
-        model: "gpt-5.2",
+        model: "gpt-5.4-mini",
         input: "test",
         logging: false,
         tools: {
@@ -161,7 +161,7 @@ describe("LLM telemetry", () => {
 
     const events: any[] = [];
     const { value } = await generateJson({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: "hi",
       schema: z.object({ ok: z.boolean() }),
       telemetry: {

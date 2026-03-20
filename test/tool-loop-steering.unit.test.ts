@@ -17,7 +17,7 @@ vi.mock("../src/openai/calls.js", () => {
         const callIndex = openAiCallCount++;
         const firstResponse = {
           id: "resp_1",
-          model: "gpt-5.2",
+          model: "gpt-5.4-mini",
           usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
           output: [
             {
@@ -28,7 +28,7 @@ vi.mock("../src/openai/calls.js", () => {
         };
         const secondResponse = {
           id: "resp_2",
-          model: "gpt-5.2",
+          model: "gpt-5.4-mini",
           usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
           output: [
             {
@@ -117,7 +117,7 @@ describe("streamToolLoop steering", () => {
 
     const { streamToolLoop, tool } = await import("../src/llm.js");
     const call = streamToolLoop({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: "start",
       tools: {
         noop: tool({
@@ -223,7 +223,7 @@ describe("streamToolLoop steering", () => {
     ]);
     const steering = createToolLoopSteeringChannel();
     const call = streamToolLoop({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: "start",
       steering,
       tools: {

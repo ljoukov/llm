@@ -55,6 +55,7 @@
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "npm run test:integration:node",
     "test:integration:node": "vitest run --config vitest.integration.config.ts",
+    "test:integration:openai-models": "vitest run --config vitest.integration.config.ts test/openai-models.integration.test.ts",
     "test:integration:bun": "bunx vitest run --config vitest.integration.config.ts",
     "test:integration:runtimes": "npm run test:integration:node && npm run test:integration:bun",
     "typecheck": "tsc -p tsconfig.json --noEmit",

@@ -1,8 +1,7 @@
 export const OPENAI_MODEL_IDS = [
   "gpt-5.4",
-  "gpt-5.3-codex",
-  "gpt-5.2",
-  "gpt-5.1-codex-mini",
+  "gpt-5.4-mini",
+  "gpt-5.4-nano",
 ] as const;
 
 export type OpenAiModelId = (typeof OPENAI_MODEL_IDS)[number];
@@ -14,10 +13,8 @@ export function isOpenAiModelId(value: string): value is OpenAiModelId {
 export const CHATGPT_MODEL_IDS = [
   "chatgpt-gpt-5.4",
   "chatgpt-gpt-5.4-fast",
-  "chatgpt-gpt-5.3-codex",
+  "chatgpt-gpt-5.4-mini",
   "chatgpt-gpt-5.3-codex-spark",
-  "chatgpt-gpt-5.2",
-  "chatgpt-gpt-5.1-codex-mini",
 ] as const;
 
 export type ChatGptModelId = (typeof CHATGPT_MODEL_IDS)[number];

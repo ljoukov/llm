@@ -29,7 +29,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           output_tokens_details: { reasoning_tokens: 2 },
           total_tokens: 16,
         },
-        model: "gpt-5.1-codex-mini",
+        model: "gpt-5.4-mini",
         status: "completed",
         blocked: false,
       };
@@ -47,7 +47,7 @@ describe("generateJson (ChatGPT)", () => {
     const schema = z.object({ ok: z.boolean(), message: z.string() });
     let streamedThoughts = "";
     const { value } = await generateJson({
-      model: "chatgpt-gpt-5.1-codex-mini",
+      model: "chatgpt-gpt-5.4-mini",
       input: "Return JSON",
       schema,
       onEvent: (event) => {
@@ -71,7 +71,7 @@ describe("generateJson (ChatGPT)", () => {
     const schema = z.object({ ok: z.boolean(), message: z.string() });
 
     const { value } = await generateJson({
-      model: "chatgpt-gpt-5.1-codex-mini",
+      model: "chatgpt-gpt-5.4-mini",
       input: "Return JSON",
       schema,
       maxAttempts: 2,

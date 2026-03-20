@@ -16,7 +16,7 @@ vi.mock("../src/openai/calls.js", () => {
     async finalResponse() {
       return {
         id: "resp_123",
-        model: "gpt-5.2",
+        model: "gpt-5.4-mini",
         status: "completed",
         usage: {
           input_tokens: 10,
@@ -74,7 +74,7 @@ describe("streamText (OpenAI)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.2", input: "hi" });
+    const call = streamText({ model: "gpt-5.4-mini", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -97,7 +97,7 @@ describe("streamText (OpenAI)", () => {
     capturedRequest = null;
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.2", input: "hi", thinkingLevel: "high" });
+    const call = streamText({ model: "gpt-5.4-mini", input: "hi", thinkingLevel: "high" });
     for await (const _event of call.events) {
       // Drain stream.
     }
@@ -112,7 +112,7 @@ describe("streamText (OpenAI)", () => {
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: [
         {
           role: "user",
@@ -141,7 +141,7 @@ describe("streamText (OpenAI)", () => {
 
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
     await generateText({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: [
         {
           role: "user",
@@ -185,7 +185,7 @@ describe("streamText (OpenAI)", () => {
       const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
       await runWithAgentLoggingSession(session, async () => {
         await generateText({
-          model: "gpt-5.2",
+          model: "gpt-5.4-mini",
           input: [
             {
               role: "user",

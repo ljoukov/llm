@@ -75,7 +75,6 @@ export type AgentSubagentToolConfig = {
   readonly maxWaitTimeoutMs?: number;
   readonly promptPattern?: AgentSubagentToolPromptPattern;
   readonly instructions?: string;
-  readonly model?: LlmTextModelId;
   readonly maxSteps?: number;
   readonly inheritTools?: boolean;
   readonly inheritFilesystemTool?: boolean;
@@ -92,7 +91,6 @@ export type ResolvedAgentSubagentToolConfig = {
   readonly maxWaitTimeoutMs: number;
   readonly promptPattern: AgentSubagentToolPromptPattern;
   readonly instructions?: string;
-  readonly model?: LlmTextModelId;
   readonly maxSteps?: number;
   readonly inheritTools: boolean;
   readonly inheritFilesystemTool: boolean;
@@ -339,7 +337,6 @@ export function resolveSubagentToolConfig(
     maxWaitTimeoutMs,
     promptPattern,
     ...(instructions ? { instructions } : {}),
-    ...(config.model ? { model: config.model } : {}),
     ...(maxSteps ? { maxSteps } : {}),
     inheritTools: config.inheritTools !== false,
     inheritFilesystemTool: config.inheritFilesystemTool !== false,
@@ -407,8 +404,6 @@ export function createSubagentToolController(
           );
         }
 
-        const model: LlmTextModelId = options.config.model ?? options.parentModel;
-
         const id = `agent_${randomBytes(6).toString("hex")}`;
         const now = Date.now();
         const { roleName, roleInstructions } = resolveAgentType(input.agent_type);
@@ -428,7 +423,7 @@ export function createSubagentToolController(
         const agent: ManagedSubagent = {
           id,
           depth: childDepth,
-          model,
+          model: options.parentModel,
           ...(nickname ? { nickname } : {}),
           agentRole: roleName,
           status: "idle",

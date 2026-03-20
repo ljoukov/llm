@@ -277,7 +277,7 @@ type PromptTemplates = {
   readonly graderPrompt: string;
 };
 
-const DEFAULT_GRADER_MODEL: LlmTextModelId = "chatgpt-gpt-5.2";
+const DEFAULT_GRADER_MODEL: LlmTextModelId = "chatgpt-gpt-5.4-mini";
 const DEFAULT_MAX_STEPS = 100;
 const DEFAULT_REPAIR_MAX_STEPS = 100;
 const DEFAULT_AGENT_TIMEOUT_MS = 2 * 60 * 60_000;

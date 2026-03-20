@@ -402,7 +402,7 @@ await runCandidateEvolution<LessonBundle, LessonIssue>({
 ```
 
 Recommended evolution setup for speed + quality:
-- keep one strong generator model (`chatgpt-gpt-5.3-codex`) for mutations
+- keep one strong generator model (`chatgpt-gpt-5.3-codex-spark`) for mutations
 - keep judge passes isolated in assessor path
 - fail fast in post-check so invalid bundles do not reach expensive grading
 - enforce early subagent delegation in generation prompt and require evidence file

@@ -6939,7 +6939,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
                     }
                     return image as LlmImageData;
                   })(),
-                  model: "gpt-5.2",
+                  model: "gpt-5.4-mini",
                 }),
               ),
             );

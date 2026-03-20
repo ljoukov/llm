@@ -25,7 +25,7 @@ vi.mock("../src/openai/calls.js", () => {
           openAiScenario === "image_function"
             ? {
                 id: "resp_1",
-                model: "gpt-5.2",
+                model: "gpt-5.4-mini",
                 usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
                 output: [
                   {
@@ -39,7 +39,7 @@ vi.mock("../src/openai/calls.js", () => {
               }
             : {
                 id: "resp_1",
-                model: "gpt-5.2",
+                model: "gpt-5.4-mini",
                 usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
                 output: [
                   {
@@ -53,7 +53,7 @@ vi.mock("../src/openai/calls.js", () => {
               };
         const secondResponse = {
           id: "resp_2",
-          model: "gpt-5.2",
+          model: "gpt-5.4-mini",
           usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
           output: [
             {
@@ -246,7 +246,7 @@ describe("runToolLoop custom tools", () => {
 
     const { customTool, runToolLoop } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: "apply a patch",
       tools: {
         apply_patch: customTool({
@@ -307,7 +307,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: "inspect image",
       tools: {
         view_image: tool({
@@ -349,7 +349,7 @@ describe("runToolLoop custom tools", () => {
 
       await runWithAgentLoggingSession(session, async () => {
         await runToolLoop({
-          model: "gpt-5.2",
+          model: "gpt-5.4-mini",
           input: "inspect image",
           tools: {
             view_image: tool({
@@ -407,7 +407,7 @@ describe("runToolLoop custom tools", () => {
     const observedContexts: unknown[] = [];
 
     const result = await runToolLoop({
-      model: "gpt-5.2",
+      model: "gpt-5.4-mini",
       input: "inspect image",
       tools: {
         view_image: tool({
