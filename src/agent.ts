@@ -215,7 +215,11 @@ async function runAgentLoopInternal(
       : { ...toolLoopRequest, steering: steeringChannel };
   const filesystemSelection = filesystemTool ?? filesystem_tool;
   const subagentSelection = subagentTool ?? subagent_tool ?? subagents;
-  const filesystemTools = resolveFilesystemTools(request.model, filesystemSelection);
+  const filesystemTools = resolveFilesystemTools(
+    request.model,
+    filesystemSelection,
+    request.mediaResolution,
+  );
   const resolvedSubagentConfig = resolveSubagentToolConfig(subagentSelection, context.depth);
   const subagentController = createSubagentController({
     runId,
@@ -381,24 +385,51 @@ async function runAgentLoopInternal(
 function resolveFilesystemTools(
   model: string,
   selection: AgentFilesystemToolSelection | undefined,
+  defaultMediaResolution: RunAgentLoopRequest["mediaResolution"],
 ): LlmToolSet {
+  const withDefaultMediaResolution = (
+    options: AgentFilesystemToolsOptions | undefined,
+  ): AgentFilesystemToolsOptions | undefined => {
+    if (defaultMediaResolution === undefined) {
+      return options;
+    }
+    return {
+      mediaResolution: defaultMediaResolution,
+      ...(options ?? {}),
+    };
+  };
+
   if (selection === undefined || selection === false) {
     return {};
   }
   if (selection === true) {
-    return createFilesystemToolSetForModel(model, "auto");
+    return createFilesystemToolSetForModel(model, withDefaultMediaResolution(undefined) ?? {});
   }
   if (typeof selection === "string") {
-    return createFilesystemToolSetForModel(model, selection);
+    return createFilesystemToolSetForModel(model, selection, withDefaultMediaResolution(undefined));
   }
   if (selection.enabled === false) {
     return {};
   }
   if (selection.options && selection.profile !== undefined) {
-    return createFilesystemToolSetForModel(model, selection.profile, selection.options);
+    return createFilesystemToolSetForModel(
+      model,
+      selection.profile,
+      withDefaultMediaResolution(selection.options),
+    );
   }
   if (selection.options) {
-    return createFilesystemToolSetForModel(model, selection.options);
+    return createFilesystemToolSetForModel(
+      model,
+      withDefaultMediaResolution(selection.options) ?? {},
+    );
+  }
+  if (defaultMediaResolution !== undefined) {
+    return createFilesystemToolSetForModel(
+      model,
+      selection.profile ?? "auto",
+      withDefaultMediaResolution(undefined),
+    );
   }
   return createFilesystemToolSetForModel(model, selection.profile ?? "auto");
 }
@@ -461,6 +492,7 @@ function createSubagentController(params: {
           modelTools: params.toolLoopRequest.modelTools,
           maxSteps: subagentRequest.maxSteps,
           thinkingLevel: params.toolLoopRequest.thinkingLevel,
+          mediaResolution: params.toolLoopRequest.mediaResolution,
           signal: subagentRequest.signal,
         },
         {

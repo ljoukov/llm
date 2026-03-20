@@ -6,6 +6,8 @@ import path from "node:path";
 import {
   FinishReason,
   FunctionCallingConfigMode,
+  MediaResolution,
+  PartMediaResolutionLevel,
   ThinkingLevel,
   createPartFromBase64,
   createPartFromFunctionResponse,
@@ -115,11 +117,13 @@ type LlmInlineDataPart = {
   filename?: string;
 };
 
+export type LlmMediaResolution = "auto" | "low" | "medium" | "high" | "original";
+
 export type LlmInputImagePart = {
   type: "input_image";
   image_url?: string | null;
   file_id?: string | null;
-  detail?: "auto" | "low" | "high";
+  detail?: LlmMediaResolution;
   filename?: string | null;
 };
 
@@ -335,6 +339,7 @@ export type LlmBaseRequest = {
   readonly imageAspectRatio?: string;
   readonly imageSize?: LlmImageSize;
   readonly thinkingLevel?: LlmThinkingLevel;
+  readonly mediaResolution?: LlmMediaResolution;
   readonly openAiTextFormat?: ResponseTextConfig["format"];
   readonly telemetry?: TelemetrySelection;
   readonly signal?: AbortSignal;
@@ -521,6 +526,7 @@ export type LlmToolLoopRequest = LlmInput & {
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
   readonly thinkingLevel?: LlmThinkingLevel;
+  readonly mediaResolution?: LlmMediaResolution;
   readonly steering?: LlmToolLoopSteeringChannel;
   readonly onEvent?: (event: LlmStreamEvent) => void;
   readonly signal?: AbortSignal;
@@ -821,6 +827,96 @@ function parseCanonicalGeminiFileId(fileUri: string | undefined): string | undef
   return fileId.length > 0 ? fileId : undefined;
 }
 
+type OpenAiImageDetail = "auto" | "low" | "high" | "original";
+
+function isLlmMediaResolution(value: unknown): value is LlmMediaResolution {
+  return (
+    value === "auto" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "original"
+  );
+}
+
+function resolveEffectiveMediaResolution(
+  detail: LlmMediaResolution | undefined,
+  fallback: LlmMediaResolution | undefined,
+): LlmMediaResolution | undefined {
+  return detail ?? fallback;
+}
+
+function supportsOpenAiOriginalImageDetail(model: string | undefined): boolean {
+  if (!model) {
+    return false;
+  }
+  const providerModel = isChatGptModelId(model) ? resolveChatGptProviderModel(model) : model;
+  const match = /^gpt-(\d+)(?:\.(\d+))?/u.exec(providerModel);
+  if (!match) {
+    return false;
+  }
+  const major = Number(match[1]);
+  const minor = Number(match[2] ?? "0");
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) {
+    return false;
+  }
+  return major > 5 || (major === 5 && minor >= 4);
+}
+
+function toOpenAiImageDetail(
+  mediaResolution: LlmMediaResolution | undefined,
+  model: string | undefined,
+): OpenAiImageDetail {
+  switch (mediaResolution) {
+    case "low":
+      return "low";
+    case "medium":
+      return "high";
+    case "high":
+      return "high";
+    case "original":
+      return supportsOpenAiOriginalImageDetail(model) ? "original" : "high";
+    case "auto":
+    default:
+      return "auto";
+  }
+}
+
+function toGeminiMediaResolution(
+  mediaResolution: LlmMediaResolution | undefined,
+): MediaResolution | undefined {
+  switch (mediaResolution) {
+    case "low":
+      return MediaResolution.MEDIA_RESOLUTION_LOW;
+    case "medium":
+      return MediaResolution.MEDIA_RESOLUTION_MEDIUM;
+    case "high":
+    case "original":
+      return MediaResolution.MEDIA_RESOLUTION_HIGH;
+    case "auto":
+    default:
+      return undefined;
+  }
+}
+
+function toGeminiPartMediaResolution(
+  mediaResolution: LlmMediaResolution | undefined,
+): PartMediaResolutionLevel | undefined {
+  switch (mediaResolution) {
+    case "low":
+      return PartMediaResolutionLevel.MEDIA_RESOLUTION_LOW;
+    case "medium":
+      return PartMediaResolutionLevel.MEDIA_RESOLUTION_MEDIUM;
+    case "high":
+      return PartMediaResolutionLevel.MEDIA_RESOLUTION_HIGH;
+    case "original":
+      return PartMediaResolutionLevel.MEDIA_RESOLUTION_ULTRA_HIGH;
+    case "auto":
+    default:
+      return undefined;
+  }
+}
+
 function cloneContentPart(part: LlmContentPart): LlmContentPart {
   switch (part.type) {
     case "text":
@@ -967,7 +1063,11 @@ function convertGeminiContentToLlmContent(content: GeminiContent): LlmContent {
   };
 }
 
-function toGeminiPart(part: LlmContentPart): GeminiPart {
+function toGeminiPart(
+  part: LlmContentPart,
+  options?: { defaultMediaResolution?: LlmMediaResolution },
+): GeminiPart {
+  const defaultMediaResolution = options?.defaultMediaResolution;
   switch (part.type) {
     case "text":
       return {
@@ -975,6 +1075,18 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
         thought: part.thought === true ? true : undefined,
       };
     case "inlineData": {
+      if (isInlineImageMime(part.mimeType)) {
+        const mimeType = part.mimeType ?? "application/octet-stream";
+        const geminiPart = createPartFromBase64(
+          part.data,
+          mimeType,
+          toGeminiPartMediaResolution(defaultMediaResolution),
+        );
+        if (part.filename && geminiPart.inlineData) {
+          geminiPart.inlineData.displayName = part.filename;
+        }
+        return geminiPart;
+      }
       const inlineData = {
         data: part.data,
         mimeType: part.mimeType,
@@ -987,33 +1099,35 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
       };
     }
     case "input_image": {
+      const mediaResolution = resolveEffectiveMediaResolution(part.detail, defaultMediaResolution);
+      const geminiPartMediaResolution = toGeminiPartMediaResolution(mediaResolution);
       if (part.file_id) {
-        return {
-          fileData: {
-            fileUri: buildCanonicalGeminiFileUri(part.file_id),
-            mimeType:
-              inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
-          },
-        };
+        return createPartFromUri(
+          buildCanonicalGeminiFileUri(part.file_id),
+          inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+          geminiPartMediaResolution,
+        );
       }
       if (typeof part.image_url !== "string" || part.image_url.trim().length === 0) {
         throw new Error("input_image requires image_url or file_id.");
       }
       const parsed = parseDataUrlPayload(part.image_url);
       if (parsed) {
-        const geminiPart = createPartFromBase64(parsed.dataBase64, parsed.mimeType);
+        const geminiPart = createPartFromBase64(
+          parsed.dataBase64,
+          parsed.mimeType,
+          geminiPartMediaResolution,
+        );
         if (part.filename && geminiPart.inlineData) {
           geminiPart.inlineData.displayName = part.filename;
         }
         return geminiPart;
       }
-      return {
-        fileData: {
-          fileUri: part.image_url,
-          mimeType:
-            inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
-        },
-      };
+      return createPartFromUri(
+        part.image_url,
+        inferToolOutputMimeTypeFromFilename(part.filename) ?? "application/octet-stream",
+        geminiPartMediaResolution,
+      );
     }
     case "input_file": {
       if (part.file_id) {
@@ -1059,11 +1173,14 @@ function toGeminiPart(part: LlmContentPart): GeminiPart {
   }
 }
 
-function convertLlmContentToGeminiContent(content: LlmContent): GeminiContent {
+function convertLlmContentToGeminiContent(
+  content: LlmContent,
+  options?: { defaultMediaResolution?: LlmMediaResolution },
+): GeminiContent {
   const role = content.role === "assistant" ? "model" : "user";
   return {
     role,
-    parts: content.parts.map(toGeminiPart),
+    parts: content.parts.map((part) => toGeminiPart(part, options)),
   };
 }
 
@@ -1297,7 +1414,10 @@ async function storeCanonicalPromptFile(options: {
   };
 }
 
-async function prepareOpenAiPromptContentItem(item: unknown): Promise<unknown> {
+async function prepareOpenAiPromptContentItem(
+  item: unknown,
+  options?: { model?: string },
+): Promise<unknown> {
   if (!isOpenAiNativeContentItem(item)) {
     return item;
   }
@@ -1321,7 +1441,10 @@ async function prepareOpenAiPromptContentItem(item: unknown): Promise<unknown> {
     });
     return {
       type: "input_image",
-      detail: item.detail === "high" || item.detail === "low" ? item.detail : "auto",
+      detail: toOpenAiImageDetail(
+        isLlmMediaResolution(item.detail) ? item.detail : undefined,
+        options?.model,
+      ),
       file_id: uploaded.fileId,
     };
   }
@@ -1363,7 +1486,10 @@ async function prepareOpenAiPromptContentItem(item: unknown): Promise<unknown> {
   return item;
 }
 
-async function prepareOpenAiPromptInput(input: readonly unknown[]): Promise<unknown[]> {
+async function prepareOpenAiPromptInput(
+  input: readonly unknown[],
+  options?: { model?: string },
+): Promise<unknown[]> {
   const prepareItem = async (item: unknown): Promise<unknown> => {
     if (!item || typeof item !== "object") {
       return item;
@@ -1373,7 +1499,7 @@ async function prepareOpenAiPromptInput(input: readonly unknown[]): Promise<unkn
       return {
         ...record,
         content: await Promise.all(
-          record.content.map((part) => prepareOpenAiPromptContentItem(part)),
+          record.content.map((part) => prepareOpenAiPromptContentItem(part, options)),
         ),
       };
     }
@@ -1381,21 +1507,24 @@ async function prepareOpenAiPromptInput(input: readonly unknown[]): Promise<unkn
       return {
         ...record,
         output: await Promise.all(
-          record.output.map((part) => prepareOpenAiPromptContentItem(part)),
+          record.output.map((part) => prepareOpenAiPromptContentItem(part, options)),
         ),
       };
     }
-    return await prepareOpenAiPromptContentItem(item);
+    return await prepareOpenAiPromptContentItem(item, options);
   };
 
   return await Promise.all(input.map((item) => prepareItem(item)));
 }
 
-async function maybePrepareOpenAiPromptInput(input: readonly unknown[]): Promise<unknown[]> {
+async function maybePrepareOpenAiPromptInput(
+  input: readonly unknown[],
+  options?: { model?: string },
+): Promise<unknown[]> {
   if (estimateOpenAiInlinePromptBytes(input) <= INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES) {
     return Array.from(input);
   }
-  return await prepareOpenAiPromptInput(input);
+  return await prepareOpenAiPromptInput(input, options);
 }
 
 function estimateGeminiInlinePromptBytes(contents: readonly GeminiContent[]): number {
@@ -1431,10 +1560,11 @@ async function prepareGeminiPromptContents(
     for (const part of content.parts ?? []) {
       const canonicalFileId = parseCanonicalGeminiFileId(part.fileData?.fileUri);
       if (canonicalFileId) {
+        const mediaResolution = part.mediaResolution?.level;
         await getCanonicalFileMetadata(canonicalFileId);
         if (backend === "api") {
           const mirrored = await ensureGeminiFileMirror(canonicalFileId);
-          parts.push(createPartFromUri(mirrored.uri, mirrored.mimeType));
+          parts.push(createPartFromUri(mirrored.uri, mirrored.mimeType, mediaResolution));
         } else {
           const mirrored = await ensureVertexFileMirror(canonicalFileId);
           parts.push({
@@ -1442,12 +1572,14 @@ async function prepareGeminiPromptContents(
               fileUri: mirrored.fileUri,
               mimeType: mirrored.mimeType,
             },
+            ...(mediaResolution ? { mediaResolution: { level: mediaResolution } } : {}),
           });
         }
         continue;
       }
 
       if (part.inlineData?.data) {
+        const mediaResolution = part.mediaResolution?.level;
         const mimeType = part.inlineData.mimeType ?? "application/octet-stream";
         const filename = normaliseAttachmentFilename(
           getInlineAttachmentFilename(part.inlineData) ??
@@ -1462,7 +1594,7 @@ async function prepareGeminiPromptContents(
         });
         if (backend === "api") {
           const mirrored = await ensureGeminiFileMirror(stored.fileId);
-          parts.push(createPartFromUri(mirrored.uri, mirrored.mimeType));
+          parts.push(createPartFromUri(mirrored.uri, mirrored.mimeType, mediaResolution));
         } else {
           const mirrored = await ensureVertexFileMirror(stored.fileId);
           parts.push({
@@ -1470,6 +1602,7 @@ async function prepareGeminiPromptContents(
               fileUri: mirrored.fileUri,
               mimeType: mirrored.mimeType,
             },
+            ...(mediaResolution ? { mediaResolution: { level: mediaResolution } } : {}),
           });
         }
         continue;
@@ -2004,7 +2137,10 @@ function resolveTextContents(input: LlmInput): readonly LlmContent[] {
   return contents;
 }
 
-function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
+function toOpenAiInput(
+  contents: readonly LlmContent[],
+  options?: { defaultMediaResolution?: LlmMediaResolution; model?: string },
+): unknown[] {
   // Keep the shape compatible with OpenAI Responses API input.
   const OPENAI_ROLE_FROM_LLM: Record<LlmRole, string> = {
     user: "user",
@@ -2013,6 +2149,8 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
     developer: "developer",
     tool: "assistant",
   };
+  const defaultMediaResolution = options?.defaultMediaResolution;
+  const model = options?.model;
 
   return contents.map((content) => {
     const parts: Array<Record<string, unknown>> = [];
@@ -2028,7 +2166,7 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
             const imagePart: Record<string, unknown> = {
               type: "input_image",
               image_url: dataUrl,
-              detail: "auto",
+              detail: toOpenAiImageDetail(defaultMediaResolution, model),
             };
             setInlineAttachmentFilename(
               imagePart,
@@ -2045,11 +2183,15 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
           break;
         }
         case "input_image": {
+          const mediaResolution = resolveEffectiveMediaResolution(
+            part.detail,
+            defaultMediaResolution,
+          );
           const imagePart: Record<string, unknown> = {
             type: "input_image",
             ...(part.file_id ? { file_id: part.file_id } : {}),
             ...(part.image_url ? { image_url: part.image_url } : {}),
-            detail: part.detail === "high" || part.detail === "low" ? part.detail : "auto",
+            detail: toOpenAiImageDetail(mediaResolution, model),
           };
           if (part.filename) {
             setInlineAttachmentFilename(imagePart, part.filename);
@@ -2087,12 +2229,17 @@ function toOpenAiInput(contents: readonly LlmContent[]): unknown[] {
   });
 }
 
-function toChatGptInput(contents: readonly LlmContent[]): {
+function toChatGptInput(
+  contents: readonly LlmContent[],
+  options?: { defaultMediaResolution?: LlmMediaResolution; model?: string },
+): {
   instructions?: string;
   input: ChatGptInputItem[];
 } {
   const instructionsParts: string[] = [];
   const input: ChatGptInputItem[] = [];
+  const defaultMediaResolution = options?.defaultMediaResolution;
+  const model = options?.model;
   for (const content of contents) {
     if (content.role === "system" || content.role === "developer") {
       for (const part of content.parts) {
@@ -2134,7 +2281,7 @@ function toChatGptInput(contents: readonly LlmContent[]): {
             parts.push({
               type: "input_image",
               image_url: dataUrl,
-              detail: "auto",
+              detail: toOpenAiImageDetail(defaultMediaResolution, model),
             });
           } else {
             parts.push({
@@ -2148,14 +2295,19 @@ function toChatGptInput(contents: readonly LlmContent[]): {
           }
           break;
         }
-        case "input_image":
+        case "input_image": {
+          const mediaResolution = resolveEffectiveMediaResolution(
+            part.detail,
+            defaultMediaResolution,
+          );
           parts.push({
             type: "input_image",
             ...(part.file_id ? { file_id: part.file_id } : {}),
             ...(part.image_url ? { image_url: part.image_url } : {}),
-            detail: part.detail === "high" || part.detail === "low" ? part.detail : "auto",
+            detail: toOpenAiImageDetail(mediaResolution, model),
           });
           break;
+        }
         case "input_file":
           parts.push({
             type: "input_file",
@@ -2650,6 +2802,13 @@ function isLlmToolOutputContentItem(value: unknown): value is LlmToolOutputConte
         return false;
       }
     }
+    if (
+      value.detail !== undefined &&
+      value.detail !== null &&
+      !isLlmMediaResolution(value.detail)
+    ) {
+      return false;
+    }
     return value.image_url !== undefined || value.file_id !== undefined;
   }
   if (itemType === "input_file") {
@@ -2665,18 +2824,37 @@ function isLlmToolOutputContentItem(value: unknown): value is LlmToolOutputConte
   return false;
 }
 
-function toOpenAiToolOutput(value: unknown): string | LlmToolOutputContentItem[] {
+function toOpenAiToolOutput(
+  value: unknown,
+  options?: { defaultMediaResolution?: LlmMediaResolution; model?: string },
+): string | LlmToolOutputContentItem[] {
+  const normalizeImageItem = (item: LlmToolOutputContentItem): LlmToolOutputContentItem => {
+    if (item.type !== "input_image") {
+      return item;
+    }
+    const mediaResolution = resolveEffectiveMediaResolution(
+      item.detail,
+      options?.defaultMediaResolution,
+    );
+    return {
+      ...item,
+      detail: toOpenAiImageDetail(mediaResolution, options?.model),
+    };
+  };
   if (isLlmToolOutputContentItem(value)) {
-    return [value];
+    return [normalizeImageItem(value)];
   }
   if (Array.isArray(value) && value.every((item) => isLlmToolOutputContentItem(item))) {
-    return value;
+    return value.map((item) => normalizeImageItem(item));
   }
   return mergeToolOutput(value);
 }
 
-function toChatGptToolOutput(value: unknown): string | ChatGptInputMessagePart[] {
-  const toolOutput = toOpenAiToolOutput(value);
+function toChatGptToolOutput(
+  value: unknown,
+  options?: { defaultMediaResolution?: LlmMediaResolution; model?: string },
+): string | ChatGptInputMessagePart[] {
+  const toolOutput = toOpenAiToolOutput(value, options);
   if (typeof toolOutput === "string") {
     return toolOutput;
   }
@@ -2688,7 +2866,14 @@ function toChatGptToolOutput(value: unknown): string | ChatGptInputMessagePart[]
       type: "input_image",
       ...(item.file_id ? { file_id: item.file_id } : {}),
       ...(item.image_url ? { image_url: item.image_url } : {}),
-      ...(item.detail ? { detail: item.detail } : {}),
+      ...(item.detail
+        ? {
+            detail: toOpenAiImageDetail(
+              resolveEffectiveMediaResolution(item.detail, options?.defaultMediaResolution),
+              options?.model,
+            ),
+          }
+        : {}),
     };
   });
 }
@@ -3007,35 +3192,44 @@ async function maybeSpillCombinedToolCallOutputs<
   );
 }
 
-function buildGeminiToolOutputMediaPart(item: LlmToolOutputContentItem): GeminiPart | null {
+function buildGeminiToolOutputMediaPart(
+  item: LlmToolOutputContentItem,
+  options?: { defaultMediaResolution?: LlmMediaResolution },
+): GeminiPart | null {
   if (item.type === "input_image") {
+    const mediaResolution = resolveEffectiveMediaResolution(
+      item.detail,
+      options?.defaultMediaResolution,
+    );
+    const geminiPartMediaResolution = toGeminiPartMediaResolution(mediaResolution);
     if (typeof item.file_id === "string" && item.file_id.trim().length > 0) {
-      return {
-        fileData: {
-          fileUri: buildCanonicalGeminiFileUri(item.file_id),
-          mimeType:
-            inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
-        },
-      };
+      return createPartFromUri(
+        buildCanonicalGeminiFileUri(item.file_id),
+        inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
+        geminiPartMediaResolution,
+      );
     }
     if (typeof item.image_url !== "string" || item.image_url.trim().length === 0) {
       return null;
     }
     const parsed = parseDataUrlPayload(item.image_url);
     if (parsed) {
-      const part = createPartFromBase64(parsed.dataBase64, parsed.mimeType);
+      const part = createPartFromBase64(
+        parsed.dataBase64,
+        parsed.mimeType,
+        geminiPartMediaResolution,
+      );
       const displayName = item.filename?.trim();
       if (displayName && part.inlineData) {
         part.inlineData.displayName = displayName;
       }
       return part;
     }
-    return {
-      fileData: {
-        fileUri: item.image_url,
-        mimeType: inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
-      },
-    };
+    return createPartFromUri(
+      item.image_url,
+      inferToolOutputMimeTypeFromFilename(item.filename) ?? "application/octet-stream",
+      geminiPartMediaResolution,
+    );
   }
   if (item.type === "input_file") {
     if (typeof item.file_id === "string" && item.file_id.trim().length > 0) {
@@ -3118,6 +3312,7 @@ function buildGeminiFunctionResponseParts(options: {
   toolName: string;
   callId?: string;
   outputPayload: unknown;
+  defaultMediaResolution?: LlmMediaResolution;
 }): GeminiPart[] {
   const outputItems = toGeminiToolOutputItems(options.outputPayload);
   if (!outputItems) {
@@ -3139,7 +3334,9 @@ function buildGeminiFunctionResponseParts(options: {
 
   const responseOutput = outputItems.map((item) => toGeminiToolOutputPlaceholder(item));
   const responseParts = outputItems.flatMap((item) => {
-    const mediaPart = buildGeminiToolOutputMediaPart(item);
+    const mediaPart = buildGeminiToolOutputMediaPart(item, {
+      defaultMediaResolution: options.defaultMediaResolution,
+    });
     return mediaPart ? [mediaPart] : [];
   });
   const responsePayload: Record<string, unknown> = { output: responseOutput };
@@ -4103,6 +4300,9 @@ function startLlmCallLoggerFromContents(options: {
         : {}),
       ...(options.request.imageSize ? { imageSize: options.request.imageSize } : {}),
       ...(options.request.thinkingLevel ? { thinkingLevel: options.request.thinkingLevel } : {}),
+      ...(options.request.mediaResolution
+        ? { mediaResolution: options.request.mediaResolution }
+        : {}),
       ...(options.request.openAiTextFormat
         ? { openAiTextFormat: sanitiseLogValue(options.request.openAiTextFormat) }
         : {}),
@@ -4245,7 +4445,13 @@ async function runTextCall(params: {
   const { result } = await collectFileUploadMetrics(async () => {
     try {
       if (provider === "openai") {
-        const openAiInput = await maybePrepareOpenAiPromptInput(toOpenAiInput(contents));
+        const openAiInput = await maybePrepareOpenAiPromptInput(
+          toOpenAiInput(contents, {
+            defaultMediaResolution: request.mediaResolution,
+            model: request.model,
+          }),
+          { model: request.model },
+        );
         const openAiTools = toOpenAiTools(request.tools);
         const reasoningEffort = resolveOpenAiReasoningEffort(
           modelForProvider,
@@ -4332,7 +4538,10 @@ async function runTextCall(params: {
           }
         }, modelForProvider);
       } else if (provider === "chatgpt") {
-        const chatGptInput = toChatGptInput(contents);
+        const chatGptInput = toChatGptInput(contents, {
+          defaultMediaResolution: request.mediaResolution,
+          model: request.model,
+        });
         const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
         const openAiTools = toOpenAiTools(request.tools);
         const requestPayload = {
@@ -4449,12 +4658,18 @@ async function runTextCall(params: {
         }, modelForProvider);
       } else {
         const geminiContents = await maybePrepareGeminiPromptContents(
-          contents.map(convertLlmContentToGeminiContent),
+          contents.map((content) =>
+            convertLlmContentToGeminiContent(content, {
+              defaultMediaResolution: request.mediaResolution,
+            }),
+          ),
         );
         const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
+        const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
         const config: GenerateContentConfig = {
           maxOutputTokens: 32_000,
           ...(thinkingConfig ? { thinkingConfig } : {}),
+          ...(mediaResolution ? { mediaResolution } : {}),
           ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
           ...(request.responseJsonSchema ? { responseJsonSchema: request.responseJsonSchema } : {}),
           ...(request.responseModalities
@@ -5251,7 +5466,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       };
 
       let previousResponseId: string | undefined;
-      let input: any = toOpenAiInput(contents);
+      let input: any = toOpenAiInput(contents, {
+        defaultMediaResolution: request.mediaResolution,
+        model: request.model,
+      });
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
@@ -5280,7 +5498,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let reasoningSummary = "";
         let stepToolCallText: string | undefined;
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
-        const preparedInput = await maybePrepareOpenAiPromptInput(input);
+        const preparedInput = await maybePrepareOpenAiPromptInput(input, {
+          model: request.model,
+        });
         const stepRequestPayload = {
           model: providerInfo.model,
           input: preparedInput,
@@ -5433,7 +5653,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           const stepToolCalls: LlmToolCallResult[] = [];
           if (responseToolCalls.length === 0) {
             const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-            const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
+            const steeringItems =
+              steeringInput.length > 0
+                ? toOpenAiInput(steeringInput, {
+                    defaultMediaResolution: request.mediaResolution,
+                    model: request.model,
+                  })
+                : [];
             finalText = responseText;
             finalThoughts = reasoningSummary;
             const stepCompletedAtMs = Date.now();
@@ -5568,13 +5794,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               toolOutputs.push({
                 type: "custom_tool_call_output",
                 call_id: entry.call.call_id,
-                output: toOpenAiToolOutput(outputPayload),
+                output: toOpenAiToolOutput(outputPayload, {
+                  defaultMediaResolution: request.mediaResolution,
+                  model: request.model,
+                }),
               });
             } else {
               toolOutputs.push({
                 type: "function_call_output",
                 call_id: entry.call.call_id,
-                output: toOpenAiToolOutput(outputPayload),
+                output: toOpenAiToolOutput(outputPayload, {
+                  defaultMediaResolution: request.mediaResolution,
+                  model: request.model,
+                }),
               });
             }
           }
@@ -5601,7 +5833,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           });
 
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-          const steeringItems = steeringInput.length > 0 ? toOpenAiInput(steeringInput) : [];
+          const steeringItems =
+            steeringInput.length > 0
+              ? toOpenAiInput(steeringInput, {
+                  defaultMediaResolution: request.mediaResolution,
+                  model: request.model,
+                })
+              : [];
           stepCallLogger?.complete({
             responseText,
             toolCallText: stepToolCallText,
@@ -5651,7 +5889,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         : [...openAiAgentTools];
 
       const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
-      const toolLoopInput = toChatGptInput(contents);
+      const toolLoopInput = toChatGptInput(contents, {
+        defaultMediaResolution: request.mediaResolution,
+        model: request.model,
+      });
       // ChatGPT Codex prompt caching is keyed by both prompt_cache_key and session_id.
       const conversationId = `tool-loop-${randomBytes(8).toString("hex")}`;
       const promptCacheKey = conversationId;
@@ -5766,7 +6007,12 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           if (responseToolCalls.length === 0) {
             const steeringInput = steeringInternal?.drainPendingContents() ?? [];
             const steeringItems =
-              steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+              steeringInput.length > 0
+                ? toChatGptInput(steeringInput, {
+                    defaultMediaResolution: request.mediaResolution,
+                    model: request.model,
+                  }).input
+                : [];
             finalText = responseText;
             finalThoughts = reasoningSummaryText;
             const stepCompletedAtMs = Date.now();
@@ -5907,7 +6153,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               toolOutputs.push({
                 type: "custom_tool_call_output",
                 call_id: entry.ids.callId,
-                output: toChatGptToolOutput(outputPayload),
+                output: toChatGptToolOutput(outputPayload, {
+                  defaultMediaResolution: request.mediaResolution,
+                  model: request.model,
+                }),
               } as ChatGptInputItem);
             } else {
               toolOutputs.push({
@@ -5921,7 +6170,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               toolOutputs.push({
                 type: "function_call_output",
                 call_id: entry.ids.callId,
-                output: toChatGptToolOutput(outputPayload),
+                output: toChatGptToolOutput(outputPayload, {
+                  defaultMediaResolution: request.mediaResolution,
+                  model: request.model,
+                }),
               } as ChatGptInputItem);
             }
           }
@@ -5947,7 +6199,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           });
 
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
-          const steeringItems = steeringInput.length > 0 ? toChatGptInput(steeringInput).input : [];
+          const steeringItems =
+            steeringInput.length > 0
+              ? toChatGptInput(steeringInput, {
+                  defaultMediaResolution: request.mediaResolution,
+                  model: request.model,
+                }).input
+              : [];
           stepCallLogger?.complete({
             responseText,
             toolCallText: stepToolCallText,
@@ -6302,7 +6560,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     const geminiTools = geminiNativeTools
       ? geminiNativeTools.concat(geminiFunctionTools)
       : geminiFunctionTools;
-    const geminiContents = contents.map(convertLlmContentToGeminiContent);
+    const geminiContents = contents.map((content) =>
+      convertLlmContentToGeminiContent(content, {
+        defaultMediaResolution: request.mediaResolution,
+      }),
+    );
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
@@ -6321,6 +6583,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }
       };
       const thinkingConfig = resolveGeminiThinkingConfig(request.model, request.thinkingLevel);
+      const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
       const config: GenerateContentConfig = {
         maxOutputTokens: 32_000,
         tools: geminiTools,
@@ -6330,6 +6593,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           },
         },
         ...(thinkingConfig ? { thinkingConfig } : {}),
+        ...(mediaResolution ? { mediaResolution } : {}),
       };
 
       const onEvent = request.onEvent;
@@ -6505,7 +6769,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           } else if (response.responseText.length > 0) {
             geminiContents.push({ role: "model", parts: [{ text: response.responseText }] });
           }
-          geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
+          geminiContents.push(
+            ...steeringInput.map((content) =>
+              convertLlmContentToGeminiContent(content, {
+                defaultMediaResolution: request.mediaResolution,
+              }),
+            ),
+          );
           continue;
         }
 
@@ -6604,6 +6874,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               toolName: entry.toolName,
               callId: entry.call.id,
               outputPayload,
+              defaultMediaResolution: request.mediaResolution,
             }),
           );
         }
@@ -6650,7 +6921,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         geminiContents.push({ role: "user", parts: responseParts });
         const steeringInput = steeringInternal?.drainPendingContents() ?? [];
         if (steeringInput.length > 0) {
-          geminiContents.push(...steeringInput.map(convertLlmContentToGeminiContent));
+          geminiContents.push(
+            ...steeringInput.map((content) =>
+              convertLlmContentToGeminiContent(content, {
+                defaultMediaResolution: request.mediaResolution,
+              }),
+            ),
+          );
         }
       } catch (error) {
         stepCallLogger?.fail(error, {

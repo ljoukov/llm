@@ -1,3 +1,7 @@
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 
@@ -73,6 +77,46 @@ describe("runAgentLoop", () => {
       "read_file",
       "view_image",
     ]);
+  });
+
+  it("passes request mediaResolution into the built-in view_image tool", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-agent-view-image-"));
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "pixel.png"),
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      );
+
+      await runAgentLoop({
+        model: "chatgpt-gpt-5.4",
+        input: "test",
+        mediaResolution: "original",
+        filesystemTool: {
+          enabled: true,
+          options: {
+            cwd: tempRoot,
+          },
+        },
+      });
+
+      const call = runToolLoopMock.mock.calls[0]?.[0] as {
+        tools: Record<string, { execute: (input: unknown) => Promise<unknown> }>;
+      };
+      const output = (await call.tools.view_image?.execute({
+        path: "pixel.png",
+      })) as Array<Record<string, unknown>>;
+      expect(output[0]).toMatchObject({
+        type: "input_image",
+        detail: "original",
+      });
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("accepts filesystem_tool alias and uses gemini tool profile for gemini models", async () => {

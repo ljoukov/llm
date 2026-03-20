@@ -106,6 +106,34 @@ describe("streamText (OpenAI)", () => {
     expect(capturedRequest?.reasoning?.effort).toBe("high");
   });
 
+  it("maps mediaResolution=original to OpenAI image detail on gpt-5.4", async () => {
+    capturedRequest = null;
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({
+      model: "gpt-5.4",
+      mediaResolution: "original",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this image." },
+            {
+              type: "inlineData",
+              mimeType: "image/png",
+              data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+            },
+          ],
+        },
+      ],
+    });
+
+    const imagePart = capturedRequest?.input?.[0]?.content?.find(
+      (p: any) => p?.type === "input_image",
+    );
+    expect(imagePart?.detail).toBe("original");
+  });
+
   it("maps inlineData application/pdf to input_file", async () => {
     capturedRequest = null;
     const { generateText } = await import("../src/llm.js");

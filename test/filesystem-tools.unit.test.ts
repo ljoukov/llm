@@ -252,6 +252,16 @@ describe("filesystemTools behavior", () => {
       expect(typeof imageUrl).toBe("string");
       expect(imageUrl?.startsWith("data:image/png;base64,")).toBe(true);
 
+      const originalViewImage = createViewImageTool({
+        cwd: tempRoot,
+        mediaResolution: "original",
+      });
+      const originalOutput = await originalViewImage.execute({ path: "pixel.png" });
+      expect(originalOutput[0]).toMatchObject({
+        type: "input_image",
+        detail: "original",
+      });
+
       const fallbackOutput = await viewImage.execute({ path: "note.txt" });
       expect(fallbackOutput).toHaveLength(1);
       expect(fallbackOutput[0]).toMatchObject({ type: "input_text" });

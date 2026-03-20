@@ -130,6 +130,37 @@ describe("streamText (ChatGPT)", () => {
     expect(result.modelVersion).toBe("chatgpt-gpt-5.4-fast");
   });
 
+  it("maps mediaResolution=original to ChatGPT image detail on gpt-5.4", async () => {
+    capturedRequest = null;
+    chatGptCallCount = 0;
+    failFirstTerminated = false;
+    emitChatGptDeltas = true;
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({
+      model: "chatgpt-gpt-5.4",
+      mediaResolution: "original",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this image." },
+            {
+              type: "inlineData",
+              mimeType: "image/png",
+              data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+            },
+          ],
+        },
+      ],
+    });
+
+    const imagePart = capturedRequest?.input?.[0]?.content?.find(
+      (p: any) => p?.type === "input_image",
+    );
+    expect(imagePart?.detail).toBe("original");
+  });
+
   it("writes response.txt even when ChatGPT emits no response deltas", async () => {
     capturedRequest = null;
     chatGptCallCount = 0;
