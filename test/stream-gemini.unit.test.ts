@@ -187,6 +187,34 @@ describe("streamText (Gemini)", () => {
     });
   });
 
+  it("maps mediaResolution=original to Gemini high config and ultra-high image parts", async () => {
+    geminiRequests = [];
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({
+      model: "gemini-2.5-pro",
+      mediaResolution: "original",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this image." },
+            {
+              type: "inlineData",
+              mimeType: "image/png",
+              data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(geminiRequests[0]?.config?.mediaResolution).toBe("MEDIA_RESOLUTION_HIGH");
+    expect(geminiRequests[0]?.contents?.[0]?.parts?.[1]?.mediaResolution?.level).toBe(
+      "MEDIA_RESOLUTION_ULTRA_HIGH",
+    );
+  });
+
   it("does not send thinkingConfig for Gemini image models", async () => {
     geminiRequests = [];
     const { streamText } = await import("../src/llm.js");

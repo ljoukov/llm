@@ -323,6 +323,20 @@ canonical files automatically. Tool loops do the same for large tool outputs, an
 after parallel tool calls so a batch of individually-small images/files still gets upgraded to `file_id` references
 before the next model request if the aggregate payload is too large.
 
+You can also control image analysis fidelity with request-level `mediaResolution`:
+
+- `low`, `medium`, `high`, `original`, `auto`
+- OpenAI / ChatGPT map this onto image `detail`
+- Gemini maps this onto media resolution/tokenization settings
+
+```ts
+const result = await generateText({
+  model: "gpt-5.4",
+  mediaResolution: "original",
+  input,
+});
+```
+
 OpenAI-style direct file-id example:
 
 ```ts
@@ -721,6 +735,7 @@ Confinement/policy is set through `filesystemTool.options`:
 - `fs`: backend (`createNodeAgentFilesystem()` or `createInMemoryAgentFilesystem()`).
 - `checkAccess`: hook for allow/deny policy + audit.
 - `allowOutsideCwd`: opt-out confinement (default is false).
+- `mediaResolution`: default image fidelity for built-in `view_image` outputs.
 
 Detailed reference: `docs/agent-filesystem-tools.md`.
 

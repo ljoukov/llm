@@ -50,6 +50,7 @@ export type {
   LlmJsonStream,
   LlmJsonStreamEvent,
   LlmJsonStreamRequest,
+  LlmMediaResolution,
   LlmModelEvent,
   LlmModelId,
   LlmProvider,

@@ -36,7 +36,7 @@ export type ChatGptInputImagePart = {
   type: "input_image";
   image_url?: string | { url: string } | null;
   file_id?: string | null;
-  detail?: "auto" | "low" | "high";
+  detail?: "auto" | "low" | "high" | "original";
 };
 
 export type ChatGptInputFilePart = {

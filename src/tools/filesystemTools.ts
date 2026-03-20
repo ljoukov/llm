@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import {
   customTool,
+  type LlmMediaResolution,
   type LlmToolOutputContentItem,
   type LlmCustomTool,
   type LlmFunctionTool,
@@ -91,6 +92,7 @@ export type AgentFilesystemToolsOptions = {
   readonly fs?: AgentFilesystem;
   readonly allowOutsideCwd?: boolean;
   readonly checkAccess?: AgentFilesystemToolAccessHook;
+  readonly mediaResolution?: LlmMediaResolution;
   readonly maxLineLength?: number;
   readonly grepMaxScannedFiles?: number;
   readonly applyPatch?: {
@@ -724,6 +726,7 @@ async function viewImageCodex(
     {
       type: "input_image",
       image_url: `data:${mimeType};base64,${bytes.toString("base64")}`,
+      ...(options.mediaResolution ? { detail: options.mediaResolution } : {}),
     },
   ];
 }
