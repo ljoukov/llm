@@ -2,10 +2,20 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
+import {
+  getMockStorageState,
+  installMockStorageEnv,
+  resetMockStorageState,
+} from "./helpers/mock-storage.js";
 
 let capturedRequest: any = null;
-let uploadedFiles: any[] = [];
+
+vi.mock("@google-cloud/storage", async () => {
+  return await import("./helpers/mock-storage.js");
+});
 
 vi.mock("../src/openai/calls.js", () => {
   const fakeStream = {
@@ -43,34 +53,15 @@ vi.mock("../src/openai/calls.js", () => {
   };
 });
 
-vi.mock("../src/openai/client.js", () => ({
-  getOpenAiClient: () => ({
-    files: {
-      create: async (body: any) => {
-        uploadedFiles.push(body);
-        return {
-          id: "file_123",
-          bytes: body?.file?.size ?? 0,
-          created_at: 1,
-          filename: body?.file?.name ?? "uploaded.bin",
-          object: "file",
-          purpose: body?.purpose ?? "user_data",
-          status: "processed",
-          expires_at: 1 + 48 * 60 * 60,
-        };
-      },
-    },
-    uploads: {
-      create: async () => ({ id: "upload_123" }),
-      parts: {
-        create: async (_uploadId: string, _body: any) => ({ id: "part_123" }),
-      },
-      complete: async () => ({ file: { id: "file_123" } }),
-    },
-  }),
-}));
-
 describe("streamText (OpenAI)", () => {
+  beforeEach(() => {
+    capturedRequest = null;
+    vi.resetModules();
+    resetRuntimeSingletonsForTesting();
+    resetMockStorageState();
+    installMockStorageEnv();
+  });
+
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
@@ -94,7 +85,6 @@ describe("streamText (OpenAI)", () => {
   });
 
   it("maps thinkingLevel=high to OpenAI max reasoning effort", async () => {
-    capturedRequest = null;
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({ model: "gpt-5.4-mini", input: "hi", thinkingLevel: "high" });
@@ -107,7 +97,6 @@ describe("streamText (OpenAI)", () => {
   });
 
   it("maps mediaResolution=original to OpenAI image detail on gpt-5.4", async () => {
-    capturedRequest = null;
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
@@ -135,7 +124,6 @@ describe("streamText (OpenAI)", () => {
   });
 
   it("maps inlineData application/pdf to input_file", async () => {
-    capturedRequest = null;
     const { generateText } = await import("../src/llm.js");
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
@@ -162,9 +150,7 @@ describe("streamText (OpenAI)", () => {
     expect(filePart.filename).toBe("document.pdf");
   });
 
-  it("uploads large prompt attachments and replaces file_data with file_id", async () => {
-    capturedRequest = null;
-    uploadedFiles = [];
+  it("uploads large prompt attachments and replaces file_data with signed file_url", async () => {
     const { generateText } = await import("../src/llm.js");
 
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
@@ -188,16 +174,22 @@ describe("streamText (OpenAI)", () => {
 
     const input = capturedRequest?.input;
     const filePart = input?.[0]?.content?.find((p: any) => p?.type === "input_file");
-    expect(filePart?.file_id).toBe("file_123");
+    expect(filePart?.file_url).toMatch(
+      /^https:\/\/mock-gcs\.local\/llm-test-bucket\/canonical-files\/file_[a-f0-9]{64}\.pdf\?signed=1$/u,
+    );
     expect(filePart?.file_data).toBeUndefined();
+    expect(filePart?.file_id).toBeUndefined();
     expect(filePart?.filename).toBeUndefined();
-    expect(uploadedFiles).toHaveLength(1);
-    expect(uploadedFiles[0]?.purpose).toBe("user_data");
+
+    const mockStorage = getMockStorageState();
+    expect(mockStorage.saveCalls).toHaveLength(1);
+    expect(mockStorage.signedUrlCalls).toHaveLength(1);
+    expect(mockStorage.saveCalls[0]?.objectName).toMatch(
+      /^canonical-files\/file_[a-f0-9]{64}\.pdf$/u,
+    );
   });
 
   it("writes upload logs and upload metrics for direct calls that offload prompt files", async () => {
-    capturedRequest = null;
-    uploadedFiles = [];
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-stream-openai-logs-"));
     try {
       const workspaceDir = path.join(tempRoot, "workspace");
@@ -235,7 +227,7 @@ describe("streamText (OpenAI)", () => {
       const agentLog = await fs.readFile(path.join(workspaceDir, "agent.log"), "utf8");
       expect(agentLog).toContain("[upload]");
       expect(agentLog).toContain("source=prompt_inline_offload");
-      expect(agentLog).toContain("backend=openai");
+      expect(agentLog).toContain("backend=gcs");
       expect(agentLog).toContain('filename="report.pdf"');
 
       const logsRoot = path.join(workspaceDir, "llm_calls");
@@ -256,6 +248,7 @@ describe("streamText (OpenAI)", () => {
       expect(responseMetadata.uploads?.count).toBe(1);
       expect(responseMetadata.uploads?.totalBytes).toBeGreaterThan(0);
       expect(responseMetadata.uploads?.totalLatencyMs).toBeGreaterThanOrEqual(0);
+      expect(getMockStorageState().signedUrlCalls).toHaveLength(1);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

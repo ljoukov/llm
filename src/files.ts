@@ -1,27 +1,22 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { Buffer, File as NodeFile } from "node:buffer";
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream, openAsBlob } from "node:fs";
-import { copyFile, mkdir, mkdtemp, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { copyFile, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import type { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
-import type OpenAI from "openai";
 import mime from "mime";
 
 import { getCurrentAgentLoggingSession } from "./agentLogging.js";
 import { getGoogleServiceAccount } from "./google/auth.js";
 import { getGeminiClient } from "./google/client.js";
-import { getOpenAiClient } from "./openai/client.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export const DEFAULT_FILE_TTL_SECONDS = 48 * 60 * 60;
-const OPENAI_FILE_CREATE_MAX_BYTES = 512 * 1024 * 1024;
-const OPENAI_UPLOAD_PART_MAX_BYTES = 64 * 1024 * 1024;
 const GEMINI_FILE_POLL_INTERVAL_MS = 1_000;
 const GEMINI_FILE_POLL_TIMEOUT_MS = 60_000;
 const FILES_TEMP_ROOT = path.join(os.tmpdir(), "ljoukov-llm-files");
@@ -54,9 +49,9 @@ export type LlmFileUploadSource =
   | "tool_output_spill"
   | "provider_mirror";
 
-export type LlmFileUploadBackend = "openai" | "gemini" | "vertex";
+export type LlmFileUploadBackend = "gcs" | "gemini" | "vertex";
 
-export type LlmFileUploadMode = "files.create" | "uploads" | "mirror";
+export type LlmFileUploadMode = "gcs" | "mirror";
 
 export type LlmFileUploadEvent = {
   readonly timestamp: string;
@@ -102,10 +97,12 @@ type CachedFileMetadata = {
   readonly mimeType?: string;
   readonly sha256Hex?: string;
   readonly localPath?: string;
+  readonly bucketName?: string;
+  readonly objectName?: string;
 };
 
 type CachedGeminiMirror = {
-  readonly openAiFileId: string;
+  readonly canonicalFileId: string;
   readonly name: string;
   readonly uri: string;
   readonly mimeType: string;
@@ -113,20 +110,22 @@ type CachedGeminiMirror = {
 };
 
 type CachedVertexMirror = {
-  readonly openAiFileId: string;
+  readonly canonicalFileId: string;
   readonly bucket: string;
   readonly objectName: string;
   readonly fileUri: string;
   readonly mimeType: string;
 };
 
-type MaterializedOpenAiFile = {
+type MaterializedCanonicalFile = {
   readonly file: LlmStoredFile;
   readonly filename: string;
   readonly bytes: number;
   readonly mimeType: string;
   readonly sha256Hex: string;
   readonly localPath: string;
+  readonly bucketName: string;
+  readonly objectName: string;
 };
 
 type PersistedFileMetadata = {
@@ -136,6 +135,8 @@ type PersistedFileMetadata = {
   readonly mimeType?: string;
   readonly sha256Hex?: string;
   readonly localPath?: string;
+  readonly bucketName?: string;
+  readonly objectName?: string;
 };
 
 type FileUploadCollector = {
@@ -149,8 +150,8 @@ type FileUploadScope = {
 
 const filesState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.filesState"), () => ({
   metadataById: new Map<string, CachedFileMetadata>(),
-  openAiUploadCacheByKey: new Map<string, CachedFileMetadata>(),
-  materializedById: new Map<string, Promise<MaterializedOpenAiFile>>(),
+  canonicalUploadCacheByKey: new Map<string, CachedFileMetadata>(),
+  materializedById: new Map<string, Promise<MaterializedCanonicalFile>>(),
   geminiMirrorById: new Map<string, CachedGeminiMirror>(),
   vertexMirrorById: new Map<string, CachedVertexMirror>(),
   storageClient: undefined as Storage | undefined,
@@ -249,7 +250,7 @@ function recordUploadEvent(
 ): void {
   const scope = fileUploadScopeStorage.getStore();
   const resolvedSource =
-    event.source ?? scope?.source ?? (event.backend === "openai" ? "files_api" : "provider_mirror");
+    event.source ?? scope?.source ?? (event.backend === "gcs" ? "files_api" : "provider_mirror");
   const timestampedEvent: LlmFileUploadEvent = {
     ...event,
     source: resolvedSource,
@@ -306,16 +307,168 @@ async function computeFileSha256Hex(filePath: string): Promise<string> {
   return hash.digest("hex");
 }
 
-function toStoredFile(file: OpenAI.Files.FileObject): LlmStoredFile {
+function buildCanonicalFileId(filename: string, mimeType: string, sha256Hex: string): string {
+  return `file_${createHash("sha256")
+    .update(filename)
+    .update("\u0000")
+    .update(mimeType)
+    .update("\u0000")
+    .update(sha256Hex)
+    .digest("hex")}`;
+}
+
+function resolveCanonicalFilesBucket(): string {
+  const raw =
+    process.env.LLM_FILES_GCS_BUCKET ??
+    process.env.VERTEX_GCS_BUCKET ??
+    process.env.LLM_VERTEX_GCS_BUCKET;
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    throw new Error(
+      "LLM_FILES_GCS_BUCKET (or VERTEX_GCS_BUCKET) must be set to use the canonical files API.",
+    );
+  }
+  return trimmed.replace(/^gs:\/\//u, "").replace(/\/+$/u, "");
+}
+
+function resolveCanonicalFilesPrefix(): string {
+  const raw = process.env.LLM_FILES_GCS_PREFIX;
+  const trimmed = raw?.trim().replace(/^\/+/u, "").replace(/\/+$/u, "");
+  return trimmed ? `${trimmed}/` : "canonical-files/";
+}
+
+function isLatexLikeFile(filename: string, mimeType: string): boolean {
+  const extension = path.extname(filename).trim().toLowerCase();
+  const normalisedMimeType = mimeType.trim().toLowerCase();
+  return (
+    extension === ".tex" ||
+    extension === ".ltx" ||
+    extension === ".latex" ||
+    normalisedMimeType === "application/x-tex" ||
+    normalisedMimeType === "text/x-tex"
+  );
+}
+
+function resolveCanonicalStorageContentType(filename: string, mimeType: string): string {
+  if (isLatexLikeFile(filename, mimeType)) {
+    return "text/plain";
+  }
+  return mimeType;
+}
+
+function resolveCanonicalObjectExtension(filename: string, mimeType: string): string {
+  if (isLatexLikeFile(filename, mimeType)) {
+    return "txt";
+  }
+  const fromFilename = path.extname(filename).replace(/^\./u, "").trim().toLowerCase();
+  if (fromFilename) {
+    return fromFilename;
+  }
+  const fromMimeType = mime.getExtension(mimeType)?.trim().toLowerCase();
+  if (fromMimeType) {
+    return fromMimeType;
+  }
+  return "bin";
+}
+
+function buildCanonicalObjectName(fileId: string, filename: string, mimeType: string): string {
+  const extension = resolveCanonicalObjectExtension(filename, mimeType);
+  return `${resolveCanonicalFilesPrefix()}${fileId}.${extension}`;
+}
+
+function toSafeStorageFilename(filename: string): string {
+  const normalized = normaliseFilename(filename).replace(/[^\w.-]+/gu, "-");
+  return normalized.length > 0 ? normalized : "attachment.bin";
+}
+
+function parseUnixSeconds(value: string | undefined, fallback?: string): number {
+  if (value) {
+    const numeric = Number.parseInt(value, 10);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+  }
+  if (fallback) {
+    const millis = Date.parse(fallback);
+    if (Number.isFinite(millis)) {
+      return Math.floor(millis / 1000);
+    }
+  }
+  return Math.floor(Date.now() / 1000);
+}
+
+function parseOptionalUnixSeconds(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const millis = Date.parse(value);
+  if (Number.isFinite(millis)) {
+    return Math.floor(millis / 1000);
+  }
+  const numeric = Number.parseInt(value, 10);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : undefined;
+}
+
+function toStoredFileFromCanonicalMetadata(options: {
+  fileId: string;
+  bucketName: string;
+  objectName: string;
+  objectMetadata: Record<string, any>;
+  localPath?: string;
+}): CachedFileMetadata {
+  const metadata = options.objectMetadata.metadata as Record<string, unknown> | undefined;
+  const filenameRaw =
+    typeof metadata?.filename === "string" && metadata.filename.trim().length > 0
+      ? metadata.filename.trim()
+      : path.basename(options.objectName);
+  const filename = normaliseFilename(filenameRaw);
+  const bytesRaw = options.objectMetadata.size;
+  const bytes =
+    typeof bytesRaw === "string"
+      ? Number.parseInt(bytesRaw, 10)
+      : typeof bytesRaw === "number"
+        ? bytesRaw
+        : 0;
+  const purpose =
+    metadata?.purpose === "user_data" ? ("user_data" as const) : ("user_data" as const);
+  const createdAt = parseUnixSeconds(
+    typeof metadata?.createdAtUnix === "string" ? metadata.createdAtUnix : undefined,
+    typeof options.objectMetadata.timeCreated === "string"
+      ? options.objectMetadata.timeCreated
+      : undefined,
+  );
+  const expiresAt = parseOptionalUnixSeconds(
+    typeof metadata?.expiresAt === "string" ? metadata.expiresAt : undefined,
+  );
+  const mimeType =
+    typeof metadata?.mimeType === "string" && metadata.mimeType.trim().length > 0
+      ? metadata.mimeType.trim()
+      : typeof options.objectMetadata.contentType === "string" &&
+          options.objectMetadata.contentType.trim().length > 0
+        ? options.objectMetadata.contentType.trim()
+        : resolveMimeType(filename, undefined);
+  const sha256Hex =
+    typeof metadata?.sha256 === "string" && metadata.sha256.trim().length > 0
+      ? metadata.sha256.trim()
+      : undefined;
   return {
-    id: file.id,
-    bytes: file.bytes,
-    created_at: file.created_at,
-    filename: file.filename,
-    object: "file",
-    purpose: file.purpose as LlmFilePurpose,
-    status: file.status,
-    expires_at: file.expires_at,
+    file: {
+      id: options.fileId,
+      bytes: Number.isFinite(bytes) ? bytes : 0,
+      created_at: createdAt,
+      filename,
+      object: "file",
+      purpose,
+      status: "processed",
+      ...(expiresAt ? { expires_at: expiresAt } : {}),
+    },
+    filename,
+    bytes: Number.isFinite(bytes) ? bytes : 0,
+    mimeType,
+    sha256Hex,
+    localPath: options.localPath,
+    bucketName: options.bucketName,
+    objectName: options.objectName,
   };
 }
 
@@ -341,7 +494,7 @@ function isFresh(file: LlmStoredFile): boolean {
 function recordMetadata(metadata: CachedFileMetadata): CachedFileMetadata {
   filesState.metadataById.set(metadata.file.id, metadata);
   if (metadata.sha256Hex) {
-    filesState.openAiUploadCacheByKey.set(
+    filesState.canonicalUploadCacheByKey.set(
       buildCacheKey(
         metadata.filename,
         metadata.mimeType ?? "application/octet-stream",
@@ -395,6 +548,8 @@ async function persistMetadataToDisk(metadata: CachedFileMetadata): Promise<void
     mimeType: metadata.mimeType,
     sha256Hex: metadata.sha256Hex,
     localPath: metadata.localPath,
+    bucketName: metadata.bucketName,
+    objectName: metadata.objectName,
   };
   await writeFile(
     buildCachedMetadataPath(metadata.file.id),
@@ -427,13 +582,141 @@ async function loadPersistedMetadata(fileId: string): Promise<CachedFileMetadata
       mimeType: payload.mimeType,
       sha256Hex: payload.sha256Hex,
       localPath: payload.localPath,
+      bucketName: payload.bucketName,
+      objectName: payload.objectName,
     });
   } catch {
     return undefined;
   }
 }
 
-async function uploadOpenAiFileFromBytes(params: {
+async function writeCanonicalFileFromPath(options: {
+  filePath: string;
+  bucketName: string;
+  objectName: string;
+  bytes: number;
+  mimeType: string;
+  metadata: Record<string, string>;
+}): Promise<boolean> {
+  const file = getStorageClient().bucket(options.bucketName).file(options.objectName);
+  const storageContentType = resolveCanonicalStorageContentType(
+    options.metadata.filename ?? "attachment.bin",
+    options.mimeType,
+  );
+  try {
+    await pipeline(
+      createReadStream(options.filePath),
+      file.createWriteStream({
+        resumable: options.bytes >= 10 * 1024 * 1024,
+        preconditionOpts: { ifGenerationMatch: 0 },
+        metadata: {
+          contentType: storageContentType,
+          contentDisposition: `inline; filename="${toSafeStorageFilename(options.metadata.filename ?? "attachment.bin")}"`,
+          metadata: options.metadata,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 412 || code === "412") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function writeCanonicalFileFromBytes(options: {
+  bytes: Buffer;
+  bucketName: string;
+  objectName: string;
+  mimeType: string;
+  metadata: Record<string, string>;
+}): Promise<boolean> {
+  const file = getStorageClient().bucket(options.bucketName).file(options.objectName);
+  const storageContentType = resolveCanonicalStorageContentType(
+    options.metadata.filename ?? "attachment.bin",
+    options.mimeType,
+  );
+  try {
+    await file.save(options.bytes, {
+      resumable: options.bytes.byteLength >= 10 * 1024 * 1024,
+      preconditionOpts: { ifGenerationMatch: 0 },
+      metadata: {
+        contentType: storageContentType,
+        contentDisposition: `inline; filename="${toSafeStorageFilename(options.metadata.filename ?? "attachment.bin")}"`,
+        metadata: options.metadata,
+      },
+    });
+    return true;
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 412 || code === "412") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function refreshCanonicalObjectMetadata(options: {
+  bucketName: string;
+  objectName: string;
+  mimeType: string;
+  metadata: Record<string, string>;
+}): Promise<void> {
+  const storageContentType = resolveCanonicalStorageContentType(
+    options.metadata.filename ?? "attachment.bin",
+    options.mimeType,
+  );
+  await getStorageClient()
+    .bucket(options.bucketName)
+    .file(options.objectName)
+    .setMetadata({
+      contentType: storageContentType,
+      contentDisposition: `inline; filename="${toSafeStorageFilename(options.metadata.filename ?? "attachment.bin")}"`,
+      metadata: options.metadata,
+    });
+}
+
+async function createCanonicalMetadata(options: {
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  purpose: LlmFilePurpose;
+  expiresAfterSeconds: number;
+  sha256Hex: string;
+  bytes: number;
+  bucketName: string;
+  objectName: string;
+  localPath?: string;
+}): Promise<CachedFileMetadata> {
+  const createdAt = Math.floor(Date.now() / 1000);
+  const expiresAt = createdAt + options.expiresAfterSeconds;
+  const storedFile: LlmStoredFile = {
+    id: options.fileId,
+    bytes: options.bytes,
+    created_at: createdAt,
+    filename: options.filename,
+    object: "file",
+    purpose: options.purpose,
+    status: "processed",
+    expires_at: expiresAt,
+  };
+  const metadata = recordMetadata({
+    file: storedFile,
+    filename: options.filename,
+    bytes: options.bytes,
+    mimeType: options.mimeType,
+    sha256Hex: options.sha256Hex,
+    localPath: options.localPath,
+    bucketName: options.bucketName,
+    objectName: options.objectName,
+  });
+  await persistMetadataToDisk(metadata);
+  return metadata;
+}
+
+async function uploadCanonicalFileFromBytes(params: {
   bytes: Buffer;
   filename: string;
   mimeType: string;
@@ -442,77 +725,70 @@ async function uploadOpenAiFileFromBytes(params: {
   sha256Hex: string;
 }): Promise<CachedFileMetadata> {
   const cacheKey = buildCacheKey(params.filename, params.mimeType, params.sha256Hex);
-  const cached = filesState.openAiUploadCacheByKey.get(cacheKey);
+  const cached = filesState.canonicalUploadCacheByKey.get(cacheKey);
   if (cached && isFresh(cached.file)) {
     return cached;
   }
 
-  const client = getOpenAiClient();
+  const fileId = buildCanonicalFileId(params.filename, params.mimeType, params.sha256Hex);
+  const bucketName = resolveCanonicalFilesBucket();
+  const objectName = buildCanonicalObjectName(fileId, params.filename, params.mimeType);
+  const metadataFields = {
+    fileId,
+    filename: params.filename,
+    mimeType: params.mimeType,
+    purpose: params.purpose,
+    sha256: params.sha256Hex,
+    createdAtUnix: Math.floor(Date.now() / 1000).toString(),
+    expiresAt: new Date(Date.now() + params.expiresAfterSeconds * 1000).toISOString(),
+  } satisfies Record<string, string>;
   const startedAtMs = Date.now();
-  let uploaded: OpenAI.Files.FileObject | undefined;
-  let mode: LlmFileUploadMode;
-  if (params.bytes.byteLength <= OPENAI_FILE_CREATE_MAX_BYTES) {
-    mode = "files.create";
-    uploaded = await client.files.create({
-      file: new NodeFile([new Uint8Array(params.bytes)], params.filename, {
-        type: params.mimeType,
-      }),
-      purpose: params.purpose,
-      expires_after: {
-        anchor: "created_at",
-        seconds: params.expiresAfterSeconds,
-      },
+
+  const uploaded = await writeCanonicalFileFromBytes({
+    bytes: params.bytes,
+    bucketName,
+    objectName,
+    mimeType: params.mimeType,
+    metadata: metadataFields,
+  });
+  if (!uploaded) {
+    await refreshCanonicalObjectMetadata({
+      bucketName,
+      objectName,
+      mimeType: params.mimeType,
+      metadata: metadataFields,
     });
-  } else {
-    mode = "uploads";
-    const upload = await client.uploads.create({
-      bytes: params.bytes.byteLength,
-      filename: params.filename,
-      mime_type: params.mimeType,
-      purpose: params.purpose,
-    });
-    const partIds: string[] = [];
-    for (let offset = 0; offset < params.bytes.byteLength; offset += OPENAI_UPLOAD_PART_MAX_BYTES) {
-      const chunk = params.bytes.subarray(
-        offset,
-        Math.min(offset + OPENAI_UPLOAD_PART_MAX_BYTES, params.bytes.byteLength),
-      );
-      const uploadPart = await client.uploads.parts.create(upload.id, {
-        data: new NodeFile([new Uint8Array(chunk)], `${params.sha256Hex}.part`, {
-          type: params.mimeType,
-        }),
-      });
-      partIds.push(uploadPart.id);
-    }
-    const completed = await client.uploads.complete(upload.id, { part_ids: partIds });
-    const fileId = completed.file?.id;
-    if (!fileId) {
-      throw new Error("OpenAI upload completed without a file id.");
-    }
-    uploaded = await client.files.retrieve(fileId);
   }
 
-  const file = toStoredFile(uploaded);
-  const metadata = recordMetadata({
-    file,
-    filename: file.filename,
-    bytes: file.bytes,
+  const localPath = await cacheBufferLocally(params.bytes, params.sha256Hex);
+  const canonical = await createCanonicalMetadata({
+    fileId,
+    filename: params.filename,
     mimeType: params.mimeType,
+    purpose: params.purpose,
+    expiresAfterSeconds: params.expiresAfterSeconds,
     sha256Hex: params.sha256Hex,
+    bytes: params.bytes.byteLength,
+    bucketName,
+    objectName,
+    localPath,
   });
-  recordUploadEvent({
-    backend: "openai",
-    mode,
-    filename: metadata.filename,
-    bytes: metadata.bytes,
-    durationMs: Math.max(0, Date.now() - startedAtMs),
-    mimeType: params.mimeType,
-    fileId: metadata.file.id,
-  });
-  return metadata;
+  if (uploaded) {
+    recordUploadEvent({
+      backend: "gcs",
+      mode: "gcs",
+      filename: params.filename,
+      bytes: params.bytes.byteLength,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      mimeType: params.mimeType,
+      fileId,
+      fileUri: `gs://${bucketName}/${objectName}`,
+    });
+  }
+  return canonical;
 }
 
-async function uploadOpenAiFileFromPath(params: {
+async function uploadCanonicalFileFromPath(params: {
   filePath: string;
   filename: string;
   mimeType: string;
@@ -522,101 +798,126 @@ async function uploadOpenAiFileFromPath(params: {
   bytes: number;
 }): Promise<CachedFileMetadata> {
   const cacheKey = buildCacheKey(params.filename, params.mimeType, params.sha256Hex);
-  const cached = filesState.openAiUploadCacheByKey.get(cacheKey);
+  const cached = filesState.canonicalUploadCacheByKey.get(cacheKey);
   if (cached && isFresh(cached.file)) {
     return cached;
   }
 
-  const client = getOpenAiClient();
+  const fileId = buildCanonicalFileId(params.filename, params.mimeType, params.sha256Hex);
+  const bucketName = resolveCanonicalFilesBucket();
+  const objectName = buildCanonicalObjectName(fileId, params.filename, params.mimeType);
+  const metadataFields = {
+    fileId,
+    filename: params.filename,
+    mimeType: params.mimeType,
+    purpose: params.purpose,
+    sha256: params.sha256Hex,
+    createdAtUnix: Math.floor(Date.now() / 1000).toString(),
+    expiresAt: new Date(Date.now() + params.expiresAfterSeconds * 1000).toISOString(),
+  } satisfies Record<string, string>;
   const startedAtMs = Date.now();
-  let uploaded: OpenAI.Files.FileObject | undefined;
-  let mode: LlmFileUploadMode;
-  if (params.bytes <= OPENAI_FILE_CREATE_MAX_BYTES) {
-    mode = "files.create";
-    const blob = await openAsBlob(params.filePath, { type: params.mimeType });
-    uploaded = await client.files.create({
-      file: new NodeFile([blob], params.filename, { type: params.mimeType }),
-      purpose: params.purpose,
-      expires_after: {
-        anchor: "created_at",
-        seconds: params.expiresAfterSeconds,
-      },
+
+  const uploaded = await writeCanonicalFileFromPath({
+    filePath: params.filePath,
+    bucketName,
+    objectName,
+    bytes: params.bytes,
+    mimeType: params.mimeType,
+    metadata: metadataFields,
+  });
+  if (!uploaded) {
+    await refreshCanonicalObjectMetadata({
+      bucketName,
+      objectName,
+      mimeType: params.mimeType,
+      metadata: metadataFields,
     });
-  } else {
-    mode = "uploads";
-    const upload = await client.uploads.create({
-      bytes: params.bytes,
-      filename: params.filename,
-      mime_type: params.mimeType,
-      purpose: params.purpose,
-    });
-    const partIds: string[] = [];
-    const stream = createReadStream(params.filePath, {
-      highWaterMark: OPENAI_UPLOAD_PART_MAX_BYTES,
-    });
-    let partIndex = 0;
-    for await (const chunk of stream) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      const uploadPart = await client.uploads.parts.create(upload.id, {
-        data: new NodeFile(
-          [new Uint8Array(buffer)],
-          `${params.sha256Hex}.${partIndex.toString()}.part`,
-          {
-            type: params.mimeType,
-          },
-        ),
-      });
-      partIds.push(uploadPart.id);
-      partIndex += 1;
-    }
-    const completed = await client.uploads.complete(upload.id, { part_ids: partIds });
-    const fileId = completed.file?.id;
-    if (!fileId) {
-      throw new Error("OpenAI upload completed without a file id.");
-    }
-    uploaded = await client.files.retrieve(fileId);
   }
 
-  const file = toStoredFile(uploaded);
-  const metadata = recordMetadata({
-    file,
-    filename: file.filename,
-    bytes: file.bytes,
+  const localPath = await cacheFileLocally(params.filePath, params.sha256Hex);
+  const canonical = await createCanonicalMetadata({
+    fileId,
+    filename: params.filename,
     mimeType: params.mimeType,
+    purpose: params.purpose,
+    expiresAfterSeconds: params.expiresAfterSeconds,
     sha256Hex: params.sha256Hex,
+    bytes: params.bytes,
+    bucketName,
+    objectName,
+    localPath,
   });
-  recordUploadEvent({
-    backend: "openai",
-    mode,
-    filename: metadata.filename,
-    bytes: metadata.bytes,
-    durationMs: Math.max(0, Date.now() - startedAtMs),
-    mimeType: params.mimeType,
-    fileId: metadata.file.id,
-  });
-  return metadata;
+  if (uploaded) {
+    recordUploadEvent({
+      backend: "gcs",
+      mode: "gcs",
+      filename: params.filename,
+      bytes: params.bytes,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      mimeType: params.mimeType,
+      fileId,
+      fileUri: `gs://${bucketName}/${objectName}`,
+    });
+  }
+  return canonical;
 }
 
-async function retrieveOpenAiFile(fileId: string): Promise<CachedFileMetadata> {
+async function resolveCanonicalStorageLocation(fileId: string): Promise<{
+  readonly bucketName: string;
+  readonly objectName: string;
+}> {
+  const cached = filesState.metadataById.get(fileId) ?? (await loadPersistedMetadata(fileId));
+  if (cached?.bucketName && cached.objectName) {
+    return {
+      bucketName: cached.bucketName,
+      objectName: cached.objectName,
+    };
+  }
+
+  const bucketName = resolveCanonicalFilesBucket();
+  const [files] = await getStorageClient()
+    .bucket(bucketName)
+    .getFiles({
+      prefix: `${resolveCanonicalFilesPrefix()}${fileId}.`,
+      maxResults: 1,
+      autoPaginate: false,
+    });
+  const file = files[0];
+  if (!file) {
+    throw new Error(`Canonical file ${fileId} was not found in GCS.`);
+  }
+  return {
+    bucketName,
+    objectName: file.name,
+  };
+}
+
+async function retrieveCanonicalFile(fileId: string): Promise<CachedFileMetadata> {
   const cached = filesState.metadataById.get(fileId);
-  if (cached && isFresh(cached.file)) {
+  if (cached && isFresh(cached.file) && cached.bucketName && cached.objectName) {
     return cached;
   }
+
   const persisted = await loadPersistedMetadata(fileId);
-  if (persisted && isFresh(persisted.file)) {
+  if (persisted && isFresh(persisted.file) && persisted.bucketName && persisted.objectName) {
     return persisted;
   }
-  const client = getOpenAiClient();
-  const retrieved = await client.files.retrieve(fileId);
-  const file = toStoredFile(retrieved);
-  const metadata = recordMetadata({
-    file,
-    filename: file.filename,
-    bytes: file.bytes,
-    mimeType: cached?.mimeType ?? persisted?.mimeType ?? resolveMimeType(file.filename, undefined),
-    sha256Hex: cached?.sha256Hex ?? persisted?.sha256Hex,
-    localPath: cached?.localPath ?? persisted?.localPath,
-  });
+
+  const existingLocalPath = cached?.localPath ?? persisted?.localPath;
+  const { bucketName, objectName } = await resolveCanonicalStorageLocation(fileId);
+  const [objectMetadata] = await getStorageClient()
+    .bucket(bucketName)
+    .file(objectName)
+    .getMetadata();
+  const metadata = recordMetadata(
+    toStoredFileFromCanonicalMetadata({
+      fileId,
+      bucketName,
+      objectName,
+      objectMetadata,
+      localPath: existingLocalPath,
+    }),
+  );
   await persistMetadataToDisk(metadata);
   return metadata;
 }
@@ -647,7 +948,7 @@ function resolveVertexMirrorBucket(): string {
   const trimmed = raw?.trim();
   if (!trimmed) {
     throw new Error(
-      "VERTEX_GCS_BUCKET must be set to use OpenAI-backed file ids with Vertex Gemini models.",
+      "VERTEX_GCS_BUCKET must be set to use canonical file ids with Vertex Gemini models.",
     );
   }
   return trimmed.replace(/^gs:\/\//u, "").replace(/\/+$/u, "");
@@ -681,15 +982,21 @@ function getGeminiMirrorClient(): Promise<GoogleGenAI> {
   return filesState.geminiClientPromise;
 }
 
-async function materializeOpenAiFile(fileId: string): Promise<MaterializedOpenAiFile> {
+async function materializeCanonicalFile(fileId: string): Promise<MaterializedCanonicalFile> {
   const cachedPromise = filesState.materializedById.get(fileId);
   if (cachedPromise) {
     return await cachedPromise;
   }
 
   const promise = (async () => {
-    const metadata = await retrieveOpenAiFile(fileId);
-    if (metadata.localPath && metadata.sha256Hex && metadata.mimeType) {
+    const metadata = await retrieveCanonicalFile(fileId);
+    if (
+      metadata.localPath &&
+      metadata.sha256Hex &&
+      metadata.mimeType &&
+      metadata.bucketName &&
+      metadata.objectName
+    ) {
       return {
         file: metadata.file,
         filename: metadata.filename,
@@ -697,49 +1004,32 @@ async function materializeOpenAiFile(fileId: string): Promise<MaterializedOpenAi
         mimeType: metadata.mimeType,
         sha256Hex: metadata.sha256Hex,
         localPath: metadata.localPath,
+        bucketName: metadata.bucketName,
+        objectName: metadata.objectName,
       };
     }
 
-    await mkdir(FILES_TEMP_ROOT, { recursive: true });
-    const tempDir = await mkdtemp(
-      path.join(FILES_TEMP_ROOT, `${fileId.replace(/[^a-z0-9_-]/giu, "")}-`),
-    );
-    const localPath = path.join(tempDir, normaliseFilename(metadata.filename, `${fileId}.bin`));
-    const response = await getOpenAiClient().files.content(fileId);
-    if (!response.ok) {
-      throw new Error(
-        `Failed to download OpenAI file ${fileId}: ${response.status} ${response.statusText}`,
-      );
+    if (!metadata.bucketName || !metadata.objectName) {
+      throw new Error(`Canonical file ${fileId} is missing GCS location metadata.`);
     }
 
-    const responseMimeType = response.headers.get("content-type")?.trim() || undefined;
-    const mimeType = resolveMimeType(metadata.filename, responseMimeType);
-    const hash = createHash("sha256");
-    let bytes = 0;
-    if (response.body) {
-      const source = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      const writable = createWriteStream(localPath, { flags: "wx" });
-      source.on("data", (chunk) => {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        hash.update(buffer);
-        bytes += buffer.byteLength;
-      });
-      await pipeline(source, writable);
-    } else {
-      const buffer = Buffer.from(await response.arrayBuffer());
-      hash.update(buffer);
-      bytes = buffer.byteLength;
-      await writeFile(localPath, buffer);
-    }
+    const [downloadedBytes] = await getStorageClient()
+      .bucket(metadata.bucketName)
+      .file(metadata.objectName)
+      .download();
 
-    const sha256Hex = hash.digest("hex");
+    const mimeType = metadata.mimeType ?? resolveMimeType(metadata.filename, undefined);
+    const sha256Hex = metadata.sha256Hex ?? computeSha256Hex(downloadedBytes);
+    const localPath = await cacheBufferLocally(downloadedBytes, sha256Hex);
     const updated = recordMetadata({
       file: metadata.file,
       filename: metadata.filename,
-      bytes: bytes || metadata.bytes,
+      bytes: downloadedBytes.byteLength || metadata.bytes,
       mimeType,
       sha256Hex,
       localPath,
+      bucketName: metadata.bucketName,
+      objectName: metadata.objectName,
     });
     await persistMetadataToDisk(updated);
     return {
@@ -749,6 +1039,8 @@ async function materializeOpenAiFile(fileId: string): Promise<MaterializedOpenAi
       mimeType: updated.mimeType ?? mimeType,
       sha256Hex,
       localPath,
+      bucketName: metadata.bucketName,
+      objectName: metadata.objectName,
     };
   })();
 
@@ -766,14 +1058,14 @@ export async function ensureGeminiFileMirror(fileId: string): Promise<CachedGemi
   if (cached) {
     return cached;
   }
-  const materialized = await materializeOpenAiFile(fileId);
+  const materialized = await materializeCanonicalFile(fileId);
   const client = await getGeminiMirrorClient();
   const name = buildGeminiMirrorName(materialized.sha256Hex);
   try {
     const existing = await client.files.get({ name });
     if (existing.name && existing.uri && existing.mimeType) {
       const mirror: CachedGeminiMirror = {
-        openAiFileId: fileId,
+        canonicalFileId: fileId,
         name: existing.name,
         uri: existing.uri,
         mimeType: existing.mimeType,
@@ -803,7 +1095,7 @@ export async function ensureGeminiFileMirror(fileId: string): Promise<CachedGemi
     throw new Error("Gemini file upload completed without a usable URI.");
   }
   const mirror: CachedGeminiMirror = {
-    openAiFileId: fileId,
+    canonicalFileId: fileId,
     name: resolved.name,
     uri: resolved.uri,
     mimeType: resolved.mimeType,
@@ -829,7 +1121,7 @@ export async function ensureVertexFileMirror(fileId: string): Promise<CachedVert
   if (cached) {
     return cached;
   }
-  const materialized = await materializeOpenAiFile(fileId);
+  const materialized = await materializeCanonicalFile(fileId);
   const bucketName = resolveVertexMirrorBucket();
   const prefix = resolveVertexMirrorPrefix();
   const extension =
@@ -875,7 +1167,7 @@ export async function ensureVertexFileMirror(fileId: string): Promise<CachedVert
   }
 
   const mirror: CachedVertexMirror = {
-    openAiFileId: fileId,
+    canonicalFileId: fileId,
     bucket: bucketName,
     objectName,
     fileUri: `gs://${bucketName}/${objectName}`,
@@ -907,7 +1199,7 @@ export async function filesCreate(params: LlmFileCreateParams): Promise<LlmStore
     const filename = normaliseFilename(params.filename, path.basename(filePath));
     const mimeType = resolveMimeType(filename, params.mimeType);
     const sha256Hex = await computeFileSha256Hex(filePath);
-    const uploaded = await uploadOpenAiFileFromPath({
+    const uploaded = await uploadCanonicalFileFromPath({
       filePath,
       filename,
       mimeType,
@@ -916,20 +1208,14 @@ export async function filesCreate(params: LlmFileCreateParams): Promise<LlmStore
       sha256Hex,
       bytes: info.size,
     });
-    const localPath = await cacheFileLocally(filePath, sha256Hex);
-    const cached = recordMetadata({
-      ...uploaded,
-      localPath,
-    });
-    await persistMetadataToDisk(cached);
-    return cached.file;
+    return uploaded.file;
   }
 
   const filename = normaliseFilename(params.filename);
   const bytes = toBuffer(params.data);
   const mimeType = resolveMimeType(filename, params.mimeType, "text/plain");
   const sha256Hex = computeSha256Hex(bytes);
-  const uploaded = await uploadOpenAiFileFromBytes({
+  const uploaded = await uploadCanonicalFileFromBytes({
     bytes,
     filename,
     mimeType,
@@ -937,17 +1223,11 @@ export async function filesCreate(params: LlmFileCreateParams): Promise<LlmStore
     expiresAfterSeconds,
     sha256Hex,
   });
-  const localPath = await cacheBufferLocally(bytes, sha256Hex);
-  const cached = recordMetadata({
-    ...uploaded,
-    localPath,
-  });
-  await persistMetadataToDisk(cached);
-  return cached.file;
+  return uploaded.file;
 }
 
 export async function filesRetrieve(fileId: string): Promise<LlmStoredFile> {
-  return (await retrieveOpenAiFile(fileId)).file;
+  return (await retrieveCanonicalFile(fileId)).file;
 }
 
 export async function filesDelete(fileId: string): Promise<LlmFileDeleted> {
@@ -984,8 +1264,18 @@ export async function filesDelete(fileId: string): Promise<LlmFileDeleted> {
     }
   }
 
-  const response = await getOpenAiClient().files.delete(fileId);
+  try {
+    const { bucketName, objectName } = await resolveCanonicalStorageLocation(fileId);
+    await getStorageClient().bucket(bucketName).file(objectName).delete({ ignoreNotFound: true });
+  } catch {
+    // Ignore canonical object cleanup failures; delete remains best-effort.
+  }
   filesState.metadataById.delete(fileId);
+  filesState.canonicalUploadCacheByKey.forEach((value, key) => {
+    if (value.file.id === fileId) {
+      filesState.canonicalUploadCacheByKey.delete(key);
+    }
+  });
   filesState.materializedById.delete(fileId);
   try {
     await unlink(buildCachedMetadataPath(fileId));
@@ -993,20 +1283,42 @@ export async function filesDelete(fileId: string): Promise<LlmFileDeleted> {
     // Ignore cache metadata cleanup failures.
   }
   return {
-    id: response.id,
-    deleted: response.deleted,
+    id: fileId,
+    deleted: true,
     object: "file",
   };
 }
 
 export async function filesContent(fileId: string): Promise<Response> {
-  return await getOpenAiClient().files.content(fileId);
+  const metadata = await retrieveCanonicalFile(fileId);
+  if (!metadata.bucketName || !metadata.objectName) {
+    throw new Error(`Canonical file ${fileId} is missing GCS location metadata.`);
+  }
+  const [bytes] = await getStorageClient()
+    .bucket(metadata.bucketName)
+    .file(metadata.objectName)
+    .download();
+  const headers = new Headers();
+  headers.set("content-type", metadata.mimeType ?? resolveMimeType(metadata.filename, undefined));
+  headers.set("content-length", bytes.byteLength.toString());
+  headers.set(
+    "content-disposition",
+    `inline; filename="${toSafeStorageFilename(metadata.filename)}"`,
+  );
+  return new Response(bytes, {
+    status: 200,
+    headers,
+  });
 }
 
-export async function getCanonicalFileMetadata(
-  fileId: string,
-): Promise<CachedFileMetadata & { readonly mimeType: string }> {
-  const metadata = await retrieveOpenAiFile(fileId);
+export async function getCanonicalFileMetadata(fileId: string): Promise<
+  CachedFileMetadata & {
+    readonly mimeType: string;
+    readonly bucketName: string;
+    readonly objectName: string;
+  }
+> {
+  const metadata = await retrieveCanonicalFile(fileId);
   const mimeType = metadata.mimeType ?? resolveMimeType(metadata.filename, undefined);
   const updated =
     metadata.mimeType === mimeType
@@ -1015,10 +1327,32 @@ export async function getCanonicalFileMetadata(
           ...metadata,
           mimeType,
         });
+  if (!updated.bucketName || !updated.objectName) {
+    throw new Error(`Canonical file ${fileId} is missing GCS location metadata.`);
+  }
   return {
     ...updated,
     mimeType,
+    bucketName: updated.bucketName,
+    objectName: updated.objectName,
   };
+}
+
+export async function getCanonicalFileSignedUrl(options: {
+  fileId: string;
+  expiresAfterSeconds?: number;
+}): Promise<string> {
+  const metadata = await getCanonicalFileMetadata(options.fileId);
+  const [signedUrl] = await getStorageClient()
+    .bucket(metadata.bucketName)
+    .file(metadata.objectName)
+    .getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + (options.expiresAfterSeconds ?? 15 * 60) * 1000,
+      responseType: resolveCanonicalStorageContentType(metadata.filename, metadata.mimeType),
+    });
+  return signedUrl;
 }
 
 export const files = {

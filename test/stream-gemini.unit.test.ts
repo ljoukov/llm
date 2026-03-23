@@ -1,9 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
+import { installMockStorageEnv, resetMockStorageState } from "./helpers/mock-storage.js";
 
 let geminiRequests: any[] = [];
 let geminiUploadedFiles: any[] = [];
 let geminiStoredFiles = new Map<string, any>();
-let openAiStoredFiles = new Map<string, { file: any; bytes: Buffer; mimeType: string }>();
+
+vi.mock("@google-cloud/storage", async () => {
+  return await import("./helpers/mock-storage.js");
+});
 
 vi.mock("../src/google/calls.js", () => {
   async function* stream() {
@@ -71,59 +77,17 @@ vi.mock("../src/google/client.js", async () => {
   };
 });
 
-vi.mock("../src/openai/client.js", () => ({
-  getOpenAiClient: () => ({
-    files: {
-      create: async (body: any) => {
-        const file = {
-          id: "file_123",
-          bytes: body?.file?.size ?? 0,
-          created_at: 1,
-          filename: body?.file?.name ?? "uploaded.bin",
-          object: "file",
-          purpose: body?.purpose ?? "user_data",
-          status: "processed",
-          expires_at: 1 + 48 * 60 * 60,
-        };
-        const bytes = Buffer.from(await body.file.arrayBuffer());
-        openAiStoredFiles.set(file.id, {
-          file,
-          bytes,
-          mimeType: body?.file?.type ?? "application/octet-stream",
-        });
-        return file;
-      },
-      retrieve: async (fileId: string) => {
-        const stored = openAiStoredFiles.get(fileId);
-        if (!stored) {
-          throw new Error(`Missing OpenAI file: ${fileId}`);
-        }
-        return stored.file;
-      },
-      content: async (fileId: string) => {
-        const stored = openAiStoredFiles.get(fileId);
-        if (!stored) {
-          throw new Error(`Missing OpenAI file: ${fileId}`);
-        }
-        return new Response(stored.bytes, {
-          status: 200,
-          headers: {
-            "content-type": stored.mimeType,
-          },
-        });
-      },
-    },
-    uploads: {
-      create: async () => ({ id: "upload_123" }),
-      parts: {
-        create: async (_uploadId: string, _body: any) => ({ id: "part_123" }),
-      },
-      complete: async () => ({ file: { id: "file_123" } }),
-    },
-  }),
-}));
-
 describe("streamText (Gemini)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    resetRuntimeSingletonsForTesting();
+    resetMockStorageState();
+    installMockStorageEnv();
+    geminiRequests = [];
+    geminiUploadedFiles = [];
+    geminiStoredFiles = new Map();
+  });
+
   it("streams response + thought deltas and returns usage/cost", async () => {
     geminiRequests = [];
     const { streamText } = await import("../src/llm.js");
@@ -236,10 +200,6 @@ describe("streamText (Gemini)", () => {
   });
 
   it("uploads large prompt attachments and replaces inlineData with fileData uri", async () => {
-    geminiRequests = [];
-    geminiUploadedFiles = [];
-    geminiStoredFiles = new Map();
-    openAiStoredFiles = new Map();
     const { generateText } = await import("../src/llm.js");
 
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");

@@ -11,6 +11,7 @@ import {
 } from "../src/index.js";
 import {
   hasIntegrationCredentialsForModel,
+  hasCanonicalFilesBackend,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
 
@@ -113,12 +114,16 @@ function buildInlinePdfPart(label: string) {
 }
 
 const openAiLargeFilesIt =
-  RUN_LARGE_FILE_TESTS && openAiModel && hasIntegrationCredentialsForModel(openAiModel)
+  RUN_LARGE_FILE_TESTS &&
+  hasCanonicalFilesBackend() &&
+  openAiModel &&
+  hasIntegrationCredentialsForModel(openAiModel)
     ? it
     : it.skip;
 
 const crossProviderFileIdIt =
   RUN_LARGE_FILE_TESTS &&
+  hasCanonicalFilesBackend() &&
   openAiModel &&
   geminiModel &&
   hasIntegrationCredentialsForModel(openAiModel) &&

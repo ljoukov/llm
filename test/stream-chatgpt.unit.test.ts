@@ -2,12 +2,23 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
+import {
+  getMockStorageState,
+  installMockStorageEnv,
+  resetMockStorageState,
+} from "./helpers/mock-storage.js";
 
 let capturedRequest: any = null;
 let chatGptCallCount = 0;
 let failFirstTerminated = false;
 let emitChatGptDeltas = true;
+
+vi.mock("@google-cloud/storage", async () => {
+  return await import("./helpers/mock-storage.js");
+});
 
 vi.mock("../src/openai/chatgpt-codex.js", () => {
   return {
@@ -42,10 +53,18 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 });
 
 describe("streamText (ChatGPT)", () => {
-  it("streams response + thought deltas and returns usage/cost", async () => {
+  beforeEach(() => {
+    capturedRequest = null;
     chatGptCallCount = 0;
     failFirstTerminated = false;
     emitChatGptDeltas = true;
+    vi.resetModules();
+    resetRuntimeSingletonsForTesting();
+    resetMockStorageState();
+    installMockStorageEnv();
+  });
+
+  it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({ model: "chatgpt-gpt-5.4-mini", input: "hi" });
@@ -68,10 +87,6 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it("maps inlineData application/pdf to input_file", async () => {
-    capturedRequest = null;
-    chatGptCallCount = 0;
-    failFirstTerminated = false;
-    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
@@ -98,10 +113,41 @@ describe("streamText (ChatGPT)", () => {
     expect(filePart.filename).toBe("document.pdf");
   });
 
+  it("uploads large prompt attachments and replaces file_data with signed file_url", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
+    await generateText({
+      model: "chatgpt-gpt-5.4-mini",
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Summarize the PDF." },
+            {
+              type: "inlineData",
+              mimeType: "application/pdf",
+              filename: "report.pdf",
+              data: largePdfB64,
+            },
+          ],
+        },
+      ],
+    });
+
+    const input = capturedRequest?.input;
+    const filePart = input?.[0]?.content?.find((p: any) => p?.type === "input_file");
+    expect(filePart?.file_url).toMatch(
+      /^https:\/\/mock-gcs\.local\/llm-test-bucket\/canonical-files\/file_[a-f0-9]{64}\.pdf\?signed=1$/u,
+    );
+    expect(filePart?.file_data).toBeUndefined();
+    expect(filePart?.file_id).toBeUndefined();
+    expect(filePart?.filename).toBeUndefined();
+    expect(getMockStorageState().signedUrlCalls).toHaveLength(1);
+  });
+
   it("retries once when ChatGPT transport fails with terminated", async () => {
-    chatGptCallCount = 0;
     failFirstTerminated = true;
-    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
@@ -114,10 +160,6 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it("maps chatgpt-gpt-5.4-fast to gpt-5.4 with priority service tier", async () => {
-    capturedRequest = null;
-    chatGptCallCount = 0;
-    failFirstTerminated = false;
-    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
@@ -131,10 +173,6 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it("maps mediaResolution=original to ChatGPT image detail on gpt-5.4", async () => {
-    capturedRequest = null;
-    chatGptCallCount = 0;
-    failFirstTerminated = false;
-    emitChatGptDeltas = true;
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
@@ -162,9 +200,6 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it("writes response.txt even when ChatGPT emits no response deltas", async () => {
-    capturedRequest = null;
-    chatGptCallCount = 0;
-    failFirstTerminated = false;
     emitChatGptDeltas = false;
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-stream-chatgpt-"));
     try {

@@ -164,3 +164,12 @@ export function resolveIntegrationRequestedImageModels(): readonly LlmImageModel
 
   return [...new Set(parsed)] as readonly LlmImageModelId[];
 }
+
+export function hasCanonicalFilesBackend(): boolean {
+  loadLocalEnv();
+  const bucket =
+    process.env.LLM_FILES_GCS_BUCKET?.trim() ||
+    process.env.VERTEX_GCS_BUCKET?.trim() ||
+    process.env.LLM_VERTEX_GCS_BUCKET?.trim();
+  return Boolean(bucket && process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
+}
