@@ -46,14 +46,20 @@ Use one backend:
 
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY` for the Gemini Developer API
 - `GOOGLE_SERVICE_ACCOUNT_JSON` for Vertex AI (the contents of a service account JSON key file, not a file path)
+- `LLM_FILES_GCS_BUCKET` for canonical file storage used by `files.create()` and automatic large-attachment offload
+- `LLM_FILES_GCS_PREFIX` (optional object-name prefix inside `LLM_FILES_GCS_BUCKET`)
 - `VERTEX_GCS_BUCKET` for Vertex-backed Gemini file attachments / `file_id` inputs
 - `VERTEX_GCS_PREFIX` (optional object-name prefix inside `VERTEX_GCS_BUCKET`)
 
 If a Gemini API key is present, the library uses the Gemini Developer API. Otherwise it falls back to Vertex AI.
 
-For Vertex-backed Gemini file inputs, the library mirrors OpenAI-backed canonical files into GCS and then passes the
-resulting `gs://...` URI to Vertex. Configure a lifecycle rule on that bucket to delete objects after 2 days if you
-want hard 48-hour cleanup for mirrored objects.
+Canonical files are stored in GCS with a default `48h` TTL. OpenAI and ChatGPT consume those files via signed HTTPS
+URLs. Gemini still mirrors canonical files lazily into provider-native storage when needed:
+
+- Gemini Developer API mirrors into Gemini Files
+- Vertex-backed Gemini mirrors into `VERTEX_GCS_BUCKET` and uses `gs://...` URIs
+
+Configure lifecycle rules on those buckets if you want hard 48-hour cleanup for mirrored objects.
 
 #### Vertex AI service account setup
 
@@ -260,9 +266,9 @@ const result = await generateText({ model: "gpt-5.4-mini", input });
 console.log(result.text);
 ```
 
-Canonical storage defaults to OpenAI Files with `purpose: "user_data"` and a `48h` TTL.
+Canonical storage now uses GCS-backed objects with a `48h` TTL.
 
-- OpenAI models use that `file_id` directly.
+- OpenAI and ChatGPT models resolve that `file_id` to a signed HTTPS URL.
 - Gemini Developer API mirrors the file lazily into Gemini Files when needed.
 - Vertex-backed Gemini mirrors the file lazily into `VERTEX_GCS_BUCKET` and uses `gs://...` URIs.
 
@@ -294,7 +300,7 @@ When the combined inline attachment payload in a single request would exceed abo
 the library automatically uploads those attachments to the canonical files store first and swaps the prompt to file
 references:
 
-- OpenAI: uses canonical OpenAI `file_id`s directly
+- OpenAI / ChatGPT: use signed HTTPS URLs for canonical files
 - Gemini Developer API: mirrors to Gemini Files and sends `fileData.fileUri`
 - Vertex AI: mirrors to `VERTEX_GCS_BUCKET` and sends `gs://...` URIs
 
@@ -320,8 +326,8 @@ console.log(result.text);
 
 You can mix direct `file_id` parts with `inlineData`. Small attachments stay inline; oversized turns are upgraded to
 canonical files automatically. Tool loops do the same for large tool outputs, and they also re-check the combined size
-after parallel tool calls so a batch of individually-small images/files still gets upgraded to `file_id` references
-before the next model request if the aggregate payload is too large.
+after parallel tool calls so a batch of individually-small images/files still gets upgraded to canonical-file
+references before the next model request if the aggregate payload is too large.
 
 You can also control image analysis fidelity with request-level `mediaResolution`:
 
@@ -927,15 +933,17 @@ Standard integration suite:
 npm run test:integration
 ```
 
-Large-file live integration tests are opt-in because they upload multi-megabyte fixtures to real provider file stores:
+Large-file live integration tests are opt-in because they upload multi-megabyte fixtures to real canonical/provider
+file stores:
 
 ```bash
 LLM_INTEGRATION_LARGE_FILES=1 npm run test:integration
 ```
 
-Those tests generate valid PDFs programmatically so the canonical upload path, `file_id` reuse, and automatic large
+Those tests generate valid PDFs programmatically so the canonical upload path, signed-URL reuse, and automatic large
 attachment offload all exercise real provider APIs. The unit suite also covers direct-call upload logging plus
-`runAgentLoop()` upload telemetry/logging for combined-image overflow.
+`runAgentLoop()` upload telemetry/logging for combined-image overflow, and the integration suite includes provider
+format coverage for common document and image attachments.
 
 ## License
 

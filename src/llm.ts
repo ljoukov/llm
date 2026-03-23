@@ -72,6 +72,7 @@ import {
   getCurrentFileUploadMetrics,
   filesCreate,
   getCanonicalFileMetadata,
+  getCanonicalFileSignedUrl,
   runWithFileUploadSource,
 } from "./files.js";
 import {
@@ -814,6 +815,7 @@ function isJsonSchemaObject(schema: JsonSchema | undefined): boolean {
 }
 
 const CANONICAL_GEMINI_FILE_URI_PREFIX = "openai://file/";
+const CANONICAL_LLM_FILE_ID_PATTERN = /^file_[a-f0-9]{64}$/u;
 
 function buildCanonicalGeminiFileUri(fileId: string): string {
   return `${CANONICAL_GEMINI_FILE_URI_PREFIX}${fileId}`;
@@ -825,6 +827,10 @@ function parseCanonicalGeminiFileId(fileUri: string | undefined): string | undef
   }
   const fileId = fileUri.slice(CANONICAL_GEMINI_FILE_URI_PREFIX.length).trim();
   return fileId.length > 0 ? fileId : undefined;
+}
+
+function isCanonicalLlmFileId(fileId: string | null | undefined): fileId is string {
+  return typeof fileId === "string" && CANONICAL_LLM_FILE_ID_PATTERN.test(fileId.trim());
 }
 
 type OpenAiImageDetail = "auto" | "low" | "high" | "original";
@@ -1416,17 +1422,37 @@ async function storeCanonicalPromptFile(options: {
 
 async function prepareOpenAiPromptContentItem(
   item: unknown,
-  options?: { model?: string },
+  options?: {
+    model?: string;
+    provider?: "openai" | "chatgpt";
+    offloadInlineData?: boolean;
+  },
 ): Promise<unknown> {
   if (!isOpenAiNativeContentItem(item)) {
     return item;
   }
 
-  if (
-    item.type === "input_image" &&
-    typeof item.image_url === "string" &&
-    item.image_url.trim().toLowerCase().startsWith("data:")
-  ) {
+  if (item.type === "input_image") {
+    if (isCanonicalLlmFileId(item.file_id)) {
+      const signedUrl = await getCanonicalFileSignedUrl({ fileId: item.file_id });
+      return {
+        type: "input_image",
+        image_url: signedUrl,
+        detail: toOpenAiImageDetail(
+          isLlmMediaResolution(item.detail) ? item.detail : undefined,
+          options?.model,
+        ),
+      };
+    }
+
+    if (
+      options?.offloadInlineData !== true ||
+      typeof item.image_url !== "string" ||
+      !item.image_url.trim().toLowerCase().startsWith("data:")
+    ) {
+      return item;
+    }
+
     const parsed = parseDataUrlPayload(item.image_url);
     if (!parsed) {
       return item;
@@ -1439,17 +1465,30 @@ async function prepareOpenAiPromptContentItem(
         guessInlineDataFilename(parsed.mimeType),
       ),
     });
+    const signedUrl = await getCanonicalFileSignedUrl({ fileId: uploaded.fileId });
     return {
       type: "input_image",
+      image_url: signedUrl,
       detail: toOpenAiImageDetail(
         isLlmMediaResolution(item.detail) ? item.detail : undefined,
         options?.model,
       ),
-      file_id: uploaded.fileId,
     };
   }
 
-  if (item.type !== "input_file" || item.file_id) {
+  if (item.type !== "input_file") {
+    return item;
+  }
+
+  if (isCanonicalLlmFileId(item.file_id)) {
+    const signedUrl = await getCanonicalFileSignedUrl({ fileId: item.file_id });
+    return {
+      type: "input_file",
+      file_url: signedUrl,
+    };
+  }
+
+  if (options?.offloadInlineData !== true) {
     return item;
   }
 
@@ -1464,7 +1503,11 @@ async function prepareOpenAiPromptContentItem(
       mimeType,
       filename,
     });
-    return { type: "input_file", file_id: uploaded.fileId };
+    const signedUrl = await getCanonicalFileSignedUrl({ fileId: uploaded.fileId });
+    return {
+      type: "input_file",
+      file_url: signedUrl,
+    };
   }
 
   if (typeof item.file_url === "string" && item.file_url.trim().toLowerCase().startsWith("data:")) {
@@ -1480,7 +1523,11 @@ async function prepareOpenAiPromptContentItem(
         guessInlineDataFilename(parsed.mimeType),
       ),
     });
-    return { type: "input_file", file_id: uploaded.fileId };
+    const signedUrl = await getCanonicalFileSignedUrl({ fileId: uploaded.fileId });
+    return {
+      type: "input_file",
+      file_url: signedUrl,
+    };
   }
 
   return item;
@@ -1488,7 +1535,11 @@ async function prepareOpenAiPromptContentItem(
 
 async function prepareOpenAiPromptInput(
   input: readonly unknown[],
-  options?: { model?: string },
+  options?: {
+    model?: string;
+    provider?: "openai" | "chatgpt";
+    offloadInlineData?: boolean;
+  },
 ): Promise<unknown[]> {
   const prepareItem = async (item: unknown): Promise<unknown> => {
     if (!item || typeof item !== "object") {
@@ -1517,14 +1568,48 @@ async function prepareOpenAiPromptInput(
   return await Promise.all(input.map((item) => prepareItem(item)));
 }
 
+function hasCanonicalOpenAiFileReferences(input: readonly unknown[]): boolean {
+  let found = false;
+  const visitItems = (items: readonly unknown[]): void => {
+    for (const item of items) {
+      if (found || !item || typeof item !== "object") {
+        continue;
+      }
+      if (Array.isArray((item as { content?: unknown }).content)) {
+        visitItems((item as { content: unknown[] }).content);
+      }
+      if (Array.isArray((item as { output?: unknown }).output)) {
+        visitItems((item as { output: unknown[] }).output);
+      }
+      if (!isOpenAiNativeContentItem(item)) {
+        continue;
+      }
+      if (
+        (item.type === "input_image" || item.type === "input_file") &&
+        isCanonicalLlmFileId(item.file_id)
+      ) {
+        found = true;
+        return;
+      }
+    }
+  };
+  visitItems(input);
+  return found;
+}
+
 async function maybePrepareOpenAiPromptInput(
   input: readonly unknown[],
-  options?: { model?: string },
+  options?: { model?: string; provider?: "openai" | "chatgpt" },
 ): Promise<unknown[]> {
-  if (estimateOpenAiInlinePromptBytes(input) <= INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES) {
+  const offloadInlineData =
+    estimateOpenAiInlinePromptBytes(input) > INLINE_ATTACHMENT_PROMPT_THRESHOLD_BYTES;
+  if (!offloadInlineData && !hasCanonicalOpenAiFileReferences(input)) {
     return Array.from(input);
   }
-  return await prepareOpenAiPromptInput(input, options);
+  return await prepareOpenAiPromptInput(input, {
+    ...options,
+    offloadInlineData,
+  });
 }
 
 function estimateGeminiInlinePromptBytes(contents: readonly GeminiContent[]): number {
@@ -3078,12 +3163,6 @@ async function maybeSpillToolOutput(
     readonly provider?: LlmProvider;
   },
 ): Promise<unknown> {
-  if (options?.provider === "chatgpt") {
-    // ChatGPT tool outputs cannot reliably reference files uploaded through the OpenAI
-    // Files API. Keep tool outputs inline until a ChatGPT-native upload path exists.
-    return value;
-  }
-
   if (typeof value === "string") {
     if (
       options?.force !== true &&
@@ -4450,7 +4529,7 @@ async function runTextCall(params: {
             defaultMediaResolution: request.mediaResolution,
             model: request.model,
           }),
-          { model: request.model },
+          { model: request.model, provider: "openai" },
         );
         const openAiTools = toOpenAiTools(request.tools);
         const reasoningEffort = resolveOpenAiReasoningEffort(
@@ -4542,6 +4621,10 @@ async function runTextCall(params: {
           defaultMediaResolution: request.mediaResolution,
           model: request.model,
         });
+        const preparedChatGptInput = await maybePrepareOpenAiPromptInput(chatGptInput.input, {
+          model: request.model,
+          provider: "chatgpt",
+        });
         const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
         const openAiTools = toOpenAiTools(request.tools);
         const requestPayload = {
@@ -4550,7 +4633,7 @@ async function runTextCall(params: {
           stream: true,
           ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
           instructions: chatGptInput.instructions ?? "You are a helpful assistant.",
-          input: chatGptInput.input,
+          input: preparedChatGptInput,
           include: ["reasoning.encrypted_content"],
           reasoning: {
             effort: toOpenAiReasoningEffort(reasoningEffort),
@@ -5500,6 +5583,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
         const preparedInput = await maybePrepareOpenAiPromptInput(input, {
           model: request.model,
+          provider: "openai",
         });
         const stepRequestPayload = {
           model: providerInfo.model,
@@ -5910,6 +5994,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let reasoningSummaryText = "";
         let stepToolCallText: string | undefined;
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
+        const preparedInput = await maybePrepareOpenAiPromptInput(input, {
+          model: request.model,
+          provider: "chatgpt",
+        });
         const markFirstModelEvent = () => {
           if (firstModelEventAtMs === undefined) {
             firstModelEventAtMs = Date.now();
@@ -5921,7 +6009,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           stream: true,
           ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
           instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
-          input,
+          input: preparedInput,
           prompt_cache_key: promptCacheKey,
           include: ["reasoning.encrypted_content"],
           tools: openAiTools,

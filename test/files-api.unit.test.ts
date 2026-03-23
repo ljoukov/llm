@@ -1,65 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-let createBodies: any[] = [];
-let retrieveIds: string[] = [];
-let deleteIds: string[] = [];
+import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
+import {
+  getMockStorageState,
+  installMockStorageEnv,
+  resetMockStorageState,
+} from "./helpers/mock-storage.js";
 
-vi.mock("../src/openai/client.js", () => ({
-  getOpenAiClient: () => ({
-    files: {
-      create: async (body: any) => {
-        createBodies.push(body);
-        return {
-          id: "file_123",
-          bytes: body?.file?.size ?? 0,
-          created_at: 1,
-          filename: body?.file?.name ?? "uploaded.bin",
-          object: "file",
-          purpose: body?.purpose ?? "user_data",
-          status: "processed",
-          expires_at: 1 + 48 * 60 * 60,
-        };
-      },
-      retrieve: async (fileId: string) => {
-        retrieveIds.push(fileId);
-        return {
-          id: fileId,
-          bytes: 5,
-          created_at: 1,
-          filename: "note.txt",
-          object: "file",
-          purpose: "user_data",
-          status: "processed",
-          expires_at: 1 + 48 * 60 * 60,
-        };
-      },
-      delete: async (fileId: string) => {
-        deleteIds.push(fileId);
-        return {
-          id: fileId,
-          deleted: true,
-          object: "file",
-        };
-      },
-      content: async () =>
-        new Response(Buffer.from("hello"), {
-          status: 200,
-          headers: { "content-type": "text/plain" },
-        }),
-    },
-    uploads: {
-      create: async () => ({ id: "upload_123" }),
-      parts: {
-        create: async (_uploadId: string, _body: any) => ({ id: "part_123" }),
-      },
-      complete: async () => ({ file: { id: "file_123" } }),
-    },
-  }),
-}));
+vi.mock("@google-cloud/storage", async () => {
+  return await import("./helpers/mock-storage.js");
+});
 
 describe("files API", () => {
-  it("creates canonical OpenAI files with a 48h TTL by default", async () => {
-    createBodies = [];
+  beforeEach(() => {
+    vi.resetModules();
+    resetRuntimeSingletonsForTesting();
+    resetMockStorageState();
+    installMockStorageEnv();
+  });
+
+  it("creates canonical GCS-backed files with a 48h TTL by default", async () => {
     const { DEFAULT_FILE_TTL_SECONDS, files } = await import("../src/index.js");
 
     const stored = await files.create({
@@ -68,31 +28,44 @@ describe("files API", () => {
       mimeType: "text/plain",
     });
 
-    expect(stored.id).toBe("file_123");
+    const mockStorage = getMockStorageState();
+    expect(stored.id).toMatch(/^file_[a-f0-9]{64}$/u);
     expect(stored.filename).toBe("note.txt");
-    expect(createBodies).toHaveLength(1);
-    expect(createBodies[0]?.purpose).toBe("user_data");
-    expect(createBodies[0]?.expires_after).toEqual({
-      anchor: "created_at",
-      seconds: DEFAULT_FILE_TTL_SECONDS,
-    });
+    expect(stored.expires_at).toBe(stored.created_at + DEFAULT_FILE_TTL_SECONDS);
+    expect(mockStorage.saveCalls).toHaveLength(1);
+    expect(mockStorage.saveCalls[0]?.bucketName).toBe("llm-test-bucket");
+    expect(mockStorage.saveCalls[0]?.objectName).toBe(`canonical-files/${stored.id}.txt`);
+    expect((mockStorage.saveCalls[0]?.options.metadata as any)?.contentType).toBe("text/plain");
+    expect((mockStorage.saveCalls[0]?.options.metadata as any)?.metadata?.purpose).toBe(
+      "user_data",
+    );
   });
 
-  it("retrieves and deletes canonical files", async () => {
-    retrieveIds = [];
-    deleteIds = [];
+  it("retrieves, serves, and deletes canonical files", async () => {
     const { files } = await import("../src/index.js");
 
-    const stored = await files.retrieve("file_123");
-    const deleted = await files.delete("file_123");
+    const created = await files.create({
+      data: "hello",
+      filename: "note.txt",
+      mimeType: "text/plain",
+    });
+    const stored = await files.retrieve(created.id);
+    const content = await files.content(created.id);
+    const deleted = await files.delete(created.id);
 
     expect(stored.filename).toBe("note.txt");
-    expect(retrieveIds).toEqual(["file_123"]);
+    expect(await content.text()).toBe("hello");
+    expect(content.headers.get("content-type")).toBe("text/plain");
     expect(deleted).toEqual({
-      id: "file_123",
+      id: created.id,
       deleted: true,
       object: "file",
     });
-    expect(deleteIds).toEqual(["file_123"]);
+    expect(getMockStorageState().deleteCalls).toEqual([
+      {
+        bucketName: "llm-test-bucket",
+        objectName: `canonical-files/${created.id}.txt`,
+      },
+    ]);
   });
 });
