@@ -4,6 +4,15 @@ export type OpenAiPricing = {
   readonly outputRate: number;
 };
 
+const OPENAI_GPT_54_FAST_MODEL_IDS = ["gpt-5.4-fast", "chatgpt-gpt-5.4-fast"] as const;
+const OPENAI_GPT_54_MINI_MODEL_IDS = ["gpt-5.4-mini", "chatgpt-gpt-5.4-mini"] as const;
+const OPENAI_GPT_54_NANO_MODEL_IDS = ["gpt-5.4-nano"] as const;
+const OPENAI_GPT_53_CODEX_SPARK_MODEL_IDS = [
+  "gpt-5.3-codex-spark",
+  "chatgpt-gpt-5.3-codex-spark",
+] as const;
+const OPENAI_GPT_54_STANDARD_MODEL_IDS = ["gpt-5.4", "chatgpt-gpt-5.4"] as const;
+
 // Pricing snapshot (best-effort). For current official pricing, see:
 // https://platform.openai.com/docs/pricing
 // Keep this conservative: unknown models -> cost 0.
@@ -32,20 +41,20 @@ const OPENAI_GPT_54_NANO_PRICING: OpenAiPricing = {
 };
 
 export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
-  if (modelId.includes("gpt-5.4-fast")) {
+  if ((OPENAI_GPT_54_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_54_PRIORITY_PRICING;
   }
-  if (modelId.includes("gpt-5.4-mini")) {
+  if ((OPENAI_GPT_54_MINI_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_54_MINI_PRICING;
   }
-  if (modelId.includes("gpt-5.4-nano")) {
+  if ((OPENAI_GPT_54_NANO_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_54_NANO_PRICING;
   }
   // gpt-5.3-codex-spark is priced as the GPT-5.4 mini tier in this library.
-  if (modelId.includes("gpt-5.3-codex-spark")) {
+  if ((OPENAI_GPT_53_CODEX_SPARK_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_54_MINI_PRICING;
   }
-  if (modelId.includes("gpt-5.4")) {
+  if ((OPENAI_GPT_54_STANDARD_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_54_PRICING;
   }
   return undefined;
