@@ -93,6 +93,24 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.02255, 8);
   });
 
+  it("prices gpt-5.4-fast at GPT-5.4 priority rates", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "gpt-5.4-fast",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (5/1M) = 0.0045
+    // cached: 100 * (0.5/1M) = 0.00005
+    // output: 600 * (30/1M) = 0.018
+    expect(cost).toBeCloseTo(0.02255, 8);
+  });
+
   it("estimates Fireworks kimi-k2.5 costs", () => {
     const cost = estimateCallCostUsd({
       modelId: "kimi-k2.5",
