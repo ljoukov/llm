@@ -60,6 +60,9 @@ function normaliseConfigValue(value?: string | null): string | undefined {
 
 function resolveGeminiApiKey(): string | undefined {
   loadLocalEnv();
+  if (normaliseConfigValue(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)) {
+    return undefined;
+  }
   const raw = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
   return normaliseConfigValue(raw);
 }
