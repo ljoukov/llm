@@ -132,10 +132,10 @@ describe("streamText (Gemini)", () => {
   });
 
   it.each([
-    ["low", "LOW"],
-    ["medium", "MEDIUM"],
-    ["high", "HIGH"],
-  ] as const)("maps thinkingLevel=%s to gemini-flash-latest thinkingLevel=%s", async (thinkingLevel, geminiThinkingLevel) => {
+    ["low", 256],
+    ["medium", 8192],
+    ["high", 24_576],
+  ] as const)("maps thinkingLevel=%s to gemini-flash-latest thinkingBudget=%s", async (thinkingLevel, thinkingBudget) => {
     geminiRequests = [];
     const { streamText } = await import("../src/llm.js");
 
@@ -151,7 +151,7 @@ describe("streamText (Gemini)", () => {
 
     expect(geminiRequests[0]?.config?.thinkingConfig).toEqual({
       includeThoughts: true,
-      thinkingLevel: geminiThinkingLevel,
+      thinkingBudget,
     });
   });
 
