@@ -491,15 +491,14 @@ const { value } = await generateJson({
 console.log(value.ok, value.message);
 ```
 
-For Gemini calls that need a specific thinking budget, pass `thinkingBudget`. This overrides the model default and
-`thinkingLevel` for Gemini requests:
+For calls that should use a smaller reasoning budget, pass the cross-model `thinkingLevel` option:
 
 ```ts
 const { value } = await generateJson({
   model: "gemini-flash-latest",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
-  thinkingBudget: 0,
+  thinkingLevel: "low",
 });
 ```
 
