@@ -3910,17 +3910,6 @@ function toGeminiThinkingLevel(thinkingLevel: LlmThinkingLevel): ThinkingLevel {
   }
 }
 
-function toGemini25ProThinkingBudget(thinkingLevel: LlmThinkingLevel): number {
-  switch (thinkingLevel) {
-    case "low":
-      return 256;
-    case "medium":
-      return 4096;
-    case "high":
-      return 32_768;
-  }
-}
-
 function resolveGeminiThinkingConfig(
   modelId: string,
   thinkingLevel?: LlmThinkingLevel,
@@ -3929,10 +3918,11 @@ function resolveGeminiThinkingConfig(
     return undefined;
   }
   if (thinkingLevel) {
-    if (modelId === "gemini-2.5-pro") {
+    const thinkingBudget = resolveGeminiThinkingBudget(modelId, thinkingLevel);
+    if (thinkingBudget !== undefined) {
       return {
         includeThoughts: true,
-        thinkingBudget: toGemini25ProThinkingBudget(thinkingLevel),
+        thinkingBudget,
       } as const;
     }
     return {
@@ -3953,6 +3943,43 @@ function resolveGeminiThinkingConfig(
     default:
       return { includeThoughts: true } as const;
   }
+}
+
+function resolveGeminiThinkingBudget(
+  modelId: string,
+  thinkingLevel: LlmThinkingLevel,
+): number | undefined {
+  if (modelId === "gemini-2.5-pro") {
+    switch (thinkingLevel) {
+      case "low":
+        return 256;
+      case "medium":
+        return 4096;
+      case "high":
+        return 32_768;
+    }
+  }
+  if (modelId === "gemini-flash-latest") {
+    switch (thinkingLevel) {
+      case "low":
+        return 256;
+      case "medium":
+        return 8192;
+      case "high":
+        return 24_576;
+    }
+  }
+  if (modelId === "gemini-3-flash-preview") {
+    switch (thinkingLevel) {
+      case "low":
+        return 256;
+      case "medium":
+        return 8192;
+      case "high":
+        return 16_384;
+    }
+  }
+  return undefined;
 }
 
 function decodeInlineDataBuffer(base64: string): Buffer {
