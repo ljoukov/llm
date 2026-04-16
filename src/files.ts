@@ -17,6 +17,7 @@ import { getGeminiClient } from "./google/client.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export const DEFAULT_FILE_TTL_SECONDS = 48 * 60 * 60;
+export const DEFAULT_SIGNED_URL_TTL_SECONDS = 6 * 60 * 60;
 const GEMINI_FILE_POLL_INTERVAL_MS = 1_000;
 const GEMINI_FILE_POLL_TIMEOUT_MS = 60_000;
 const FILES_TEMP_ROOT = path.join(os.tmpdir(), "ljoukov-llm-files");
@@ -1349,7 +1350,7 @@ export async function getCanonicalFileSignedUrl(options: {
     .getSignedUrl({
       version: "v4",
       action: "read",
-      expires: Date.now() + (options.expiresAfterSeconds ?? 15 * 60) * 1000,
+      expires: Date.now() + (options.expiresAfterSeconds ?? DEFAULT_SIGNED_URL_TTL_SECONDS) * 1000,
       responseType: resolveCanonicalStorageContentType(metadata.filename, metadata.mimeType),
     });
   return signedUrl;

@@ -26,7 +26,12 @@ export {
   toGeminiJsonSchema,
   tool,
 } from "./llm.js";
-export { DEFAULT_FILE_TTL_SECONDS, emptyFileUploadMetrics, files } from "./files.js";
+export {
+  DEFAULT_FILE_TTL_SECONDS,
+  DEFAULT_SIGNED_URL_TTL_SECONDS,
+  emptyFileUploadMetrics,
+  files,
+} from "./files.js";
 export { configureTelemetry, resetTelemetry } from "./telemetry.js";
 
 export type {
