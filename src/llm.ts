@@ -340,12 +340,6 @@ export type LlmBaseRequest = {
   readonly imageAspectRatio?: string;
   readonly imageSize?: LlmImageSize;
   readonly thinkingLevel?: LlmThinkingLevel;
-  /**
-   * Gemini-only explicit thinking budget. When provided, this overrides
-   * `thinkingLevel` and the model default for Gemini requests. Use `0` to
-   * disable thinking where the selected Gemini model supports it.
-   */
-  readonly thinkingBudget?: number;
   readonly mediaResolution?: LlmMediaResolution;
   readonly openAiTextFormat?: ResponseTextConfig["format"];
   readonly telemetry?: TelemetrySelection;
@@ -533,7 +527,6 @@ export type LlmToolLoopRequest = LlmInput & {
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
   readonly thinkingLevel?: LlmThinkingLevel;
-  readonly thinkingBudget?: number;
   readonly mediaResolution?: LlmMediaResolution;
   readonly steering?: LlmToolLoopSteeringChannel;
   readonly onEvent?: (event: LlmStreamEvent) => void;
@@ -3931,16 +3924,9 @@ function toGemini25ProThinkingBudget(thinkingLevel: LlmThinkingLevel): number {
 function resolveGeminiThinkingConfig(
   modelId: string,
   thinkingLevel?: LlmThinkingLevel,
-  thinkingBudget?: number,
 ): GenerateContentConfig["thinkingConfig"] {
   if (isGeminiImageModelId(modelId) || modelId === "gemini-flash-lite-latest") {
     return undefined;
-  }
-  if (thinkingBudget !== undefined) {
-    const normalizedBudget = Math.max(0, Math.floor(thinkingBudget));
-    return normalizedBudget === 0
-      ? ({ thinkingBudget: 0 } as const)
-      : ({ includeThoughts: true, thinkingBudget: normalizedBudget } as const);
   }
   if (thinkingLevel) {
     if (modelId === "gemini-2.5-pro") {
@@ -4394,9 +4380,6 @@ function startLlmCallLoggerFromContents(options: {
         : {}),
       ...(options.request.imageSize ? { imageSize: options.request.imageSize } : {}),
       ...(options.request.thinkingLevel ? { thinkingLevel: options.request.thinkingLevel } : {}),
-      ...(options.request.thinkingBudget !== undefined
-        ? { thinkingBudget: options.request.thinkingBudget }
-        : {}),
       ...(options.request.mediaResolution
         ? { mediaResolution: options.request.mediaResolution }
         : {}),
@@ -4765,11 +4748,7 @@ async function runTextCall(params: {
             }),
           ),
         );
-        const thinkingConfig = resolveGeminiThinkingConfig(
-          modelForProvider,
-          request.thinkingLevel,
-          request.thinkingBudget,
-        );
+        const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
         const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
         const config: GenerateContentConfig = {
           maxOutputTokens: 32_000,
@@ -5138,7 +5117,6 @@ function startJsonStream<T>(
                 responseMimeType: request.responseMimeType ?? "application/json",
                 responseJsonSchema,
                 thinkingLevel: request.thinkingLevel,
-                thinkingBudget: request.thinkingBudget,
                 ...(openAiTextFormatForAttempt
                   ? { openAiTextFormat: openAiTextFormatForAttempt }
                   : {}),
@@ -6693,11 +6671,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           firstModelEventAtMs = Date.now();
         }
       };
-      const thinkingConfig = resolveGeminiThinkingConfig(
-        request.model,
-        request.thinkingLevel,
-        request.thinkingBudget,
-      );
+      const thinkingConfig = resolveGeminiThinkingConfig(request.model, request.thinkingLevel);
       const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
       const config: GenerateContentConfig = {
         maxOutputTokens: 32_000,
