@@ -491,6 +491,18 @@ const { value } = await generateJson({
 console.log(value.ok, value.message);
 ```
 
+For Gemini calls that need a specific thinking budget, pass `thinkingBudget`. This overrides the model default and
+`thinkingLevel` for Gemini requests:
+
+```ts
+const { value } = await generateJson({
+  model: "gemini-flash-latest",
+  input: "Return a JSON object with ok=true and message='hello'.",
+  schema,
+  thinkingBudget: 0,
+});
+```
+
 ### Streaming JSON outputs
 
 Use `streamJson()` to stream thought deltas and get best-effort partial JSON snapshots while the model is still

@@ -131,6 +131,25 @@ describe("streamText (Gemini)", () => {
     });
   });
 
+  it("uses explicit Gemini thinkingBudget when provided", async () => {
+    geminiRequests = [];
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({
+      model: "gemini-flash-latest",
+      input: "hi",
+      thinkingBudget: 0,
+    });
+    for await (const _event of call.events) {
+      // Drain stream to completion.
+    }
+    await call.result;
+
+    expect(geminiRequests[0]?.config?.thinkingConfig).toEqual({
+      thinkingBudget: 0,
+    });
+  });
+
   it("maps thinkingLevel=medium to gemini-3.1-pro-preview thinkingLevel=MEDIUM", async () => {
     geminiRequests = [];
     const { streamText } = await import("../src/llm.js");
