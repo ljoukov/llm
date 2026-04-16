@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
 import { installMockStorageEnv, resetMockStorageState } from "./helpers/mock-storage.js";
@@ -6,6 +7,8 @@ import { installMockStorageEnv, resetMockStorageState } from "./helpers/mock-sto
 let geminiRequests: any[] = [];
 let geminiUploadedFiles: any[] = [];
 let geminiStoredFiles = new Map<string, any>();
+let geminiResponseText = "Hello world";
+let geminiThoughtText = "Thinking";
 
 vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
@@ -25,7 +28,10 @@ vi.mock("../src/google/calls.js", () => {
         {
           content: {
             role: "model",
-            parts: [{ text: "Hello " }, { text: "Thinking", thought: true }, { text: "world" }],
+            parts: [
+              { text: geminiResponseText },
+              ...(geminiThoughtText ? [{ text: geminiThoughtText, thought: true }] : []),
+            ],
           },
         },
       ],
@@ -86,6 +92,8 @@ describe("streamText (Gemini)", () => {
     geminiRequests = [];
     geminiUploadedFiles = [];
     geminiStoredFiles = new Map();
+    geminiResponseText = "Hello world";
+    geminiThoughtText = "Thinking";
   });
 
   it("streams response + thought deltas and returns usage/cost", async () => {
@@ -173,6 +181,38 @@ describe("streamText (Gemini)", () => {
       includeThoughts: true,
       thinkingLevel: "MEDIUM",
     });
+  });
+
+  it("passes a resolved object schema to Gemini JSON calls", async () => {
+    geminiRequests = [];
+    geminiResponseText = '{"result":"correct","feedback":"Good"}';
+    geminiThoughtText = "";
+    const { generateJson } = await import("../src/llm.js");
+
+    const schema = z.object({
+      result: z.enum(["correct", "partial", "incorrect"]),
+      feedback: z.string(),
+    });
+
+    const { value } = await generateJson({
+      model: "gemini-flash-latest",
+      input: "hi",
+      schema,
+      thinkingLevel: "low",
+      maxAttempts: 1,
+    });
+
+    expect(value).toEqual({ result: "correct", feedback: "Good" });
+    expect(geminiRequests[0]?.config?.responseJsonSchema).toMatchObject({
+      type: "object",
+      properties: {
+        result: { enum: ["correct", "partial", "incorrect"] },
+        feedback: { type: "string" },
+      },
+    });
+    expect(geminiRequests[0]?.config?.responseJsonSchema?.$ref).toBeUndefined();
+    expect(geminiRequests[0]?.config?.responseJsonSchema?.definitions).toBeUndefined();
+    expect(geminiRequests[0]?.config?.responseJsonSchema?.$defs).toBeUndefined();
   });
 
   it("maps mediaResolution=original to Gemini high config and ultra-high image parts", async () => {

@@ -5048,7 +5048,7 @@ function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
   const responseJsonSchema = isOpenAiVariant
     ? resolveOpenAiSchemaRoot(baseJsonSchema)
     : isGeminiVariant
-      ? addGeminiPropertyOrdering(baseJsonSchema)
+      ? addGeminiPropertyOrdering(resolveOpenAiSchemaRoot(baseJsonSchema))
       : resolveOpenAiSchemaRoot(baseJsonSchema);
 
   if (isOpenAiVariant && !isJsonSchemaObject(responseJsonSchema)) {
