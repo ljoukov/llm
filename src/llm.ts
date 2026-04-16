@@ -1269,6 +1269,7 @@ function isRetryableChatGptTransportError(error: unknown): boolean {
     message === "terminated" ||
     message.includes("socket hang up") ||
     message.includes("fetch failed") ||
+    message.includes("failed to download file from") ||
     message.includes("network") ||
     message.includes("responses websocket")
   );

@@ -14,6 +14,7 @@ import {
 let capturedRequest: any = null;
 let chatGptCallCount = 0;
 let failFirstTerminated = false;
+let failFirstFileDownload = false;
 let emitChatGptDeltas = true;
 
 vi.mock("@google-cloud/storage", async () => {
@@ -26,6 +27,11 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
       const callIndex = chatGptCallCount++;
       if (failFirstTerminated && callIndex === 0) {
         throw new Error("terminated");
+      }
+      if (failFirstFileDownload && callIndex === 0) {
+        throw new Error(
+          'ChatGPT Codex request failed (400): {"error":{"message":"Failed to download file from https://mock-gcs.local/file.png","type":"invalid_request_error","code":"invalid_value"}}',
+        );
       }
       capturedRequest = options.request;
       if (emitChatGptDeltas) {
@@ -57,6 +63,7 @@ describe("streamText (ChatGPT)", () => {
     capturedRequest = null;
     chatGptCallCount = 0;
     failFirstTerminated = false;
+    failFirstFileDownload = false;
     emitChatGptDeltas = true;
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
@@ -115,8 +122,10 @@ describe("streamText (ChatGPT)", () => {
 
   it("uploads large prompt attachments and replaces file_data with signed file_url", async () => {
     const { generateText } = await import("../src/llm.js");
+    const { DEFAULT_SIGNED_URL_TTL_SECONDS } = await import("../src/files.js");
 
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
+    const beforeCallMs = Date.now();
     await generateText({
       model: "chatgpt-gpt-5.4-mini",
       input: [
@@ -143,11 +152,33 @@ describe("streamText (ChatGPT)", () => {
     expect(filePart?.file_data).toBeUndefined();
     expect(filePart?.file_id).toBeUndefined();
     expect(filePart?.filename).toBeUndefined();
-    expect(getMockStorageState().signedUrlCalls).toHaveLength(1);
+    const signedUrlCalls = getMockStorageState().signedUrlCalls;
+    expect(signedUrlCalls).toHaveLength(1);
+    const expires = signedUrlCalls[0]?.options.expires;
+    expect(typeof expires).toBe("number");
+    expect(expires as number).toBeGreaterThanOrEqual(
+      beforeCallMs + (DEFAULT_SIGNED_URL_TTL_SECONDS - 1) * 1000,
+    );
+    expect(expires as number).toBeLessThanOrEqual(
+      Date.now() + (DEFAULT_SIGNED_URL_TTL_SECONDS + 1) * 1000,
+    );
   });
 
   it("retries once when ChatGPT transport fails with terminated", async () => {
     failFirstTerminated = true;
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "chatgpt-gpt-5.4-mini",
+      input: "hi",
+    });
+
+    expect(result.text).toBe("Hello");
+    expect(chatGptCallCount).toBe(2);
+  });
+
+  it("retries once when ChatGPT fails to download a signed file URL", async () => {
+    failFirstFileDownload = true;
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
