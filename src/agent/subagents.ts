@@ -190,12 +190,14 @@ const spawnAgentInputSchema = z.object({
   message: z
     .string()
     .nullish()
-    .describe("Initial plain-text task for the new agent. Use either message or items."),
+    .describe(
+      "Initial plain-text task for the new agent. Combined with items when both are provided.",
+    ),
   items: z
     .array(subagentInputItemSchema)
     .nullish()
     .describe(
-      "Structured input items. Use this to pass explicit mentions (for example app:// connector paths).",
+      "Structured input items. Use this to pass explicit mentions (for example app:// connector paths). Combined with message/input when both are provided.",
     ),
   agent_type: z.string().nullish().describe(SPAWN_AGENT_TYPE_DESCRIPTION),
   fork_context: z
@@ -415,7 +417,6 @@ export function createSubagentToolController(
         const initialPrompt = resolveCollabInputText({
           textCandidates: [{ value: input.prompt }, { value: input.message }],
           items: input.items,
-          bothError: "Provide either prompt/message or items, but not both.",
           missingError: "Provide one of: prompt/message or items.",
           emptyTextError: "Empty message can't be sent to an agent.",
           emptyItemsError: "Items can't be empty.",
@@ -481,7 +482,6 @@ export function createSubagentToolController(
         const nextInput = resolveCollabInputText({
           textCandidates: [{ value: input.input }, { value: input.message }],
           items: input.items,
-          bothError: "Provide either input/message or items, but not both.",
           missingError: "Provide one of: input/message or items.",
           emptyTextError: "Empty message can't be sent to an agent.",
           emptyItemsError: "Items can't be empty.",
@@ -648,7 +648,6 @@ function resolveCollabInputText(params: {
     readonly value: string | null | undefined;
   }[];
   readonly items: readonly z.infer<typeof subagentInputItemSchema>[] | null | undefined;
-  readonly bothError: string;
   readonly missingError: string;
   readonly emptyTextError: string;
   readonly emptyItemsError: string;
@@ -659,19 +658,21 @@ function resolveCollabInputText(params: {
   const hasText = Boolean(textCandidate);
   const hasItems = params.items !== undefined && params.items !== null;
 
-  if (hasText && hasItems) {
-    throw new Error(params.bothError);
-  }
   if (!hasText && !hasItems) {
     throw new Error(params.missingError);
   }
 
+  const blocks: string[] = [];
   if (hasText) {
     const value = textCandidate?.value?.trim();
     if (!value) {
       throw new Error(params.emptyTextError);
     }
-    return value;
+    blocks.push(value);
+  }
+
+  if (!hasItems) {
+    return blocks.join("\n\n");
   }
 
   if (!params.items || params.items.length === 0) {
@@ -681,7 +682,8 @@ function resolveCollabInputText(params: {
   if (!itemText) {
     throw new Error(params.emptyItemsError);
   }
-  return itemText;
+  blocks.push(itemText);
+  return blocks.join("\n\n");
 }
 
 function resolveInputItemsText(
