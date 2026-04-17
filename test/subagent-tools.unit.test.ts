@@ -271,8 +271,8 @@ describe("subagent tools", () => {
     expect(payload).toContain(agentId);
   });
 
-  it("rejects message+items combinations like codex collab tools", async () => {
-    const runSubagent = vi.fn(async () => ({
+  it("combines message+items combinations for subagent input", async () => {
+    const runSubagent = vi.fn(async (_request: SubagentRunRequest) => ({
       text: "done",
       thoughts: "",
       steps: [],
@@ -289,22 +289,29 @@ describe("subagent tools", () => {
     const spawn = getExecutableTool(controller.tools, "spawn_agent");
     const sendInput = getExecutableTool(controller.tools, "send_input");
 
-    await expect(
-      spawn.execute({
-        message: "hi",
-        items: [{ type: "text", text: "also hi" }],
-      }),
-    ).rejects.toThrow("Provide either prompt/message or items, but not both.");
+    const combined = await spawn.execute({
+      message: "hi",
+      items: [{ type: "text", text: "also hi" }],
+    });
+    const combinedAgentId = combined.agent_id as string;
+    const wait = getExecutableTool(controller.tools, "wait");
+    await wait.execute({ ids: [combinedAgentId], timeout_ms: 200 });
+    const combinedCall = runSubagent.mock.calls[0]?.[0] as SubagentRunRequest | undefined;
+    expect(combinedCall?.input.at(-1)?.content).toBe("hi\n\nalso hi");
 
     const spawned = await spawn.execute({ message: "first" });
     const agentId = spawned.agent_id as string;
-    await expect(
-      sendInput.execute({
-        id: agentId,
-        message: "next",
-        items: [{ type: "text", text: "also next" }],
-      }),
-    ).rejects.toThrow("Provide either input/message or items, but not both.");
+    await wait.execute({ ids: [agentId], timeout_ms: 200 });
+    await sendInput.execute({
+      id: agentId,
+      message: "next",
+      items: [{ type: "text", text: "also next" }],
+    });
+    const resume = getExecutableTool(controller.tools, "resume_agent");
+    await resume.execute({ id: agentId });
+    await wait.execute({ ids: [agentId], timeout_ms: 200 });
+    const sendInputCall = runSubagent.mock.calls.at(-1)?.[0] as SubagentRunRequest | undefined;
+    expect(sendInputCall?.input.at(-1)?.content).toBe("next\n\nalso next");
   });
 
   it("applies built-in agent_type metadata and role instructions", async () => {
