@@ -409,6 +409,7 @@ export type LlmFunctionTool<Schema extends z.ZodType, Output> = {
   readonly type?: "function";
   readonly description?: string;
   readonly inputSchema: Schema;
+  readonly terminal?: boolean;
   readonly execute: (input: z.output<Schema>) => Promise<Output> | Output;
 };
 
@@ -424,6 +425,7 @@ export type LlmCustomTool<Output> = {
   readonly type: "custom";
   readonly description?: string;
   readonly format?: LlmCustomToolInputFormat;
+  readonly terminal?: boolean;
   readonly execute: (input: string) => Promise<Output> | Output;
 };
 
@@ -436,6 +438,7 @@ export type LlmToolSet = Record<string, LlmExecutableTool<z.ZodType, unknown>>;
 export function tool<Schema extends z.ZodType, Output>(options: {
   readonly description?: string;
   readonly inputSchema: Schema;
+  readonly terminal?: boolean;
   readonly execute: (input: z.output<Schema>) => Promise<Output> | Output;
 }): LlmFunctionTool<Schema, Output> {
   return {
@@ -447,6 +450,7 @@ export function tool<Schema extends z.ZodType, Output>(options: {
 export function customTool<Output>(options: {
   readonly description?: string;
   readonly format?: LlmCustomToolInputFormat;
+  readonly terminal?: boolean;
   readonly execute: (input: string) => Promise<Output> | Output;
 }): LlmCustomTool<Output> {
   return {
@@ -3663,6 +3667,46 @@ async function executeToolCall(params: {
   }
 }
 
+function findTerminalToolCall(
+  tools: LlmToolSet,
+  toolCalls: readonly LlmToolCallResult[],
+): LlmToolCallResult | null {
+  for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
+    const toolCall = toolCalls[index];
+    if (!toolCall) {
+      continue;
+    }
+    const toolDef = tools[toolCall.toolName];
+    if (toolDef?.terminal === true && !toolCall.error) {
+      return toolCall;
+    }
+  }
+  return null;
+}
+
+function terminalToolCallText(toolCall: LlmToolCallResult): string {
+  const output = toolCall.output;
+  if (typeof output === "string") {
+    return output;
+  }
+  if (output && typeof output === "object") {
+    const record = output as Record<string, unknown>;
+    const summary = record.summary;
+    if (typeof summary === "string" && summary.trim().length > 0) {
+      return summary;
+    }
+    const status = record.status;
+    const title = record.presentationTitle;
+    if (typeof status === "string" && typeof title === "string" && title.trim().length > 0) {
+      return `${status}: ${title}`;
+    }
+    if (typeof status === "string" && status.trim().length > 0) {
+      return status;
+    }
+  }
+  return "";
+}
+
 function buildToolLogId(turn: number, toolIndex: number): string {
   return `turn${turn.toString()}/tool${toolIndex.toString()}`;
 }
@@ -5943,6 +5987,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             costUsd: stepCostUsd,
             timing,
           });
+          const terminalToolCall = findTerminalToolCall(request.tools, stepToolCalls);
 
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
           const steeringItems =
@@ -5967,9 +6012,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               responseChars: responseText.length,
               thoughtChars: reasoningSummary.length,
               toolCalls: stepToolCalls.length,
-              finalStep: false,
+              finalStep: terminalToolCall !== null,
             },
           });
+          if (terminalToolCall) {
+            finalText = terminalToolCallText(terminalToolCall) || responseText;
+            finalThoughts = reasoningSummary;
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
           previousResponseId = (finalResponse as any).id;
           input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
         } catch (error) {
@@ -6313,6 +6363,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             costUsd: stepCostUsd,
             timing,
           });
+          const terminalToolCall = findTerminalToolCall(request.tools, toolCalls);
 
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
           const steeringItems =
@@ -6336,9 +6387,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               responseChars: responseText.length,
               thoughtChars: reasoningSummaryText.length,
               toolCalls: toolCalls.length,
-              finalStep: false,
+              finalStep: terminalToolCall !== null,
             },
           });
+          if (terminalToolCall) {
+            finalText = terminalToolCallText(terminalToolCall) || responseText;
+            finalThoughts = reasoningSummaryText;
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
           input =
             steeringItems.length > 0
               ? input.concat(toolOutputs, steeringItems)
@@ -6620,6 +6676,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             costUsd: stepCostUsd,
             timing,
           });
+          const terminalToolCall = findTerminalToolCall(request.tools, stepToolCalls);
           stepCallLogger?.complete({
             responseText,
             toolCallText: stepToolCallText,
@@ -6635,9 +6692,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               responseChars: responseText.length,
               thoughtChars: 0,
               toolCalls: stepToolCalls.length,
-              finalStep: false,
+              finalStep: terminalToolCall !== null,
             },
           });
+          if (terminalToolCall) {
+            finalText = terminalToolCallText(terminalToolCall) || responseText;
+            finalThoughts = "";
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
 
           messages.push({
             role: "assistant",
@@ -7015,6 +7077,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           costUsd: stepCostUsd,
           timing,
         });
+        const terminalToolCall = findTerminalToolCall(request.tools, toolCalls);
         stepCallLogger?.complete({
           responseText,
           attachments: responseOutputAttachments,
@@ -7030,9 +7093,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             responseChars: responseText.length,
             thoughtChars: thoughtsText.length,
             toolCalls: toolCalls.length,
-            finalStep: false,
+            finalStep: terminalToolCall !== null,
           },
         });
+        if (terminalToolCall) {
+          finalText = terminalToolCallText(terminalToolCall) || responseText;
+          finalThoughts = thoughtsText;
+          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+        }
 
         geminiContents.push({ role: "user", parts: responseParts });
         const steeringInput = steeringInternal?.drainPendingContents() ?? [];

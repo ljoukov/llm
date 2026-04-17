@@ -331,6 +331,30 @@ describe("runToolLoop custom tools", () => {
     expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
   });
 
+  it("stops OpenAI tool loops immediately after a successful terminal tool", async () => {
+    openAiScenario = "image_function";
+    openAiRequests = [];
+    openAiCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "gpt-5.4-mini",
+      input: "finish",
+      tools: {
+        view_image: tool({
+          terminal: true,
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => ({ status: "done", summary: "terminal ok" }),
+        }),
+      },
+    });
+
+    expect(result.text).toBe("terminal ok");
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]?.toolCalls).toHaveLength(1);
+    expect(openAiRequests).toHaveLength(1);
+  });
+
   it("writes tool call artifacts and input media for logged OpenAI tool loops", async () => {
     openAiScenario = "image_function";
     openAiRequests = [];
@@ -467,6 +491,30 @@ describe("runToolLoop custom tools", () => {
     expect(outputItem?.output?.[0]?.image_url).toBe("data:image/png;base64,AAA");
   });
 
+  it("stops ChatGPT tool loops immediately after a successful terminal tool", async () => {
+    chatGptScenario = "image_function";
+    chatGptRequests = [];
+    chatGptCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "chatgpt-gpt-5.4",
+      input: "finish",
+      tools: {
+        view_image: tool({
+          terminal: true,
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => ({ status: "done", summary: "terminal ok" }),
+        }),
+      },
+    });
+
+    expect(result.text).toBe("terminal ok");
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]?.toolCalls).toHaveLength(1);
+    expect(chatGptRequests).toHaveLength(1);
+  });
+
   it("omits filename on ChatGPT function_call_output image file references", async () => {
     chatGptScenario = "image_function";
     chatGptRequests = [];
@@ -549,6 +597,30 @@ describe("runToolLoop custom tools", () => {
       },
     });
     expect(JSON.stringify(responsePart?.response)).not.toContain("data:image");
+  });
+
+  it("stops Gemini tool loops immediately after a successful terminal tool", async () => {
+    geminiScenario = "image_function";
+    geminiRequests = [];
+    geminiCallCount = 0;
+
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "gemini-3.1-pro-preview",
+      input: "finish",
+      tools: {
+        view_image: tool({
+          terminal: true,
+          inputSchema: z.object({ path: z.string() }),
+          execute: async () => ({ status: "done", summary: "terminal ok" }),
+        }),
+      },
+    });
+
+    expect(result.text).toBe("terminal ok");
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]?.toolCalls).toHaveLength(1);
+    expect(geminiRequests).toHaveLength(1);
   });
 
   it("preserves duplicate Gemini function calls with identical args", async () => {
