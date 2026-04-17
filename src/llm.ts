@@ -53,9 +53,11 @@ import {
   CHATGPT_MODEL_IDS,
   OPENAI_MODEL_IDS,
   isChatGptModelId,
+  isExperimentalChatGptModelId,
   isOpenAiModelId,
   resolveChatGptProviderModel,
   resolveChatGptServiceTier,
+  type ExperimentalChatGptModelId,
 } from "./openai/models.js";
 import {
   getCurrentAgentLoggingSession,
@@ -235,13 +237,13 @@ export const LLM_TEXT_MODEL_IDS = [
   ...FIREWORKS_MODEL_IDS,
   ...GEMINI_TEXT_MODEL_IDS,
 ] as const;
-export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number];
+export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number] | ExperimentalChatGptModelId;
 
 export const LLM_IMAGE_MODEL_IDS = [...GEMINI_IMAGE_MODEL_IDS] as const;
 export type LlmImageModelId = (typeof LLM_IMAGE_MODEL_IDS)[number];
 
 export const LLM_MODEL_IDS = [...LLM_TEXT_MODEL_IDS, ...LLM_IMAGE_MODEL_IDS] as const;
-export type LlmModelId = (typeof LLM_MODEL_IDS)[number];
+export type LlmModelId = LlmTextModelId | LlmImageModelId;
 
 export function isLlmTextModelId(value: string): value is LlmTextModelId {
   return (
@@ -4740,7 +4742,10 @@ async function runTextCall(params: {
           pushEvent({ type: "blocked" });
         }
         if (result.model) {
-          modelVersion = providerInfo.serviceTier ? request.model : `chatgpt-${result.model}`;
+          modelVersion =
+            providerInfo.serviceTier || isExperimentalChatGptModelId(request.model)
+              ? request.model
+              : `chatgpt-${result.model}`;
           pushEvent({ type: "model", modelVersion });
         }
         latestUsage = extractChatGptUsageTokens(result.usage);
@@ -6128,7 +6133,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           const modelCompletedAtMs = Date.now();
 
           modelVersion =
-            response.model && !providerInfo.serviceTier
+            response.model &&
+            !providerInfo.serviceTier &&
+            !isExperimentalChatGptModelId(request.model)
               ? `chatgpt-${response.model}`
               : request.model;
           usageTokens = extractChatGptUsageTokens(response.usage);

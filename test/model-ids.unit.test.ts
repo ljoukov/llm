@@ -6,6 +6,7 @@ import {
   GEMINI_IMAGE_MODEL_IDS,
   GEMINI_TEXT_MODEL_IDS,
   isChatGptModelId,
+  isExperimentalChatGptModelId,
   isLlmImageModelId,
   isLlmModelId,
   isLlmTextModelId,
@@ -61,12 +62,17 @@ describe("model id lists", () => {
     expect(isChatGptModelId("chatgpt-gpt-5.4-fast")).toBe(true);
     expect(isChatGptModelId("chatgpt-gpt-5.4-mini")).toBe(true);
     expect(isChatGptModelId("chatgpt-gpt-5.3-codex-spark")).toBe(true);
+    expect(isChatGptModelId("experimental-chatgpt-private-model")).toBe(true);
+    expect(isExperimentalChatGptModelId("experimental-chatgpt-private-model")).toBe(true);
+    expect(CHATGPT_MODEL_IDS).not.toContain("experimental-chatgpt-private-model");
     expect(isLlmTextModelId("gpt-5.4")).toBe(true);
     expect(isLlmTextModelId("gpt-5.4-mini")).toBe(true);
     expect(isLlmTextModelId("gpt-5.4-nano")).toBe(true);
     expect(isLlmTextModelId("chatgpt-gpt-5.4-fast")).toBe(true);
     expect(isLlmTextModelId("chatgpt-gpt-5.4-mini")).toBe(true);
+    expect(isLlmTextModelId("experimental-chatgpt-private-model")).toBe(true);
     expect(isLlmModelId("chatgpt-gpt-5.4-fast")).toBe(true);
+    expect(isLlmModelId("experimental-chatgpt-private-model")).toBe(true);
   });
 
   it("aggregates text and image model ids", () => {

@@ -1132,6 +1132,9 @@ async function runAccessHook(
 }
 
 function isCodexModel(model: string): boolean {
+  if (model.startsWith("experimental-chatgpt-")) {
+    return true;
+  }
   const normalized = model.startsWith("chatgpt-") ? model.slice("chatgpt-".length) : model;
   return normalized.includes("codex") || normalized === "gpt-5.4" || normalized === "gpt-5.4-fast";
 }

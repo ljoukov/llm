@@ -203,6 +203,19 @@ describe("streamText (ChatGPT)", () => {
     expect(result.modelVersion).toBe("chatgpt-gpt-5.4-fast");
   });
 
+  it("maps experimental ChatGPT ids to their provider model suffix", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "experimental-chatgpt-private-model",
+      input: "hi",
+    });
+
+    expect(capturedRequest?.model).toBe("private-model");
+    expect(capturedRequest?.service_tier).toBeUndefined();
+    expect(result.modelVersion).toBe("experimental-chatgpt-private-model");
+  });
+
   it("maps mediaResolution=original to ChatGPT image detail on gpt-5.4", async () => {
     const { generateText } = await import("../src/llm.js");
 
