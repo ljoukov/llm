@@ -676,10 +676,16 @@ function resolveCollabInputText(params: {
   }
 
   if (!params.items || params.items.length === 0) {
+    if (blocks.length > 0) {
+      return blocks.join("\n\n");
+    }
     throw new Error(params.emptyItemsError);
   }
   const itemText = resolveInputItemsText(params.items);
   if (!itemText) {
+    if (blocks.length > 0) {
+      return blocks.join("\n\n");
+    }
     throw new Error(params.emptyItemsError);
   }
   blocks.push(itemText);

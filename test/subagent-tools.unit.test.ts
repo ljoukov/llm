@@ -299,6 +299,17 @@ describe("subagent tools", () => {
     const combinedCall = runSubagent.mock.calls[0]?.[0] as SubagentRunRequest | undefined;
     expect(combinedCall?.input.at(-1)?.content).toBe("hi\n\nalso hi");
 
+    const textWithEmptyItems = await spawn.execute({
+      message: "text only",
+      items: [],
+    });
+    const textWithEmptyItemsAgentId = textWithEmptyItems.agent_id as string;
+    await wait.execute({ ids: [textWithEmptyItemsAgentId], timeout_ms: 200 });
+    const textWithEmptyItemsCall = runSubagent.mock.calls.at(-1)?.[0] as
+      | SubagentRunRequest
+      | undefined;
+    expect(textWithEmptyItemsCall?.input.at(-1)?.content).toBe("text only");
+
     const spawned = await spawn.execute({ message: "first" });
     const agentId = spawned.agent_id as string;
     await wait.execute({ ids: [agentId], timeout_ms: 200 });
