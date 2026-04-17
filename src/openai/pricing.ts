@@ -1,3 +1,5 @@
+import { isExperimentalChatGptModelId } from "./models.js";
+
 export type OpenAiPricing = {
   readonly inputRate: number;
   readonly cachedRate: number;
@@ -41,6 +43,9 @@ const OPENAI_GPT_54_NANO_PRICING: OpenAiPricing = {
 };
 
 export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
+  if (isExperimentalChatGptModelId(modelId)) {
+    return OPENAI_GPT_54_PRICING;
+  }
   if ((OPENAI_GPT_54_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_54_PRIORITY_PRICING;
   }

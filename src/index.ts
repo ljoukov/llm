@@ -225,11 +225,18 @@ export type { ChatGptAuthProfile } from "./openai/chatgpt-auth.js";
 
 export {
   CHATGPT_MODEL_IDS,
+  EXPERIMENTAL_CHATGPT_MODEL_PREFIX,
   OPENAI_MODEL_IDS,
   isChatGptModelId,
+  isExperimentalChatGptModelId,
   isOpenAiModelId,
 } from "./openai/models.js";
-export type { ChatGptModelId, OpenAiModelId } from "./openai/models.js";
+export type {
+  ChatGptModelId,
+  ExperimentalChatGptModelId,
+  ListedChatGptModelId,
+  OpenAiModelId,
+} from "./openai/models.js";
 
 export {
   configureGemini,
