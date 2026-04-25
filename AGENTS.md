@@ -23,8 +23,8 @@
 ## OpenAI Model Policy
 
 - OpenAI text model ids are a closed literal allowlist. Do not add support for arbitrary strings.
-- Supported OpenAI API model ids: `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
-- Supported ChatGPT-authenticated model ids: `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`.
+- Supported OpenAI API model ids: `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
+- Supported ChatGPT-authenticated model ids: `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`.
 - Experimental ChatGPT-authenticated model ids may use the public `experimental-chatgpt-*` prefix so private/internal model suffixes do not need to be committed to this package.
 - Remove old aliases instead of keeping backward-compatibility shims.
 - Subagents must inherit the parent model. Do not add agent-facing model override fields for subagents or other model-invoked tools.

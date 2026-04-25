@@ -57,6 +57,8 @@ import {
   isOpenAiModelId,
   resolveChatGptProviderModel,
   resolveChatGptServiceTier,
+  resolveOpenAiProviderModel,
+  resolveOpenAiServiceTier,
   type ExperimentalChatGptModelId,
 } from "./openai/models.js";
 import {
@@ -1218,7 +1220,11 @@ function resolveProvider(model: LlmModelId): {
     }
   }
   if (isOpenAiModelId(model)) {
-    return { provider: "openai", model };
+    return {
+      provider: "openai",
+      model: resolveOpenAiProviderModel(model),
+      serviceTier: resolveOpenAiServiceTier(model),
+    };
   }
   throw new Error(`Unsupported text model: ${model}`);
 }
@@ -4624,6 +4630,7 @@ async function runTextCall(params: {
             {
               model: modelForProvider,
               input: openAiInput as any,
+              ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
               reasoning,
               text: openAiTextConfig as any,
               ...(openAiTools ? { tools: openAiTools as any } : {}),
@@ -5665,6 +5672,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         const stepRequestPayload = {
           model: providerInfo.model,
           input: preparedInput,
+          ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
           ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
           ...(openAiTools.length > 0 ? { tools: openAiTools } : {}),
           ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
@@ -5696,6 +5704,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 {
                   model: providerInfo.model,
                   input: preparedInput as any,
+                  ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
                   ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
                   ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
                   ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
