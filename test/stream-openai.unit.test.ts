@@ -26,7 +26,7 @@ vi.mock("../src/openai/calls.js", () => {
     async finalResponse() {
       return {
         id: "resp_123",
-        model: "gpt-5.4-mini",
+        model: capturedRequest?.model ?? "gpt-5.4-mini",
         status: "completed",
         usage: {
           input_tokens: 10,
@@ -94,6 +94,19 @@ describe("streamText (OpenAI)", () => {
     await call.result;
 
     expect(capturedRequest?.reasoning?.effort).toBe("high");
+  });
+
+  it("maps gpt-5.5-fast to gpt-5.5 with priority service tier", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "gpt-5.5-fast",
+      input: "hi",
+    });
+
+    expect(capturedRequest?.model).toBe("gpt-5.5");
+    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(result.modelVersion).toBe("gpt-5.5");
   });
 
   it("maps mediaResolution=original to OpenAI image detail on gpt-5.4", async () => {

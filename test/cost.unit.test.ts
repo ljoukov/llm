@@ -4,6 +4,44 @@ import { LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
+  it("estimates GPT-5.5 costs", () => {
+    const cost = estimateCallCostUsd({
+      modelId: "gpt-5.5",
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    // non-cached prompt: 900 * (5/1M) = 0.0045
+    // cached: 100 * (0.5/1M) = 0.00005
+    // output: 600 * (30/1M) = 0.018
+    expect(cost).toBeCloseTo(0.02255, 8);
+  });
+
+  it("prices GPT-5.5 fast aliases at priority rates", () => {
+    for (const modelId of ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"]) {
+      const cost = estimateCallCostUsd({
+        modelId,
+        tokens: {
+          promptTokens: 1000,
+          cachedTokens: 100,
+          responseTokens: 500,
+          thinkingTokens: 100,
+        },
+        responseImages: 0,
+      });
+
+      // non-cached prompt: 900 * (12.5/1M) = 0.01125
+      // cached: 100 * (1.25/1M) = 0.000125
+      // output: 600 * (75/1M) = 0.045
+      expect(cost).toBeCloseTo(0.056375, 8);
+    }
+  });
+
   it("estimates GPT-5.4 mini costs", () => {
     const cost = estimateCallCostUsd({
       modelId: "gpt-5.4-mini",

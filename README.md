@@ -450,19 +450,19 @@ Use a `chatgpt-` prefix:
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "chatgpt-gpt-5.4",
+  model: "chatgpt-gpt-5.5",
   input: "Return exactly: OK",
 });
 
 console.log(result.text);
 ```
 
-`chatgpt-gpt-5.4-fast` is also supported as a convenience alias for ChatGPT-authenticated `gpt-5.4` with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics.
+`gpt-5.5-fast` and `chatgpt-gpt-5.5-fast` are also supported as convenience aliases for `gpt-5.5` with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics.
 
 Supported OpenAI text model ids are fixed literal unions in code, not arbitrary strings:
 
-- OpenAI API: `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
-- ChatGPT auth: `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
+- OpenAI API: `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
+- ChatGPT auth: `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
 
 ## JSON outputs
 
@@ -742,7 +742,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models (`gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
+- Codex-like models (`gpt-5.5`, `gpt-5.5-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 

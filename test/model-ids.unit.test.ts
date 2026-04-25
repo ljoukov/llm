@@ -19,8 +19,16 @@ import {
 
 describe("model id lists", () => {
   it("defines provider model ids as explicit const lists", () => {
-    expect(OPENAI_MODEL_IDS).toEqual(["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]);
+    expect(OPENAI_MODEL_IDS).toEqual([
+      "gpt-5.5",
+      "gpt-5.5-fast",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.4-nano",
+    ]);
     expect(CHATGPT_MODEL_IDS).toEqual([
+      "chatgpt-gpt-5.5",
+      "chatgpt-gpt-5.5-fast",
       "chatgpt-gpt-5.4",
       "chatgpt-gpt-5.4-fast",
       "chatgpt-gpt-5.4-mini",
@@ -55,9 +63,13 @@ describe("model id lists", () => {
   });
 
   it("recognizes the supported OpenAI allowlist", () => {
+    expect(isOpenAiModelId("gpt-5.5")).toBe(true);
+    expect(isOpenAiModelId("gpt-5.5-fast")).toBe(true);
     expect(isOpenAiModelId("gpt-5.4")).toBe(true);
     expect(isOpenAiModelId("gpt-5.4-mini")).toBe(true);
     expect(isOpenAiModelId("gpt-5.4-nano")).toBe(true);
+    expect(isChatGptModelId("chatgpt-gpt-5.5")).toBe(true);
+    expect(isChatGptModelId("chatgpt-gpt-5.5-fast")).toBe(true);
     expect(isChatGptModelId("chatgpt-gpt-5.4")).toBe(true);
     expect(isChatGptModelId("chatgpt-gpt-5.4-fast")).toBe(true);
     expect(isChatGptModelId("chatgpt-gpt-5.4-mini")).toBe(true);
@@ -65,12 +77,18 @@ describe("model id lists", () => {
     expect(isChatGptModelId("experimental-chatgpt-private-model")).toBe(true);
     expect(isExperimentalChatGptModelId("experimental-chatgpt-private-model")).toBe(true);
     expect(CHATGPT_MODEL_IDS).not.toContain("experimental-chatgpt-private-model");
+    expect(isLlmTextModelId("gpt-5.5")).toBe(true);
+    expect(isLlmTextModelId("gpt-5.5-fast")).toBe(true);
     expect(isLlmTextModelId("gpt-5.4")).toBe(true);
     expect(isLlmTextModelId("gpt-5.4-mini")).toBe(true);
     expect(isLlmTextModelId("gpt-5.4-nano")).toBe(true);
+    expect(isLlmTextModelId("chatgpt-gpt-5.5")).toBe(true);
+    expect(isLlmTextModelId("chatgpt-gpt-5.5-fast")).toBe(true);
     expect(isLlmTextModelId("chatgpt-gpt-5.4-fast")).toBe(true);
     expect(isLlmTextModelId("chatgpt-gpt-5.4-mini")).toBe(true);
     expect(isLlmTextModelId("experimental-chatgpt-private-model")).toBe(true);
+    expect(isLlmModelId("gpt-5.5-fast")).toBe(true);
+    expect(isLlmModelId("chatgpt-gpt-5.5-fast")).toBe(true);
     expect(isLlmModelId("chatgpt-gpt-5.4-fast")).toBe(true);
     expect(isLlmModelId("experimental-chatgpt-private-model")).toBe(true);
   });
