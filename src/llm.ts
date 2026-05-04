@@ -328,6 +328,19 @@ export type LlmTextResult = {
   readonly usage?: LlmUsageTokens;
   readonly costUsd: number;
   readonly grounding?: GroundingMetadata;
+  readonly openAi?: LlmOpenAiResponseMetadata;
+};
+
+export type LlmOpenAiResponseContainerReference = {
+  readonly containerId: string;
+  readonly toolType: "shell" | "code_interpreter";
+  readonly itemId?: string;
+  readonly callId?: string;
+};
+
+export type LlmOpenAiResponseMetadata = {
+  readonly responseId?: string;
+  readonly containers: readonly LlmOpenAiResponseContainerReference[];
 };
 
 export type LlmTextStream = {
@@ -2706,6 +2719,63 @@ function toOpenAiTools(
   });
 }
 
+function extractOpenAiResponseMetadata(response: unknown): LlmOpenAiResponseMetadata | undefined {
+  if (!response || typeof response !== "object") {
+    return undefined;
+  }
+  const record = response as Record<string, unknown>;
+  const responseId = typeof record.id === "string" ? record.id : undefined;
+  const output = Array.isArray(record.output) ? record.output : [];
+  const containers: LlmOpenAiResponseContainerReference[] = [];
+  const seen = new Set<string>();
+
+  const addContainer = (container: LlmOpenAiResponseContainerReference): void => {
+    const key = `${container.toolType}:${container.containerId}:${container.itemId ?? ""}:${
+      container.callId ?? ""
+    }`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    containers.push(container);
+  };
+
+  for (const item of output) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const itemRecord = item as Record<string, unknown>;
+    const itemId = typeof itemRecord.id === "string" ? itemRecord.id : undefined;
+    const callId = typeof itemRecord.call_id === "string" ? itemRecord.call_id : undefined;
+    if (itemRecord.type === "shell_call") {
+      const environment =
+        itemRecord.environment && typeof itemRecord.environment === "object"
+          ? (itemRecord.environment as Record<string, unknown>)
+          : undefined;
+      const containerId =
+        environment?.type === "container_reference" && typeof environment.container_id === "string"
+          ? environment.container_id
+          : undefined;
+      if (containerId) {
+        addContainer({ containerId, toolType: "shell", itemId, callId });
+      }
+      continue;
+    }
+    if (itemRecord.type === "code_interpreter_call") {
+      const containerId =
+        typeof itemRecord.container_id === "string" ? itemRecord.container_id : undefined;
+      if (containerId) {
+        addContainer({ containerId, toolType: "code_interpreter", itemId, callId });
+      }
+    }
+  }
+
+  if (!responseId && containers.length === 0) {
+    return undefined;
+  }
+  return { ...(responseId ? { responseId } : {}), containers };
+}
+
 function mergeTokenUpdates(
   current: LlmUsageTokens | undefined,
   next: LlmUsageTokens | undefined,
@@ -4733,6 +4803,7 @@ async function runTextCall(params: {
   let modelVersion: string = request.model;
   let blocked = false;
   let grounding: GroundingMetadata | undefined;
+  let openAi: LlmOpenAiResponseMetadata | undefined;
   const responseParts: LlmContentPart[] = [];
   let responseRole: LlmRole | undefined;
   let latestUsage: LlmUsageTokens | undefined;
@@ -4853,6 +4924,7 @@ async function runTextCall(params: {
           }
 
           const finalResponse = await (stream as any).finalResponse();
+          openAi = extractOpenAiResponseMetadata(finalResponse);
           modelVersion =
             typeof finalResponse.model === "string" ? finalResponse.model : request.model;
           pushEvent({ type: "model", modelVersion });
@@ -5144,6 +5216,7 @@ async function runTextCall(params: {
           costUsd,
           usage: latestUsage,
           grounding: grounding ? sanitiseLogValue(grounding) : undefined,
+          openAi: openAi ? sanitiseLogValue(openAi) : undefined,
           responseChars: text.length,
           thoughtChars: thoughts.length,
           responseImages,
@@ -5162,6 +5235,7 @@ async function runTextCall(params: {
         usage: latestUsage,
         costUsd,
         grounding,
+        openAi,
       };
     } catch (error) {
       const partialParts = mergeConsecutiveTextParts(responseParts);

@@ -8,6 +8,8 @@ let openAiImageRequests: any[] = [];
 let openAiStreamedEvents: any[] = [];
 let openAiFinalResponse: any = null;
 let openAiImageResponse: any = null;
+let openAiContainerRequests: any[] = [];
+let openAiContainerFiles: any[] = [];
 let chatGptCodexRequests: any[] = [];
 let chatGptCodexResponse: any = null;
 let geminiRequests: any[] = [];
@@ -40,6 +42,54 @@ vi.mock("../src/openai/calls.js", () => {
       edit: async (request: any) => {
         openAiImageRequests.push({ endpoint: "edit", request });
         return openAiImageResponse;
+      },
+    },
+    containers: {
+      create: async (request: any) => {
+        openAiContainerRequests.push({ endpoint: "containers.create", request });
+        return {
+          id: "cntr_created",
+          name: request.name,
+          status: "active",
+          created_at: 1,
+          memory_limit: request.memory_limit,
+        };
+      },
+      delete: async (containerId: string) => {
+        openAiContainerRequests.push({ endpoint: "containers.delete", containerId });
+      },
+      files: {
+        create: async (containerId: string, request: any) => {
+          openAiContainerRequests.push({
+            endpoint: "containers.files.create",
+            containerId,
+            filename: request.file?.name,
+          });
+          return {
+            id: "cfile_uploaded",
+            container_id: containerId,
+            path: `/mnt/data/${request.file?.name ?? "uploaded.bin"}`,
+            bytes: request.file?.size ?? 0,
+            source: "user",
+          };
+        },
+        list: (_containerId: string) => ({
+          async *[Symbol.asyncIterator]() {
+            for (const file of openAiContainerFiles) {
+              yield file;
+            }
+          },
+        }),
+        content: {
+          retrieve: async (fileId: string, request: any) => {
+            openAiContainerRequests.push({
+              endpoint: "containers.files.content.retrieve",
+              fileId,
+              request,
+            });
+            return new Response("downloaded");
+          },
+        },
       },
     },
   };
@@ -96,6 +146,17 @@ describe("LLM telemetry", () => {
         total_tokens: 15,
       },
     };
+    openAiContainerRequests = [];
+    openAiContainerFiles = [
+      {
+        id: "cfile_123",
+        container_id: "cntr_123",
+        path: "/mnt/data/article.pdf",
+        bytes: null,
+        created_at: 1,
+        source: "assistant",
+      },
+    ];
     openAiImageResponse = {
       created: 1,
       data: [{ b64_json: Buffer.from("fake-openai-image").toString("base64") }],
@@ -175,6 +236,117 @@ describe("LLM telemetry", () => {
     events.length = 0;
     await generateText({ model: "gpt-5.4-mini", input: "hi", telemetry: false });
     expect(events).toEqual([]);
+  });
+
+  it("returns OpenAI hosted shell container metadata", async () => {
+    const { generateText } = await import("../src/llm.js");
+    openAiStreamedEvents = [{ type: "response.output_text.delta", delta: "done" }];
+    openAiFinalResponse = {
+      id: "resp_shell",
+      model: "gpt-5.5",
+      status: "completed",
+      output: [
+        {
+          type: "shell_call",
+          id: "sh_123",
+          call_id: "call_123",
+          environment: {
+            type: "container_reference",
+            container_id: "cntr_123",
+          },
+          status: "completed",
+        },
+        {
+          type: "message",
+          id: "msg_123",
+          status: "completed",
+          content: [{ type: "output_text", text: "done", annotations: [] }],
+        },
+      ],
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+      },
+    };
+
+    const result = await generateText({
+      model: "gpt-5.5",
+      input: "Use shell.",
+      tools: [{ type: "shell" }],
+    });
+
+    expect(result.openAi).toEqual({
+      responseId: "resp_shell",
+      containers: [
+        {
+          containerId: "cntr_123",
+          toolType: "shell",
+          itemId: "sh_123",
+          callId: "call_123",
+        },
+      ],
+    });
+  });
+
+  it("creates, lists, uploads, and downloads OpenAI container files", async () => {
+    const {
+      createOpenAiContainer,
+      downloadOpenAiContainerFileText,
+      listOpenAiContainerFiles,
+      uploadOpenAiContainerFile,
+    } = await import("../src/index.js");
+
+    const container = await createOpenAiContainer({
+      name: "article-build",
+      memoryLimit: "1g",
+      networkPolicy: { type: "disabled" },
+      expiresAfterMinutes: 20,
+    });
+    expect(container).toMatchObject({
+      id: "cntr_created",
+      name: "article-build",
+      status: "active",
+      memoryLimit: "1g",
+    });
+    expect(openAiContainerRequests[0]).toMatchObject({
+      endpoint: "containers.create",
+      request: {
+        name: "article-build",
+        memory_limit: "1g",
+        network_policy: { type: "disabled" },
+        expires_after: { anchor: "last_active_at", minutes: 20 },
+      },
+    });
+
+    const uploaded = await uploadOpenAiContainerFile({
+      containerId: "cntr_created",
+      filename: "cover.png",
+      data: new TextEncoder().encode("cover"),
+      mimeType: "image/png",
+    });
+    expect(uploaded).toMatchObject({
+      id: "cfile_uploaded",
+      containerId: "cntr_created",
+      path: "/mnt/data/cover.png",
+      source: "user",
+    });
+
+    const files = await listOpenAiContainerFiles("cntr_123");
+    expect(files).toEqual([
+      {
+        id: "cfile_123",
+        containerId: "cntr_123",
+        path: "/mnt/data/article.pdf",
+        bytes: null,
+        createdAt: 1,
+        source: "assistant",
+      },
+    ]);
+
+    await expect(
+      downloadOpenAiContainerFileText({ containerId: "cntr_123", fileId: "cfile_123" }),
+    ).resolves.toBe("downloaded");
   });
 
   it("applies one global telemetry config across direct calls and agent runs", async () => {

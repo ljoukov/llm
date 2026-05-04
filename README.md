@@ -699,6 +699,57 @@ console.log(result.text);
 
 `{ type: "shell" }` uses OpenAI hosted shell containers by default. It is only supported for OpenAI API models; ChatGPT-authenticated, Gemini, and Fireworks providers reject it.
 
+When the shell writes artifacts under `/mnt/data`, `generateText()` returns the
+OpenAI container reference and the library can retrieve the resulting files:
+
+```ts
+import { downloadOpenAiContainerFile, generateText, listOpenAiContainerFiles } from "@ljoukov/llm";
+
+const result = await generateText({
+  model: "gpt-5.5",
+  input:
+    "Use the shell to write /mnt/data/report.txt containing 'hello'. Reply only when done.",
+  tools: [{ type: "shell" }],
+});
+
+const containerId = result.openAi?.containers.find((c) => c.toolType === "shell")?.containerId;
+if (!containerId) throw new Error("The response did not include a hosted shell container.");
+
+const files = await listOpenAiContainerFiles(containerId);
+const report = files.find((file) => file.path === "/mnt/data/report.txt");
+if (!report) throw new Error("The shell did not create report.txt.");
+
+const bytes = await downloadOpenAiContainerFile({
+  containerId,
+  fileId: report.id,
+});
+```
+
+For persistent multi-step shell work, create a container first, upload any input
+assets, then pass it back as a `container-reference`:
+
+```ts
+import {
+  createOpenAiContainer,
+  generateText,
+  uploadOpenAiContainerFile,
+} from "@ljoukov/llm";
+
+const container = await createOpenAiContainer({ name: "latex-build", memoryLimit: "1g" });
+const cover = await uploadOpenAiContainerFile({
+  containerId: container.id,
+  filename: "cover.png",
+  data: coverPngBytes,
+  mimeType: "image/png",
+});
+
+await generateText({
+  model: "gpt-5.5",
+  input: `Use ${cover.path}, write LaTeX, run xelatex, and save /mnt/data/article.pdf.`,
+  tools: [{ type: "shell", environment: { type: "container-reference", containerId: container.id } }],
+});
+```
+
 ### Runtime Tools (`runToolLoop()`)
 
 Use this when the model should call your local runtime functions.
