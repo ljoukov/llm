@@ -185,7 +185,7 @@ export type LlmToolOutputContentItem =
   | LlmInputFilePart;
 
 export type LlmImageSize = "1K" | "2K" | "4K";
-export type LlmThinkingLevel = "low" | "medium" | "high";
+export type LlmThinkingLevel = "low" | "medium" | "high" | "xhigh";
 
 export type LlmWebSearchMode = "cached" | "live";
 
@@ -1364,6 +1364,8 @@ function resolveOpenAiReasoningEffort(
       case "medium":
         return "medium";
       case "high":
+        return "high";
+      case "xhigh":
         return "xhigh";
     }
   }
@@ -1373,7 +1375,7 @@ function resolveOpenAiReasoningEffort(
   return DEFAULT_OPENAI_REASONING_EFFORT;
 }
 
-type OpenAiReasoningEffortParam = "minimal" | "low" | "medium" | "high";
+type OpenAiReasoningEffortParam = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 function toOpenAiReasoningEffort(effort: OpenAiReasoningEffort): OpenAiReasoningEffortParam {
   switch (effort) {
@@ -1384,7 +1386,7 @@ function toOpenAiReasoningEffort(effort: OpenAiReasoningEffort): OpenAiReasoning
     case "high":
       return "high";
     case "xhigh":
-      return "high";
+      return "xhigh";
   }
 }
 
@@ -4212,6 +4214,7 @@ function toGeminiThinkingLevel(thinkingLevel: LlmThinkingLevel): ThinkingLevel {
     case "medium":
       return ThinkingLevel.MEDIUM;
     case "high":
+    case "xhigh":
       return ThinkingLevel.HIGH;
   }
 }
@@ -4262,6 +4265,7 @@ function resolveGeminiThinkingBudget(
       case "medium":
         return 4096;
       case "high":
+      case "xhigh":
         return 32_768;
     }
   }
@@ -4272,6 +4276,7 @@ function resolveGeminiThinkingBudget(
       case "medium":
         return 8192;
       case "high":
+      case "xhigh":
         return 24_576;
     }
   }
@@ -4282,6 +4287,7 @@ function resolveGeminiThinkingBudget(
       case "medium":
         return 8192;
       case "high":
+      case "xhigh":
         return 16_384;
     }
   }
