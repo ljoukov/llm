@@ -209,9 +209,10 @@ console.log(OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS);
 console.log(images[0]?.mimeType, images[0]?.data.byteLength);
 ```
 
-`generateImages()` is typed as a discriminated union by `model`: `gpt-image-2` requests use
-`imageResolution`, while Gemini image requests use `imageSize` (`"1K" | "2K" | "4K"`). For
-`gpt-image-2`, `OPENAI_GPT_IMAGE_2_RESOLUTIONS` exposes the documented popular presets plus
+`generateImages()` is typed as a discriminated union by `model`: `gpt-image-2` and
+`chatgpt-gpt-image-2` requests use `imageResolution`, while Gemini image requests use `imageSize`
+(`"1K" | "2K" | "4K"`). For GPT Image 2, `OPENAI_GPT_IMAGE_2_RESOLUTIONS` exposes the documented
+popular presets plus
 `"auto"`; custom literal `WIDTHxHEIGHT` resolutions are also accepted when they satisfy
 `OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS`: each edge must be at most 3840px, each edge must be a
 multiple of 16px, the long edge must be at most 3:1 relative to the short edge, and total pixels
@@ -226,14 +227,20 @@ const images = await generateImages({
   model: "chatgpt-gpt-image-2",
   stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
   imagePrompts: ["A compact lab bench still life with glassware and an open notebook"],
+  imageResolution: "1024x1536",
+  imageQuality: "high",
+  outputFormat: "jpeg",
+  outputCompression: 50,
+  action: "generate",
   numImages: 1,
 });
 ```
 
 That path reuses the same ChatGPT auth setup as other `chatgpt-*` models and sends the request
-through the ChatGPT/Codex Responses `image_generation` built-in tool. It returns PNG images. The
-public Images API controls such as `imageResolution`, `imageQuality`, `outputFormat`, and
-`outputCompression` are intentionally only on the `gpt-image-2` request type.
+through the ChatGPT/Codex Responses `image_generation` built-in tool. `imageResolution`,
+`imageQuality`, `outputFormat`, `outputCompression`, `background`, `moderation`, and `action` are
+passed as tool options. `numImages` is implemented as repeated one-image tool calls because the
+ChatGPT/Codex tool rejects `n` on `tools[0]`.
 
 ### Streaming (response + thoughts + usage)
 

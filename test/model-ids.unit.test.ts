@@ -32,6 +32,7 @@ import {
 } from "../src/index.js";
 import type {
   LlmChatGptGenerateImagesRequest,
+  LlmChatGptImageResolution,
   LlmGeminiGenerateImagesRequest,
   LlmOpenAiImageResolution,
   LlmOpenAiGenerateImagesRequest,
@@ -72,15 +73,24 @@ const _chatGptImageRequestTypeCheck = {
   model: "chatgpt-gpt-image-2",
   stylePrompt: "style",
   imagePrompts: ["prompt"],
-  numImages: 1,
+  imageResolution: "1440x960",
+  imageQuality: "high",
+  outputFormat: "jpeg",
+  outputCompression: 50,
+  background: "opaque",
+  moderation: "low",
+  action: "generate",
+  numImages: 2,
 } satisfies LlmChatGptGenerateImagesRequest;
 
-const _invalidChatGptImageResolutionTypeCheck = {
+const _customChatGptResolutionTypeCheck = "1440x960" satisfies LlmChatGptImageResolution;
+
+const _invalidChatGptImageSizeTypeCheck = {
   model: "chatgpt-gpt-image-2",
   stylePrompt: "style",
   imagePrompts: ["prompt"],
-  // @ts-expect-error ChatGPT subscription image generation uses the built-in image_generation tool, not Images API imageResolution.
-  imageResolution: "1024x1024",
+  // @ts-expect-error ChatGPT image generation uses GPT Image 2 imageResolution, not Gemini imageSize.
+  imageSize: "2K",
 } satisfies LlmChatGptGenerateImagesRequest;
 
 describe("model id lists", () => {
