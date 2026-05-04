@@ -10,12 +10,60 @@ import {
   isLlmImageModelId,
   isLlmModelId,
   isLlmTextModelId,
+  isOpenAiImageModelId,
   isOpenAiModelId,
   LLM_IMAGE_MODEL_IDS,
   LLM_MODEL_IDS,
   LLM_TEXT_MODEL_IDS,
+  OPENAI_GPT_IMAGE_2_BACKGROUNDS,
+  OPENAI_GPT_IMAGE_2_MODERATION_LEVELS,
+  OPENAI_GPT_IMAGE_2_NUM_IMAGES,
+  OPENAI_GPT_IMAGE_2_OUTPUT_FORMATS,
+  OPENAI_GPT_IMAGE_2_PARTIAL_IMAGE_COUNTS,
+  OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS,
+  OPENAI_GPT_IMAGE_2_QUALITY_LEVELS,
+  OPENAI_GPT_IMAGE_2_RESOLUTIONS,
+  OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
+  OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
+  validateOpenAiGptImage2Resolution,
 } from "../src/index.js";
+import type {
+  LlmGeminiGenerateImagesRequest,
+  LlmOpenAiImageResolution,
+  LlmOpenAiGenerateImagesRequest,
+} from "../src/index.js";
+
+const _openAiImageRequestTypeCheck = {
+  model: "gpt-image-2",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  imageResolution: "1440x960",
+  imageQuality: "low",
+  numImages: 2,
+} satisfies LlmOpenAiGenerateImagesRequest;
+
+const _customOpenAiResolutionTypeCheck = "1440x960" satisfies LlmOpenAiImageResolution;
+
+// @ts-expect-error gpt-image-2 custom resolutions must be WIDTHxHEIGHT strings, not Gemini size names.
+const _invalidOpenAiResolutionNameTypeCheck = "2K" satisfies LlmOpenAiImageResolution;
+
+const _invalidOpenAiImageSizeTypeCheck = {
+  model: "gpt-image-2",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  // @ts-expect-error gpt-image-2 uses imageResolution, not Gemini imageSize.
+  imageSize: "2K",
+} satisfies LlmOpenAiGenerateImagesRequest;
+
+const _invalidGeminiResolutionTypeCheck = {
+  model: "gemini-3-pro-image-preview",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  imageGradingPrompt: "grade",
+  // @ts-expect-error Gemini image generation uses imageSize, not gpt-image-2 imageResolution.
+  imageResolution: "1024x1024",
+} satisfies LlmGeminiGenerateImagesRequest;
 
 describe("model id lists", () => {
   it("defines provider model ids as explicit const lists", () => {
@@ -35,9 +83,54 @@ describe("model id lists", () => {
       "chatgpt-gpt-5.3-codex-spark",
     ]);
     expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
+    expect(OPENAI_IMAGE_MODEL_IDS).toEqual(["gpt-image-2"]);
     expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.1-pro-preview");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3-pro-image-preview");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3.1-flash-image-preview");
+  });
+
+  it("exposes gpt-image-2 option constants from the official image docs", () => {
+    expect(OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS).toEqual([
+      "1024x1024",
+      "1536x1024",
+      "1024x1536",
+      "2048x2048",
+      "2048x1152",
+      "3840x2160",
+      "2160x3840",
+    ]);
+    expect(OPENAI_GPT_IMAGE_2_RESOLUTIONS).toEqual([
+      ...OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS,
+      "auto",
+    ]);
+    expect(OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS).toEqual({
+      maxEdgePixels: 3840,
+      edgeMultiplePixels: 16,
+      maxLongToShortEdgeRatio: 3,
+      minTotalPixels: 655_360,
+      maxTotalPixels: 8_294_400,
+      experimentalTotalPixelsThreshold: 3_686_400,
+    });
+    expect(OPENAI_GPT_IMAGE_2_QUALITY_LEVELS).toEqual(["low", "medium", "high", "auto"]);
+    expect(OPENAI_GPT_IMAGE_2_OUTPUT_FORMATS).toEqual(["png", "jpeg", "webp"]);
+    expect(OPENAI_GPT_IMAGE_2_BACKGROUNDS).toEqual(["opaque", "auto"]);
+    expect(OPENAI_GPT_IMAGE_2_MODERATION_LEVELS).toEqual(["low", "auto"]);
+    expect(OPENAI_GPT_IMAGE_2_PARTIAL_IMAGE_COUNTS).toEqual([0, 1, 2, 3]);
+    expect(OPENAI_GPT_IMAGE_2_NUM_IMAGES).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("validates gpt-image-2 custom resolution constraints", () => {
+    expect(validateOpenAiGptImage2Resolution("auto")).toEqual({ valid: true });
+    expect(validateOpenAiGptImage2Resolution("1440x960")).toEqual({ valid: true });
+    expect(validateOpenAiGptImage2Resolution("1440x200")).toMatchObject({
+      valid: false,
+    });
+    expect(validateOpenAiGptImage2Resolution("1441x960")).toMatchObject({
+      valid: false,
+    });
+    expect(validateOpenAiGptImage2Resolution("4096x4096")).toMatchObject({
+      valid: false,
+    });
   });
 
   it("rejects removed OpenAI model ids", () => {
@@ -87,6 +180,10 @@ describe("model id lists", () => {
     expect(isLlmTextModelId("chatgpt-gpt-5.4-fast")).toBe(true);
     expect(isLlmTextModelId("chatgpt-gpt-5.4-mini")).toBe(true);
     expect(isLlmTextModelId("experimental-chatgpt-private-model")).toBe(true);
+    expect(isOpenAiImageModelId("gpt-image-2")).toBe(true);
+    expect(isLlmImageModelId("gpt-image-2")).toBe(true);
+    expect(isLlmTextModelId("gpt-image-2")).toBe(false);
+    expect(isLlmModelId("gpt-image-2")).toBe(true);
     expect(isLlmModelId("gpt-5.5-fast")).toBe(true);
     expect(isLlmModelId("chatgpt-gpt-5.5-fast")).toBe(true);
     expect(isLlmModelId("chatgpt-gpt-5.4-fast")).toBe(true);

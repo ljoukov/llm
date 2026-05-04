@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LLM_MODEL_IDS } from "../src/index.js";
+import { isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
@@ -331,6 +331,26 @@ describe("estimateCallCostUsd", () => {
     expect(Number.isFinite(cost)).toBe(true);
   });
 
+  it("estimates GPT Image 2 output costs", () => {
+    const squareLowCost = estimateCallCostUsd({
+      modelId: "gpt-image-2",
+      tokens: undefined,
+      responseImages: 1,
+      imageSize: "1024x1024",
+      imageQuality: "low",
+    });
+    const landscapeHighCost = estimateCallCostUsd({
+      modelId: "gpt-image-2",
+      tokens: undefined,
+      responseImages: 1,
+      imageSize: "2048x1152",
+      imageQuality: "high",
+    });
+
+    expect(squareLowCost).toBeCloseTo(0.006, 8);
+    expect(landscapeHighCost).toBeCloseTo(0.165, 8);
+  });
+
   it("estimates Gemini 3.1 Flash image-preview costs lower than Gemini 3 Pro image-preview", () => {
     const tokens = {
       promptTokens: 1000,
@@ -368,8 +388,15 @@ describe("estimateCallCostUsd", () => {
     };
 
     for (const modelId of LLM_MODEL_IDS) {
-      const responseImages = modelId.includes("image-preview") ? 1 : 0;
-      const cost = estimateCallCostUsd({ modelId, tokens, responseImages, imageSize: "2K" });
+      const responseImages =
+        modelId.includes("image-preview") || isOpenAiImageModelId(modelId) ? 1 : 0;
+      const cost = estimateCallCostUsd({
+        modelId,
+        tokens,
+        responseImages,
+        imageSize: isOpenAiImageModelId(modelId) ? "1024x1024" : "2K",
+        imageQuality: isOpenAiImageModelId(modelId) ? "medium" : undefined,
+      });
       expect(cost, `expected non-zero cost mapping for ${modelId}`).toBeGreaterThan(0);
     }
   });

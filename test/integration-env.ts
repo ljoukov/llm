@@ -9,6 +9,7 @@ import {
   isGeminiTextModelId,
   isLlmImageModelId,
   isLlmTextModelId,
+  isOpenAiImageModelId,
   isOpenAiModelId,
   LLM_IMAGE_MODEL_IDS,
   LLM_TEXT_MODEL_IDS,
@@ -72,7 +73,7 @@ export function hasIntegrationCredentialsForModel(
 ): boolean {
   const availability = getIntegrationProviderAvailability();
 
-  if (isOpenAiModelId(model)) {
+  if (isOpenAiModelId(model) || isOpenAiImageModelId(model)) {
     return availability.openAi;
   }
   if (isChatGptModelId(model)) {
@@ -92,7 +93,7 @@ export function hasIntegrationCredentialsForModel(
 }
 
 function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId): string {
-  if (isOpenAiModelId(model)) {
+  if (isOpenAiModelId(model) || isOpenAiImageModelId(model)) {
     return "OPENAI_API_KEY";
   }
   if (isChatGptModelId(model)) {

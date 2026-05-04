@@ -24,6 +24,7 @@ export type LlmCallStartedTelemetryEvent = LlmTelemetryBaseEvent & {
   readonly responseModalities?: readonly string[];
   readonly imagePromptCount?: number;
   readonly styleImageCount?: number;
+  readonly numImagesPerPrompt?: number;
   readonly maxAttempts?: number;
   readonly streamMode?: "partial" | "final";
 };

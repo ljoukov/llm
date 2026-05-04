@@ -1,11 +1,19 @@
 import { getFireworksPricing } from "../fireworks/pricing.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
-import { getOpenAiPricing } from "../openai/pricing.js";
+import {
+  getOpenAiImagePricing,
+  getOpenAiPricing,
+  type OpenAiImagePriceResolution,
+  type OpenAiImagePricing,
+} from "../openai/pricing.js";
 
 export type LlmUsageTokens = {
   readonly promptTokens?: number;
+  readonly promptTextTokens?: number;
+  readonly promptImageTokens?: number;
   readonly cachedTokens?: number;
   readonly responseTokens?: number;
+  readonly responseTextTokens?: number;
   readonly responseImageTokens?: number;
   readonly thinkingTokens?: number;
   readonly totalTokens?: number;
@@ -24,12 +32,24 @@ export function estimateCallCostUsd({
   tokens,
   responseImages,
   imageSize,
+  imageQuality,
 }: {
   modelId: string;
   tokens: LlmUsageTokens | undefined;
   responseImages: number;
   imageSize?: string;
+  imageQuality?: string;
 }): number {
+  const openAiImagePricing = getOpenAiImagePricing(modelId);
+  if (openAiImagePricing) {
+    return estimateOpenAiImageCostUsd({
+      pricing: openAiImagePricing,
+      responseImages,
+      imageSize,
+      imageQuality,
+    });
+  }
+
   if (!tokens) {
     return 0;
   }
@@ -98,4 +118,50 @@ export function estimateCallCostUsd({
   }
 
   return 0;
+}
+
+function estimateOpenAiImageCostUsd({
+  pricing,
+  responseImages,
+  imageSize,
+  imageQuality,
+}: {
+  pricing: OpenAiImagePricing;
+  responseImages: number;
+  imageSize?: string;
+  imageQuality?: string;
+}): number {
+  if (responseImages <= 0) {
+    return 0;
+  }
+  const quality =
+    imageQuality === "low" || imageQuality === "medium" || imageQuality === "high"
+      ? imageQuality
+      : pricing.defaultQuality;
+  const resolution = resolveOpenAiImagePriceResolution(imageSize) ?? pricing.defaultResolution;
+  return responseImages * pricing.imagePrices[quality][resolution];
+}
+
+function resolveOpenAiImagePriceResolution(
+  imageSize: string | undefined,
+): OpenAiImagePriceResolution | undefined {
+  if (imageSize === "1024x1024" || imageSize === "1024x1536" || imageSize === "1536x1024") {
+    return imageSize;
+  }
+  if (!imageSize || imageSize === "auto") {
+    return undefined;
+  }
+  const match = /^(\d+)x(\d+)$/.exec(imageSize);
+  if (!match) {
+    return undefined;
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return undefined;
+  }
+  if (width === height) {
+    return "1024x1024";
+  }
+  return width > height ? "1536x1024" : "1024x1536";
 }

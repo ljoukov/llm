@@ -4,8 +4,10 @@ import { z } from "zod";
 import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
 
 let openAiRequests: any[] = [];
+let openAiImageRequests: any[] = [];
 let openAiStreamedEvents: any[] = [];
 let openAiFinalResponse: any = null;
+let openAiImageResponse: any = null;
 let geminiRequests: any[] = [];
 let geminiChunks: any[] = [];
 
@@ -26,6 +28,16 @@ vi.mock("../src/openai/calls.js", () => {
       stream: (request: any) => {
         openAiRequests.push(request);
         return fakeStream;
+      },
+    },
+    images: {
+      generate: async (request: any) => {
+        openAiImageRequests.push({ endpoint: "generate", request });
+        return openAiImageResponse;
+      },
+      edit: async (request: any) => {
+        openAiImageRequests.push({ endpoint: "edit", request });
+        return openAiImageResponse;
       },
     },
   };
@@ -61,6 +73,7 @@ describe("LLM telemetry", () => {
   beforeEach(() => {
     resetRuntimeSingletonsForTesting();
     openAiRequests = [];
+    openAiImageRequests = [];
     openAiStreamedEvents = [{ type: "response.output_text.delta", delta: "hello" }];
     openAiFinalResponse = {
       id: "resp_123",
@@ -70,6 +83,24 @@ describe("LLM telemetry", () => {
         input_tokens: 10,
         output_tokens: 5,
         total_tokens: 15,
+      },
+    };
+    openAiImageResponse = {
+      created: 1,
+      data: [{ b64_json: Buffer.from("fake-openai-image").toString("base64") }],
+      output_format: "png",
+      usage: {
+        input_tokens: 10,
+        input_tokens_details: {
+          text_tokens: 8,
+          image_tokens: 2,
+        },
+        output_tokens: 20,
+        output_tokens_details: {
+          image_tokens: 20,
+          text_tokens: 0,
+        },
+        total_tokens: 30,
       },
     };
     geminiRequests = [];
@@ -257,5 +288,54 @@ describe("LLM telemetry", () => {
     });
     expect(events[1]?.costUsd).toBeGreaterThan(0);
     expect(events[1]?.usage?.totalTokens).toBeGreaterThan(0);
+  });
+
+  it("calls the OpenAI Image API for gpt-image-2 generateImages", async () => {
+    const { generateImages } = await import("../src/llm.js");
+
+    const images = await generateImages({
+      model: "gpt-image-2",
+      stylePrompt: "Warm amber light, dark blue night, cinematic laboratory mood.",
+      imagePrompts: ["A compact laboratory bench still life with glassware"],
+      imageResolution: "2048x1152",
+      imageQuality: "low",
+      outputFormat: "png",
+      numImages: 1,
+    });
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.data.toString()).toBe("fake-openai-image");
+    expect(images[0]?.mimeType).toBe("image/png");
+    expect(openAiImageRequests).toHaveLength(1);
+    expect(openAiImageRequests[0]).toMatchObject({
+      endpoint: "generate",
+      request: {
+        model: "gpt-image-2",
+        n: 1,
+        size: "2048x1152",
+        quality: "low",
+        output_format: "png",
+      },
+    });
+    expect(openAiImageRequests[0]?.request?.prompt).toContain("Warm amber light");
+  });
+
+  it("uses the OpenAI image edit endpoint when styleImages are provided", async () => {
+    const { generateImages } = await import("../src/llm.js");
+
+    const images = await generateImages({
+      model: "gpt-image-2",
+      stylePrompt: "Match the reference palette.",
+      styleImages: [{ mimeType: "image/png", data: Buffer.from("reference-image") }],
+      imagePrompts: ["A small test image"],
+      imageResolution: "1024x1024",
+      imageQuality: "low",
+    });
+
+    expect(images).toHaveLength(1);
+    expect(openAiImageRequests).toHaveLength(1);
+    expect(openAiImageRequests[0]?.endpoint).toBe("edit");
+    expect(openAiImageRequests[0]?.request?.image).toHaveLength(1);
+    expect(openAiImageRequests[0]?.request?.prompt).toContain("attached reference image");
   });
 });

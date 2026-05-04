@@ -1,9 +1,26 @@
-import { isExperimentalChatGptModelId } from "./models.js";
+import {
+  isExperimentalChatGptModelId,
+  isOpenAiImageModelId,
+  type OpenAiGptImage2Quality,
+} from "./models.js";
 
 export type OpenAiPricing = {
   readonly inputRate: number;
   readonly cachedRate: number;
   readonly outputRate: number;
+};
+
+export type OpenAiImagePriceResolution = "1024x1024" | "1024x1536" | "1536x1024";
+
+export type OpenAiImagePricing = {
+  readonly defaultQuality: Exclude<OpenAiGptImage2Quality, "auto">;
+  readonly defaultResolution: OpenAiImagePriceResolution;
+  readonly imagePrices: Readonly<
+    Record<
+      Exclude<OpenAiGptImage2Quality, "auto">,
+      Readonly<Record<OpenAiImagePriceResolution, number>>
+    >
+  >;
 };
 
 const OPENAI_GPT_55_FAST_MODEL_IDS = ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"] as const;
@@ -56,6 +73,28 @@ const OPENAI_GPT_54_NANO_PRICING: OpenAiPricing = {
   outputRate: 0.4 / 1_000_000,
 };
 
+const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
+  defaultQuality: "medium",
+  defaultResolution: "1024x1024",
+  imagePrices: {
+    low: {
+      "1024x1024": 0.006,
+      "1024x1536": 0.005,
+      "1536x1024": 0.005,
+    },
+    medium: {
+      "1024x1024": 0.053,
+      "1024x1536": 0.041,
+      "1536x1024": 0.041,
+    },
+    high: {
+      "1024x1024": 0.211,
+      "1024x1536": 0.165,
+      "1536x1024": 0.165,
+    },
+  },
+};
+
 export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
   if (isExperimentalChatGptModelId(modelId)) {
     return OPENAI_GPT_54_PRICING;
@@ -83,4 +122,8 @@ export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
     return OPENAI_GPT_54_PRICING;
   }
   return undefined;
+}
+
+export function getOpenAiImagePricing(modelId: string): OpenAiImagePricing | undefined {
+  return isOpenAiImageModelId(modelId) ? OPENAI_GPT_IMAGE_2_PRICING : undefined;
 }

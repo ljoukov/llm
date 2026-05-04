@@ -182,6 +182,42 @@ console.log(result.text);
 console.log(result.usage, result.costUsd);
 ```
 
+### Image Generation
+
+```ts
+import {
+  generateImages,
+  type LlmOpenAiImageResolution,
+  OPENAI_GPT_IMAGE_2_QUALITY_LEVELS,
+  OPENAI_GPT_IMAGE_2_RESOLUTIONS,
+  OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
+} from "@ljoukov/llm";
+
+const customResolution = "1440x960" satisfies LlmOpenAiImageResolution;
+
+const images = await generateImages({
+  model: "gpt-image-2",
+  stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
+  imagePrompts: ["A compact lab bench still life with glassware and an open notebook"],
+  imageResolution: customResolution,
+  imageQuality: "low",
+  numImages: 1,
+});
+
+console.log(OPENAI_GPT_IMAGE_2_RESOLUTIONS, OPENAI_GPT_IMAGE_2_QUALITY_LEVELS);
+console.log(OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS);
+console.log(images[0]?.mimeType, images[0]?.data.byteLength);
+```
+
+`generateImages()` is typed as a discriminated union by `model`: `gpt-image-2` requests use
+`imageResolution`, while Gemini image requests use `imageSize` (`"1K" | "2K" | "4K"`). For
+`gpt-image-2`, `OPENAI_GPT_IMAGE_2_RESOLUTIONS` exposes the documented popular presets plus
+`"auto"`; custom literal `WIDTHxHEIGHT` resolutions are also accepted when they satisfy
+`OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS`: each edge must be at most 3840px, each edge must be a
+multiple of 16px, the long edge must be at most 3:1 relative to the short edge, and total pixels
+must be between 655,360 and 8,294,400. Resolutions above 3,686,400 pixels are documented as
+experimental by OpenAI.
+
 ### Streaming (response + thoughts + usage)
 
 ```ts

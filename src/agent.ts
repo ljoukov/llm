@@ -619,8 +619,11 @@ function summarizeResultUsage(result: LlmToolLoopResult): LlmUsageTokens | undef
     }
     summary = {
       promptTokens: sumUsageValue(summary?.promptTokens, usage.promptTokens),
+      promptTextTokens: sumUsageValue(summary?.promptTextTokens, usage.promptTextTokens),
+      promptImageTokens: sumUsageValue(summary?.promptImageTokens, usage.promptImageTokens),
       cachedTokens: sumUsageValue(summary?.cachedTokens, usage.cachedTokens),
       responseTokens: sumUsageValue(summary?.responseTokens, usage.responseTokens),
+      responseTextTokens: sumUsageValue(summary?.responseTextTokens, usage.responseTextTokens),
       responseImageTokens: sumUsageValue(summary?.responseImageTokens, usage.responseImageTokens),
       thinkingTokens: sumUsageValue(summary?.thinkingTokens, usage.thinkingTokens),
       totalTokens: sumUsageValue(summary?.totalTokens, usage.totalTokens),

@@ -22,8 +22,9 @@
 
 ## OpenAI Model Policy
 
-- OpenAI text model ids are a closed literal allowlist. Do not add support for arbitrary strings.
+- OpenAI text and image model ids are closed literal allowlists. Do not add support for arbitrary strings.
 - Supported OpenAI API model ids: `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
+- Supported OpenAI image model ids: `gpt-image-2`.
 - Supported ChatGPT-authenticated model ids: `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`.
 - Experimental ChatGPT-authenticated model ids may use the public `experimental-chatgpt-*` prefix so private/internal model suffixes do not need to be committed to this package.
 - Remove old aliases instead of keeping backward-compatibility shims.
@@ -32,5 +33,6 @@
 ### Model Change Checks
 
 - Do not run the full OpenAI integration matrix on every commit.
-- Run `npm run test:integration:openai-models` when changing model ids, OpenAI or ChatGPT request routing, pricing, auth, transport, tool-loop behavior, or any agent model-selection path.
+- Run `npm run test:integration:openai-models` when changing text model ids, OpenAI or ChatGPT request routing, pricing, auth, transport, tool-loop behavior, or any agent model-selection path.
+- Run a targeted image-generation integration check when changing OpenAI image model ids or Image API request parameters.
 - Keep the OpenAI integration matrix parallelized so all supported OpenAI and ChatGPT model ids are exercised in one targeted run.
