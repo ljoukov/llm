@@ -172,9 +172,41 @@ export type LlmThinkingLevel = "low" | "medium" | "high";
 
 export type LlmWebSearchMode = "cached" | "live";
 
+export type LlmOpenAiShellNetworkPolicy =
+  | { readonly type: "disabled" }
+  | {
+      readonly type: "allowlist";
+      readonly allowedDomains: readonly string[];
+      readonly domainSecrets?: readonly {
+        readonly domain: string;
+        readonly name: string;
+        readonly value: string;
+      }[];
+    };
+
+export type LlmOpenAiShellEnvironment =
+  | {
+      readonly type?: "container-auto";
+      readonly fileIds?: readonly string[];
+      readonly memoryLimit?: "1g" | "4g" | "16g" | "64g" | null;
+      readonly networkPolicy?: LlmOpenAiShellNetworkPolicy;
+    }
+  | {
+      readonly type: "container-reference";
+      readonly containerId: string;
+    };
+
 export type LlmToolConfig =
   | { readonly type: "web-search"; readonly mode?: LlmWebSearchMode }
-  | { readonly type: "code-execution" };
+  | { readonly type: "code-execution" }
+  | {
+      /**
+       * OpenAI hosted shell tool. Runs commands in an OpenAI-managed container,
+       * not on the caller's local machine.
+       */
+      readonly type: "shell";
+      readonly environment?: LlmOpenAiShellEnvironment;
+    };
 
 export type LlmTextDeltaEvent =
   | { readonly type: "delta"; readonly channel: "response"; readonly text: string }
@@ -2523,13 +2555,55 @@ function toGeminiTools(tools: readonly LlmToolConfig[] | undefined): GeminiTool[
         return { googleSearch: {} };
       case "code-execution":
         return { codeExecution: {} };
+      case "shell":
+        throw new Error("Gemini provider does not support the OpenAI shell tool.");
       default:
         throw new Error("Unsupported tool configuration");
     }
   });
 }
 
-function toOpenAiTools(tools: readonly LlmToolConfig[] | undefined): unknown[] | undefined {
+function toOpenAiShellEnvironment(
+  environment: LlmOpenAiShellEnvironment | undefined,
+): Record<string, unknown> {
+  if (environment?.type === "container-reference") {
+    return {
+      type: "container_reference",
+      container_id: environment.containerId,
+    };
+  }
+
+  return {
+    type: "container_auto",
+    ...(environment?.fileIds ? { file_ids: Array.from(environment.fileIds) } : {}),
+    ...(environment?.memoryLimit !== undefined ? { memory_limit: environment.memoryLimit } : {}),
+    ...(environment?.networkPolicy
+      ? {
+          network_policy:
+            environment.networkPolicy.type === "allowlist"
+              ? {
+                  type: "allowlist",
+                  allowed_domains: Array.from(environment.networkPolicy.allowedDomains),
+                  ...(environment.networkPolicy.domainSecrets
+                    ? {
+                        domain_secrets: environment.networkPolicy.domainSecrets.map((secret) => ({
+                          domain: secret.domain,
+                          name: secret.name,
+                          value: secret.value,
+                        })),
+                      }
+                    : {}),
+                }
+              : { type: "disabled" },
+        }
+      : {}),
+  };
+}
+
+function toOpenAiTools(
+  tools: readonly LlmToolConfig[] | undefined,
+  options: { readonly provider: "openai" | "chatgpt" },
+): unknown[] | undefined {
   if (!tools || tools.length === 0) {
     return undefined;
   }
@@ -2541,6 +2615,15 @@ function toOpenAiTools(tools: readonly LlmToolConfig[] | undefined): unknown[] |
       }
       case "code-execution": {
         return { type: "code_interpreter", container: { type: "auto" } };
+      }
+      case "shell": {
+        if (options.provider !== "openai") {
+          throw new Error("OpenAI shell tool is only supported for OpenAI API models.");
+        }
+        return {
+          type: "shell",
+          environment: toOpenAiShellEnvironment(tool.environment),
+        };
       }
       default:
         throw new Error("Unsupported tool configuration");
@@ -4553,6 +4636,8 @@ async function runTextCall(params: {
   let responseRole: LlmRole | undefined;
   let latestUsage: LlmUsageTokens | undefined;
   let responseImages = 0;
+  let sawResponseDelta = false;
+  let sawThoughtDelta = false;
 
   const pushEvent = (event: LlmStreamEvent): void => {
     queue.push(event);
@@ -4565,8 +4650,10 @@ async function runTextCall(params: {
     }
     responseParts.push({ type: "text", text, ...(channel === "thought" ? { thought: true } : {}) });
     if (channel === "thought") {
+      sawThoughtDelta = true;
       callLogger?.appendThoughtDelta(text);
     } else {
+      sawResponseDelta = true;
       callLogger?.appendResponseDelta(text);
     }
     pushEvent({ type: "delta", channel, text });
@@ -4611,7 +4698,7 @@ async function runTextCall(params: {
           }),
           { model: request.model, provider: "openai" },
         );
-        const openAiTools = toOpenAiTools(request.tools);
+        const openAiTools = toOpenAiTools(request.tools, { provider: "openai" });
         const reasoningEffort = resolveOpenAiReasoningEffort(
           modelForProvider,
           request.thinkingLevel,
@@ -4684,13 +4771,21 @@ async function runTextCall(params: {
           }
           latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
 
-          // Fallback: if the stream did not deliver deltas (rare), extract from final output.
-          if (responseParts.length === 0) {
+          // Fallback: if the stream did not deliver text deltas (rare), extract from final output.
+          if (!sawResponseDelta || !sawThoughtDelta) {
+            const needsResponseFallback = !sawResponseDelta;
+            const needsThoughtFallback = !sawThoughtDelta;
             const fallback = extractOpenAiResponseParts(finalResponse);
             blocked = blocked || fallback.blocked;
             for (const part of fallback.parts) {
               if (part.type === "text") {
-                pushDelta(part.thought === true ? "thought" : "response", part.text);
+                const channel = part.thought === true ? "thought" : "response";
+                if (
+                  (channel === "response" && needsResponseFallback) ||
+                  (channel === "thought" && needsThoughtFallback)
+                ) {
+                  pushDelta(channel, part.text);
+                }
               } else if (part.type === "inlineData") {
                 pushInline(part.data, part.mimeType);
               }
@@ -4707,7 +4802,7 @@ async function runTextCall(params: {
           provider: "chatgpt",
         });
         const reasoningEffort = resolveOpenAiReasoningEffort(request.model, request.thinkingLevel);
-        const openAiTools = toOpenAiTools(request.tools);
+        const openAiTools = toOpenAiTools(request.tools, { provider: "chatgpt" });
         const requestPayload = {
           model: modelForProvider,
           store: false,
@@ -5615,7 +5710,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   try {
     if (providerInfo.provider === "openai") {
       const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
-      const openAiNativeTools = toOpenAiTools(request.modelTools);
+      const openAiNativeTools = toOpenAiTools(request.modelTools, { provider: "openai" });
       const openAiTools = openAiNativeTools
         ? [...openAiNativeTools, ...openAiAgentTools]
         : [...openAiAgentTools];
@@ -6059,7 +6154,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
     if (providerInfo.provider === "chatgpt") {
       const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
-      const openAiNativeTools = toOpenAiTools(request.modelTools);
+      const openAiNativeTools = toOpenAiTools(request.modelTools, { provider: "chatgpt" });
       const openAiTools = openAiNativeTools
         ? [...openAiNativeTools, ...openAiAgentTools]
         : [...openAiAgentTools];

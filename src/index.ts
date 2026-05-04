@@ -58,6 +58,8 @@ export type {
   LlmMediaResolution,
   LlmModelEvent,
   LlmModelId,
+  LlmOpenAiShellEnvironment,
+  LlmOpenAiShellNetworkPolicy,
   LlmProvider,
   LlmStreamEvent,
   LlmTextDeltaEvent,

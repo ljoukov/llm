@@ -216,6 +216,28 @@ describe("streamText (ChatGPT)", () => {
     expect(result.modelVersion).toBe("chatgpt-gpt-5.5-fast");
   });
 
+  it("rejects the OpenAI shell tool for ChatGPT-authenticated models", async () => {
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({
+      model: "chatgpt-gpt-5.5",
+      input: "Use shell.",
+      tools: [{ type: "shell" }],
+    });
+    const events = (async () => {
+      for await (const _event of call.events) {
+        // Drain until the stream surfaces the rejection.
+      }
+    })();
+
+    await expect(call.result).rejects.toThrow(
+      "OpenAI shell tool is only supported for OpenAI API models.",
+    );
+    await expect(events).rejects.toThrow(
+      "OpenAI shell tool is only supported for OpenAI API models.",
+    );
+  });
+
   it("maps experimental ChatGPT ids to their provider model suffix", async () => {
     const { generateText } = await import("../src/llm.js");
 

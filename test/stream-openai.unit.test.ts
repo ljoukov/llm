@@ -109,6 +109,36 @@ describe("streamText (OpenAI)", () => {
     expect(result.modelVersion).toBe("gpt-5.5");
   });
 
+  it("maps the OpenAI shell tool to a hosted container environment", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({
+      model: "gpt-5.5",
+      input: "Use shell.",
+      tools: [
+        {
+          type: "shell",
+          environment: {
+            type: "container-auto",
+            memoryLimit: "1g",
+            networkPolicy: { type: "disabled" },
+          },
+        },
+      ],
+    });
+
+    expect(capturedRequest?.tools).toEqual([
+      {
+        type: "shell",
+        environment: {
+          type: "container_auto",
+          memory_limit: "1g",
+          network_policy: { type: "disabled" },
+        },
+      },
+    ]);
+  });
+
   it("maps mediaResolution=original to OpenAI image detail on gpt-5.4", async () => {
     const { generateText } = await import("../src/llm.js");
 
