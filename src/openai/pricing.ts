@@ -1,4 +1,5 @@
 import {
+  isChatGptImageModelId,
   isExperimentalChatGptModelId,
   isOpenAiImageModelId,
   type OpenAiGptImage2Quality,
@@ -125,5 +126,7 @@ export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
 }
 
 export function getOpenAiImagePricing(modelId: string): OpenAiImagePricing | undefined {
-  return isOpenAiImageModelId(modelId) ? OPENAI_GPT_IMAGE_2_PRICING : undefined;
+  return isOpenAiImageModelId(modelId) || isChatGptImageModelId(modelId)
+    ? OPENAI_GPT_IMAGE_2_PRICING
+    : undefined;
 }

@@ -218,6 +218,23 @@ multiple of 16px, the long edge must be at most 3:1 relative to the short edge, 
 must be between 655,360 and 8,294,400. Resolutions above 3,686,400 pixels are documented as
 experimental by OpenAI.
 
+To use ChatGPT/Codex subscription-backed image generation instead of the public Images API, use
+`chatgpt-gpt-image-2`:
+
+```ts
+const images = await generateImages({
+  model: "chatgpt-gpt-image-2",
+  stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
+  imagePrompts: ["A compact lab bench still life with glassware and an open notebook"],
+  numImages: 1,
+});
+```
+
+That path reuses the same ChatGPT auth setup as other `chatgpt-*` models and sends the request
+through the ChatGPT/Codex Responses `image_generation` built-in tool. It returns PNG images. The
+public Images API controls such as `imageResolution`, `imageQuality`, `outputFormat`, and
+`outputCompression` are intentionally only on the `gpt-image-2` request type.
+
 ### Streaming (response + thoughts + usage)
 
 ```ts
@@ -495,10 +512,12 @@ console.log(result.text);
 
 `gpt-5.5-fast` and `chatgpt-gpt-5.5-fast` are also supported as convenience aliases for `gpt-5.5` with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics.
 
-Supported OpenAI text model ids are fixed literal unions in code, not arbitrary strings:
+Supported OpenAI and ChatGPT model ids are fixed literal unions in code, not arbitrary strings:
 
-- OpenAI API: `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
-- ChatGPT auth: `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
+- OpenAI API text: `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
+- OpenAI API image: `gpt-image-2`
+- ChatGPT auth text: `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
+- ChatGPT auth image: `chatgpt-gpt-image-2`
 
 ## JSON outputs
 

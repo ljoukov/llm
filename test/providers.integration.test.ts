@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   generateImages,
   generateJson,
+  isChatGptImageModelId,
   isChatGptModelId,
   isOpenAiImageModelId,
   isOpenAiModelId,
@@ -104,6 +105,19 @@ describe("integration: image model matrix", () => {
           imagePrompts: ["A single blue square centered in the frame"],
           imageResolution: "1024x1024",
           imageQuality: "low",
+        });
+
+        expect(images).toHaveLength(1);
+        expect(images[0]?.data.length).toBeGreaterThan(0);
+        expect(images[0]?.mimeType?.startsWith("image/") ?? false).toBe(true);
+        return;
+      }
+
+      if (isChatGptImageModelId(model)) {
+        const images = await generateImages({
+          model,
+          stylePrompt: "Simple icon style. White background, clean edges, no text.",
+          imagePrompts: ["A single blue square centered in the frame"],
         });
 
         expect(images).toHaveLength(1);

@@ -53,18 +53,22 @@ import {
 } from "./openai/calls.js";
 import {
   CHATGPT_MODEL_IDS,
+  CHATGPT_IMAGE_MODEL_IDS,
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
+  isChatGptImageModelId,
   isOpenAiImageModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
   isOpenAiModelId,
+  resolveChatGptImageProviderModel,
   resolveChatGptProviderModel,
   resolveChatGptServiceTier,
   resolveOpenAiProviderModel,
   resolveOpenAiServiceTier,
   validateOpenAiGptImage2Resolution,
   type ExperimentalChatGptModelId,
+  type ChatGptImageModelId,
   type OpenAiImageModelId,
   type OpenAiGptImage2Background,
   type OpenAiGptImage2Moderation,
@@ -286,7 +290,11 @@ export const LLM_TEXT_MODEL_IDS = [
 ] as const;
 export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number] | ExperimentalChatGptModelId;
 
-export const LLM_IMAGE_MODEL_IDS = [...OPENAI_IMAGE_MODEL_IDS, ...GEMINI_IMAGE_MODEL_IDS] as const;
+export const LLM_IMAGE_MODEL_IDS = [
+  ...OPENAI_IMAGE_MODEL_IDS,
+  ...CHATGPT_IMAGE_MODEL_IDS,
+  ...GEMINI_IMAGE_MODEL_IDS,
+] as const;
 export type LlmImageModelId = (typeof LLM_IMAGE_MODEL_IDS)[number];
 
 export const LLM_MODEL_IDS = [...LLM_TEXT_MODEL_IDS, ...LLM_IMAGE_MODEL_IDS] as const;
@@ -302,7 +310,7 @@ export function isLlmTextModelId(value: string): value is LlmTextModelId {
 }
 
 export function isLlmImageModelId(value: string): value is LlmImageModelId {
-  return isOpenAiImageModelId(value) || isGeminiImageModelId(value);
+  return isOpenAiImageModelId(value) || isChatGptImageModelId(value) || isGeminiImageModelId(value);
 }
 
 export function isLlmModelId(value: string): value is LlmModelId {
@@ -469,6 +477,11 @@ export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
   readonly numImages?: LlmOpenAiImageNumImages;
 };
 
+export type LlmChatGptGenerateImagesRequest = LlmGenerateImagesRequestBase & {
+  readonly model: ChatGptImageModelId;
+  readonly numImages?: LlmOpenAiImageNumImages;
+};
+
 export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
   readonly model: GeminiImageModelId;
   readonly imageGradingPrompt: string;
@@ -479,12 +492,19 @@ export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
 
 export type LlmGenerateImagesRequest =
   | LlmOpenAiGenerateImagesRequest
+  | LlmChatGptGenerateImagesRequest
   | LlmGeminiGenerateImagesRequest;
 
 function isOpenAiGenerateImagesRequest(
   request: LlmGenerateImagesRequest,
 ): request is LlmOpenAiGenerateImagesRequest {
   return isOpenAiImageModelId(request.model);
+}
+
+function isChatGptGenerateImagesRequest(
+  request: LlmGenerateImagesRequest,
+): request is LlmChatGptGenerateImagesRequest {
+  return isChatGptImageModelId(request.model);
 }
 
 export type LlmFunctionTool<Schema extends z.ZodType, Output> = {
@@ -1299,6 +1319,12 @@ function resolveProvider(model: LlmModelId): {
   }
   if (isOpenAiImageModelId(model)) {
     return { provider: "openai", model };
+  }
+  if (isChatGptImageModelId(model)) {
+    return {
+      provider: "chatgpt",
+      model: resolveChatGptImageProviderModel(model),
+    };
   }
   if (isOpenAiModelId(model)) {
     return {
@@ -4871,6 +4897,11 @@ async function runTextCall(params: {
           }
         }, modelForProvider);
       } else if (provider === "chatgpt") {
+        if (isChatGptImageModelId(request.model)) {
+          throw new Error(
+            "chatgpt-gpt-image-2 is an image generation model; use generateImages().",
+          );
+        }
         const chatGptInput = toChatGptInput(contents, {
           defaultMediaResolution: request.mediaResolution,
           model: request.model,
@@ -7393,7 +7424,7 @@ export function streamToolLoop(request: LlmToolLoopRequest): LlmToolLoopStream {
   };
 }
 
-// --- Images (Gemini image-preview) ---
+// --- Images ---
 
 const IMAGE_GRADE_VALUE_SCHEMA = z.enum(["pass", "fail"]);
 const IMAGE_GRADE_SCHEMA = z.object({
@@ -7652,9 +7683,156 @@ async function generateImagesWithOpenAiImageApi(
   }
 }
 
+function buildChatGptImageInputContent(params: {
+  prompt: string;
+  styleImages: readonly LlmImageData[] | undefined;
+}): LlmContent[] {
+  const parts: LlmContentPart[] = [
+    {
+      type: "text",
+      text: params.prompt,
+    },
+  ];
+  for (const [index, image] of (params.styleImages ?? []).entries()) {
+    const mimeType = image.mimeType ?? "image/png";
+    parts.push({
+      type: "inlineData",
+      data: image.data.toString("base64"),
+      mimeType,
+      filename: `style-${index + 1}.${resolveAttachmentExtension(mimeType)}`,
+    });
+  }
+  return [{ role: "user", parts }];
+}
+
+async function generateImagesWithChatGptImageTool(
+  request: LlmChatGptGenerateImagesRequest,
+): Promise<LlmImageData[]> {
+  const promptEntries = Array.from(request.imagePrompts, (rawPrompt, index) => {
+    const prompt = rawPrompt.trim();
+    if (!prompt) {
+      throw new Error(`imagePrompts[${index}] must be a non-empty string`);
+    }
+    return prompt;
+  });
+  if (promptEntries.length === 0) {
+    return [];
+  }
+
+  const providerInfo = resolveProvider(request.model);
+  const telemetry = createLlmTelemetryEmitter({
+    telemetry: request.telemetry,
+    operation: "generateImages",
+    provider: providerInfo.provider,
+    model: request.model,
+  });
+  const startedAtMs = Date.now();
+  const numImagesPerPrompt = request.numImages ?? 1;
+  let totalUsage: LlmUsageTokens | undefined;
+  let costUsd = 0;
+  let outputImages = 0;
+
+  telemetry.emit({
+    type: "llm.call.started",
+    imagePromptCount: promptEntries.length,
+    styleImageCount: request.styleImages?.length ?? 0,
+    numImagesPerPrompt,
+  });
+
+  try {
+    const images: LlmImageData[] = [];
+    for (const imagePrompt of promptEntries) {
+      const prompt = buildOpenAiImagePrompt({
+        stylePrompt: request.stylePrompt,
+        imagePrompt,
+        hasStyleImages: Boolean(request.styleImages && request.styleImages.length > 0),
+      });
+      for (let imageIndex = 0; imageIndex < numImagesPerPrompt; imageIndex += 1) {
+        const chatGptInput = toChatGptInput(
+          buildChatGptImageInputContent({
+            prompt,
+            styleImages: request.styleImages,
+          }),
+          { model: request.model },
+        );
+        const preparedInput = await maybePrepareOpenAiPromptInput(chatGptInput.input, {
+          model: request.model,
+          provider: "chatgpt",
+        });
+        const result = await collectChatGptCodexResponseWithRetry({
+          request: {
+            model: providerInfo.model,
+            store: false,
+            stream: true,
+            instructions:
+              chatGptInput.instructions ??
+              "Use the image_generation tool to generate exactly one PNG image. Do not return prose instead of the image.",
+            input: preparedInput as ChatGptInputItem[],
+            tool_choice: "required",
+            parallel_tool_calls: false,
+            tools: [{ type: "image_generation", output_format: "png" }],
+          },
+          signal: request.signal,
+        });
+        if (result.status && result.status !== "completed") {
+          throw new Error(`ChatGPT image generation response status ${result.status}`);
+        }
+        if (result.imageGenerationCalls.length === 0) {
+          throw new Error("ChatGPT image generation returned no image_generation_call result.");
+        }
+        for (const call of result.imageGenerationCalls) {
+          images.push({
+            mimeType: "image/png",
+            data: Buffer.from(call.result, "base64"),
+          });
+        }
+        outputImages = images.length;
+        const usage = extractChatGptUsageTokens(result.usage);
+        totalUsage = sumUsageTokens(totalUsage, usage);
+        costUsd += estimateCallCostUsd({
+          modelId: request.model,
+          tokens: usage,
+          responseImages: result.imageGenerationCalls.length,
+          imageSize: "1024x1024",
+          imageQuality: "medium",
+        });
+      }
+    }
+
+    telemetry.emit({
+      type: "llm.call.completed",
+      success: true,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      modelVersion: request.model,
+      usage: totalUsage,
+      costUsd,
+      imageCount: images.length,
+      attempts: promptEntries.length * numImagesPerPrompt,
+    });
+    return images;
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    telemetry.emit({
+      type: "llm.call.completed",
+      success: false,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      usage: totalUsage,
+      costUsd,
+      imageCount: outputImages,
+      error: err.message,
+    });
+    throw err;
+  } finally {
+    await telemetry.flush();
+  }
+}
+
 export async function generateImages(request: LlmGenerateImagesRequest): Promise<LlmImageData[]> {
   if (isOpenAiGenerateImagesRequest(request)) {
     return await generateImagesWithOpenAiImageApi(request);
+  }
+  if (isChatGptGenerateImagesRequest(request)) {
+    return await generateImagesWithChatGptImageTool(request);
   }
 
   const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 4));

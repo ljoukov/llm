@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
+import { isChatGptImageModelId, isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
@@ -388,14 +388,14 @@ describe("estimateCallCostUsd", () => {
     };
 
     for (const modelId of LLM_MODEL_IDS) {
-      const responseImages =
-        modelId.includes("image-preview") || isOpenAiImageModelId(modelId) ? 1 : 0;
+      const isGptImageModel = isOpenAiImageModelId(modelId) || isChatGptImageModelId(modelId);
+      const responseImages = modelId.includes("image-preview") || isGptImageModel ? 1 : 0;
       const cost = estimateCallCostUsd({
         modelId,
         tokens,
         responseImages,
-        imageSize: isOpenAiImageModelId(modelId) ? "1024x1024" : "2K",
-        imageQuality: isOpenAiImageModelId(modelId) ? "medium" : undefined,
+        imageSize: isGptImageModel ? "1024x1024" : "2K",
+        imageQuality: isGptImageModel ? "medium" : undefined,
       });
       expect(cost, `expected non-zero cost mapping for ${modelId}`).toBeGreaterThan(0);
     }

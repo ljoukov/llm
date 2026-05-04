@@ -8,6 +8,8 @@ let openAiImageRequests: any[] = [];
 let openAiStreamedEvents: any[] = [];
 let openAiFinalResponse: any = null;
 let openAiImageResponse: any = null;
+let chatGptCodexRequests: any[] = [];
+let chatGptCodexResponse: any = null;
 let geminiRequests: any[] = [];
 let geminiChunks: any[] = [];
 
@@ -69,6 +71,15 @@ vi.mock("../src/google/calls.js", () => {
   };
 });
 
+vi.mock("../src/openai/chatgpt-codex.js", () => {
+  return {
+    collectChatGptCodexResponse: async ({ request }: any) => {
+      chatGptCodexRequests.push(request);
+      return chatGptCodexResponse;
+    },
+  };
+});
+
 describe("LLM telemetry", () => {
   beforeEach(() => {
     resetRuntimeSingletonsForTesting();
@@ -100,6 +111,28 @@ describe("LLM telemetry", () => {
           image_tokens: 20,
           text_tokens: 0,
         },
+        total_tokens: 30,
+      },
+    };
+    chatGptCodexRequests = [];
+    chatGptCodexResponse = {
+      model: "gpt-5.4",
+      status: "completed",
+      text: "",
+      reasoningText: "",
+      reasoningSummaryText: "",
+      toolCalls: [],
+      webSearchCalls: [],
+      imageGenerationCalls: [
+        {
+          id: "ig_123",
+          status: "completed",
+          result: Buffer.from("fake-chatgpt-image").toString("base64"),
+        },
+      ],
+      usage: {
+        input_tokens: 10,
+        output_tokens: 20,
         total_tokens: 30,
       },
     };
@@ -337,5 +370,29 @@ describe("LLM telemetry", () => {
     expect(openAiImageRequests[0]?.endpoint).toBe("edit");
     expect(openAiImageRequests[0]?.request?.image).toHaveLength(1);
     expect(openAiImageRequests[0]?.request?.prompt).toContain("attached reference image");
+  });
+
+  it("calls the ChatGPT image_generation tool for chatgpt-gpt-image-2 generateImages", async () => {
+    const { generateImages } = await import("../src/llm.js");
+
+    const images = await generateImages({
+      model: "chatgpt-gpt-image-2",
+      stylePrompt: "Clean icon style.",
+      imagePrompts: ["A blue square"],
+      numImages: 1,
+    });
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.mimeType).toBe("image/png");
+    expect(images[0]?.data.toString()).toBe("fake-chatgpt-image");
+    expect(chatGptCodexRequests).toHaveLength(1);
+    expect(chatGptCodexRequests[0]).toMatchObject({
+      model: "gpt-5.4",
+      store: false,
+      stream: true,
+      tool_choice: "required",
+      parallel_tool_calls: false,
+      tools: [{ type: "image_generation", output_format: "png" }],
+    });
   });
 });
