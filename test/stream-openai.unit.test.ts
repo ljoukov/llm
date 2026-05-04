@@ -84,7 +84,7 @@ describe("streamText (OpenAI)", () => {
     expect(events.some((e) => e.type === "usage")).toBe(true);
   });
 
-  it("maps thinkingLevel=high to OpenAI max reasoning effort", async () => {
+  it("maps thinkingLevel=high to OpenAI high reasoning effort", async () => {
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({ model: "gpt-5.4-mini", input: "hi", thinkingLevel: "high" });
@@ -94,6 +94,18 @@ describe("streamText (OpenAI)", () => {
     await call.result;
 
     expect(capturedRequest?.reasoning?.effort).toBe("high");
+  });
+
+  it("maps thinkingLevel=xhigh to OpenAI xhigh reasoning effort", async () => {
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({ model: "gpt-5.5", input: "hi", thinkingLevel: "xhigh" });
+    for await (const _event of call.events) {
+      // Drain stream.
+    }
+    await call.result;
+
+    expect(capturedRequest?.reasoning?.effort).toBe("xhigh");
   });
 
   it("maps gpt-5.5-fast to gpt-5.5 with priority service tier", async () => {
