@@ -38,6 +38,7 @@ export type {
   JsonSchema,
   LlmBaseRequest,
   LlmBlockedEvent,
+  LlmChatGptGenerateImagesRequest,
   LlmContent,
   LlmContentPart,
   LlmCustomTool,
@@ -236,6 +237,7 @@ export {
 export type { ChatGptAuthProfile } from "./openai/chatgpt-auth.js";
 
 export {
+  CHATGPT_IMAGE_MODEL_IDS,
   CHATGPT_MODEL_IDS,
   EXPERIMENTAL_CHATGPT_MODEL_PREFIX,
   OPENAI_GPT_IMAGE_2_AUTO_RESOLUTION,
@@ -250,13 +252,16 @@ export {
   OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
+  isChatGptImageModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
   isOpenAiImageModelId,
   isOpenAiModelId,
+  resolveChatGptImageProviderModel,
   validateOpenAiGptImage2Resolution,
 } from "./openai/models.js";
 export type {
+  ChatGptImageModelId,
   ChatGptModelId,
   ExperimentalChatGptModelId,
   ListedChatGptModelId,

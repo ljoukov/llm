@@ -98,4 +98,54 @@ describe("collectChatGptCodexResponse", () => {
     expect(result.text).toBe("OK");
     expect(result.model).toBe("gpt-5.3-codex-spark");
   });
+
+  it("collects completed image_generation_call results", async () => {
+    const fetchMock = vi.fn(async () =>
+      buildSseResponse([
+        {
+          type: "response.output_item.done",
+          item: {
+            id: "ig_123",
+            type: "image_generation_call",
+            status: "completed",
+            revised_prompt: "A small blue square",
+            result: Buffer.from("fake-image").toString("base64"),
+          },
+        },
+        {
+          type: "response.completed",
+          response: {
+            model: "gpt-5.4",
+            status: "completed",
+            usage: {
+              input_tokens: 2,
+              output_tokens: 10,
+              total_tokens: 12,
+            },
+          },
+        },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectChatGptCodexResponse({
+      request: {
+        model: "gpt-5.4",
+        store: false,
+        stream: true,
+        input: [{ role: "user", content: "draw a blue square" }],
+        tools: [{ type: "image_generation", output_format: "png" }],
+        tool_choice: "required",
+      },
+    });
+
+    expect(result.imageGenerationCalls).toEqual([
+      {
+        id: "ig_123",
+        status: "completed",
+        revisedPrompt: "A small blue square",
+        result: Buffer.from("fake-image").toString("base64"),
+      },
+    ]);
+  });
 });

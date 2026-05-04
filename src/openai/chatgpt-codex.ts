@@ -158,12 +158,20 @@ export type ChatGptCodexWebSearchCall = {
   action?: ChatGptCodexWebSearchAction;
 };
 
+export type ChatGptCodexImageGenerationCall = {
+  id: string;
+  status?: string;
+  revisedPrompt?: string;
+  result: string;
+};
+
 export type ChatGptCodexCollectedResponse = {
   text: string;
   reasoningText: string;
   reasoningSummaryText: string;
   toolCalls: ChatGptCodexToolCall[];
   webSearchCalls: ChatGptCodexWebSearchCall[];
+  imageGenerationCalls: ChatGptCodexImageGenerationCall[];
   usage?: ChatGptCodexUsage;
   id?: string;
   model?: string;
@@ -362,6 +370,8 @@ async function collectChatGptCodexStream(options: {
   const toolCallOrder: string[] = [];
   const webSearchCalls = new Map<string, ChatGptCodexWebSearchCall>();
   const webSearchCallOrder: string[] = [];
+  const imageGenerationCalls = new Map<string, ChatGptCodexImageGenerationCall>();
+  const imageGenerationCallOrder: string[] = [];
   let text = "";
   const reasoningText = "";
   let reasoningSummaryText = "";
@@ -436,6 +446,21 @@ async function collectChatGptCodexStream(options: {
                   : undefined,
             });
           }
+        } else if (item.type === "image_generation_call") {
+          const id = typeof item.id === "string" ? item.id : "";
+          const result = typeof item.result === "string" ? item.result : "";
+          if (id && result) {
+            if (!imageGenerationCalls.has(id)) {
+              imageGenerationCallOrder.push(id);
+            }
+            imageGenerationCalls.set(id, {
+              id,
+              status: typeof item.status === "string" ? item.status : undefined,
+              revisedPrompt:
+                typeof item.revised_prompt === "string" ? item.revised_prompt : undefined,
+              result,
+            });
+          }
         }
       }
       continue;
@@ -482,6 +507,9 @@ async function collectChatGptCodexStream(options: {
   const orderedWebSearchCalls = webSearchCallOrder
     .map((id) => webSearchCalls.get(id))
     .filter((call): call is ChatGptCodexWebSearchCall => call !== undefined);
+  const orderedImageGenerationCalls = imageGenerationCallOrder
+    .map((id) => imageGenerationCalls.get(id))
+    .filter((call): call is ChatGptCodexImageGenerationCall => call !== undefined);
 
   return {
     text,
@@ -489,6 +517,7 @@ async function collectChatGptCodexStream(options: {
     reasoningSummaryText,
     toolCalls: orderedToolCalls,
     webSearchCalls: orderedWebSearchCalls,
+    imageGenerationCalls: orderedImageGenerationCalls,
     usage,
     id: responseId,
     model,

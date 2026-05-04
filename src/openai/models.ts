@@ -19,6 +19,13 @@ export function isOpenAiImageModelId(value: string): value is OpenAiImageModelId
   return (OPENAI_IMAGE_MODEL_IDS as readonly string[]).includes(value);
 }
 
+export const CHATGPT_IMAGE_MODEL_IDS = ["chatgpt-gpt-image-2"] as const;
+export type ChatGptImageModelId = (typeof CHATGPT_IMAGE_MODEL_IDS)[number];
+
+export function isChatGptImageModelId(value: string): value is ChatGptImageModelId {
+  return (CHATGPT_IMAGE_MODEL_IDS as readonly string[]).includes(value);
+}
+
 export const OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS = [
   "1024x1024",
   "1536x1024",
@@ -143,6 +150,7 @@ export const CHATGPT_MODEL_IDS = [
 const FAST_MODEL_SUFFIX = "-fast";
 const OPENAI_PRIORITY_MODEL_IDS = ["gpt-5.5-fast"] as const;
 const CHATGPT_PRIORITY_MODEL_IDS = ["chatgpt-gpt-5.5-fast", "chatgpt-gpt-5.4-fast"] as const;
+const CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL = "gpt-5.4" as const;
 
 export const EXPERIMENTAL_CHATGPT_MODEL_PREFIX = "experimental-chatgpt-" as const;
 
@@ -189,6 +197,10 @@ export function resolveChatGptProviderModel(model: ChatGptModelId): string {
   return (CHATGPT_PRIORITY_MODEL_IDS as readonly string[]).includes(model)
     ? stripFastSuffix(providerModel)
     : providerModel;
+}
+
+export function resolveChatGptImageProviderModel(_model: ChatGptImageModelId): string {
+  return CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL;
 }
 
 export function resolveChatGptServiceTier(model: ChatGptModelId): "priority" | undefined {

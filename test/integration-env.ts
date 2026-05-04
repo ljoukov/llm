@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   isChatGptModelId,
+  isChatGptImageModelId,
   isFireworksModelId,
   isGeminiImageModelId,
   isGeminiTextModelId,
@@ -76,7 +77,7 @@ export function hasIntegrationCredentialsForModel(
   if (isOpenAiModelId(model) || isOpenAiImageModelId(model)) {
     return availability.openAi;
   }
-  if (isChatGptModelId(model)) {
+  if (isChatGptModelId(model) || isChatGptImageModelId(model)) {
     return availability.chatGpt;
   }
   if (isGeminiTextModelId(model)) {
@@ -96,7 +97,7 @@ function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId):
   if (isOpenAiModelId(model) || isOpenAiImageModelId(model)) {
     return "OPENAI_API_KEY";
   }
-  if (isChatGptModelId(model)) {
+  if (isChatGptModelId(model) || isChatGptImageModelId(model)) {
     return "CHATGPT_AUTH_TOKEN_PROVIDER_URL + CHATGPT_AUTH_API_KEY (or CODEX auth store)";
   }
   if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHATGPT_IMAGE_MODEL_IDS,
   CHATGPT_MODEL_IDS,
   FIREWORKS_MODEL_IDS,
   GEMINI_IMAGE_MODEL_IDS,
   GEMINI_TEXT_MODEL_IDS,
+  isChatGptImageModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
   isLlmImageModelId,
@@ -29,6 +31,7 @@ import {
   validateOpenAiGptImage2Resolution,
 } from "../src/index.js";
 import type {
+  LlmChatGptGenerateImagesRequest,
   LlmGeminiGenerateImagesRequest,
   LlmOpenAiImageResolution,
   LlmOpenAiGenerateImagesRequest,
@@ -65,6 +68,21 @@ const _invalidGeminiResolutionTypeCheck = {
   imageResolution: "1024x1024",
 } satisfies LlmGeminiGenerateImagesRequest;
 
+const _chatGptImageRequestTypeCheck = {
+  model: "chatgpt-gpt-image-2",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  numImages: 1,
+} satisfies LlmChatGptGenerateImagesRequest;
+
+const _invalidChatGptImageResolutionTypeCheck = {
+  model: "chatgpt-gpt-image-2",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  // @ts-expect-error ChatGPT subscription image generation uses the built-in image_generation tool, not Images API imageResolution.
+  imageResolution: "1024x1024",
+} satisfies LlmChatGptGenerateImagesRequest;
+
 describe("model id lists", () => {
   it("defines provider model ids as explicit const lists", () => {
     expect(OPENAI_MODEL_IDS).toEqual([
@@ -84,6 +102,7 @@ describe("model id lists", () => {
     ]);
     expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
     expect(OPENAI_IMAGE_MODEL_IDS).toEqual(["gpt-image-2"]);
+    expect(CHATGPT_IMAGE_MODEL_IDS).toEqual(["chatgpt-gpt-image-2"]);
     expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.1-pro-preview");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3-pro-image-preview");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3.1-flash-image-preview");
@@ -181,9 +200,13 @@ describe("model id lists", () => {
     expect(isLlmTextModelId("chatgpt-gpt-5.4-mini")).toBe(true);
     expect(isLlmTextModelId("experimental-chatgpt-private-model")).toBe(true);
     expect(isOpenAiImageModelId("gpt-image-2")).toBe(true);
+    expect(isChatGptImageModelId("chatgpt-gpt-image-2")).toBe(true);
     expect(isLlmImageModelId("gpt-image-2")).toBe(true);
+    expect(isLlmImageModelId("chatgpt-gpt-image-2")).toBe(true);
     expect(isLlmTextModelId("gpt-image-2")).toBe(false);
+    expect(isLlmTextModelId("chatgpt-gpt-image-2")).toBe(false);
     expect(isLlmModelId("gpt-image-2")).toBe(true);
+    expect(isLlmModelId("chatgpt-gpt-image-2")).toBe(true);
     expect(isLlmModelId("gpt-5.5-fast")).toBe(true);
     expect(isLlmModelId("chatgpt-gpt-5.5-fast")).toBe(true);
     expect(isLlmModelId("chatgpt-gpt-5.4-fast")).toBe(true);
