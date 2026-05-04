@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { generateJson, isChatGptModelId, isOpenAiModelId, streamText } from "../src/index.js";
+import {
+  generateImages,
+  generateJson,
+  isChatGptModelId,
+  isOpenAiImageModelId,
+  isOpenAiModelId,
+  streamText,
+} from "../src/index.js";
 import {
   assertIntegrationCredentialsForModels,
   resolveIntegrationRequestedImageModels,
@@ -90,6 +97,21 @@ describe("integration: structured output", () => {
 describe("integration: image model matrix", () => {
   for (const model of requestedImageModels) {
     it(`${model}: returns image content`, async () => {
+      if (isOpenAiImageModelId(model)) {
+        const images = await generateImages({
+          model,
+          stylePrompt: "Simple icon style. White background, clean edges, no text.",
+          imagePrompts: ["A single blue square centered in the frame"],
+          imageResolution: "1024x1024",
+          imageQuality: "low",
+        });
+
+        expect(images).toHaveLength(1);
+        expect(images[0]?.data.length).toBeGreaterThan(0);
+        expect(images[0]?.mimeType?.startsWith("image/") ?? false).toBe(true);
+        return;
+      }
+
       const call = streamText({
         model,
         input:

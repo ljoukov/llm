@@ -20,6 +20,7 @@ import {
 } from "@google/genai";
 import { zodToJsonSchema } from "@alcyone-labs/zod-to-json-schema";
 import { z } from "zod";
+import { toFile } from "openai";
 import type { ResponseTextConfig } from "openai/resources/responses/responses";
 
 import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
@@ -43,6 +44,7 @@ import {
   getGeminiBackend,
   isGeminiImageModelId,
   isGeminiTextModelId,
+  type GeminiImageModelId,
 } from "./google/client.js";
 import {
   runOpenAiCall,
@@ -51,7 +53,9 @@ import {
 } from "./openai/calls.js";
 import {
   CHATGPT_MODEL_IDS,
+  OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
+  isOpenAiImageModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
   isOpenAiModelId,
@@ -59,7 +63,16 @@ import {
   resolveChatGptServiceTier,
   resolveOpenAiProviderModel,
   resolveOpenAiServiceTier,
+  validateOpenAiGptImage2Resolution,
   type ExperimentalChatGptModelId,
+  type OpenAiImageModelId,
+  type OpenAiGptImage2Background,
+  type OpenAiGptImage2Moderation,
+  type OpenAiGptImage2NumImages,
+  type OpenAiGptImage2OutputFormat,
+  type OpenAiGptImage2PartialImageCount,
+  type OpenAiGptImage2Quality,
+  type OpenAiGptImage2Resolution,
 } from "./openai/models.js";
 import {
   getCurrentAgentLoggingSession,
@@ -273,7 +286,7 @@ export const LLM_TEXT_MODEL_IDS = [
 ] as const;
 export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number] | ExperimentalChatGptModelId;
 
-export const LLM_IMAGE_MODEL_IDS = [...GEMINI_IMAGE_MODEL_IDS] as const;
+export const LLM_IMAGE_MODEL_IDS = [...OPENAI_IMAGE_MODEL_IDS, ...GEMINI_IMAGE_MODEL_IDS] as const;
 export type LlmImageModelId = (typeof LLM_IMAGE_MODEL_IDS)[number];
 
 export const LLM_MODEL_IDS = [...LLM_TEXT_MODEL_IDS, ...LLM_IMAGE_MODEL_IDS] as const;
@@ -289,7 +302,7 @@ export function isLlmTextModelId(value: string): value is LlmTextModelId {
 }
 
 export function isLlmImageModelId(value: string): value is LlmImageModelId {
-  return isGeminiImageModelId(value);
+  return isOpenAiImageModelId(value) || isGeminiImageModelId(value);
 }
 
 export function isLlmModelId(value: string): value is LlmModelId {
@@ -428,18 +441,51 @@ export type LlmImageData = {
   readonly data: Buffer;
 };
 
-export type LlmGenerateImagesRequest = {
-  readonly model: LlmImageModelId; // e.g. "gemini-3-pro-image-preview"
+export type LlmOpenAiImageResolution = OpenAiGptImage2Resolution;
+export type LlmOpenAiImageQuality = OpenAiGptImage2Quality;
+export type LlmOpenAiImageOutputFormat = OpenAiGptImage2OutputFormat;
+export type LlmOpenAiImageBackground = OpenAiGptImage2Background;
+export type LlmOpenAiImageModeration = OpenAiGptImage2Moderation;
+export type LlmOpenAiImagePartialImageCount = OpenAiGptImage2PartialImageCount;
+export type LlmOpenAiImageNumImages = OpenAiGptImage2NumImages;
+
+type LlmGenerateImagesRequestBase = {
   readonly stylePrompt: string;
   readonly styleImages?: readonly LlmImageData[];
   readonly imagePrompts: readonly string[];
+  readonly telemetry?: TelemetrySelection;
+  readonly signal?: AbortSignal;
+};
+
+export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
+  readonly model: OpenAiImageModelId;
+  readonly imageResolution?: LlmOpenAiImageResolution;
+  readonly imageQuality?: LlmOpenAiImageQuality;
+  readonly outputFormat?: LlmOpenAiImageOutputFormat;
+  readonly outputCompression?: number;
+  readonly background?: LlmOpenAiImageBackground;
+  readonly moderation?: LlmOpenAiImageModeration;
+  readonly partialImages?: LlmOpenAiImagePartialImageCount;
+  readonly numImages?: LlmOpenAiImageNumImages;
+};
+
+export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
+  readonly model: GeminiImageModelId;
   readonly imageGradingPrompt: string;
   readonly maxAttempts?: number;
   readonly imageAspectRatio?: string;
   readonly imageSize?: LlmImageSize;
-  readonly telemetry?: TelemetrySelection;
-  readonly signal?: AbortSignal;
 };
+
+export type LlmGenerateImagesRequest =
+  | LlmOpenAiGenerateImagesRequest
+  | LlmGeminiGenerateImagesRequest;
+
+function isOpenAiGenerateImagesRequest(
+  request: LlmGenerateImagesRequest,
+): request is LlmOpenAiGenerateImagesRequest {
+  return isOpenAiImageModelId(request.model);
+}
 
 export type LlmFunctionTool<Schema extends z.ZodType, Output> = {
   readonly type?: "function";
@@ -1251,6 +1297,9 @@ function resolveProvider(model: LlmModelId): {
       return { provider: "fireworks", model: fireworksModel };
     }
   }
+  if (isOpenAiImageModelId(model)) {
+    return { provider: "openai", model };
+  }
   if (isOpenAiModelId(model)) {
     return {
       provider: "openai",
@@ -1258,7 +1307,7 @@ function resolveProvider(model: LlmModelId): {
       serviceTier: resolveOpenAiServiceTier(model),
     };
   }
-  throw new Error(`Unsupported text model: ${model}`);
+  throw new Error(`Unsupported model: ${model}`);
 }
 
 function isOpenAiCodexModel(modelId: string): boolean {
@@ -2643,8 +2692,11 @@ function mergeTokenUpdates(
   }
   return {
     promptTokens: next.promptTokens ?? current.promptTokens,
+    promptTextTokens: next.promptTextTokens ?? current.promptTextTokens,
+    promptImageTokens: next.promptImageTokens ?? current.promptImageTokens,
     cachedTokens: next.cachedTokens ?? current.cachedTokens,
     responseTokens: next.responseTokens ?? current.responseTokens,
+    responseTextTokens: next.responseTextTokens ?? current.responseTextTokens,
     responseImageTokens: next.responseImageTokens ?? current.responseImageTokens,
     thinkingTokens: next.thinkingTokens ?? current.thinkingTokens,
     totalTokens: next.totalTokens ?? current.totalTokens,
@@ -2672,8 +2724,11 @@ function sumUsageTokens(
   }
   return {
     promptTokens: sumUsageValue(current?.promptTokens, next.promptTokens),
+    promptTextTokens: sumUsageValue(current?.promptTextTokens, next.promptTextTokens),
+    promptImageTokens: sumUsageValue(current?.promptImageTokens, next.promptImageTokens),
     cachedTokens: sumUsageValue(current?.cachedTokens, next.cachedTokens),
     responseTokens: sumUsageValue(current?.responseTokens, next.responseTokens),
+    responseTextTokens: sumUsageValue(current?.responseTextTokens, next.responseTextTokens),
     responseImageTokens: sumUsageValue(current?.responseImageTokens, next.responseImageTokens),
     thinkingTokens: sumUsageValue(current?.thinkingTokens, next.thinkingTokens),
     totalTokens: sumUsageValue(current?.totalTokens, next.totalTokens),
@@ -2823,10 +2878,26 @@ function extractOpenAiUsageTokens(usage: unknown): LlmUsageTokens | undefined {
     (usage as { input_tokens_details?: { cached_tokens?: unknown } }).input_tokens_details
       ?.cached_tokens,
   );
+  const promptTextTokens = toMaybeNumber(
+    (usage as { input_tokens_details?: { text_tokens?: unknown } }).input_tokens_details
+      ?.text_tokens,
+  );
+  const promptImageTokens = toMaybeNumber(
+    (usage as { input_tokens_details?: { image_tokens?: unknown } }).input_tokens_details
+      ?.image_tokens,
+  );
   const outputTokensRaw = toMaybeNumber((usage as { output_tokens?: unknown }).output_tokens);
   const reasoningTokens = toMaybeNumber(
     (usage as { output_tokens_details?: { reasoning_tokens?: unknown } }).output_tokens_details
       ?.reasoning_tokens,
+  );
+  const responseTextTokens = toMaybeNumber(
+    (usage as { output_tokens_details?: { text_tokens?: unknown } }).output_tokens_details
+      ?.text_tokens,
+  );
+  const responseImageTokens = toMaybeNumber(
+    (usage as { output_tokens_details?: { image_tokens?: unknown } }).output_tokens_details
+      ?.image_tokens,
   );
   const totalTokens = toMaybeNumber((usage as { total_tokens?: unknown }).total_tokens);
   let responseTokens: number | undefined;
@@ -2845,8 +2916,12 @@ function extractOpenAiUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   }
   return {
     promptTokens,
+    promptTextTokens,
+    promptImageTokens,
     cachedTokens,
     responseTokens,
+    responseTextTokens,
+    responseImageTokens,
     thinkingTokens: reasoningTokens,
     totalTokens,
   };
@@ -4691,6 +4766,9 @@ async function runTextCall(params: {
   const { result } = await collectFileUploadMetrics(async () => {
     try {
       if (provider === "openai") {
+        if (isOpenAiImageModelId(request.model)) {
+          throw new Error("gpt-image-2 is an image generation model; use generateImages().");
+        }
         const openAiInput = await maybePrepareOpenAiPromptInput(
           toOpenAiInput(contents, {
             defaultMediaResolution: request.mediaResolution,
@@ -7358,7 +7436,227 @@ async function gradeGeneratedImage(params: {
   return { grade: value.grade, result };
 }
 
+function resolveOpenAiImageMimeType(outputFormat: LlmOpenAiImageOutputFormat | undefined): string {
+  switch (outputFormat) {
+    case "jpeg":
+      return "image/jpeg";
+    case "webp":
+      return "image/webp";
+    case "png":
+    case undefined:
+      return "image/png";
+  }
+}
+
+function buildOpenAiImagePrompt(params: {
+  stylePrompt: string;
+  imagePrompt: string;
+  hasStyleImages: boolean;
+}): string {
+  return [
+    "Follow the requested visual style.",
+    "",
+    "Style:",
+    params.stylePrompt.trim(),
+    ...(params.hasStyleImages
+      ? [
+          "",
+          "Use the attached reference image or images for palette, lighting, mood, composition, and material feel.",
+        ]
+      : []),
+    "",
+    "Image:",
+    params.imagePrompt.trim(),
+  ]
+    .filter((line) => line.length > 0)
+    .join("\n");
+}
+
+function resolveOpenAiImageRequestParams(request: LlmOpenAiGenerateImagesRequest): {
+  readonly size: LlmOpenAiImageResolution;
+  readonly quality: LlmOpenAiImageQuality;
+  readonly outputFormat: LlmOpenAiImageOutputFormat | undefined;
+  readonly n: LlmOpenAiImageNumImages;
+  readonly background: LlmOpenAiImageBackground | undefined;
+  readonly moderation: LlmOpenAiImageModeration | undefined;
+} {
+  if (request.partialImages !== undefined) {
+    throw new Error("partialImages is only supported for streaming image generation.");
+  }
+  if (
+    request.outputCompression !== undefined &&
+    (!Number.isInteger(request.outputCompression) ||
+      request.outputCompression < 0 ||
+      request.outputCompression > 100)
+  ) {
+    throw new Error("outputCompression must be an integer from 0 to 100.");
+  }
+  if (
+    request.outputCompression !== undefined &&
+    request.outputFormat !== "jpeg" &&
+    request.outputFormat !== "webp"
+  ) {
+    throw new Error("outputCompression requires outputFormat to be jpeg or webp.");
+  }
+  const size = request.imageResolution ?? "auto";
+  const sizeValidation = validateOpenAiGptImage2Resolution(size);
+  if (!sizeValidation.valid) {
+    throw new Error(
+      `imageResolution ${JSON.stringify(size)} is not supported by gpt-image-2: ${sizeValidation.reason}`,
+    );
+  }
+  return {
+    size,
+    quality: request.imageQuality ?? "auto",
+    outputFormat: request.outputFormat,
+    n: request.numImages ?? 1,
+    background: request.background,
+    moderation: request.moderation,
+  };
+}
+
+async function createOpenAiStyleImageFiles(
+  styleImages: readonly LlmImageData[] | undefined,
+): Promise<unknown[] | undefined> {
+  if (!styleImages || styleImages.length === 0) {
+    return undefined;
+  }
+  return await Promise.all(
+    styleImages.map(async (image, index) => {
+      const mimeType = image.mimeType ?? "image/png";
+      const extension = resolveAttachmentExtension(mimeType);
+      return await toFile(image.data, `style-${index + 1}.${extension}`, { type: mimeType });
+    }),
+  );
+}
+
+async function generateImagesWithOpenAiImageApi(
+  request: LlmOpenAiGenerateImagesRequest,
+): Promise<LlmImageData[]> {
+  const promptEntries = Array.from(request.imagePrompts, (rawPrompt, index) => {
+    const prompt = rawPrompt.trim();
+    if (!prompt) {
+      throw new Error(`imagePrompts[${index}] must be a non-empty string`);
+    }
+    return prompt;
+  });
+  if (promptEntries.length === 0) {
+    return [];
+  }
+
+  const provider = resolveProvider(request.model).provider;
+  const telemetry = createLlmTelemetryEmitter({
+    telemetry: request.telemetry,
+    operation: "generateImages",
+    provider,
+    model: request.model,
+  });
+  const startedAtMs = Date.now();
+  const params = resolveOpenAiImageRequestParams(request);
+  const styleImages = await createOpenAiStyleImageFiles(request.styleImages);
+  const hasStyleImages = Boolean(styleImages && styleImages.length > 0);
+  const outputMimeType = resolveOpenAiImageMimeType(params.outputFormat);
+  let totalUsage: LlmUsageTokens | undefined;
+  let costUsd = 0;
+  let outputImages = 0;
+
+  telemetry.emit({
+    type: "llm.call.started",
+    imagePromptCount: promptEntries.length,
+    styleImageCount: request.styleImages?.length ?? 0,
+    numImagesPerPrompt: params.n,
+  });
+
+  try {
+    const images: LlmImageData[] = [];
+    for (const imagePrompt of promptEntries) {
+      const prompt = buildOpenAiImagePrompt({
+        stylePrompt: request.stylePrompt,
+        imagePrompt,
+        hasStyleImages,
+      });
+      const response = await runOpenAiCall(async (client) => {
+        const payload = {
+          model: request.model,
+          prompt,
+          n: params.n,
+          size: params.size,
+          quality: params.quality,
+          ...(params.outputFormat ? { output_format: params.outputFormat } : {}),
+          ...(request.outputCompression !== undefined
+            ? { output_compression: request.outputCompression }
+            : {}),
+          ...(params.background ? { background: params.background } : {}),
+          ...(params.moderation ? { moderation: params.moderation } : {}),
+        };
+        if (styleImages && styleImages.length > 0) {
+          return await client.images.edit(
+            {
+              ...payload,
+              image: styleImages,
+            } as any,
+            { signal: request.signal } as any,
+          );
+        }
+        return await client.images.generate(payload as any, { signal: request.signal } as any);
+      }, request.model);
+
+      const data = Array.isArray((response as { data?: unknown }).data)
+        ? ((response as { data?: Array<{ b64_json?: unknown }> }).data ?? [])
+        : [];
+      for (const item of data) {
+        if (typeof item.b64_json !== "string" || item.b64_json.length === 0) {
+          continue;
+        }
+        images.push({
+          mimeType: outputMimeType,
+          data: Buffer.from(item.b64_json, "base64"),
+        });
+      }
+      outputImages = images.length;
+      const usage = extractOpenAiUsageTokens((response as { usage?: unknown }).usage);
+      totalUsage = sumUsageTokens(totalUsage, usage);
+      costUsd += estimateCallCostUsd({
+        modelId: request.model,
+        tokens: usage,
+        responseImages: data.length,
+        imageSize: params.size,
+        imageQuality: params.quality,
+      });
+    }
+
+    telemetry.emit({
+      type: "llm.call.completed",
+      success: true,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      usage: totalUsage,
+      costUsd,
+      imageCount: images.length,
+      attempts: promptEntries.length,
+    });
+    return images;
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    telemetry.emit({
+      type: "llm.call.completed",
+      success: false,
+      durationMs: Math.max(0, Date.now() - startedAtMs),
+      usage: totalUsage,
+      costUsd,
+      imageCount: outputImages,
+      error: err.message,
+    });
+    throw err;
+  } finally {
+    await telemetry.flush();
+  }
+}
+
 export async function generateImages(request: LlmGenerateImagesRequest): Promise<LlmImageData[]> {
+  if (isOpenAiGenerateImagesRequest(request)) {
+    return await generateImagesWithOpenAiImageApi(request);
+  }
+
   const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 4));
   const promptList = Array.from(request.imagePrompts);
   if (promptList.length === 0) {
@@ -7375,7 +7673,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
     return { index: arrayIndex + 1, prompt: trimmedPrompt };
   });
 
-  const gradingPrompt = request.imageGradingPrompt.trim();
+  const gradingPrompt = request.imageGradingPrompt?.trim() ?? "";
   if (!gradingPrompt) {
     throw new Error("imageGradingPrompt must be a non-empty string");
   }
