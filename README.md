@@ -628,19 +628,21 @@ Architecture note:
 
 ### Provider-Native Tools (`generateText()`)
 
-Use this when the model provider executes the tool remotely (for example search/code-exec style tools).
+Use this when the model provider executes the tool remotely (for example search/code-exec/shell style tools).
 
 ```ts
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gpt-5.4-mini",
-  input: "Find 3 relevant sources about X and summarize them.",
-  tools: [{ type: "web-search", mode: "live" }, { type: "code-execution" }],
+  model: "gpt-5.5",
+  input: "Run python --version in a hosted shell and summarize the result.",
+  tools: [{ type: "shell" }],
 });
 
 console.log(result.text);
 ```
+
+`{ type: "shell" }` uses OpenAI hosted shell containers by default. It is only supported for OpenAI API models; ChatGPT-authenticated, Gemini, and Fireworks providers reject it.
 
 ### Runtime Tools (`runToolLoop()`)
 

@@ -183,6 +183,26 @@ describe("streamText (Gemini)", () => {
     });
   });
 
+  it("rejects the OpenAI shell tool for Gemini models", async () => {
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({
+      model: "gemini-2.5-pro",
+      input: "Use shell.",
+      tools: [{ type: "shell" }],
+    });
+    const events = (async () => {
+      for await (const _event of call.events) {
+        // Drain until the stream surfaces the rejection.
+      }
+    })();
+
+    await expect(call.result).rejects.toThrow(
+      "Gemini provider does not support the OpenAI shell tool.",
+    );
+    await expect(events).rejects.toThrow("Gemini provider does not support the OpenAI shell tool.");
+  });
+
   it("passes a resolved object schema to Gemini JSON calls", async () => {
     geminiRequests = [];
     geminiResponseText = '{"result":"correct","feedback":"Good"}';

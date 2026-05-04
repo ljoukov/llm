@@ -67,4 +67,26 @@ describe("streamText (Fireworks)", () => {
 
     expect(capturedRequest?.response_format).toEqual({ type: "json_object" });
   });
+
+  it("rejects provider-native shell tools for Fireworks models", async () => {
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({
+      model: "kimi-k2.5",
+      input: "Use shell.",
+      tools: [{ type: "shell" }],
+    });
+    const events = (async () => {
+      for await (const _event of call.events) {
+        // Drain until the stream surfaces the rejection.
+      }
+    })();
+
+    await expect(call.result).rejects.toThrow(
+      "Fireworks provider does not support provider-native tools in generateText",
+    );
+    await expect(events).rejects.toThrow(
+      "Fireworks provider does not support provider-native tools in generateText",
+    );
+  });
 });
