@@ -32,6 +32,14 @@ export {
   emptyFileUploadMetrics,
   files,
 } from "./files.js";
+export {
+  createOpenAiContainer,
+  deleteOpenAiContainer,
+  downloadOpenAiContainerFile,
+  downloadOpenAiContainerFileText,
+  listOpenAiContainerFiles,
+  uploadOpenAiContainerFile,
+} from "./openai/containers.js";
 export { configureTelemetry, resetTelemetry } from "./telemetry.js";
 
 export type {
@@ -69,6 +77,8 @@ export type {
   LlmOpenAiImageQuality,
   LlmOpenAiImageResolution,
   LlmOpenAiGenerateImagesRequest,
+  LlmOpenAiResponseContainerReference,
+  LlmOpenAiResponseMetadata,
   LlmOpenAiShellEnvironment,
   LlmOpenAiShellNetworkPolicy,
   LlmProvider,
@@ -121,6 +131,13 @@ export type {
   LlmFileUploadSource,
   LlmStoredFile,
 } from "./files.js";
+export type {
+  LlmOpenAiContainer,
+  LlmOpenAiContainerCreateOptions,
+  LlmOpenAiContainerFile,
+  LlmOpenAiContainerFileUpload,
+  LlmOpenAiContainerNetworkPolicy,
+} from "./openai/containers.js";
 
 export { loadEnvFromFile, loadLocalEnv } from "./utils/env.js";
 export {
