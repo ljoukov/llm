@@ -43,6 +43,43 @@ async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
   return { response, thought, sawUsage };
 }
 
+function readJpegDimensions(data: Buffer): { width: number; height: number } | undefined {
+  if (data[0] !== 0xff || data[1] !== 0xd8) {
+    return undefined;
+  }
+  let offset = 2;
+  while (offset + 9 < data.length) {
+    if (data[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = data[offset + 1];
+    const segmentLength = data.readUInt16BE(offset + 2);
+    if (
+      marker === 0xc0 ||
+      marker === 0xc1 ||
+      marker === 0xc2 ||
+      marker === 0xc3 ||
+      marker === 0xc5 ||
+      marker === 0xc6 ||
+      marker === 0xc7 ||
+      marker === 0xc9 ||
+      marker === 0xca ||
+      marker === 0xcb ||
+      marker === 0xcd ||
+      marker === 0xce ||
+      marker === 0xcf
+    ) {
+      return {
+        height: data.readUInt16BE(offset + 5),
+        width: data.readUInt16BE(offset + 7),
+      };
+    }
+    offset += 2 + segmentLength;
+  }
+  return undefined;
+}
+
 describe("integration: text model matrix", () => {
   for (const model of requestedTextModels) {
     it(`${model}: streams and returns result`, async () => {
@@ -116,13 +153,24 @@ describe("integration: image model matrix", () => {
       if (isChatGptImageModelId(model)) {
         const images = await generateImages({
           model,
-          stylePrompt: "Simple icon style. White background, clean edges, no text.",
+          stylePrompt: "Simple portrait poster style. White background, clean edges, no text.",
           imagePrompts: ["A single blue square centered in the frame"],
+          imageResolution: "1024x1536",
+          imageQuality: "high",
+          outputFormat: "jpeg",
+          outputCompression: 50,
+          action: "generate",
         });
 
         expect(images).toHaveLength(1);
-        expect(images[0]?.data.length).toBeGreaterThan(0);
-        expect(images[0]?.mimeType?.startsWith("image/") ?? false).toBe(true);
+        const image = images[0];
+        expect(image).toBeDefined();
+        expect(image?.data.length).toBeGreaterThan(0);
+        expect(image?.mimeType).toBe("image/jpeg");
+        expect(image ? readJpegDimensions(image.data) : undefined).toEqual({
+          width: 1024,
+          height: 1536,
+        });
         return;
       }
 

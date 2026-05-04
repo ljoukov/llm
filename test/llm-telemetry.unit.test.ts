@@ -551,11 +551,18 @@ describe("LLM telemetry", () => {
       model: "chatgpt-gpt-image-2",
       stylePrompt: "Clean icon style.",
       imagePrompts: ["A blue square"],
+      imageResolution: "1024x1536",
+      imageQuality: "high",
+      outputFormat: "jpeg",
+      outputCompression: 50,
+      background: "opaque",
+      moderation: "low",
+      action: "generate",
       numImages: 1,
     });
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.mimeType).toBe("image/png");
+    expect(images[0]?.mimeType).toBe("image/jpeg");
     expect(images[0]?.data.toString()).toBe("fake-chatgpt-image");
     expect(chatGptCodexRequests).toHaveLength(1);
     expect(chatGptCodexRequests[0]).toMatchObject({
@@ -564,7 +571,18 @@ describe("LLM telemetry", () => {
       stream: true,
       tool_choice: "required",
       parallel_tool_calls: false,
-      tools: [{ type: "image_generation", output_format: "png" }],
+      tools: [
+        {
+          type: "image_generation",
+          size: "1024x1536",
+          quality: "high",
+          output_format: "jpeg",
+          output_compression: 50,
+          background: "opaque",
+          moderation: "low",
+          action: "generate",
+        },
+      ],
     });
   });
 });

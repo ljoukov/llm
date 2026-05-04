@@ -462,13 +462,29 @@ export type LlmImageData = {
   readonly data: Buffer;
 };
 
-export type LlmOpenAiImageResolution = OpenAiGptImage2Resolution;
-export type LlmOpenAiImageQuality = OpenAiGptImage2Quality;
-export type LlmOpenAiImageOutputFormat = OpenAiGptImage2OutputFormat;
-export type LlmOpenAiImageBackground = OpenAiGptImage2Background;
-export type LlmOpenAiImageModeration = OpenAiGptImage2Moderation;
-export type LlmOpenAiImagePartialImageCount = OpenAiGptImage2PartialImageCount;
-export type LlmOpenAiImageNumImages = OpenAiGptImage2NumImages;
+export type LlmGptImage2Resolution = OpenAiGptImage2Resolution;
+export type LlmGptImage2Quality = OpenAiGptImage2Quality;
+export type LlmGptImage2OutputFormat = OpenAiGptImage2OutputFormat;
+export type LlmGptImage2Background = OpenAiGptImage2Background;
+export type LlmGptImage2Moderation = OpenAiGptImage2Moderation;
+export type LlmGptImage2PartialImageCount = OpenAiGptImage2PartialImageCount;
+export type LlmGptImage2NumImages = OpenAiGptImage2NumImages;
+
+export type LlmOpenAiImageResolution = LlmGptImage2Resolution;
+export type LlmOpenAiImageQuality = LlmGptImage2Quality;
+export type LlmOpenAiImageOutputFormat = LlmGptImage2OutputFormat;
+export type LlmOpenAiImageBackground = LlmGptImage2Background;
+export type LlmOpenAiImageModeration = LlmGptImage2Moderation;
+export type LlmOpenAiImagePartialImageCount = LlmGptImage2PartialImageCount;
+export type LlmOpenAiImageNumImages = LlmGptImage2NumImages;
+
+export type LlmChatGptImageResolution = LlmGptImage2Resolution;
+export type LlmChatGptImageQuality = LlmGptImage2Quality;
+export type LlmChatGptImageOutputFormat = LlmGptImage2OutputFormat;
+export type LlmChatGptImageBackground = LlmGptImage2Background;
+export type LlmChatGptImageModeration = LlmGptImage2Moderation;
+export type LlmChatGptImageNumImages = LlmGptImage2NumImages;
+export type LlmChatGptImageAction = "auto" | "generate" | "edit";
 
 type LlmGenerateImagesRequestBase = {
   readonly stylePrompt: string;
@@ -492,7 +508,14 @@ export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
 
 export type LlmChatGptGenerateImagesRequest = LlmGenerateImagesRequestBase & {
   readonly model: ChatGptImageModelId;
-  readonly numImages?: LlmOpenAiImageNumImages;
+  readonly imageResolution?: LlmChatGptImageResolution;
+  readonly imageQuality?: LlmChatGptImageQuality;
+  readonly outputFormat?: LlmChatGptImageOutputFormat;
+  readonly outputCompression?: number;
+  readonly background?: LlmChatGptImageBackground;
+  readonly moderation?: LlmChatGptImageModeration;
+  readonly action?: LlmChatGptImageAction;
+  readonly numImages?: LlmChatGptImageNumImages;
 };
 
 export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
@@ -7583,13 +7606,25 @@ function buildOpenAiImagePrompt(params: {
     .join("\n");
 }
 
-function resolveOpenAiImageRequestParams(request: LlmOpenAiGenerateImagesRequest): {
-  readonly size: LlmOpenAiImageResolution;
-  readonly quality: LlmOpenAiImageQuality;
-  readonly outputFormat: LlmOpenAiImageOutputFormat | undefined;
-  readonly n: LlmOpenAiImageNumImages;
-  readonly background: LlmOpenAiImageBackground | undefined;
-  readonly moderation: LlmOpenAiImageModeration | undefined;
+type LlmGptImage2RequestOptions = {
+  readonly model: string;
+  readonly imageResolution?: LlmGptImage2Resolution;
+  readonly imageQuality?: LlmGptImage2Quality;
+  readonly outputFormat?: LlmGptImage2OutputFormat;
+  readonly outputCompression?: number;
+  readonly background?: LlmGptImage2Background;
+  readonly moderation?: LlmGptImage2Moderation;
+  readonly partialImages?: LlmGptImage2PartialImageCount;
+  readonly numImages?: LlmGptImage2NumImages;
+};
+
+function resolveGptImage2RequestParams(request: LlmGptImage2RequestOptions): {
+  readonly size: LlmGptImage2Resolution;
+  readonly quality: LlmGptImage2Quality;
+  readonly outputFormat: LlmGptImage2OutputFormat | undefined;
+  readonly n: LlmGptImage2NumImages;
+  readonly background: LlmGptImage2Background | undefined;
+  readonly moderation: LlmGptImage2Moderation | undefined;
 } {
   if (request.partialImages !== undefined) {
     throw new Error("partialImages is only supported for streaming image generation.");
@@ -7613,7 +7648,7 @@ function resolveOpenAiImageRequestParams(request: LlmOpenAiGenerateImagesRequest
   const sizeValidation = validateOpenAiGptImage2Resolution(size);
   if (!sizeValidation.valid) {
     throw new Error(
-      `imageResolution ${JSON.stringify(size)} is not supported by gpt-image-2: ${sizeValidation.reason}`,
+      `imageResolution ${JSON.stringify(size)} is not supported by ${request.model}: ${sizeValidation.reason}`,
     );
   }
   return {
@@ -7663,7 +7698,7 @@ async function generateImagesWithOpenAiImageApi(
     model: request.model,
   });
   const startedAtMs = Date.now();
-  const params = resolveOpenAiImageRequestParams(request);
+  const params = resolveGptImage2RequestParams(request);
   const styleImages = await createOpenAiStyleImageFiles(request.styleImages);
   const hasStyleImages = Boolean(styleImages && styleImages.length > 0);
   const outputMimeType = resolveOpenAiImageMimeType(params.outputFormat);
@@ -7807,7 +7842,8 @@ async function generateImagesWithChatGptImageTool(
     model: request.model,
   });
   const startedAtMs = Date.now();
-  const numImagesPerPrompt = request.numImages ?? 1;
+  const params = resolveGptImage2RequestParams(request);
+  const outputMimeType = resolveOpenAiImageMimeType(params.outputFormat);
   let totalUsage: LlmUsageTokens | undefined;
   let costUsd = 0;
   let outputImages = 0;
@@ -7816,7 +7852,7 @@ async function generateImagesWithChatGptImageTool(
     type: "llm.call.started",
     imagePromptCount: promptEntries.length,
     styleImageCount: request.styleImages?.length ?? 0,
-    numImagesPerPrompt,
+    numImagesPerPrompt: params.n,
   });
 
   try {
@@ -7827,7 +7863,7 @@ async function generateImagesWithChatGptImageTool(
         imagePrompt,
         hasStyleImages: Boolean(request.styleImages && request.styleImages.length > 0),
       });
-      for (let imageIndex = 0; imageIndex < numImagesPerPrompt; imageIndex += 1) {
+      for (let imageIndex = 0; imageIndex < params.n; imageIndex += 1) {
         const chatGptInput = toChatGptInput(
           buildChatGptImageInputContent({
             prompt,
@@ -7846,11 +7882,24 @@ async function generateImagesWithChatGptImageTool(
             stream: true,
             instructions:
               chatGptInput.instructions ??
-              "Use the image_generation tool to generate exactly one PNG image. Do not return prose instead of the image.",
+              "Use the image_generation tool to generate exactly one image. Do not return prose instead of the image.",
             input: preparedInput as ChatGptInputItem[],
             tool_choice: "required",
             parallel_tool_calls: false,
-            tools: [{ type: "image_generation", output_format: "png" }],
+            tools: [
+              {
+                type: "image_generation",
+                size: params.size,
+                quality: params.quality,
+                output_format: params.outputFormat ?? "png",
+                ...(request.outputCompression !== undefined
+                  ? { output_compression: request.outputCompression }
+                  : {}),
+                ...(params.background ? { background: params.background } : {}),
+                ...(params.moderation ? { moderation: params.moderation } : {}),
+                ...(request.action ? { action: request.action } : {}),
+              },
+            ],
           },
           signal: request.signal,
         });
@@ -7862,7 +7911,7 @@ async function generateImagesWithChatGptImageTool(
         }
         for (const call of result.imageGenerationCalls) {
           images.push({
-            mimeType: "image/png",
+            mimeType: outputMimeType,
             data: Buffer.from(call.result, "base64"),
           });
         }
@@ -7873,8 +7922,8 @@ async function generateImagesWithChatGptImageTool(
           modelId: request.model,
           tokens: usage,
           responseImages: result.imageGenerationCalls.length,
-          imageSize: "1024x1024",
-          imageQuality: "medium",
+          imageSize: params.size,
+          imageQuality: params.quality,
         });
       }
     }
@@ -7887,7 +7936,7 @@ async function generateImagesWithChatGptImageTool(
       usage: totalUsage,
       costUsd,
       imageCount: images.length,
-      attempts: promptEntries.length * numImagesPerPrompt,
+      attempts: promptEntries.length * params.n,
     });
     return images;
   } catch (error) {
