@@ -29,18 +29,21 @@ function resolveUsageNumber(value: number | undefined): number {
 
 export function estimateCallCostUsd({
   modelId,
+  pricingModelId,
   tokens,
   responseImages,
   imageSize,
   imageQuality,
 }: {
   modelId: string;
+  pricingModelId?: string;
   tokens: LlmUsageTokens | undefined;
   responseImages: number;
   imageSize?: string;
   imageQuality?: string;
 }): number {
-  const openAiImagePricing = getOpenAiImagePricing(modelId);
+  const pricingModelIds = resolvePricingModelIds(modelId, pricingModelId);
+  const openAiImagePricing = resolvePricing(pricingModelIds, getOpenAiImagePricing);
   if (openAiImagePricing) {
     return estimateOpenAiImageCostUsd({
       pricing: openAiImagePricing,
@@ -62,7 +65,7 @@ export function estimateCallCostUsd({
   const promptTokenTotal = promptTokens + toolUsePromptTokens;
   const nonCachedPrompt = Math.max(0, promptTokenTotal - cachedTokens);
 
-  const imagePreviewPricing = getGeminiImagePricing(modelId);
+  const imagePreviewPricing = resolvePricing(pricingModelIds, getGeminiImagePricing);
   if (imagePreviewPricing) {
     const resolvedImageSize =
       imageSize && imagePreviewPricing.imagePrices[imageSize] ? imageSize : "2K";
@@ -86,7 +89,7 @@ export function estimateCallCostUsd({
     return inputCost + cachedCost + textOutputCost + imageOutputCost;
   }
 
-  const geminiPricing = getGeminiProPricing(modelId);
+  const geminiPricing = resolvePricing(pricingModelIds, getGeminiProPricing);
   if (geminiPricing) {
     const useHighTier = promptTokenTotal > geminiPricing.threshold;
     const inputRate = useHighTier ? geminiPricing.inputRateHigh : geminiPricing.inputRateLow;
@@ -99,7 +102,7 @@ export function estimateCallCostUsd({
     return inputCost + cachedCost + outputCost;
   }
 
-  const fireworksPricing = getFireworksPricing(modelId);
+  const fireworksPricing = resolvePricing(pricingModelIds, getFireworksPricing);
   if (fireworksPricing) {
     const inputCost = nonCachedPrompt * fireworksPricing.inputRate;
     const cachedCost = cachedTokens * fireworksPricing.cachedRate;
@@ -108,7 +111,7 @@ export function estimateCallCostUsd({
     return inputCost + cachedCost + outputCost;
   }
 
-  const openAiPricing = getOpenAiPricing(modelId);
+  const openAiPricing = resolvePricing(pricingModelIds, getOpenAiPricing);
   if (openAiPricing) {
     const inputCost = nonCachedPrompt * openAiPricing.inputRate;
     const cachedCost = cachedTokens * openAiPricing.cachedRate;
@@ -118,6 +121,26 @@ export function estimateCallCostUsd({
   }
 
   return 0;
+}
+
+function resolvePricingModelIds(modelId: string, pricingModelId: string | undefined): string[] {
+  if (pricingModelId && pricingModelId !== modelId) {
+    return [pricingModelId, modelId];
+  }
+  return [modelId];
+}
+
+function resolvePricing<T>(
+  modelIds: readonly string[],
+  resolve: (modelId: string) => T | undefined,
+): T | undefined {
+  for (const modelId of modelIds) {
+    const pricing = resolve(modelId);
+    if (pricing) {
+      return pricing;
+    }
+  }
+  return undefined;
 }
 
 function estimateOpenAiImageCostUsd({

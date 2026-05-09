@@ -5225,6 +5225,7 @@ async function runTextCall(params: {
 
       const costUsd = estimateCallCostUsd({
         modelId: modelVersion,
+        pricingModelId: request.model,
         tokens: latestUsage,
         responseImages,
         imageSize: request.imageSize,
@@ -6096,6 +6097,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
           const stepCostUsd = estimateCallCostUsd({
             modelId: modelVersion,
+            pricingModelId: request.model,
             tokens: usageTokens,
             responseImages: 0,
           });
@@ -6457,6 +6459,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           usageTokens = extractChatGptUsageTokens(response.usage);
           const stepCostUsd = estimateCallCostUsd({
             modelId: modelVersion,
+            pricingModelId: request.model,
             tokens: usageTokens,
             responseImages: 0,
           });
@@ -6816,6 +6819,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           usageTokens = extractFireworksUsageTokens(response.usage);
           const stepCostUsd = estimateCallCostUsd({
             modelId: modelVersion,
+            pricingModelId: request.model,
             tokens: usageTokens,
             responseImages: 0,
           });
@@ -7212,6 +7216,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         );
         const stepCostUsd = estimateCallCostUsd({
           modelId: modelVersion,
+          pricingModelId: request.model,
           tokens: usageTokens,
           responseImages: 0,
         });
