@@ -12,6 +12,7 @@ import {
 } from "./helpers/mock-storage.js";
 
 let capturedRequest: any = null;
+let finalResponseModelOverride: string | undefined;
 
 vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
@@ -26,7 +27,7 @@ vi.mock("../src/openai/calls.js", () => {
     async finalResponse() {
       return {
         id: "resp_123",
-        model: capturedRequest?.model ?? "gpt-5.4-mini",
+        model: finalResponseModelOverride ?? capturedRequest?.model ?? "gpt-5.4-mini",
         status: "completed",
         usage: {
           input_tokens: 10,
@@ -56,6 +57,7 @@ vi.mock("../src/openai/calls.js", () => {
 describe("streamText (OpenAI)", () => {
   beforeEach(() => {
     capturedRequest = null;
+    finalResponseModelOverride = undefined;
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
     resetMockStorageState();
@@ -119,6 +121,21 @@ describe("streamText (OpenAI)", () => {
     expect(capturedRequest?.model).toBe("gpt-5.5");
     expect(capturedRequest?.service_tier).toBe("priority");
     expect(result.modelVersion).toBe("gpt-5.5");
+  });
+
+  it("prices gpt-5.5-fast at priority rates when OpenAI returns a concrete model version", async () => {
+    finalResponseModelOverride = "gpt-5.5-2026-04-23";
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "gpt-5.5-fast",
+      input: "hi",
+    });
+
+    expect(capturedRequest?.model).toBe("gpt-5.5");
+    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(result.modelVersion).toBe("gpt-5.5-2026-04-23");
+    expect(result.costUsd).toBeCloseTo(0.000575, 8);
   });
 
   it("maps the OpenAI shell tool to a hosted container environment", async () => {

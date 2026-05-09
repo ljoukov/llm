@@ -26,6 +26,7 @@ export type OpenAiImagePricing = {
 
 const OPENAI_GPT_55_FAST_MODEL_IDS = ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"] as const;
 const OPENAI_GPT_55_STANDARD_MODEL_IDS = ["gpt-5.5", "chatgpt-gpt-5.5"] as const;
+const OPENAI_GPT_55_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.5-\d{4}-\d{2}-\d{2}$/u;
 const OPENAI_GPT_54_FAST_MODEL_IDS = ["gpt-5.4-fast", "chatgpt-gpt-5.4-fast"] as const;
 const OPENAI_GPT_54_MINI_MODEL_IDS = ["gpt-5.4-mini", "chatgpt-gpt-5.4-mini"] as const;
 const OPENAI_GPT_54_NANO_MODEL_IDS = ["gpt-5.4-nano"] as const;
@@ -103,7 +104,10 @@ export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
   if ((OPENAI_GPT_55_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_55_PRIORITY_PRICING;
   }
-  if ((OPENAI_GPT_55_STANDARD_MODEL_IDS as readonly string[]).includes(modelId)) {
+  if (
+    (OPENAI_GPT_55_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
+    OPENAI_GPT_55_CONCRETE_MODEL_ID_RE.test(modelId)
+  ) {
     return OPENAI_GPT_55_PRICING;
   }
   if ((OPENAI_GPT_54_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
