@@ -155,6 +155,10 @@ export type {
 
 export { loadEnvFromFile, loadLocalEnv } from "./utils/env.js";
 export {
+  configureChatGptCodexProxy,
+  type ChatGptCodexProxyConfiguration,
+} from "./openai/chatgpt-codex.js";
+export {
   configureModelConcurrency,
   resetModelConcurrencyConfig,
 } from "./utils/modelConcurrency.js";
