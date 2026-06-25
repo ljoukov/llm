@@ -1,4 +1,4 @@
-import { handleCodexResponsesRequest } from "../../src/handler";
+import { handleCodexResponsesRequest } from "../../src/handler.js";
 
 export const config = {
   runtime: "nodejs",

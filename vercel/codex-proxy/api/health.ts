@@ -1,4 +1,4 @@
-import { handleHealthRequest } from "../src/handler";
+import { handleHealthRequest } from "../src/handler.js";
 
 export const config = {
   runtime: "nodejs",
