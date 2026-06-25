@@ -1,6 +1,7 @@
 import os from "node:os";
 import { TextDecoder } from "node:util";
 
+import { loadLocalEnv } from "../utils/env.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import { getChatGptAuthProfile } from "./chatgpt-auth.js";
 import {
@@ -15,6 +16,9 @@ import {
 } from "./responses-websocket.js";
 
 const CHATGPT_CODEX_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
+const CHATGPT_CODEX_ENDPOINT_ENV = "CHATGPT_CODEX_ENDPOINT";
+const CHATGPT_CODEX_PROXY_URL_ENV = "CHATGPT_CODEX_PROXY_URL";
+const CHATGPT_CODEX_PROXY_API_KEY_ENV = "CHATGPT_CODEX_PROXY_API_KEY";
 const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
 
 const chatGptCodexState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptCodexState"), () => ({
@@ -184,12 +188,25 @@ export type ChatGptCodexDelta = {
   thoughtDelta?: string;
 };
 
+type ChatGptCodexEndpointConfig =
+  | {
+      kind: "direct";
+      url: string;
+      access: string;
+      accountId: string;
+    }
+  | {
+      kind: "proxy";
+      url: string;
+      apiKey: string;
+    };
+
 export async function streamChatGptCodexResponse(options: {
   request: ChatGptCodexRequest;
   sessionId?: string;
   signal?: AbortSignal;
 }): Promise<AsyncIterable<ChatGptCodexStreamEvent>> {
-  const { access, accountId } = await getChatGptAuthProfile();
+  const endpointConfig = await resolveChatGptCodexEndpointConfig();
   const mode = resolveChatGptResponsesWebSocketMode();
 
   const fallbackStreamFactory = (): ResponsesStreamWithFinal<
@@ -198,8 +215,7 @@ export async function streamChatGptCodexResponse(options: {
   > => {
     const streamPromise = streamChatGptCodexResponseSse({
       request: options.request,
-      access,
-      accountId,
+      endpointConfig,
       sessionId: options.sessionId,
       signal: options.signal,
     });
@@ -224,8 +240,7 @@ export async function streamChatGptCodexResponse(options: {
   }
 
   const websocketHeaders = buildChatGptCodexHeaders({
-    access,
-    accountId,
+    endpointConfig,
     sessionId: options.sessionId,
     useWebSocket: true,
   });
@@ -233,7 +248,7 @@ export async function streamChatGptCodexResponse(options: {
     mode,
     createWebSocketStream: async () =>
       await createResponsesWebSocketStream({
-        url: toWebSocketUrl(CHATGPT_CODEX_ENDPOINT),
+        url: toWebSocketUrl(endpointConfig.url),
         headers: websocketHeaders,
         request: options.request,
         signal: options.signal,
@@ -247,21 +262,19 @@ export async function streamChatGptCodexResponse(options: {
 
 async function streamChatGptCodexResponseSse(options: {
   request: ChatGptCodexRequest;
-  access: string;
-  accountId: string;
+  endpointConfig: ChatGptCodexEndpointConfig;
   sessionId?: string;
   signal?: AbortSignal;
 }): Promise<AsyncIterable<ChatGptCodexStreamEvent>> {
   const headers = buildChatGptCodexHeaders({
-    access: options.access,
-    accountId: options.accountId,
+    endpointConfig: options.endpointConfig,
     sessionId: options.sessionId,
     useWebSocket: false,
   });
   headers.Accept = "text/event-stream";
   headers["Content-Type"] = "application/json";
 
-  const response = await fetch(CHATGPT_CODEX_ENDPOINT, {
+  const response = await fetch(options.endpointConfig.url, {
     method: "POST",
     headers,
     body: JSON.stringify(options.request),
@@ -282,16 +295,60 @@ function resolveChatGptResponsesWebSocketMode(): ResponsesWebSocketMode {
   if (chatGptCodexState.cachedResponsesWebSocketMode) {
     return chatGptCodexState.cachedResponsesWebSocketMode;
   }
+  const explicitMode =
+    process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE ?? process.env.OPENAI_RESPONSES_WEBSOCKET_MODE;
+  const defaultMode = resolveChatGptCodexProxyConfig() ? "off" : "auto";
   chatGptCodexState.cachedResponsesWebSocketMode = resolveResponsesWebSocketMode(
-    process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE ?? process.env.OPENAI_RESPONSES_WEBSOCKET_MODE,
-    "auto",
+    explicitMode,
+    defaultMode,
   );
   return chatGptCodexState.cachedResponsesWebSocketMode;
 }
 
+async function resolveChatGptCodexEndpointConfig(): Promise<ChatGptCodexEndpointConfig> {
+  const proxy = resolveChatGptCodexProxyConfig();
+  if (proxy) {
+    return proxy;
+  }
+
+  const { access, accountId } = await getChatGptAuthProfile();
+  return {
+    kind: "direct",
+    url: resolveChatGptCodexEndpoint(),
+    access,
+    accountId,
+  };
+}
+
+function resolveChatGptCodexEndpoint(): string {
+  loadLocalEnv();
+  return process.env[CHATGPT_CODEX_ENDPOINT_ENV]?.trim() || CHATGPT_CODEX_ENDPOINT;
+}
+
+function resolveChatGptCodexProxyConfig(): Extract<
+  ChatGptCodexEndpointConfig,
+  { kind: "proxy" }
+> | null {
+  loadLocalEnv();
+  const url = process.env[CHATGPT_CODEX_PROXY_URL_ENV]?.trim();
+  if (!url) {
+    return null;
+  }
+  const apiKey = process.env[CHATGPT_CODEX_PROXY_API_KEY_ENV]?.trim();
+  if (!apiKey) {
+    throw new Error(
+      `${CHATGPT_CODEX_PROXY_API_KEY_ENV} must be provided when ${CHATGPT_CODEX_PROXY_URL_ENV} is set.`,
+    );
+  }
+  return {
+    kind: "proxy",
+    url,
+    apiKey,
+  };
+}
+
 function buildChatGptCodexHeaders(options: {
-  access: string;
-  accountId: string;
+  endpointConfig: ChatGptCodexEndpointConfig;
   sessionId?: string;
   useWebSocket: boolean;
 }): Record<string, string> {
@@ -302,12 +359,17 @@ function buildChatGptCodexHeaders(options: {
       )
     : CHATGPT_RESPONSES_EXPERIMENTAL_HEADER;
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${options.access}`,
-    "chatgpt-account-id": options.accountId,
     "OpenAI-Beta": openAiBeta,
     originator: "llm",
     "User-Agent": buildUserAgent(),
   };
+  if (options.endpointConfig.kind === "proxy") {
+    headers.Authorization = `Bearer ${options.endpointConfig.apiKey}`;
+    headers["x-codex-proxy-auth"] = options.endpointConfig.apiKey;
+  } else {
+    headers.Authorization = `Bearer ${options.endpointConfig.access}`;
+    headers["chatgpt-account-id"] = options.endpointConfig.accountId;
+  }
   if (options.sessionId) {
     headers.session_id = options.sessionId;
   }
