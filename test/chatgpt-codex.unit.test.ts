@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const chatGptAuthMock = vi.hoisted(() => ({
+  getChatGptAuthProfile: vi.fn(async () => ({
+    access: "test-access",
+    refresh: "test-refresh",
+    expires: Date.now() + 60_000,
+    accountId: "test-account",
+  })),
+}));
+
 vi.mock("../src/openai/chatgpt-auth.js", () => {
-  return {
-    getChatGptAuthProfile: async () => ({
-      access: "test-access",
-      refresh: "test-refresh",
-      expires: Date.now() + 60_000,
-      accountId: "test-account",
-    }),
-  };
+  return chatGptAuthMock;
 });
 
 import { collectChatGptCodexResponse } from "../src/openai/chatgpt-codex.js";
@@ -23,9 +25,16 @@ function buildSseResponse(events: readonly unknown[]): Response {
 
 describe("collectChatGptCodexResponse", () => {
   const originalChatGptWebSocketMode = process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE;
+  const originalChatGptCodexEndpoint = process.env.CHATGPT_CODEX_ENDPOINT;
+  const originalChatGptCodexProxyUrl = process.env.CHATGPT_CODEX_PROXY_URL;
+  const originalChatGptCodexProxyApiKey = process.env.CHATGPT_CODEX_PROXY_API_KEY;
 
   beforeEach(() => {
     process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE = "off";
+    delete process.env.CHATGPT_CODEX_ENDPOINT;
+    delete process.env.CHATGPT_CODEX_PROXY_URL;
+    delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+    chatGptAuthMock.getChatGptAuthProfile.mockClear();
   });
 
   afterEach(() => {
@@ -34,7 +43,94 @@ describe("collectChatGptCodexResponse", () => {
     } else {
       process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE = originalChatGptWebSocketMode;
     }
+    if (originalChatGptCodexEndpoint === undefined) {
+      delete process.env.CHATGPT_CODEX_ENDPOINT;
+    } else {
+      process.env.CHATGPT_CODEX_ENDPOINT = originalChatGptCodexEndpoint;
+    }
+    if (originalChatGptCodexProxyUrl === undefined) {
+      delete process.env.CHATGPT_CODEX_PROXY_URL;
+    } else {
+      process.env.CHATGPT_CODEX_PROXY_URL = originalChatGptCodexProxyUrl;
+    }
+    if (originalChatGptCodexProxyApiKey === undefined) {
+      delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+    } else {
+      process.env.CHATGPT_CODEX_PROXY_API_KEY = originalChatGptCodexProxyApiKey;
+    }
     vi.unstubAllGlobals();
+  });
+
+  it("uses the Vercel Codex proxy without reading ChatGPT auth", async () => {
+    process.env.CHATGPT_CODEX_PROXY_URL = "https://codex-proxy.example/api/codex/responses";
+    process.env.CHATGPT_CODEX_PROXY_API_KEY = "proxy-key";
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe("https://codex-proxy.example/api/codex/responses");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer proxy-key");
+      expect(headers["x-codex-proxy-auth"]).toBe("proxy-key");
+      expect(headers["chatgpt-account-id"]).toBeUndefined();
+
+      return buildSseResponse([
+        {
+          type: "response.output_text.delta",
+          delta: "proxied",
+        },
+        {
+          type: "response.completed",
+          response: {
+            model: "gpt-5.3-codex-spark",
+            status: "completed",
+          },
+        },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectChatGptCodexResponse({
+      request: {
+        model: "gpt-5.3-codex-spark",
+        store: false,
+        stream: true,
+        input: [{ role: "user", content: "hi" }],
+      },
+    });
+
+    expect(result.text).toBe("proxied");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
+  });
+
+  it("uses CHATGPT_CODEX_ENDPOINT for direct ChatGPT Codex requests", async () => {
+    process.env.CHATGPT_CODEX_ENDPOINT = "https://direct.example/backend-api/codex/responses";
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe("https://direct.example/backend-api/codex/responses");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer test-access");
+      expect(headers["chatgpt-account-id"]).toBe("test-account");
+      return buildSseResponse([
+        {
+          type: "response.output_text.delta",
+          delta: "direct",
+        },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectChatGptCodexResponse({
+      request: {
+        model: "gpt-5.3-codex-spark",
+        store: false,
+        stream: true,
+        input: [{ role: "user", content: "hi" }],
+      },
+    });
+
+    expect(result.text).toBe("direct");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(chatGptAuthMock.getChatGptAuthProfile).toHaveBeenCalledTimes(1);
   });
 
   it("retries without reasoning.summary when ChatGPT rejects it", async () => {
