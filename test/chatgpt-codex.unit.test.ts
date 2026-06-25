@@ -102,6 +102,40 @@ describe("collectChatGptCodexResponse", () => {
     expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
   });
 
+  it("accepts a root CHATGPT_CODEX_PROXY_URL", async () => {
+    process.env.CHATGPT_CODEX_PROXY_URL = "https://codex-proxy.example/";
+    process.env.CHATGPT_CODEX_PROXY_API_KEY = "proxy-key";
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe("https://codex-proxy.example/api/codex/responses");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer proxy-key");
+      expect(headers["x-codex-proxy-auth"]).toBe("proxy-key");
+      expect(headers["chatgpt-account-id"]).toBeUndefined();
+
+      return buildSseResponse([
+        {
+          type: "response.output_text.delta",
+          delta: "root-proxied",
+        },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectChatGptCodexResponse({
+      request: {
+        model: "gpt-5.4-mini",
+        store: false,
+        stream: true,
+        input: [{ role: "user", content: "hi" }],
+      },
+    });
+
+    expect(result.text).toBe("root-proxied");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
+  });
+
   it("uses CHATGPT_CODEX_ENDPOINT for direct ChatGPT Codex requests", async () => {
     process.env.CHATGPT_CODEX_ENDPOINT = "https://direct.example/backend-api/codex/responses";
 

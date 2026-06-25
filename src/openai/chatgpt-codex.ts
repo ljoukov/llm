@@ -330,8 +330,8 @@ function resolveChatGptCodexProxyConfig(): Extract<
   { kind: "proxy" }
 > | null {
   loadLocalEnv();
-  const url = process.env[CHATGPT_CODEX_PROXY_URL_ENV]?.trim();
-  if (!url) {
+  const rawUrl = process.env[CHATGPT_CODEX_PROXY_URL_ENV]?.trim();
+  if (!rawUrl) {
     return null;
   }
   const apiKey = process.env[CHATGPT_CODEX_PROXY_API_KEY_ENV]?.trim();
@@ -342,9 +342,21 @@ function resolveChatGptCodexProxyConfig(): Extract<
   }
   return {
     kind: "proxy",
-    url,
+    url: normalizeChatGptCodexProxyUrl(rawUrl),
     apiKey,
   };
+}
+
+function normalizeChatGptCodexProxyUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    if (url.pathname === "" || url.pathname === "/") {
+      url.pathname = "/api/codex/responses";
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
 }
 
 function buildChatGptCodexHeaders(options: {

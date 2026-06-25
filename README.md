@@ -108,7 +108,7 @@ refresh-token rotation and serves short-lived access tokens.
 - `CHATGPT_AUTH_TOKEN_PROVIDER_URL` (example: `https://chatgpt-auth.<your-domain>`)
 - `CHATGPT_AUTH_API_KEY` (shared secret; sent as `Authorization: Bearer ...` and `x-chatgpt-auth: ...`)
 - `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (`kv` or `d1`, defaults to `kv`)
-- `CHATGPT_CODEX_PROXY_URL` (optional Vercel proxy endpoint, for example `https://<project>.vercel.app/api/codex/responses`)
+- `CHATGPT_CODEX_PROXY_URL` (optional Vercel proxy endpoint; accepts either `https://<project>.vercel.app` or `https://<project>.vercel.app/api/codex/responses`)
 - `CHATGPT_CODEX_PROXY_API_KEY` (bearer token for `CHATGPT_CODEX_PROXY_URL`)
 - `CHATGPT_CODEX_ENDPOINT` (optional direct endpoint override; defaults to `https://chatgpt.com/backend-api/codex/responses`)
 - `CHATGPT_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
@@ -122,7 +122,7 @@ token provider and will not read the local Codex auth store.
 If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, `chatgpt-*` text requests are sent through that
 proxy and the local process does not need access to the Codex auth store or token provider. The Vercel proxy fetches
 short-lived ChatGPT access tokens from `workers/chatgpt-auth` and streams the upstream Codex response body back to the
-caller.
+caller. These proxy bearer tokens should be server-side environment variables; do not expose them in browser bundles.
 
 ### Responses transport
 

@@ -36,9 +36,12 @@ Optional:
 Point the library at this deployment:
 
 ```bash
-export CHATGPT_CODEX_PROXY_URL="https://<your-vercel-project>.vercel.app/api/codex/responses"
+export CHATGPT_CODEX_PROXY_URL="https://<your-vercel-project>.vercel.app"
 export CHATGPT_CODEX_PROXY_API_KEY="<same value as CODEX_PROXY_API_KEY>"
 ```
+
+`CHATGPT_CODEX_PROXY_URL` may be the root deployment URL or the full `/api/codex/responses`
+endpoint.
 
 In proxy mode, the library sends the normal Codex request body to Vercel and the Vercel function
 streams the upstream ChatGPT Codex SSE response body back to the caller.
