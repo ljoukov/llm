@@ -24,7 +24,13 @@ const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
 const chatGptCodexState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptCodexState"), () => ({
   cachedResponsesWebSocketMode: null as ResponsesWebSocketMode | null,
   chatGptResponsesWebSocketDisabled: false,
+  configuredProxy: null as ChatGptCodexProxyConfiguration | null,
 }));
+
+export type ChatGptCodexProxyConfiguration = {
+  url: string;
+  apiKey: string;
+};
 
 export type ChatGptInputTextPart = {
   type: "input_text";
@@ -260,6 +266,18 @@ export async function streamChatGptCodexResponse(options: {
   });
 }
 
+export function configureChatGptCodexProxy(
+  configuration: ChatGptCodexProxyConfiguration | null | undefined,
+): void {
+  chatGptCodexState.configuredProxy = configuration
+    ? {
+        url: normalizeChatGptCodexProxyUrl(configuration.url),
+        apiKey: configuration.apiKey,
+      }
+    : null;
+  chatGptCodexState.cachedResponsesWebSocketMode = null;
+}
+
 async function streamChatGptCodexResponseSse(options: {
   request: ChatGptCodexRequest;
   endpointConfig: ChatGptCodexEndpointConfig;
@@ -329,6 +347,14 @@ function resolveChatGptCodexProxyConfig(): Extract<
   ChatGptCodexEndpointConfig,
   { kind: "proxy" }
 > | null {
+  if (chatGptCodexState.configuredProxy) {
+    return {
+      kind: "proxy",
+      url: chatGptCodexState.configuredProxy.url,
+      apiKey: chatGptCodexState.configuredProxy.apiKey,
+    };
+  }
+
   loadLocalEnv();
   const rawUrl = process.env[CHATGPT_CODEX_PROXY_URL_ENV]?.trim();
   if (!rawUrl) {

@@ -13,7 +13,10 @@ vi.mock("../src/openai/chatgpt-auth.js", () => {
   return chatGptAuthMock;
 });
 
-import { collectChatGptCodexResponse } from "../src/openai/chatgpt-codex.js";
+import {
+  collectChatGptCodexResponse,
+  configureChatGptCodexProxy,
+} from "../src/openai/chatgpt-codex.js";
 
 function buildSseResponse(events: readonly unknown[]): Response {
   const payload = `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
@@ -34,6 +37,7 @@ describe("collectChatGptCodexResponse", () => {
     delete process.env.CHATGPT_CODEX_ENDPOINT;
     delete process.env.CHATGPT_CODEX_PROXY_URL;
     delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+    configureChatGptCodexProxy(null);
     chatGptAuthMock.getChatGptAuthProfile.mockClear();
   });
 
@@ -59,6 +63,43 @@ describe("collectChatGptCodexResponse", () => {
       process.env.CHATGPT_CODEX_PROXY_API_KEY = originalChatGptCodexProxyApiKey;
     }
     vi.unstubAllGlobals();
+    configureChatGptCodexProxy(null);
+  });
+
+  it("uses explicit runtime Codex proxy configuration without process env", async () => {
+    configureChatGptCodexProxy({
+      url: "https://runtime-proxy.example/",
+      apiKey: "runtime-proxy-key",
+    });
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe("https://runtime-proxy.example/api/codex/responses");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer runtime-proxy-key");
+      expect(headers["x-codex-proxy-auth"]).toBe("runtime-proxy-key");
+      expect(headers["chatgpt-account-id"]).toBeUndefined();
+
+      return buildSseResponse([
+        {
+          type: "response.output_text.delta",
+          delta: "runtime-proxied",
+        },
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await collectChatGptCodexResponse({
+      request: {
+        model: "gpt-5.4-mini",
+        store: false,
+        stream: true,
+        input: [{ role: "user", content: "hi" }],
+      },
+    });
+
+    expect(result.text).toBe("runtime-proxied");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
   });
 
   it("uses the Vercel Codex proxy without reading ChatGPT auth", async () => {
