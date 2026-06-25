@@ -59,6 +59,12 @@ describe("vercel codex proxy", () => {
       expect(headers.get("chatgpt-account-id")).toBe("chatgpt-account");
       expect(headers.get("x-codex-proxy-auth")).toBeNull();
       expect(headers.get("openai-beta")).toBe("responses=experimental");
+      expect(headers.get("cf-connecting-ip")).toBeNull();
+      expect(headers.get("cf-ray")).toBeNull();
+      expect(headers.get("x-forwarded-for")).toBeNull();
+      expect(headers.get("x-forwarded-host")).toBeNull();
+      expect(headers.get("x-vercel-id")).toBeNull();
+      expect(headers.get("x-app-extra")).toBeNull();
 
       return new Response('data: {"type":"response.output_text.delta","delta":"OK"}\n\n', {
         status: 200,
@@ -73,6 +79,12 @@ describe("vercel codex proxy", () => {
         headers: {
           authorization: "Bearer proxy-key",
           "content-type": "application/json",
+          "cf-connecting-ip": "203.0.113.10",
+          "cf-ray": "test-ray",
+          "x-forwarded-for": "203.0.113.10",
+          "x-forwarded-host": "question-constellation.example",
+          "x-vercel-id": "iad1::test",
+          "x-app-extra": "should-not-forward",
         },
         body: JSON.stringify({
           model: "gpt-5.3-codex-spark",

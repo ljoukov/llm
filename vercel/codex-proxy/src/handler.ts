@@ -25,6 +25,15 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
+const CHATGPT_UPSTREAM_HEADER_ALLOWLIST = new Set([
+  "accept",
+  "content-type",
+  "openai-beta",
+  "originator",
+  "session_id",
+  "user-agent",
+]);
+
 type StreamingRequestInit = RequestInit & {
   duplex?: "half";
 };
@@ -209,7 +218,8 @@ function buildUpstreamHeaders(request: Request, token: ChatGptCodexToken): Heade
       lower === "authorization" ||
       lower === "x-codex-proxy-auth" ||
       lower === "x-chatgpt-auth" ||
-      lower === "x-api-key"
+      lower === "x-api-key" ||
+      !CHATGPT_UPSTREAM_HEADER_ALLOWLIST.has(lower)
     ) {
       continue;
     }
