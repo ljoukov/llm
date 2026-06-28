@@ -398,9 +398,14 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
 
   private track(task: Promise<void>): void {
     this.pending.add(task);
-    task.finally(() => {
-      this.pending.delete(task);
-    });
+    task.then(
+      () => {
+        this.pending.delete(task);
+      },
+      () => {
+        this.pending.delete(task);
+      },
+    );
   }
 
   private enqueueLineWrite(line: string): void {
@@ -633,7 +638,13 @@ export function runWithAgentLoggingSession<T>(
   if (!session) {
     return fn();
   }
-  return loggingSessionStorage.run(session, fn);
+  return loggingSessionStorage.run(session, async () => {
+    try {
+      return await fn();
+    } finally {
+      await session.flush();
+    }
+  });
 }
 
 export function getCurrentAgentLoggingSession(): AgentLoggingSession | undefined {
