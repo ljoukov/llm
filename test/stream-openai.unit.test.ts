@@ -110,6 +110,32 @@ describe("streamText (OpenAI)", () => {
     expect(capturedRequest?.reasoning?.effort).toBe("xhigh");
   });
 
+  it("maps thinkingLevel=max to OpenAI max reasoning effort", async () => {
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({ model: "gpt-5.6-sol", input: "hi", thinkingLevel: "max" });
+    for await (const _event of call.events) {
+      // Drain stream.
+    }
+    await call.result;
+
+    expect(capturedRequest?.reasoning?.effort).toBe("max");
+  });
+
+  it.each([
+    ["gpt-5.6-fast", "gpt-5.6"],
+    ["gpt-5.6-sol-fast", "gpt-5.6-sol"],
+    ["gpt-5.6-terra-fast", "gpt-5.6-terra"],
+    ["gpt-5.6-luna-fast", "gpt-5.6-luna"],
+  ] as const)("maps %s to %s with priority service tier", async (model, providerModel) => {
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({ model, input: "hi" });
+
+    expect(capturedRequest?.model).toBe(providerModel);
+    expect(capturedRequest?.service_tier).toBe("priority");
+  });
+
   it("maps gpt-5.5-fast to gpt-5.5 with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 

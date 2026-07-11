@@ -203,6 +203,31 @@ describe("streamText (ChatGPT)", () => {
     expect(result.modelVersion).toBe("chatgpt-gpt-5.4-fast");
   });
 
+  it("maps thinkingLevel=max to ChatGPT max reasoning effort", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({
+      model: "chatgpt-gpt-5.6-sol",
+      input: "hi",
+      thinkingLevel: "max",
+    });
+
+    expect(capturedRequest?.reasoning?.effort).toBe("max");
+  });
+
+  it.each([
+    ["chatgpt-gpt-5.6-sol-fast", "gpt-5.6-sol"],
+    ["chatgpt-gpt-5.6-terra-fast", "gpt-5.6-terra"],
+    ["chatgpt-gpt-5.6-luna-fast", "gpt-5.6-luna"],
+  ] as const)("maps %s to %s with priority service tier", async (model, providerModel) => {
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({ model, input: "hi" });
+
+    expect(capturedRequest?.model).toBe(providerModel);
+    expect(capturedRequest?.service_tier).toBe("priority");
+  });
+
   it("maps chatgpt-gpt-5.5-fast to gpt-5.5 with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 

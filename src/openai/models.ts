@@ -1,4 +1,12 @@
 export const OPENAI_MODEL_IDS = [
+  "gpt-5.6",
+  "gpt-5.6-fast",
+  "gpt-5.6-sol",
+  "gpt-5.6-sol-fast",
+  "gpt-5.6-terra",
+  "gpt-5.6-terra-fast",
+  "gpt-5.6-luna",
+  "gpt-5.6-luna-fast",
   "gpt-5.5",
   "gpt-5.5-fast",
   "gpt-5.4",
@@ -139,6 +147,12 @@ export const OPENAI_GPT_IMAGE_2_NUM_IMAGES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as 
 export type OpenAiGptImage2NumImages = (typeof OPENAI_GPT_IMAGE_2_NUM_IMAGES)[number];
 
 export const CHATGPT_MODEL_IDS = [
+  "chatgpt-gpt-5.6-sol",
+  "chatgpt-gpt-5.6-sol-fast",
+  "chatgpt-gpt-5.6-terra",
+  "chatgpt-gpt-5.6-terra-fast",
+  "chatgpt-gpt-5.6-luna",
+  "chatgpt-gpt-5.6-luna-fast",
   "chatgpt-gpt-5.5",
   "chatgpt-gpt-5.5-fast",
   "chatgpt-gpt-5.4",
@@ -148,8 +162,20 @@ export const CHATGPT_MODEL_IDS = [
 ] as const;
 
 const FAST_MODEL_SUFFIX = "-fast";
-const OPENAI_PRIORITY_MODEL_IDS = ["gpt-5.5-fast"] as const;
-const CHATGPT_PRIORITY_MODEL_IDS = ["chatgpt-gpt-5.5-fast", "chatgpt-gpt-5.4-fast"] as const;
+const OPENAI_PRIORITY_MODEL_IDS = [
+  "gpt-5.6-fast",
+  "gpt-5.6-sol-fast",
+  "gpt-5.6-terra-fast",
+  "gpt-5.6-luna-fast",
+  "gpt-5.5-fast",
+] as const;
+const CHATGPT_PRIORITY_MODEL_IDS = [
+  "chatgpt-gpt-5.6-sol-fast",
+  "chatgpt-gpt-5.6-terra-fast",
+  "chatgpt-gpt-5.6-luna-fast",
+  "chatgpt-gpt-5.5-fast",
+  "chatgpt-gpt-5.4-fast",
+] as const;
 const CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL = "gpt-5.4" as const;
 
 export const EXPERIMENTAL_CHATGPT_MODEL_PREFIX = "experimental-chatgpt-" as const;

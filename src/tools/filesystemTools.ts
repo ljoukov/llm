@@ -1138,6 +1138,7 @@ function isCodexModel(model: string): boolean {
   const normalized = model.startsWith("chatgpt-") ? model.slice("chatgpt-".length) : model;
   return (
     normalized.includes("codex") ||
+    normalized.startsWith("gpt-5.6") ||
     normalized === "gpt-5.5" ||
     normalized === "gpt-5.5-fast" ||
     normalized === "gpt-5.4" ||

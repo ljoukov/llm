@@ -27,6 +27,30 @@ export type OpenAiImagePricing = {
 const OPENAI_GPT_55_FAST_MODEL_IDS = ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"] as const;
 const OPENAI_GPT_55_STANDARD_MODEL_IDS = ["gpt-5.5", "chatgpt-gpt-5.5"] as const;
 const OPENAI_GPT_55_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.5-\d{4}-\d{2}-\d{2}$/u;
+const OPENAI_GPT_56_SOL_FAST_MODEL_IDS = [
+  "gpt-5.6-fast",
+  "gpt-5.6-sol-fast",
+  "chatgpt-gpt-5.6-sol-fast",
+] as const;
+const OPENAI_GPT_56_SOL_STANDARD_MODEL_IDS = [
+  "gpt-5.6",
+  "gpt-5.6-sol",
+  "chatgpt-gpt-5.6-sol",
+] as const;
+const OPENAI_GPT_56_SOL_CONCRETE_MODEL_ID_RE =
+  /^(?:chatgpt-)?gpt-5\.6(?:-sol)?-\d{4}-\d{2}-\d{2}$/u;
+const OPENAI_GPT_56_TERRA_FAST_MODEL_IDS = [
+  "gpt-5.6-terra-fast",
+  "chatgpt-gpt-5.6-terra-fast",
+] as const;
+const OPENAI_GPT_56_TERRA_STANDARD_MODEL_IDS = ["gpt-5.6-terra", "chatgpt-gpt-5.6-terra"] as const;
+const OPENAI_GPT_56_TERRA_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.6-terra-\d{4}-\d{2}-\d{2}$/u;
+const OPENAI_GPT_56_LUNA_FAST_MODEL_IDS = [
+  "gpt-5.6-luna-fast",
+  "chatgpt-gpt-5.6-luna-fast",
+] as const;
+const OPENAI_GPT_56_LUNA_STANDARD_MODEL_IDS = ["gpt-5.6-luna", "chatgpt-gpt-5.6-luna"] as const;
+const OPENAI_GPT_56_LUNA_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.6-luna-\d{4}-\d{2}-\d{2}$/u;
 const OPENAI_GPT_54_FAST_MODEL_IDS = ["gpt-5.4-fast", "chatgpt-gpt-5.4-fast"] as const;
 const OPENAI_GPT_54_MINI_MODEL_IDS = ["gpt-5.4-mini", "chatgpt-gpt-5.4-mini"] as const;
 const OPENAI_GPT_54_NANO_MODEL_IDS = ["gpt-5.4-nano"] as const;
@@ -39,6 +63,42 @@ const OPENAI_GPT_54_STANDARD_MODEL_IDS = ["gpt-5.4", "chatgpt-gpt-5.4"] as const
 // Pricing snapshot (best-effort). For current official pricing, see:
 // https://platform.openai.com/docs/pricing
 // Keep this conservative: unknown models -> cost 0.
+const OPENAI_GPT_56_SOL_PRICING: OpenAiPricing = {
+  inputRate: 5 / 1_000_000,
+  cachedRate: 0.5 / 1_000_000,
+  outputRate: 30 / 1_000_000,
+};
+
+const OPENAI_GPT_56_SOL_PRIORITY_PRICING: OpenAiPricing = {
+  inputRate: 10 / 1_000_000,
+  cachedRate: 1 / 1_000_000,
+  outputRate: 60 / 1_000_000,
+};
+
+const OPENAI_GPT_56_TERRA_PRICING: OpenAiPricing = {
+  inputRate: 2.5 / 1_000_000,
+  cachedRate: 0.25 / 1_000_000,
+  outputRate: 15 / 1_000_000,
+};
+
+const OPENAI_GPT_56_TERRA_PRIORITY_PRICING: OpenAiPricing = {
+  inputRate: 5 / 1_000_000,
+  cachedRate: 0.5 / 1_000_000,
+  outputRate: 30 / 1_000_000,
+};
+
+const OPENAI_GPT_56_LUNA_PRICING: OpenAiPricing = {
+  inputRate: 1 / 1_000_000,
+  cachedRate: 0.1 / 1_000_000,
+  outputRate: 6 / 1_000_000,
+};
+
+const OPENAI_GPT_56_LUNA_PRIORITY_PRICING: OpenAiPricing = {
+  inputRate: 2 / 1_000_000,
+  cachedRate: 0.2 / 1_000_000,
+  outputRate: 12 / 1_000_000,
+};
+
 const OPENAI_GPT_55_PRICING: OpenAiPricing = {
   inputRate: 5 / 1_000_000,
   cachedRate: 0.5 / 1_000_000,
@@ -100,6 +160,33 @@ const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
 export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
   if (isExperimentalChatGptModelId(modelId)) {
     return OPENAI_GPT_54_PRICING;
+  }
+  if ((OPENAI_GPT_56_SOL_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
+    return OPENAI_GPT_56_SOL_PRIORITY_PRICING;
+  }
+  if (
+    (OPENAI_GPT_56_SOL_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
+    OPENAI_GPT_56_SOL_CONCRETE_MODEL_ID_RE.test(modelId)
+  ) {
+    return OPENAI_GPT_56_SOL_PRICING;
+  }
+  if ((OPENAI_GPT_56_TERRA_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
+    return OPENAI_GPT_56_TERRA_PRIORITY_PRICING;
+  }
+  if (
+    (OPENAI_GPT_56_TERRA_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
+    OPENAI_GPT_56_TERRA_CONCRETE_MODEL_ID_RE.test(modelId)
+  ) {
+    return OPENAI_GPT_56_TERRA_PRICING;
+  }
+  if ((OPENAI_GPT_56_LUNA_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
+    return OPENAI_GPT_56_LUNA_PRIORITY_PRICING;
+  }
+  if (
+    (OPENAI_GPT_56_LUNA_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
+    OPENAI_GPT_56_LUNA_CONCRETE_MODEL_ID_RE.test(modelId)
+  ) {
+    return OPENAI_GPT_56_LUNA_PRICING;
   }
   if ((OPENAI_GPT_55_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
     return OPENAI_GPT_55_PRIORITY_PRICING;

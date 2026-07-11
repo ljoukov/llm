@@ -10,7 +10,7 @@ import {
 
 import { getOpenAiClient } from "./client.js";
 
-export type OpenAiReasoningEffort = "low" | "medium" | "high" | "xhigh";
+export type OpenAiReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 export const DEFAULT_OPENAI_REASONING_EFFORT: OpenAiReasoningEffort = "medium";
 
 const DEFAULT_SCHEDULER_KEY = "__default__";

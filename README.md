@@ -519,20 +519,20 @@ Use a `chatgpt-` prefix:
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "chatgpt-gpt-5.5",
+  model: "chatgpt-gpt-5.6-sol",
   input: "Return exactly: OK",
 });
 
 console.log(result.text);
 ```
 
-`gpt-5.5-fast` and `chatgpt-gpt-5.5-fast` are also supported as convenience aliases for `gpt-5.5` with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics.
+Each GPT-5.6 variant has a `-fast` convenience alias that sends the same provider model with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics. The existing `gpt-5.5-fast`, `chatgpt-gpt-5.5-fast`, and `chatgpt-gpt-5.4-fast` aliases remain supported.
 
 Supported OpenAI and ChatGPT model ids are fixed literal unions in code, not arbitrary strings:
 
-- OpenAI API text: `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
+- OpenAI API text: `gpt-5.6` (Sol alias), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each; plus `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
 - OpenAI API image: `gpt-image-2`
-- ChatGPT auth text: `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
+- ChatGPT auth text: `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-luna`, and a `-fast` form of each; plus `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
 - ChatGPT auth image: `chatgpt-gpt-image-2`
 
 ## JSON outputs
@@ -572,6 +572,8 @@ const { value } = await generateJson({
   thinkingLevel: "low",
 });
 ```
+
+`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, and `max`. GPT-5.6 supports `max`; `ultra` is intentionally not exposed. Codex implements Ultra as `max` provider reasoning plus proactive multi-agent orchestration, so this library keeps those controls separate: use `thinkingLevel: "max"` for reasoning and opt into `subagentTool` when you want delegation.
 
 ### Streaming JSON outputs
 
@@ -866,7 +868,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models (`gpt-5.5`, `gpt-5.5-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
+- Codex-like models (the GPT-5.6 family, `gpt-5.5`, `gpt-5.5-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 
@@ -911,6 +913,7 @@ Enable `subagentTool` to allow delegation via Codex-style control tools:
 - `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent`
 - optional limits: `maxAgents`, `maxDepth`, wait timeouts
 - `spawn_agent.agent_type` supports built-ins aligned with codex-rs-style roles: `default`, `researcher`, `worker`, `reviewer`
+- delegation guidance keeps critical-path work local, favors independent sidecar tasks with disjoint write scopes, and waits only when an agent result blocks the next step
 
 ```ts
 import { runAgentLoop } from "@ljoukov/llm";

@@ -354,11 +354,11 @@ export function buildCodexSubagentOrchestratorInstructions(params: {
     "Subagent orchestration tools are available: spawn_agent, send_input, resume_agent, wait, close_agent.",
     "Background updates may appear as <subagent_notification>{...}</subagent_notification>; treat them as status updates, not new user intent.",
     "Available spawn_agent agent_type values: default, researcher, worker, reviewer.",
-    "Use this control pattern:",
-    "1. spawn_agent with a focused prompt.",
-    "2. wait with ids=[agent_id] until the agent reaches a non-running state. Prefer long waits (minutes).",
-    "3. For follow-up turns, send_input then resume_agent.",
-    "4. close_agent when delegation is complete.",
+    "Delegate only concrete, bounded sidecar tasks that can run independently while you continue useful local work.",
+    "Keep immediate blockers and tightly coupled work local. Do not duplicate delegated work, and give concurrent coding agents disjoint write scopes.",
+    "Run independent research questions or disjoint implementation slices in parallel when that materially advances the task.",
+    "Reuse an existing agent with send_input then resume_agent when follow-up work depends on its context.",
+    "Call wait only when an agent result blocks your next step; use a long timeout instead of busy polling. Close agents when delegation is complete.",
     `Limits: max active subagents ${params.maxAgents}, max depth ${params.maxDepth}, current depth ${params.currentDepth}.`,
   ].join("\n");
 }
@@ -370,6 +370,7 @@ export function buildCodexSubagentWorkerInstructions(params: {
   return [
     `You are a delegated subagent at depth ${params.depth}/${params.maxDepth}.`,
     "Focus on the delegated task, use available tools when needed, and return concise actionable output.",
+    "Other agents may share the workspace. Preserve unrelated changes, stay within your assigned write scope, and report files you changed.",
     "If blocked, report the blocker explicitly.",
   ].join("\n");
 }
@@ -390,7 +391,7 @@ export function createSubagentToolController(
   const tools: LlmToolSet = {
     spawn_agent: tool({
       description:
-        "Spawn a sub-agent for a well-scoped task. Returns the agent id (and user-facing nickname when available) to use to communicate with this agent.",
+        "Spawn a sub-agent for a concrete, bounded task that can run independently alongside useful local work. Returns the agent id (and user-facing nickname when available) to use to communicate with this agent.",
       inputSchema: spawnAgentInputSchema,
       execute: async (input) => {
         if (countActiveAgents(agents) >= options.config.maxAgents) {
@@ -470,7 +471,7 @@ export function createSubagentToolController(
     }),
     send_input: tool({
       description:
-        "Send a message to an existing agent. Use interrupt=true to redirect work immediately.",
+        "Send a message to an existing agent. Reuse an agent when follow-up work depends on its prior context. Use interrupt=true to redirect work immediately.",
       inputSchema: sendInputSchema,
       execute: async (input) => {
         const submissionId = randomSubmissionId();
@@ -535,7 +536,7 @@ export function createSubagentToolController(
     }),
     wait: tool({
       description:
-        "Wait for agents to reach a final status. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a final status, a notification message will be received containing the same completed status.",
+        "Wait for agents to reach a final status when their result blocks the next step. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a final status, a notification message will be received containing the same completed status.",
       inputSchema: waitSchema,
       execute: async (input) => {
         const ids = resolveAgentIdList(input.agent_id, input.id, input.ids);
