@@ -19,7 +19,7 @@ import {
   type LlmTextModelId,
 } from "../src/index.js";
 
-const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.4-fast";
+const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.6-sol-fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
 const DEFAULT_MODEL_TOOLS = [{ type: "web-search", mode: "live" }] as const;
 const DEFAULT_SUBAGENT_TOOL_NAMES = [
@@ -78,7 +78,13 @@ let inputBuffer = "";
 let composerRendered = false;
 
 function isThinkingLevel(value: string): value is LlmThinkingLevel {
-  return value === "low" || value === "medium" || value === "high";
+  return (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max"
+  );
 }
 
 function resolveCliOptions(args: readonly string[]): {
@@ -91,7 +97,7 @@ function resolveCliOptions(args: readonly string[]): {
     .option("--model <id>", "Model id to run.")
     .option(
       "--thinking-level <level>",
-      "Thinking level: low, medium, high.",
+      "Thinking level: low, medium, high, xhigh, max.",
       DEFAULT_THINKING_LEVEL,
     )
     .showHelpAfterError();
@@ -516,7 +522,7 @@ function printHelp(usePromptAwareOutput = true): void {
     `${ANSI.dim}  /exit${ANSI.reset} quit\n` +
     `${ANSI.dim}Startup flags:${ANSI.reset}\n` +
     `${ANSI.dim}  --model <id>${ANSI.reset} choose model (default: ${DEFAULT_MODEL})\n` +
-    `${ANSI.dim}  --thinking-level <level>${ANSI.reset} low|medium|high (default: ${DEFAULT_THINKING_LEVEL})\n` +
+    `${ANSI.dim}  --thinking-level <level>${ANSI.reset} low|medium|high|xhigh|max (default: ${DEFAULT_THINKING_LEVEL})\n` +
     `${ANSI.dim}During a run: type a message and press Enter to append steering without interrupting.${ANSI.reset}\n`;
 
   if (!usePromptAwareOutput || !interactiveTty || shuttingDown) {

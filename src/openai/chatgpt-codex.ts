@@ -398,7 +398,7 @@ function buildChatGptCodexHeaders(options: {
     : CHATGPT_RESPONSES_EXPERIMENTAL_HEADER;
   const headers: Record<string, string> = {
     "OpenAI-Beta": openAiBeta,
-    originator: "llm",
+    originator: "codex_cli_rs",
     "User-Agent": buildUserAgent(),
   };
   if (options.endpointConfig.kind === "proxy") {
@@ -665,7 +665,7 @@ function buildUserAgent(): string {
   const node = process.version;
   const platform = os.platform();
   const release = os.release();
-  return `@ljoukov/llm (node ${node}; ${platform} ${release})`;
+  return `codex_cli_rs/0.0.0 @ljoukov/llm (node ${node}; ${platform} ${release})`;
 }
 
 async function* parseEventStream(

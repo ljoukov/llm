@@ -4,6 +4,67 @@ import { isChatGptImageModelId, isOpenAiImageModelId, LLM_MODEL_IDS } from "../s
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
+  it.each([
+    ["gpt-5.6-sol", 0.02255],
+    ["chatgpt-gpt-5.6-terra", 0.011275],
+    ["gpt-5.6-luna", 0.00451],
+  ] as const)("estimates %s standard costs", (modelId, expectedCost) => {
+    const cost = estimateCallCostUsd({
+      modelId,
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    expect(cost).toBeCloseTo(expectedCost, 8);
+  });
+
+  it.each([
+    ["gpt-5.6-fast", 0.0451],
+    ["chatgpt-gpt-5.6-sol-fast", 0.0451],
+    ["gpt-5.6-terra-fast", 0.02255],
+    ["chatgpt-gpt-5.6-luna-fast", 0.00902],
+  ] as const)("estimates %s priority costs", (modelId, expectedCost) => {
+    const cost = estimateCallCostUsd({
+      modelId,
+      tokens: {
+        promptTokens: 1000,
+        cachedTokens: 100,
+        responseTokens: 500,
+        thinkingTokens: 100,
+      },
+      responseImages: 0,
+    });
+
+    expect(cost).toBeCloseTo(expectedCost, 8);
+  });
+
+  it("prices concrete GPT-5.6 model versions at their variant rates", () => {
+    const cases = [
+      ["gpt-5.6-sol-2026-07-09", 0.02255],
+      ["chatgpt-gpt-5.6-terra-2026-07-09", 0.011275],
+      ["gpt-5.6-luna-2026-07-09", 0.00451],
+    ] as const;
+
+    for (const [modelId, expectedCost] of cases) {
+      const cost = estimateCallCostUsd({
+        modelId,
+        tokens: {
+          promptTokens: 1000,
+          cachedTokens: 100,
+          responseTokens: 500,
+          thinkingTokens: 100,
+        },
+        responseImages: 0,
+      });
+      expect(cost).toBeCloseTo(expectedCost, 8);
+    }
+  });
+
   it("estimates GPT-5.5 costs", () => {
     const cost = estimateCallCostUsd({
       modelId: "gpt-5.5",

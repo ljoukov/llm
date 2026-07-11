@@ -22,6 +22,10 @@ import {
 
 describe("filesystemTools profiles", () => {
   it("resolves profile by model when profile=auto", () => {
+    expect(resolveFilesystemToolProfile("gpt-5.6")).toBe("codex");
+    expect(resolveFilesystemToolProfile("gpt-5.6-sol-fast")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.6-terra")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.6-luna-fast")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-5.5")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-5.5-fast")).toBe("codex");
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.5")).toBe("codex");

@@ -96,6 +96,14 @@ const _invalidChatGptImageSizeTypeCheck = {
 describe("model id lists", () => {
   it("defines provider model ids as explicit const lists", () => {
     expect(OPENAI_MODEL_IDS).toEqual([
+      "gpt-5.6",
+      "gpt-5.6-fast",
+      "gpt-5.6-sol",
+      "gpt-5.6-sol-fast",
+      "gpt-5.6-terra",
+      "gpt-5.6-terra-fast",
+      "gpt-5.6-luna",
+      "gpt-5.6-luna-fast",
       "gpt-5.5",
       "gpt-5.5-fast",
       "gpt-5.4",
@@ -103,6 +111,12 @@ describe("model id lists", () => {
       "gpt-5.4-nano",
     ]);
     expect(CHATGPT_MODEL_IDS).toEqual([
+      "chatgpt-gpt-5.6-sol",
+      "chatgpt-gpt-5.6-sol-fast",
+      "chatgpt-gpt-5.6-terra",
+      "chatgpt-gpt-5.6-terra-fast",
+      "chatgpt-gpt-5.6-luna",
+      "chatgpt-gpt-5.6-luna-fast",
       "chatgpt-gpt-5.5",
       "chatgpt-gpt-5.5-fast",
       "chatgpt-gpt-5.4",
@@ -185,6 +199,32 @@ describe("model id lists", () => {
   });
 
   it("recognizes the supported OpenAI allowlist", () => {
+    for (const model of [
+      "gpt-5.6",
+      "gpt-5.6-fast",
+      "gpt-5.6-sol",
+      "gpt-5.6-sol-fast",
+      "gpt-5.6-terra",
+      "gpt-5.6-terra-fast",
+      "gpt-5.6-luna",
+      "gpt-5.6-luna-fast",
+    ]) {
+      expect(isOpenAiModelId(model)).toBe(true);
+      expect(isLlmTextModelId(model)).toBe(true);
+      expect(isLlmModelId(model)).toBe(true);
+    }
+    for (const model of [
+      "chatgpt-gpt-5.6-sol",
+      "chatgpt-gpt-5.6-sol-fast",
+      "chatgpt-gpt-5.6-terra",
+      "chatgpt-gpt-5.6-terra-fast",
+      "chatgpt-gpt-5.6-luna",
+      "chatgpt-gpt-5.6-luna-fast",
+    ]) {
+      expect(isChatGptModelId(model)).toBe(true);
+      expect(isLlmTextModelId(model)).toBe(true);
+      expect(isLlmModelId(model)).toBe(true);
+    }
     expect(isOpenAiModelId("gpt-5.5")).toBe(true);
     expect(isOpenAiModelId("gpt-5.5-fast")).toBe(true);
     expect(isOpenAiModelId("gpt-5.4")).toBe(true);

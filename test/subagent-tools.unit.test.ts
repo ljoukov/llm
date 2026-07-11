@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildCodexSubagentOrchestratorInstructions,
+  buildCodexSubagentWorkerInstructions,
   createSubagentToolController,
   resolveSubagentToolConfig,
   type SubagentRunRequest,
@@ -45,6 +47,22 @@ function asSingleLineText(content: unknown): string {
 }
 
 describe("subagent tools", () => {
+  it("prompts for parallel sidecar delegation without blocking the local critical path", () => {
+    const orchestrator = buildCodexSubagentOrchestratorInstructions({
+      currentDepth: 0,
+      maxDepth: 2,
+      maxAgents: 6,
+    });
+    const worker = buildCodexSubagentWorkerInstructions({ depth: 1, maxDepth: 2 });
+
+    expect(orchestrator).toContain("concrete, bounded sidecar tasks");
+    expect(orchestrator).toContain("Keep immediate blockers and tightly coupled work local");
+    expect(orchestrator).toContain("disjoint write scopes");
+    expect(orchestrator).toContain("Call wait only when an agent result blocks your next step");
+    expect(worker).toContain("Other agents may share the workspace");
+    expect(worker).toContain("report files you changed");
+  });
+
   it("supports spawn + wait timeout + completion + send/resume lifecycle", async () => {
     const runSubagent = vi.fn(async (request: SubagentRunRequest) => {
       const last = request.input[request.input.length - 1];

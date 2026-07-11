@@ -185,6 +185,8 @@ describe("collectChatGptCodexResponse", () => {
       const headers = init?.headers as Record<string, string>;
       expect(headers.Authorization).toBe("Bearer test-access");
       expect(headers["chatgpt-account-id"]).toBe("test-account");
+      expect(headers.originator).toBe("codex_cli_rs");
+      expect(headers["User-Agent"]).toMatch(/^codex_cli_rs\/\S+ @ljoukov\/llm/u);
       return buildSseResponse([
         {
           type: "response.output_text.delta",
