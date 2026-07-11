@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { generateText, type LlmTextModelId } from "../src/index.js";
 import { assertIntegrationCredentialsForModels } from "./integration-env.js";
 
-const shellModel = "gpt-5.5" satisfies LlmTextModelId;
+const shellModel = "gpt-5.6-sol" satisfies LlmTextModelId;
 
 assertIntegrationCredentialsForModels([shellModel]);
 
