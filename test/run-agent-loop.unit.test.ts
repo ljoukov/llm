@@ -188,6 +188,58 @@ describe("runAgentLoop", () => {
     ]);
     expect(call.instructions).toContain("spawn_agent");
     expect(call.instructions).toContain("wait");
+    expect(call.instructions).toContain("Do not spawn sub-agents unless the user");
+  });
+
+  it("enables proactive subagent orchestration automatically for ultra", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "chatgpt-gpt-5.6-sol",
+      input: "investigate independent workstreams",
+      thinkingLevel: "ultra",
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+      instructions?: string;
+      thinkingLevel?: string;
+    };
+    expect(Object.keys(call.tools).sort()).toEqual([
+      "close_agent",
+      "resume_agent",
+      "send_input",
+      "spawn_agent",
+      "wait",
+    ]);
+    expect(call.instructions).toContain("Proactive multi-agent delegation is active");
+    expect(call.thinkingLevel).toBe("ultra");
+  });
+
+  it("allows ultra delegation to be explicitly disabled", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "chatgpt-gpt-5.6-sol",
+      input: "work locally",
+      thinkingLevel: "ultra",
+      subagentTool: false,
+      tools: {
+        ping: {
+          inputSchema: z.object({}),
+          execute: async () => "pong",
+        },
+      },
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+      instructions?: string;
+    };
+    expect(Object.keys(call.tools)).toEqual(["ping"]);
+    expect(call.instructions).toBeUndefined();
   });
 
   it("accepts subagent_tool alias and supports disabling codex prompt pattern", async () => {

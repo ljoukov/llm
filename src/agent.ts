@@ -214,7 +214,11 @@ async function runAgentLoopInternal(
       ? toolLoopRequest
       : { ...toolLoopRequest, steering: steeringChannel };
   const filesystemSelection = filesystemTool ?? filesystem_tool;
-  const subagentSelection = subagentTool ?? subagent_tool ?? subagents;
+  const requestedSubagentSelection = subagentTool ?? subagent_tool ?? subagents;
+  const subagentSelection =
+    requestedSubagentSelection === undefined && toolLoopRequest.thinkingLevel === "ultra"
+      ? true
+      : requestedSubagentSelection;
   const filesystemTools = resolveFilesystemTools(
     request.model,
     filesystemSelection,
@@ -249,6 +253,7 @@ async function runAgentLoopInternal(
     toolLoopRequestWithSteering.instructions,
     resolvedSubagentConfig,
     context.depth,
+    toolLoopRequestWithSteering.thinkingLevel === "ultra" ? "proactive" : "explicit-request-only",
   );
   const emitTelemetry = createAgentTelemetryEmitter({
     session: telemetrySession,
@@ -510,6 +515,7 @@ function buildLoopInstructions(
   baseInstructions: string | undefined,
   config: ResolvedAgentSubagentToolConfig,
   depth: number,
+  multiAgentMode: "explicit-request-only" | "proactive",
 ): string | undefined {
   if (!config.enabled) {
     return trimToUndefined(baseInstructions);
@@ -525,6 +531,7 @@ function buildLoopInstructions(
         currentDepth: depth,
         maxDepth: config.maxDepth,
         maxAgents: config.maxAgents,
+        mode: multiAgentMode,
       }),
     );
   }

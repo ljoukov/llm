@@ -52,6 +52,7 @@ describe("subagent tools", () => {
       currentDepth: 0,
       maxDepth: 2,
       maxAgents: 6,
+      mode: "proactive",
     });
     const worker = buildCodexSubagentWorkerInstructions({ depth: 1, maxDepth: 2 });
 
@@ -59,8 +60,21 @@ describe("subagent tools", () => {
     expect(orchestrator).toContain("Keep immediate blockers and tightly coupled work local");
     expect(orchestrator).toContain("disjoint write scopes");
     expect(orchestrator).toContain("Call wait only when an agent result blocks your next step");
+    expect(orchestrator).toContain("Proactive multi-agent delegation is active");
     expect(worker).toContain("Other agents may share the workspace");
     expect(worker).toContain("report files you changed");
+  });
+
+  it("keeps non-ultra delegation explicit-request-only", () => {
+    const orchestrator = buildCodexSubagentOrchestratorInstructions({
+      currentDepth: 0,
+      maxDepth: 1,
+      maxAgents: 3,
+      mode: "explicit-request-only",
+    });
+
+    expect(orchestrator).toContain("Do not spawn sub-agents unless the user");
+    expect(orchestrator).not.toContain("Proactive multi-agent delegation is active");
   });
 
   it("supports spawn + wait timeout + completion + send/resume lifecycle", async () => {

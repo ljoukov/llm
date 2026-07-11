@@ -83,7 +83,8 @@ function isThinkingLevel(value: string): value is LlmThinkingLevel {
     value === "medium" ||
     value === "high" ||
     value === "xhigh" ||
-    value === "max"
+    value === "max" ||
+    value === "ultra"
   );
 }
 
@@ -97,7 +98,7 @@ function resolveCliOptions(args: readonly string[]): {
     .option("--model <id>", "Model id to run.")
     .option(
       "--thinking-level <level>",
-      "Thinking level: low, medium, high, xhigh, max.",
+      "Thinking level: low, medium, high, xhigh, max, ultra.",
       DEFAULT_THINKING_LEVEL,
     )
     .showHelpAfterError();

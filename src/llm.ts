@@ -185,7 +185,7 @@ export type LlmToolOutputContentItem =
   | LlmInputFilePart;
 
 export type LlmImageSize = "1K" | "2K" | "4K";
-export type LlmThinkingLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type LlmThinkingLevel = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
 export type LlmWebSearchMode = "cached" | "live";
 
@@ -1391,6 +1391,7 @@ function resolveOpenAiReasoningEffort(
       case "xhigh":
         return "xhigh";
       case "max":
+      case "ultra":
         return "max";
     }
   }
@@ -4243,6 +4244,7 @@ function toGeminiThinkingLevel(thinkingLevel: LlmThinkingLevel): ThinkingLevel {
     case "high":
     case "xhigh":
     case "max":
+    case "ultra":
       return ThinkingLevel.HIGH;
   }
 }
@@ -4295,6 +4297,7 @@ function resolveGeminiThinkingBudget(
       case "high":
       case "xhigh":
       case "max":
+      case "ultra":
         return 32_768;
     }
   }
@@ -4307,6 +4310,7 @@ function resolveGeminiThinkingBudget(
       case "high":
       case "xhigh":
       case "max":
+      case "ultra":
         return 24_576;
     }
   }
@@ -4319,6 +4323,7 @@ function resolveGeminiThinkingBudget(
       case "high":
       case "xhigh":
       case "max":
+      case "ultra":
         return 16_384;
     }
   }
@@ -5663,7 +5668,7 @@ export async function generateJson<T>(request: LlmJsonRequest<T>): Promise<{
 
 // --- Tool Loop ---
 
-const DEFAULT_TOOL_LOOP_MAX_STEPS = 8;
+const DEFAULT_TOOL_LOOP_MAX_STEPS = 64;
 
 function resolveToolLoopContents(input: LlmInput): readonly LlmContent[] {
   return resolveTextContents(input);

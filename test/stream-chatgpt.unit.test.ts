@@ -215,6 +215,18 @@ describe("streamText (ChatGPT)", () => {
     expect(capturedRequest?.reasoning?.effort).toBe("max");
   });
 
+  it("maps thinkingLevel=ultra to ChatGPT max reasoning effort", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({
+      model: "chatgpt-gpt-5.6-sol",
+      input: "hi",
+      thinkingLevel: "ultra",
+    });
+
+    expect(capturedRequest?.reasoning?.effort).toBe("max");
+  });
+
   it.each([
     ["chatgpt-gpt-5.6-sol-fast", "gpt-5.6-sol"],
     ["chatgpt-gpt-5.6-terra-fast", "gpt-5.6-terra"],
