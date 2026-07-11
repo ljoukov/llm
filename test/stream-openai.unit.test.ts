@@ -122,6 +122,18 @@ describe("streamText (OpenAI)", () => {
     expect(capturedRequest?.reasoning?.effort).toBe("max");
   });
 
+  it("maps thinkingLevel=ultra to OpenAI max reasoning effort", async () => {
+    const { streamText } = await import("../src/llm.js");
+
+    const call = streamText({ model: "gpt-5.6-sol", input: "hi", thinkingLevel: "ultra" });
+    for await (const _event of call.events) {
+      // Drain stream.
+    }
+    await call.result;
+
+    expect(capturedRequest?.reasoning?.effort).toBe("max");
+  });
+
   it.each([
     ["gpt-5.6-fast", "gpt-5.6"],
     ["gpt-5.6-sol-fast", "gpt-5.6-sol"],

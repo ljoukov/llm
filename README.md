@@ -573,7 +573,7 @@ const { value } = await generateJson({
 });
 ```
 
-`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, and `max`. GPT-5.6 supports `max`; `ultra` is intentionally not exposed. Codex implements Ultra as `max` provider reasoning plus proactive multi-agent orchestration, so this library keeps those controls separate: use `thinkingLevel: "max"` for reasoning and opt into `subagentTool` when you want delegation.
+`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. In ordinary text and tool-loop calls, `ultra` sends the provider's highest supported reasoning level (`max` for GPT-5.6). In `runAgentLoop()` and `streamAgentLoop()`, it additionally enables the built-in subagent tools and Codex-style proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining maximum provider reasoning.
 
 ### Streaming JSON outputs
 
@@ -912,6 +912,7 @@ Enable `subagentTool` to allow delegation via Codex-style control tools:
 
 - `spawn_agent`, `send_input`, `resume_agent`, `wait`, `close_agent`
 - optional limits: `maxAgents`, `maxDepth`, wait timeouts
+- root and subagent tool loops default to 64 model steps when `maxSteps` is omitted
 - `spawn_agent.agent_type` supports built-ins aligned with codex-rs-style roles: `default`, `researcher`, `worker`, `reviewer`
 - delegation guidance keeps critical-path work local, favors independent sidecar tasks with disjoint write scopes, and waits only when an agent result blocks the next step
 
