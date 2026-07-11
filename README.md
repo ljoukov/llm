@@ -707,7 +707,7 @@ Use this when the model provider executes the tool remotely (for example search/
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gpt-5.5",
+  model: "gpt-5.6-sol",
   input: "Run python --version in a hosted shell and summarize the result.",
   tools: [{ type: "shell" }],
 });
@@ -724,7 +724,7 @@ OpenAI container reference and the library can retrieve the resulting files:
 import { downloadOpenAiContainerFile, generateText, listOpenAiContainerFiles } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gpt-5.5",
+  model: "gpt-5.6-sol",
   input:
     "Use the shell to write /mnt/data/report.txt containing 'hello'. Reply only when done.",
   tools: [{ type: "shell" }],
@@ -762,7 +762,7 @@ const cover = await uploadOpenAiContainerFile({
 });
 
 await generateText({
-  model: "gpt-5.5",
+  model: "gpt-5.6-sol",
   input: `Use ${cover.path}, write LaTeX, run xelatex, and save /mnt/data/article.pdf.`,
   tools: [{ type: "shell", environment: { type: "container-reference", containerId: container.id } }],
 });
