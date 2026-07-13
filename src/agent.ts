@@ -19,7 +19,12 @@ import {
 import {
   createToolLoopSteeringChannel,
   type LlmInputMessage,
+  type LlmChatGptImageBackground,
+  type LlmOpenAiImageQuality,
+  type LlmOpenAiImageResolution,
+  type LlmOpenAiImageSize,
   type LlmStreamEvent,
+  type LlmToolConfig,
   type LlmToolLoopRequest,
   type LlmToolLoopResult,
   type LlmToolLoopSteeringAppendResult,
@@ -28,6 +33,12 @@ import {
   type LlmUsageTokens,
   runToolLoop,
 } from "./llm.js";
+import {
+  isChatGptModelId,
+  isOpenAiModelId,
+  type ChatGptImageModelId,
+  type OpenAiImageModelId,
+} from "./openai/models.js";
 import {
   collectFileUploadMetrics,
   emptyFileUploadMetrics,
@@ -38,6 +49,7 @@ import {
   type AgentFilesystemToolsOptions,
   createFilesystemToolSetForModel,
 } from "./tools/filesystemTools.js";
+import { createImageGenerationTool } from "./tools/imageGeneration.js";
 import {
   createTelemetrySession,
   type AgentRunCompletedTelemetryEvent,
@@ -59,6 +71,30 @@ export type AgentFilesystemToolSelection =
   | AgentFilesystemToolProfile
   | AgentFilesystemToolConfig;
 
+type AgentImageGenerationToolConfigBase = {
+  readonly enabled?: boolean;
+  readonly background?: LlmChatGptImageBackground;
+};
+
+export type AgentOpenAiImageGenerationToolConfig = AgentImageGenerationToolConfigBase & {
+  /** Select the public Images API and enable its structured image controls. */
+  readonly model: OpenAiImageModelId;
+  readonly imageResolution?: LlmOpenAiImageResolution;
+  readonly imageSize?: LlmOpenAiImageSize;
+  readonly imageQuality?: LlmOpenAiImageQuality;
+};
+
+export type AgentChatGptImageGenerationToolConfig = AgentImageGenerationToolConfigBase & {
+  /** Select ChatGPT subscription rendering. Omit to follow a ChatGPT outer model. */
+  readonly model?: ChatGptImageModelId;
+};
+
+export type AgentImageGenerationToolConfig =
+  | AgentOpenAiImageGenerationToolConfig
+  | AgentChatGptImageGenerationToolConfig;
+
+export type AgentImageGenerationToolSelection = boolean | AgentImageGenerationToolConfig;
+
 export type {
   AgentSubagentToolConfig,
   AgentSubagentToolPromptPattern,
@@ -77,6 +113,8 @@ export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
   readonly subagentTool?: AgentSubagentToolSelection;
   readonly subagent_tool?: AgentSubagentToolSelection;
   readonly subagents?: AgentSubagentToolSelection;
+  readonly imageGenerationTool?: AgentImageGenerationToolSelection;
+  readonly image_generation_tool?: AgentImageGenerationToolSelection;
   readonly telemetry?: TelemetrySelection;
   readonly logging?: AgentLoggingSelection;
 };
@@ -199,10 +237,27 @@ async function runAgentLoopInternal(
     subagentTool,
     subagent_tool,
     subagents,
+    imageGenerationTool,
+    image_generation_tool,
     telemetry,
     logging: _logging,
-    ...toolLoopRequest
+    ...baseToolLoopRequest
   } = request;
+
+  const imageToolSelection = imageGenerationTool ?? image_generation_tool;
+  const resolvedImageTools = resolveAgentImageGenerationTools(
+    request.model,
+    imageToolSelection,
+    request.signal,
+  );
+  const toolLoopRequest = {
+    ...baseToolLoopRequest,
+    ...(resolvedImageTools.modelTools.length > 0
+      ? {
+          modelTools: [...(baseToolLoopRequest.modelTools ?? []), ...resolvedImageTools.modelTools],
+        }
+      : {}),
+  };
 
   const telemetrySession = context.telemetry ?? createTelemetrySession(telemetry);
   const loggingSession = context.logging;
@@ -232,6 +287,8 @@ async function runAgentLoopInternal(
     telemetry: telemetrySession,
     logging: loggingSession,
     customTools: customTools ?? {},
+    imageGenerationSelection: imageToolSelection,
+    baseModelTools: baseToolLoopRequest.modelTools,
     filesystemSelection,
     subagentSelection,
     toolLoopRequest: toolLoopRequestWithSteering,
@@ -239,13 +296,19 @@ async function runAgentLoopInternal(
     resolvedSubagentConfig,
   });
   const mergedTools = mergeToolSets(
-    mergeToolSets(filesystemTools, subagentController?.tools ?? {}),
+    mergeToolSets(
+      mergeToolSets(filesystemTools, subagentController?.tools ?? {}),
+      resolvedImageTools.runtimeTools,
+    ),
     customTools ?? {},
   );
 
-  if (Object.keys(mergedTools).length === 0) {
+  if (
+    Object.keys(mergedTools).length === 0 &&
+    (!toolLoopRequest.modelTools || toolLoopRequest.modelTools.length === 0)
+  ) {
     throw new Error(
-      "runAgentLoop requires at least one tool. Provide `tools`, enable `filesystemTool`, or enable `subagentTool`.",
+      "runAgentLoop requires at least one tool. Provide `tools` or `modelTools`, enable `filesystemTool`, or enable `subagentTool`.",
     );
   }
 
@@ -439,6 +502,78 @@ function resolveFilesystemTools(
   return createFilesystemToolSetForModel(model, selection.profile ?? "auto");
 }
 
+function resolveAgentImageGenerationTools(
+  outerModel: LlmToolLoopRequest["model"],
+  selection: AgentImageGenerationToolSelection | undefined,
+  signal: AbortSignal | undefined,
+): {
+  readonly runtimeTools: LlmToolSet;
+  readonly modelTools: LlmToolConfig[];
+} {
+  if (selection === undefined || selection === false) {
+    return { runtimeTools: {}, modelTools: [] };
+  }
+  const config = typeof selection === "object" ? selection : {};
+  if (config.enabled === false) {
+    return { runtimeTools: {}, modelTools: [] };
+  }
+
+  const defaultImageModel = isOpenAiModelId(outerModel)
+    ? ("gpt-image-2" as const)
+    : isChatGptModelId(outerModel)
+      ? ("chatgpt-gpt-image-2" as const)
+      : undefined;
+  const imageModel = config.model ?? defaultImageModel;
+  if (!imageModel) {
+    throw new Error(
+      "imageGenerationTool requires an explicit image model when the outer model is not OpenAI or ChatGPT-authenticated.",
+    );
+  }
+
+  const imageResolution = "imageResolution" in config ? config.imageResolution : undefined;
+  const imageSize = "imageSize" in config ? config.imageSize : undefined;
+  const imageQuality = "imageQuality" in config ? config.imageQuality : undefined;
+
+  if (isOpenAiModelId(outerModel) && imageModel === "gpt-image-2") {
+    return {
+      runtimeTools: {},
+      modelTools: [
+        {
+          type: "image-generation",
+          model: imageModel,
+          ...(imageResolution ? { imageResolution } : {}),
+          ...(imageSize ? { imageSize } : {}),
+          ...(imageQuality ? { imageQuality } : {}),
+          ...(config.background ? { background: config.background } : {}),
+        },
+      ],
+    };
+  }
+
+  if (
+    imageModel === "chatgpt-gpt-image-2" &&
+    (imageResolution !== undefined || imageSize !== undefined || imageQuality !== undefined)
+  ) {
+    throw new Error(
+      "ChatGPT subscription image generation always uses automatic size and quality. Put the desired orientation or aspect ratio in the image prompt instead.",
+    );
+  }
+
+  return {
+    runtimeTools: {
+      image_generation: createImageGenerationTool({
+        model: imageModel,
+        ...(imageResolution ? { imageResolution } : {}),
+        ...(imageSize ? { imageSize } : {}),
+        ...(imageQuality ? { imageQuality } : {}),
+        ...(config.background ? { background: config.background } : {}),
+        ...(signal ? { signal } : {}),
+      }),
+    },
+    modelTools: [],
+  };
+}
+
 function mergeToolSets(base: LlmToolSet, extra: LlmToolSet): LlmToolSet {
   const merged: LlmToolSet = { ...base };
   for (const [toolName, toolSpec] of Object.entries(extra)) {
@@ -459,6 +594,8 @@ function createSubagentController(params: {
   readonly telemetry: TelemetrySession | undefined;
   readonly logging: AgentLoggingSession | undefined;
   readonly customTools: LlmToolSet;
+  readonly imageGenerationSelection: AgentImageGenerationToolSelection | undefined;
+  readonly baseModelTools: LlmToolLoopRequest["modelTools"];
   readonly filesystemSelection: AgentFilesystemToolSelection | undefined;
   readonly subagentSelection: AgentSubagentToolSelection | undefined;
   readonly steering: LlmToolLoopRequest["steering"];
@@ -493,8 +630,11 @@ function createSubagentController(params: {
           instructions: subagentRequest.instructions,
           tools: childCustomTools,
           filesystemTool: childFilesystemSelection,
+          imageGenerationTool: params.resolvedSubagentConfig.inheritTools
+            ? params.imageGenerationSelection
+            : false,
           subagentTool: params.subagentSelection,
-          modelTools: params.toolLoopRequest.modelTools,
+          modelTools: params.baseModelTools,
           maxSteps: subagentRequest.maxSteps,
           thinkingLevel: params.toolLoopRequest.thinkingLevel,
           mediaResolution: params.toolLoopRequest.mediaResolution,

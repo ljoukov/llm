@@ -48,6 +48,22 @@ export type OpenAiGptImage2PopularResolution =
 
 export const OPENAI_GPT_IMAGE_2_AUTO_RESOLUTION = "auto" as const;
 
+export const OPENAI_GPT_IMAGE_2_SEMANTIC_SIZES = ["square", "landscape", "portrait"] as const;
+export type OpenAiGptImage2SemanticSize = (typeof OPENAI_GPT_IMAGE_2_SEMANTIC_SIZES)[number];
+export type OpenAiGptImage2Size = OpenAiGptImage2SemanticSize | "auto";
+
+export const OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS = {
+  square: "1024x1024",
+  landscape: "1536x1024",
+  portrait: "1024x1536",
+} as const satisfies Record<OpenAiGptImage2SemanticSize, OpenAiGptImage2PopularResolution>;
+
+export function resolveOpenAiGptImage2Size(
+  value: OpenAiGptImage2Size,
+): OpenAiGptImage2ListedResolution {
+  return value === "auto" ? value : OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS[value];
+}
+
 export const OPENAI_GPT_IMAGE_2_RESOLUTIONS = [
   ...OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS,
   OPENAI_GPT_IMAGE_2_AUTO_RESOLUTION,
@@ -176,7 +192,7 @@ const CHATGPT_PRIORITY_MODEL_IDS = [
   "chatgpt-gpt-5.5-fast",
   "chatgpt-gpt-5.4-fast",
 ] as const;
-const CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL = "gpt-5.4" as const;
+const CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL = "gpt-image-2" as const;
 
 export const EXPERIMENTAL_CHATGPT_MODEL_PREFIX = "experimental-chatgpt-" as const;
 

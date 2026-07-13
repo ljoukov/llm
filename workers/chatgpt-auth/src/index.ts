@@ -1,36 +1,61 @@
+type D1Result = {
+  readonly meta?: { readonly changes?: number };
+};
+
+type D1PreparedStatement = {
+  bind(...values: unknown[]): D1PreparedStatement;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{ readonly results?: readonly T[] }>;
+  run(): Promise<D1Result>;
+};
+
+type D1Database = {
+  prepare(query: string): D1PreparedStatement;
+};
+
+type WorkerExecutionContext = {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 type TokenState = {
   accessToken: string;
   refreshToken: string;
   idToken?: string;
-  expiresAt: number; // epoch ms
+  expiresAt: number;
   accountId: string;
-  updatedAt: number; // epoch ms
+  email?: string;
+  label?: string;
+  updatedAt: number;
+};
+
+type StoredTokenState = TokenState & {
+  id: string;
+  enabled: boolean;
+  lastSelectedAt: number;
+  selectionCount: number;
+  lockUntil: number | null;
+};
+
+type Principal = {
+  id: string;
+  name: string;
+  kind: "admin" | "client";
 };
 
 type Env = {
   CHATGPT_AUTH_API_KEY: string;
   CHATGPT_AUTH_DB: D1Database;
-  CHATGPT_AUTH_KV: KVNamespace;
-  // Optional: set to "1"/"true" to log the full email from id_token (otherwise it's redacted).
   CHATGPT_AUTH_LOG_EMAIL?: string;
+  CHATGPT_AUTH_AUDIT_RETENTION_DAYS?: string;
 };
 
-const STATE_ID = "default";
-const KV_KEY = "chatgpt_auth_state_v1";
 const OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
-
 const ACCESS_TOKEN_EXPIRY_SAFETY_MS = 30_000;
-const CRON_REFRESH_WITHIN_MS = 60 * 60 * 1000;
-
+const REFRESH_WITHIN_MS = 60 * 60 * 1000;
 const LOCK_TTL_MS = 2 * 60 * 1000;
-
-let memoryCache:
-  | {
-      state: TokenState;
-      cachedAt: number;
-    }
-  | null = null;
+const DEFAULT_AUDIT_RETENTION_DAYS = 30;
+const MAX_EVENT_PAGE_SIZE = 500;
 
 function json(
   value: unknown,
@@ -50,8 +75,16 @@ function unauthorized(): Response {
   return json({ error: "unauthorized" }, { status: 401 });
 }
 
+function forbidden(): Response {
+  return json({ error: "forbidden", message: "An admin credential is required." }, { status: 403 });
+}
+
 function badRequest(message: string): Response {
   return json({ error: "bad_request", message }, { status: 400 });
+}
+
+function notFound(message: string): Response {
+  return json({ error: "not_found", message }, { status: 404 });
 }
 
 function methodNotAllowed(): Response {
@@ -59,22 +92,16 @@ function methodNotAllowed(): Response {
 }
 
 function getBearer(request: Request): string | null {
-  const h = request.headers.get("authorization") ?? "";
-  const m = /^Bearer\\s+(.+)$/i.exec(h);
-  return m?.[1]?.trim() ? m[1].trim() : null;
+  const header = request.headers.get("authorization") ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match?.[1]?.trim() ? match[1].trim() : null;
 }
 
 function getAuthToken(request: Request): string | null {
   const bearer = getBearer(request);
   if (bearer) return bearer;
-  // Some accounts/setups appear to strip `Authorization` at the edge. Accept a custom header too.
-  const alt = request.headers.get("x-chatgpt-auth") ?? request.headers.get("x-api-key") ?? "";
-  return alt.trim().length > 0 ? alt.trim() : null;
-}
-
-function isAuthorized(request: Request, env: Env): boolean {
-  const token = getAuthToken(request);
-  return Boolean(token && env.CHATGPT_AUTH_API_KEY && token === env.CHATGPT_AUTH_API_KEY);
+  const alternate = request.headers.get("x-chatgpt-auth") ?? request.headers.get("x-api-key") ?? "";
+  return alternate.trim().length > 0 ? alternate.trim() : null;
 }
 
 function nowMs(): number {
@@ -85,22 +112,31 @@ function isExpired(state: Pick<TokenState, "expiresAt">, now: number): boolean {
   return now + ACCESS_TOKEN_EXPIRY_SAFETY_MS >= state.expiresAt;
 }
 
-function shouldRefreshWithin(state: Pick<TokenState, "expiresAt">, now: number, withinMs: number): boolean {
+function shouldRefreshWithin(
+  state: Pick<TokenState, "expiresAt">,
+  now: number,
+  withinMs: number,
+): boolean {
   return now + withinMs >= state.expiresAt;
 }
 
 function base64UrlDecodeToString(value: string): string {
   const pad = value.length % 4 === 0 ? "" : "=".repeat(4 - (value.length % 4));
-  const b64 = value.replace(/-/g, "+").replace(/_/g, "/") + pad;
-  return atob(b64);
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + pad;
+  return atob(base64);
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
 }
 
 function decodeJwtPayload(token: string): unknown {
   const parts = token.split(".");
   if (parts.length < 2) return null;
   try {
-    const jsonStr = base64UrlDecodeToString(parts[1] ?? "");
-    return JSON.parse(jsonStr);
+    return JSON.parse(base64UrlDecodeToString(parts[1] ?? ""));
   } catch {
     return null;
   }
@@ -109,125 +145,165 @@ function decodeJwtPayload(token: string): unknown {
 function extractChatGptAccountIdFromJwt(token: string): string | undefined {
   const payload = decodeJwtPayload(token);
   if (!payload || typeof payload !== "object") return undefined;
-
-  // Some tokens include it at the root.
-  const direct = (payload as any).chatgpt_account_id;
+  const direct = (payload as { chatgpt_account_id?: unknown }).chatgpt_account_id;
   if (typeof direct === "string" && direct.length > 0) return direct;
-
-  // Codex/ChatGPT tokens often nest it under this namespaced claim.
-  const namespaced = (payload as any)["https://api.openai.com/auth"]?.chatgpt_account_id;
-  if (typeof namespaced === "string" && namespaced.length > 0) return namespaced;
-
-  return undefined;
+  const namespaced = (
+    payload as { "https://api.openai.com/auth"?: { chatgpt_account_id?: unknown } }
+  )["https://api.openai.com/auth"]?.chatgpt_account_id;
+  return typeof namespaced === "string" && namespaced.length > 0 ? namespaced : undefined;
 }
 
 function extractEmailFromJwt(token: string): string | undefined {
   const payload = decodeJwtPayload(token);
   if (!payload || typeof payload !== "object") return undefined;
-  const email = (payload as any).email;
+  const email = (payload as { email?: unknown }).email;
   return typeof email === "string" && email.includes("@") ? email : undefined;
 }
 
 function shouldLogFullEmail(env: Env): boolean {
-  const v = String(env.CHATGPT_AUTH_LOG_EMAIL ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+  const value = String(env.CHATGPT_AUTH_LOG_EMAIL ?? "")
+    .trim()
+    .toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
 }
 
 function redactEmail(email: string): string {
   const [local, domain] = email.split("@");
   if (!local || !domain) return "<redacted>";
-  const prefix = local.slice(0, 2);
-  return `${prefix}***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
 }
 
 function formatEmailForLogs(email: string, env: Env): string {
   return shouldLogFullEmail(env) ? email : redactEmail(email);
 }
 
-async function readStateFromKv(env: Env): Promise<TokenState | null> {
-  const raw = await env.CHATGPT_AUTH_KV.get(KV_KEY, { type: "json" });
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as any;
-  if (
-    typeof o.accessToken !== "string" ||
-    typeof o.refreshToken !== "string" ||
-    typeof o.expiresAt !== "number" ||
-    typeof o.accountId !== "string"
-  ) {
-    return null;
-  }
+function rowToState(row: Record<string, unknown>): StoredTokenState {
   return {
-    accessToken: o.accessToken,
-    refreshToken: o.refreshToken,
-    idToken: typeof o.idToken === "string" ? o.idToken : undefined,
-    expiresAt: o.expiresAt,
-    accountId: o.accountId,
-    updatedAt: typeof o.updatedAt === "number" ? o.updatedAt : 0,
-  };
-}
-
-async function writeStateToKv(env: Env, state: TokenState): Promise<void> {
-  await env.CHATGPT_AUTH_KV.put(KV_KEY, JSON.stringify(state));
-}
-
-async function readStateFromD1(env: Env): Promise<(TokenState & { lockUntil: number | null }) | null> {
-  const row = (await env.CHATGPT_AUTH_DB.prepare(
-    "SELECT access_token, refresh_token, id_token, expires_at, account_id, updated_at, lock_until FROM chatgpt_auth_state WHERE id = ?1",
-  )
-    .bind(STATE_ID)
-    .first()) as any;
-
-  if (!row) return null;
-  return {
+    id: String(row.id ?? row.account_id ?? ""),
     accessToken: String(row.access_token ?? ""),
     refreshToken: String(row.refresh_token ?? ""),
     idToken: row.id_token ? String(row.id_token) : undefined,
     expiresAt: Number(row.expires_at ?? 0),
     accountId: String(row.account_id ?? ""),
+    email: row.email ? String(row.email) : undefined,
+    label: row.label ? String(row.label) : undefined,
+    enabled: Number(row.enabled ?? 1) !== 0,
     updatedAt: Number(row.updated_at ?? 0),
-    lockUntil: row.lock_until === null || row.lock_until === undefined ? null : Number(row.lock_until),
+    lastSelectedAt: Number(row.last_selected_at ?? 0),
+    selectionCount: Number(row.selection_count ?? 0),
+    lockUntil:
+      row.lock_until === null || row.lock_until === undefined ? null : Number(row.lock_until),
   };
 }
 
-async function upsertStateToD1(env: Env, state: TokenState & { lockUntil?: number | null }): Promise<void> {
+const ACCOUNT_COLUMNS = `id, access_token, refresh_token, id_token, expires_at, account_id,
+  email, label, enabled, updated_at, last_selected_at, selection_count, lock_until`;
+
+async function readStateFromD1(env: Env, id: string): Promise<StoredTokenState | null> {
+  const row = await env.CHATGPT_AUTH_DB.prepare(
+    `SELECT ${ACCOUNT_COLUMNS} FROM chatgpt_auth_state WHERE id = ?1`,
+  )
+    .bind(id)
+    .first<Record<string, unknown>>();
+  return row ? rowToState(row) : null;
+}
+
+async function listStatesFromD1(env: Env, enabledOnly = false): Promise<StoredTokenState[]> {
+  const result = await env.CHATGPT_AUTH_DB.prepare(
+    `SELECT ${ACCOUNT_COLUMNS} FROM chatgpt_auth_state
+     ${enabledOnly ? "WHERE enabled = 1" : ""}
+     ORDER BY COALESCE(label, email, account_id), account_id`,
+  ).all<Record<string, unknown>>();
+  return (result.results ?? []).map((row) => rowToState(row));
+}
+
+async function upsertSeedState(env: Env, state: TokenState): Promise<void> {
   await env.CHATGPT_AUTH_DB.prepare(
-    `INSERT INTO chatgpt_auth_state (id, access_token, refresh_token, id_token, expires_at, account_id, updated_at, lock_until)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    `INSERT INTO chatgpt_auth_state
+       (id, access_token, refresh_token, id_token, expires_at, account_id, email, label,
+        enabled, updated_at, lock_until, last_selected_at, selection_count)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, NULL, 0, 0)
      ON CONFLICT(id) DO UPDATE SET
        access_token=excluded.access_token,
        refresh_token=excluded.refresh_token,
        id_token=excluded.id_token,
        expires_at=excluded.expires_at,
        account_id=excluded.account_id,
+       email=COALESCE(excluded.email, chatgpt_auth_state.email),
+       label=COALESCE(excluded.label, chatgpt_auth_state.label),
+       enabled=1,
        updated_at=excluded.updated_at,
-       lock_until=excluded.lock_until`,
+       lock_until=NULL`,
   )
     .bind(
-      STATE_ID,
+      state.accountId,
       state.accessToken,
       state.refreshToken,
       state.idToken ?? null,
       state.expiresAt,
       state.accountId,
+      state.email ?? null,
+      state.label ?? null,
       state.updatedAt,
-      state.lockUntil ?? null,
     )
     .run();
 }
 
-async function tryAcquireRefreshLock(env: Env, now: number): Promise<boolean> {
-  const lockUntil = now + LOCK_TTL_MS;
-  const result = await env.CHATGPT_AUTH_DB.prepare(
-    "UPDATE chatgpt_auth_state SET lock_until = ?1 WHERE id = ?2 AND (lock_until IS NULL OR lock_until < ?3)",
+async function updateRefreshedState(env: Env, id: string, state: TokenState): Promise<void> {
+  await env.CHATGPT_AUTH_DB.prepare(
+    `UPDATE chatgpt_auth_state SET
+       access_token=?1, refresh_token=?2, id_token=?3, expires_at=?4, account_id=?5,
+       email=?6, updated_at=?7, lock_until=NULL
+     WHERE id=?8`,
   )
-    .bind(lockUntil, STATE_ID, now)
+    .bind(
+      state.accessToken,
+      state.refreshToken,
+      state.idToken ?? null,
+      state.expiresAt,
+      state.accountId,
+      state.email ?? null,
+      state.updatedAt,
+      id,
+    )
     .run();
-  return Number((result as any)?.meta?.changes ?? 0) > 0;
 }
 
-async function releaseRefreshLock(env: Env): Promise<void> {
+async function selectNextStateFromD1(
+  env: Env,
+  excludedIds: readonly string[],
+): Promise<StoredTokenState | null> {
+  const exclusionClause =
+    excludedIds.length > 0 ? `AND id NOT IN (${excludedIds.map(() => "?").join(", ")})` : "";
+  const row = await env.CHATGPT_AUTH_DB.prepare(
+    `UPDATE chatgpt_auth_state
+     SET last_selected_at = ?, selection_count = selection_count + 1
+     WHERE id = (
+       SELECT id FROM chatgpt_auth_state
+       WHERE enabled = 1 ${exclusionClause}
+       ORDER BY last_selected_at ASC, selection_count ASC, id ASC
+       LIMIT 1
+     )
+     RETURNING ${ACCOUNT_COLUMNS}`,
+  )
+    .bind(nowMs(), ...excludedIds)
+    .first<Record<string, unknown>>();
+  return row ? rowToState(row) : null;
+}
+
+async function tryAcquireRefreshLock(env: Env, id: string, now: number): Promise<boolean> {
+  const result = await env.CHATGPT_AUTH_DB.prepare(
+    `UPDATE chatgpt_auth_state SET lock_until = ?1
+     WHERE id = ?2 AND (lock_until IS NULL OR lock_until < ?3)`,
+  )
+    .bind(now + LOCK_TTL_MS, id, now)
+    .run();
+  return Number(result.meta?.changes ?? 0) > 0;
+}
+
+async function releaseRefreshLock(env: Env, id: string): Promise<void> {
   await env.CHATGPT_AUTH_DB.prepare("UPDATE chatgpt_auth_state SET lock_until = NULL WHERE id = ?1")
-    .bind(STATE_ID)
+    .bind(id)
     .run();
 }
 
@@ -241,114 +317,105 @@ async function oauthRefresh(refreshToken: string): Promise<{
   params.set("grant_type", "refresh_token");
   params.set("client_id", OAUTH_CLIENT_ID);
   params.set("refresh_token", refreshToken);
-
-  const resp = await fetch(OAUTH_TOKEN_URL, {
+  const response = await fetch(OAUTH_TOKEN_URL, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: params.toString(),
   });
-  if (!resp.ok) {
-    const body = await resp.text();
-    throw new Error(`ChatGPT OAuth refresh failed (${resp.status}): ${body}`);
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`ChatGPT OAuth refresh failed (${response.status}): ${body}`);
   }
-  const payload = (await resp.json()) as any;
-  const access = typeof payload.access_token === "string" ? payload.access_token : "";
-  const refresh = typeof payload.refresh_token === "string" ? payload.refresh_token : "";
-  const expiresInRaw = payload.expires_in;
-  const expiresIn = typeof expiresInRaw === "number" ? expiresInRaw : Number.parseFloat(String(expiresInRaw ?? "NaN"));
+  const payload = (await response.json()) as Record<string, unknown>;
+  const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
+  const refreshTokenValue = typeof payload.refresh_token === "string" ? payload.refresh_token : "";
+  const expiresIn = Number.parseFloat(String(payload.expires_in ?? "NaN"));
   const idToken = typeof payload.id_token === "string" ? payload.id_token : undefined;
-
-  if (!access || !refresh || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+  if (!accessToken || !refreshTokenValue || !Number.isFinite(expiresIn) || expiresIn <= 0) {
     throw new Error("ChatGPT OAuth refresh returned an unexpected payload.");
   }
-  return { accessToken: access, refreshToken: refresh, expiresIn, idToken };
+  return { accessToken, refreshToken: refreshTokenValue, expiresIn, idToken };
 }
 
-async function refreshIfNeeded(env: Env, options: { withinMs: number; reason: string }): Promise<{
-  state: TokenState;
-  refreshed: boolean;
-}> {
+async function refreshIfNeeded(
+  env: Env,
+  id: string,
+  options: { withinMs: number; reason: string },
+): Promise<{ state: StoredTokenState; refreshed: boolean }> {
   const start = performance.now();
   const now = nowMs();
-  const current = await readStateFromD1(env);
-  if (!current) {
-    throw new Error("No token state in D1. Seed the worker via POST /v1/seed.");
-  }
-
+  const current = await readStateFromD1(env, id);
+  if (!current) throw new Error(`Token account ${id} was not found.`);
   if (!shouldRefreshWithin(current, now, options.withinMs)) {
-    // Keep KV warm.
-    memoryCache = { state: current, cachedAt: now };
-    void writeStateToKv(env, current);
     return { state: current, refreshed: false };
   }
-
-  const locked = await tryAcquireRefreshLock(env, now);
-  if (!locked) {
-    // Someone else is refreshing; return what we have (still likely valid for some time).
-    memoryCache = { state: current, cachedAt: now };
+  if (!(await tryAcquireRefreshLock(env, id, now))) {
     return { state: current, refreshed: false };
   }
 
   try {
-    // Re-read after lock to avoid refreshing a stale snapshot.
-    const latest = await readStateFromD1(env);
-    if (!latest) {
-      throw new Error("Token state disappeared from D1.");
-    }
+    const latest = await readStateFromD1(env, id);
+    if (!latest) throw new Error(`Token account ${id} disappeared during refresh.`);
     if (!shouldRefreshWithin(latest, now, options.withinMs)) {
-      memoryCache = { state: latest, cachedAt: now };
       return { state: latest, refreshed: false };
     }
-
     const refreshed = await oauthRefresh(latest.refreshToken);
-    const expiresAt = now + refreshed.expiresIn * 1000;
     const idToken = refreshed.idToken ?? latest.idToken;
     const accountId =
       extractChatGptAccountIdFromJwt(idToken ?? "") ??
       extractChatGptAccountIdFromJwt(refreshed.accessToken) ??
       latest.accountId;
-
     const newState: TokenState = {
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
       idToken,
-      expiresAt,
+      expiresAt: now + refreshed.expiresIn * 1000,
       accountId,
+      email: extractEmailFromJwt(idToken ?? "") ?? latest.email,
+      label: latest.label,
       updatedAt: now,
     };
+    await updateRefreshedState(env, id, newState);
+    const stored = await readStateFromD1(env, id);
+    if (!stored) throw new Error(`Token account ${id} disappeared after refresh.`);
 
-    await upsertStateToD1(env, { ...newState, lockUntil: null });
-    await writeStateToKv(env, newState);
-    memoryCache = { state: newState, cachedAt: now };
-
-    const elapsed = Math.round(performance.now() - start);
-    const email = extractEmailFromJwt(idToken ?? "");
     console.log(
-      `[refresh] ok reason=${options.reason} account_id=${newState.accountId}${
-        email ? ` email=${formatEmailForLogs(email, env)}` : ""
-      } elapsed_ms=${elapsed}`,
+      `[refresh] ok reason=${options.reason} account_id=${stored.accountId}${
+        stored.email ? ` email=${formatEmailForLogs(stored.email, env)}` : ""
+      } elapsed_ms=${Math.round(performance.now() - start)}`,
     );
-    return { state: newState, refreshed: true };
+    return { state: stored, refreshed: true };
   } finally {
-    await releaseRefreshLock(env);
+    await releaseRefreshLock(env, id);
   }
 }
 
-function redactTokenPreview(token: string): string {
-  if (!token) return "";
-  return token.length <= 16 ? "<redacted>" : `${token.slice(0, 8)}...${token.slice(-4)}`;
-}
-
-function normalizeSeedInput(input: any): TokenState {
-  const accessToken = input.accessToken ?? input.access_token ?? input.access ?? "";
-  const refreshToken = input.refreshToken ?? input.refresh_token ?? input.refresh ?? "";
-  const idToken = input.idToken ?? input.id_token ?? undefined;
-  const accountId = input.accountId ?? input.account_id ?? "";
-  const expiresAtRaw = input.expiresAt ?? input.expires_at ?? input.expires ?? undefined;
-
-  const expiresAt = typeof expiresAtRaw === "number" ? expiresAtRaw : Number.parseFloat(String(expiresAtRaw ?? "NaN"));
+function normalizeSeedInput(input: Record<string, unknown>): TokenState {
+  const nestedTokens =
+    input.tokens && typeof input.tokens === "object"
+      ? (input.tokens as Record<string, unknown>)
+      : undefined;
+  const source = nestedTokens ?? input;
+  const accessToken =
+    source.accessToken ?? source.access_token ?? source.access ?? input.accessToken ?? input.access;
+  const refreshToken =
+    source.refreshToken ??
+    source.refresh_token ??
+    source.refresh ??
+    input.refreshToken ??
+    input.refresh;
+  const idToken = source.idToken ?? source.id_token ?? input.idToken ?? input.id_token;
+  const accountIdInput =
+    source.accountId ?? source.account_id ?? input.accountId ?? input.account_id;
+  const expiresAtRaw = input.expiresAt ?? input.expires_at ?? input.expires;
+  const parsedExpiresAt = Number.parseFloat(String(expiresAtRaw ?? "NaN"));
   const now = nowMs();
-  const exp = Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : now + 5 * 60_000;
+  const expiresAt =
+    Number.isFinite(parsedExpiresAt) && parsedExpiresAt > 0
+      ? parsedExpiresAt < 1_000_000_000_000
+        ? parsedExpiresAt * 1000
+        : parsedExpiresAt
+      : now + 5 * 60_000;
 
   if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
     throw new Error("seed: missing accessToken");
@@ -356,212 +423,537 @@ function normalizeSeedInput(input: any): TokenState {
   if (typeof refreshToken !== "string" || refreshToken.trim().length === 0) {
     throw new Error("seed: missing refreshToken");
   }
-  if (typeof accountId !== "string" || accountId.trim().length === 0) {
-    // Try to extract from JWTs if caller didn't provide it.
-    const extracted =
-      extractChatGptAccountIdFromJwt(typeof idToken === "string" ? idToken : "") ??
-      extractChatGptAccountIdFromJwt(accessToken);
-    if (!extracted) {
-      throw new Error("seed: missing accountId");
-    }
-    return {
-      accessToken: accessToken.trim(),
-      refreshToken: refreshToken.trim(),
-      idToken: typeof idToken === "string" ? idToken : undefined,
-      expiresAt: exp,
-      accountId: extracted,
-      updatedAt: now,
-    };
-  }
+  const normalizedIdToken = typeof idToken === "string" ? idToken.trim() : undefined;
+  const accountId =
+    (typeof accountIdInput === "string" && accountIdInput.trim()) ||
+    extractChatGptAccountIdFromJwt(normalizedIdToken ?? "") ||
+    extractChatGptAccountIdFromJwt(accessToken);
+  if (!accountId) throw new Error("seed: missing accountId");
 
+  const label = input.label;
+  if (label !== undefined && (typeof label !== "string" || label.trim().length > 100)) {
+    throw new Error("seed: label must be a string of at most 100 characters");
+  }
+  const emailInput = input.email;
   return {
     accessToken: accessToken.trim(),
     refreshToken: refreshToken.trim(),
-    idToken: typeof idToken === "string" ? idToken : undefined,
-    expiresAt: exp,
+    idToken: normalizedIdToken,
+    expiresAt,
     accountId: accountId.trim(),
+    email:
+      (typeof emailInput === "string" && emailInput.trim()) ||
+      extractEmailFromJwt(normalizedIdToken ?? ""),
+    label: typeof label === "string" && label.trim() ? label.trim() : undefined,
     updatedAt: now,
   };
 }
 
+function redactTokenPreview(token: string): string {
+  return token.length <= 16 ? "<redacted>" : `${token.slice(0, 8)}...${token.slice(-4)}`;
+}
+
+function accountMetadata(state: StoredTokenState): Record<string, unknown> {
+  const now = nowMs();
+  return {
+    accountId: state.accountId,
+    email: state.email ?? null,
+    label: state.label ?? null,
+    enabled: state.enabled,
+    expiresAt: state.expiresAt,
+    expiresInMs: Math.max(0, state.expiresAt - now),
+    updatedAt: state.updatedAt,
+    lastSelectedAt: state.lastSelectedAt || null,
+    selectionCount: state.selectionCount,
+  };
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function tokensEqual(left: string, right: string): Promise<boolean> {
+  if (!left || !right) return false;
+  const [leftHash, rightHash] = await Promise.all([sha256Hex(left), sha256Hex(right)]);
+  let difference = 0;
+  for (let index = 0; index < leftHash.length; index++) {
+    difference |= leftHash.charCodeAt(index) ^ rightHash.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+async function authenticate(request: Request, env: Env): Promise<Principal | null> {
+  const token = getAuthToken(request);
+  if (!token) return null;
+  if (env.CHATGPT_AUTH_API_KEY && (await tokensEqual(token, env.CHATGPT_AUTH_API_KEY))) {
+    return { id: "admin", name: "Admin", kind: "admin" };
+  }
+  const tokenHash = await sha256Hex(token);
+  const row = await env.CHATGPT_AUTH_DB.prepare(
+    "SELECT id, name FROM chatgpt_auth_clients WHERE token_hash = ?1 AND enabled = 1",
+  )
+    .bind(tokenHash)
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  return { id: String(row.id), name: String(row.name), kind: "client" };
+}
+
+async function markPrincipalUsed(env: Env, principal: Principal): Promise<void> {
+  if (principal.kind !== "client") return;
+  await env.CHATGPT_AUTH_DB.prepare(
+    `UPDATE chatgpt_auth_clients
+     SET last_used_at = ?1, request_count = request_count + 1, updated_at = ?1
+     WHERE id = ?2`,
+  )
+    .bind(nowMs(), principal.id)
+    .run();
+}
+
+async function recordTokenEvent(
+  env: Env,
+  request: Request,
+  principal: Principal,
+  accountId: string | null,
+  outcome: string,
+): Promise<void> {
+  await env.CHATGPT_AUTH_DB.prepare(
+    `INSERT INTO chatgpt_auth_token_events
+       (occurred_at, client_id, account_id, outcome, request_id)
+     VALUES (?1, ?2, ?3, ?4, ?5)`,
+  )
+    .bind(
+      nowMs(),
+      principal.id,
+      accountId,
+      outcome,
+      request.headers.get("cf-ray") ?? request.headers.get("x-request-id"),
+    )
+    .run();
+}
+
 async function handleSeed(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return methodNotAllowed();
-  const body = (await request.json().catch(() => null)) as any;
-  if (!body || typeof body !== "object") return badRequest("Expected JSON body.");
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body) return badRequest("Expected JSON body.");
 
-  let state: TokenState;
-  if (typeof body.authJsonB64 === "string" && body.authJsonB64.trim().length > 0) {
+  let input = body;
+  if (typeof body.authJsonB64 === "string" && body.authJsonB64.trim()) {
     try {
-      const decoded = base64UrlDecodeToString(body.authJsonB64.trim());
-      state = normalizeSeedInput(JSON.parse(decoded));
-    } catch (e) {
+      const decoded = JSON.parse(base64UrlDecodeToString(body.authJsonB64.trim())) as Record<
+        string,
+        unknown
+      >;
+      input = {
+        ...decoded,
+        label: body.label ?? decoded.label,
+        email: body.email ?? decoded.email,
+      };
+    } catch {
       return badRequest("Invalid authJsonB64.");
-    }
-  } else {
-    try {
-      state = normalizeSeedInput(body);
-    } catch (e) {
-      return badRequest(String((e as Error)?.message ?? e));
     }
   }
 
-  await upsertStateToD1(env, { ...state, lockUntil: null });
-  await writeStateToKv(env, state);
-  memoryCache = { state, cachedAt: nowMs() };
+  let state: TokenState;
+  try {
+    state = normalizeSeedInput(input);
+  } catch (error) {
+    return badRequest(String((error as Error)?.message ?? error));
+  }
+  await upsertSeedState(env, state);
+  const stored = await readStateFromD1(env, state.accountId);
+  if (!stored) return json({ error: "seed_failed" }, { status: 500 });
 
-  const email = extractEmailFromJwt(state.idToken ?? "");
   console.log(
-    `[seed] ok account_id=${state.accountId}${email ? ` email=${formatEmailForLogs(email, env)}` : ""} expires_at=${state.expiresAt}`,
+    `[seed] ok account_id=${stored.accountId}${
+      stored.email ? ` email=${formatEmailForLogs(stored.email, env)}` : ""
+    } expires_at=${stored.expiresAt}`,
   );
-
   return json({
     ok: true,
-    accountId: state.accountId,
-    expiresAt: state.expiresAt,
-    accessTokenPreview: redactTokenPreview(state.accessToken),
-    refreshTokenPreview: redactTokenPreview(state.refreshToken),
+    ...accountMetadata(stored),
+    accessTokenPreview: redactTokenPreview(stored.accessToken),
+    refreshTokenPreview: redactTokenPreview(stored.refreshToken),
   });
 }
 
-async function handleHealth(_request: Request, env: Env): Promise<Response> {
-  const now = nowMs();
-  const state = await readStateFromD1(env);
-  return json({
-    ok: true,
-    hasState: Boolean(state),
-    expiresAt: state?.expiresAt ?? null,
-    expiresInMs: state ? Math.max(0, state.expiresAt - now) : null,
-    accountId: state?.accountId ?? null,
-  });
-}
-
-async function handleToken(request: Request, env: Env): Promise<Response> {
+async function handleAccounts(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed();
+  const states = await listStatesFromD1(env);
+  return json({ accounts: states.map(accountMetadata) });
+}
 
-  const url = new URL(request.url);
-  const store = (url.searchParams.get("store") ?? "kv").toLowerCase();
-  const cache = url.searchParams.get("cache");
-  const useCache = cache === null ? true : cache !== "0";
+async function handleAccount(request: Request, env: Env, accountId: string): Promise<Response> {
+  const current = await readStateFromD1(env, accountId);
+  if (!current) return notFound(`Account ${accountId} was not found.`);
+  if (request.method === "DELETE") {
+    await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_state WHERE id = ?1")
+      .bind(accountId)
+      .run();
+    return json({ ok: true, accountId });
+  }
+  if (request.method !== "PATCH") return methodNotAllowed();
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body) return badRequest("Expected JSON body.");
+  if (
+    body.label !== undefined &&
+    body.label !== null &&
+    (typeof body.label !== "string" || body.label.trim().length > 100)
+  ) {
+    return badRequest("label must be null or a string of at most 100 characters.");
+  }
+  if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+    return badRequest("enabled must be a boolean.");
+  }
+  const label =
+    body.label === null
+      ? null
+      : typeof body.label === "string"
+        ? body.label.trim() || null
+        : (current.label ?? null);
+  const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
+  await env.CHATGPT_AUTH_DB.prepare(
+    "UPDATE chatgpt_auth_state SET label = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
+  )
+    .bind(label, enabled ? 1 : 0, nowMs(), accountId)
+    .run();
+  const updated = await readStateFromD1(env, accountId);
+  return json({ ok: true, account: updated ? accountMetadata(updated) : null });
+}
 
+async function handleHealth(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed();
+  const states = await listStatesFromD1(env);
+  return json({
+    ok: true,
+    accountCount: states.length,
+    enabledAccountCount: states.filter((state) => state.enabled).length,
+    accounts: states.map(accountMetadata),
+  });
+}
+
+async function handleToken(request: Request, env: Env, principal: Principal): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed();
+  await markPrincipalUsed(env, principal);
   const start = performance.now();
-  const now = nowMs();
+  const attemptedIds: string[] = [];
 
-  if (useCache && memoryCache && !isExpired(memoryCache.state, now)) {
+  while (true) {
+    let state = await selectNextStateFromD1(env, attemptedIds);
+    if (!state) break;
+    attemptedIds.push(state.id);
+    let refreshed = false;
+    if (shouldRefreshWithin(state, nowMs(), REFRESH_WITHIN_MS)) {
+      try {
+        const result = await refreshIfNeeded(env, state.id, {
+          withinMs: REFRESH_WITHIN_MS,
+          reason: "on_request",
+        });
+        state = result.state;
+        refreshed = result.refreshed;
+      } catch (error) {
+        console.log(`[refresh] failed account_id=${state.accountId}: ${(error as Error).message}`);
+        if (isExpired(state, nowMs())) {
+          await recordTokenEvent(env, request, principal, state.accountId, "refresh_failed");
+          continue;
+        }
+      }
+    }
+    if (isExpired(state, nowMs())) {
+      await recordTokenEvent(env, request, principal, state.accountId, "expired");
+      continue;
+    }
+
+    await recordTokenEvent(env, request, principal, state.accountId, "issued");
     return json({
-      accessToken: memoryCache.state.accessToken,
-      accountId: memoryCache.state.accountId,
-      expiresAt: memoryCache.state.expiresAt,
-      store: "memory",
-      cached: true,
-      refreshed: false,
+      accessToken: state.accessToken,
+      accountId: state.accountId,
+      expiresAt: state.expiresAt,
+      refreshed,
+      caller: { id: principal.id, name: principal.name },
+      rotation: { attemptedAccounts: attemptedIds.length },
       timingMs: { total: Math.round(performance.now() - start) },
     });
   }
 
-  let state: TokenState | null = null;
-  let storeUsed = store === "d1" ? "d1" : "kv";
-  const readStart = performance.now();
-  if (storeUsed === "kv") {
-    state = await readStateFromKv(env);
-    if (!state) {
-      state = await readStateFromD1(env);
-      storeUsed = "d1";
-      if (state) {
-        void writeStateToKv(env, state);
-      }
-    }
-  } else {
-    state = await readStateFromD1(env);
-  }
-  const readMs = Math.round(performance.now() - readStart);
-
-  if (!state) {
-    return json(
-      { error: "not_seeded", message: "No token state found. Seed via POST /v1/seed." },
-      { status: 503 },
-    );
-  }
-
-  // If expiring soon, refresh using D1 (source of truth) with a lock.
-  let refreshed = false;
-  const refreshStart = performance.now();
-  if (shouldRefreshWithin(state, now, CRON_REFRESH_WITHIN_MS)) {
-    try {
-      const refreshedResult = await refreshIfNeeded(env, {
-        withinMs: CRON_REFRESH_WITHIN_MS,
-        reason: "on_request",
-      });
-      state = refreshedResult.state;
-      refreshed = refreshedResult.refreshed;
-    } catch (e) {
-      console.log(`[refresh] failed: ${(e as Error).message}`);
-      // If we still have a (possibly valid) token, serve it; otherwise fail.
-      if (isExpired(state, now)) {
-        return json(
-          { error: "refresh_failed", message: (e as Error).message },
-          { status: 503 },
-        );
-      }
-    }
-  }
-  const refreshMs = Math.round(performance.now() - refreshStart);
-
-  memoryCache = { state, cachedAt: nowMs() };
-
-  return json({
-    accessToken: state.accessToken,
-    accountId: state.accountId,
-    expiresAt: state.expiresAt,
-    store: storeUsed,
-    cached: false,
-    refreshed,
-    timingMs: {
-      read: readMs,
-      refresh: refreshMs,
-      total: Math.round(performance.now() - start),
+  await recordTokenEvent(env, request, principal, null, "no_usable_account");
+  return json(
+    {
+      error: "no_usable_account",
+      message: "No enabled account has a usable access token.",
+      attemptedAccounts: attemptedIds.length,
     },
-  });
+    { status: 503 },
+  );
+}
+
+async function readOptionalJson(request: Request): Promise<Record<string, unknown>> {
+  const text = await request.text();
+  if (!text.trim()) return {};
+  const parsed = JSON.parse(text) as unknown;
+  if (!parsed || typeof parsed !== "object") throw new Error("Expected JSON body.");
+  return parsed as Record<string, unknown>;
 }
 
 async function handleForceRefresh(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return methodNotAllowed();
+  let body: Record<string, unknown>;
   try {
-    const result = await refreshIfNeeded(env, { withinMs: Number.POSITIVE_INFINITY, reason: "force" });
-    return json({
+    body = await readOptionalJson(request);
+  } catch (error) {
+    return badRequest((error as Error).message);
+  }
+  const requestedId = typeof body.accountId === "string" ? body.accountId.trim() : "";
+  const states = requestedId
+    ? ([await readStateFromD1(env, requestedId)].filter(Boolean) as StoredTokenState[])
+    : await listStatesFromD1(env, true);
+  if (requestedId && states.length === 0) return notFound(`Account ${requestedId} was not found.`);
+
+  const accounts: Record<string, unknown>[] = [];
+  for (const state of states) {
+    try {
+      const result = await refreshIfNeeded(env, state.id, {
+        withinMs: Number.POSITIVE_INFINITY,
+        reason: "force",
+      });
+      accounts.push({
+        ok: true,
+        accountId: result.state.accountId,
+        refreshed: result.refreshed,
+        expiresAt: result.state.expiresAt,
+      });
+    } catch (error) {
+      accounts.push({ ok: false, accountId: state.accountId, error: (error as Error).message });
+    }
+  }
+  return json({ ok: accounts.every((account) => account.ok), accounts });
+}
+
+function validateClientName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const name = value.trim();
+  return name.length > 0 && name.length <= 100 ? name : null;
+}
+
+function generateClientToken(): string {
+  return `cgptc_${base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)))}`;
+}
+
+async function listClients(env: Env): Promise<readonly Record<string, unknown>[]> {
+  const result = await env.CHATGPT_AUTH_DB.prepare(
+    `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count
+     FROM chatgpt_auth_clients ORDER BY name, id`,
+  ).all<Record<string, unknown>>();
+  return result.results ?? [];
+}
+
+function clientMetadata(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    tokenPrefix: String(row.token_prefix),
+    enabled: Number(row.enabled) !== 0,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+    lastUsedAt: row.last_used_at == null ? null : Number(row.last_used_at),
+    requestCount: Number(row.request_count ?? 0),
+  };
+}
+
+async function handleClients(request: Request, env: Env): Promise<Response> {
+  if (request.method === "GET") {
+    return json({ clients: (await listClients(env)).map(clientMetadata) });
+  }
+  if (request.method !== "POST") return methodNotAllowed();
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const name = validateClientName(body?.name);
+  if (!name) return badRequest("name must be a non-empty string of at most 100 characters.");
+  const token = generateClientToken();
+  const tokenHash = await sha256Hex(token);
+  const id = `client_${crypto.randomUUID()}`;
+  const now = nowMs();
+  await env.CHATGPT_AUTH_DB.prepare(
+    `INSERT INTO chatgpt_auth_clients
+       (id, name, token_hash, token_prefix, enabled, created_at, updated_at, request_count)
+     VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5, 0)`,
+  )
+    .bind(id, name, tokenHash, token.slice(0, 13), now)
+    .run();
+  return json(
+    {
       ok: true,
-      refreshed: result.refreshed,
-      expiresAt: result.state.expiresAt,
-      accountId: result.state.accountId,
-    });
-  } catch (e) {
-    return json({ error: "refresh_failed", message: (e as Error).message }, { status: 503 });
+      client: { id, name, tokenPrefix: token.slice(0, 13), enabled: true, createdAt: now },
+      token,
+      warning: "This token is shown only once. Store it as a secret.",
+    },
+    { status: 201 },
+  );
+}
+
+async function readClient(env: Env, id: string): Promise<Record<string, unknown> | null> {
+  return env.CHATGPT_AUTH_DB.prepare(
+    `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count
+     FROM chatgpt_auth_clients WHERE id = ?1`,
+  )
+    .bind(id)
+    .first<Record<string, unknown>>();
+}
+
+async function handleClient(request: Request, env: Env, id: string): Promise<Response> {
+  const current = await readClient(env, id);
+  if (!current) return notFound(`Client ${id} was not found.`);
+  if (request.method === "DELETE") {
+    await env.CHATGPT_AUTH_DB.prepare(
+      "UPDATE chatgpt_auth_clients SET enabled = 0, updated_at = ?1 WHERE id = ?2",
+    )
+      .bind(nowMs(), id)
+      .run();
+    return json({ ok: true, id, enabled: false });
+  }
+  if (request.method !== "PATCH") return methodNotAllowed();
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body) return badRequest("Expected JSON body.");
+  const name = body.name === undefined ? String(current.name) : validateClientName(body.name);
+  if (!name) return badRequest("name must be a non-empty string of at most 100 characters.");
+  if (body.enabled !== undefined && typeof body.enabled !== "boolean") {
+    return badRequest("enabled must be a boolean.");
+  }
+  const enabled = typeof body.enabled === "boolean" ? body.enabled : Number(current.enabled) !== 0;
+  await env.CHATGPT_AUTH_DB.prepare(
+    "UPDATE chatgpt_auth_clients SET name = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
+  )
+    .bind(name, enabled ? 1 : 0, nowMs(), id)
+    .run();
+  const updated = await readClient(env, id);
+  return json({ ok: true, client: updated ? clientMetadata(updated) : null });
+}
+
+async function handleRotateClient(request: Request, env: Env, id: string): Promise<Response> {
+  if (request.method !== "POST") return methodNotAllowed();
+  const current = await readClient(env, id);
+  if (!current) return notFound(`Client ${id} was not found.`);
+  const token = generateClientToken();
+  await env.CHATGPT_AUTH_DB.prepare(
+    `UPDATE chatgpt_auth_clients
+     SET token_hash = ?1, token_prefix = ?2, enabled = 1, updated_at = ?3
+     WHERE id = ?4`,
+  )
+    .bind(await sha256Hex(token), token.slice(0, 13), nowMs(), id)
+    .run();
+  const updated = await readClient(env, id);
+  return json({
+    ok: true,
+    id,
+    client: updated ? clientMetadata(updated) : null,
+    token,
+    tokenPrefix: token.slice(0, 13),
+    warning: "This token is shown only once. Store it as a secret.",
+  });
+}
+
+async function handleEvents(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed();
+  const url = new URL(request.url);
+  const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.max(1, Math.min(MAX_EVENT_PAGE_SIZE, requestedLimit))
+    : 100;
+  const clientId = url.searchParams.get("clientId")?.trim();
+  const result = await env.CHATGPT_AUTH_DB.prepare(
+    `SELECT e.id, e.occurred_at, e.client_id, e.account_id, e.outcome, e.request_id,
+            COALESCE(c.name, CASE WHEN e.client_id = 'admin' THEN 'Admin' ELSE e.client_id END)
+              AS client_name
+     FROM chatgpt_auth_token_events e
+     LEFT JOIN chatgpt_auth_clients c ON c.id = e.client_id
+     ${clientId ? "WHERE e.client_id = ?" : ""}
+     ORDER BY e.occurred_at DESC, e.id DESC
+     LIMIT ?`,
+  )
+    .bind(...(clientId ? [clientId, limit] : [limit]))
+    .all<Record<string, unknown>>();
+  return json({
+    events: (result.results ?? []).map((row) => ({
+      id: Number(row.id),
+      occurredAt: Number(row.occurred_at),
+      clientId: String(row.client_id),
+      clientName: String(row.client_name),
+      accountId: row.account_id == null ? null : String(row.account_id),
+      outcome: String(row.outcome),
+      requestId: row.request_id == null ? null : String(row.request_id),
+    })),
+  });
+}
+
+function pathIdentifier(path: string, prefix: string): string | null {
+  if (!path.startsWith(prefix)) return null;
+  const encoded = path.slice(prefix.length);
+  if (!encoded || encoded.includes("/")) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
   }
 }
 
+function auditRetentionDays(env: Env): number {
+  const configured = Number.parseInt(env.CHATGPT_AUTH_AUDIT_RETENTION_DAYS ?? "", 10);
+  return Number.isFinite(configured)
+    ? Math.max(1, Math.min(3650, configured))
+    : DEFAULT_AUDIT_RETENTION_DAYS;
+}
+
+async function runScheduledMaintenance(env: Env): Promise<void> {
+  const states = await listStatesFromD1(env, true);
+  for (const state of states) {
+    try {
+      await refreshIfNeeded(env, state.id, { withinMs: REFRESH_WITHIN_MS, reason: "cron" });
+    } catch (error) {
+      console.log(
+        `[cron] refresh failed account_id=${state.accountId}: ${(error as Error).message}`,
+      );
+    }
+  }
+  const cutoff = nowMs() - auditRetentionDays(env) * 24 * 60 * 60 * 1000;
+  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_token_events WHERE occurred_at < ?1")
+    .bind(cutoff)
+    .run();
+}
+
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    if (!isAuthorized(request, env)) return unauthorized();
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      const principal = await authenticate(request, env);
+      if (!principal) return unauthorized();
+      const url = new URL(request.url);
+      const path = url.pathname;
 
-    const url = new URL(request.url);
-    const path = url.pathname;
+      if (path === "/v1/token") return handleToken(request, env, principal);
+      if (principal.kind !== "admin") return forbidden();
 
-    if (path === "/v1/health") return handleHealth(request, env);
-    if (path === "/v1/token") return handleToken(request, env);
-    if (path === "/v1/seed") return handleSeed(request, env);
-    if (path === "/v1/refresh") return handleForceRefresh(request, env);
+      if (path === "/v1/health") return handleHealth(request, env);
+      if (path === "/v1/seed") return handleSeed(request, env);
+      if (path === "/v1/accounts") return handleAccounts(request, env);
+      if (path === "/v1/refresh") return handleForceRefresh(request, env);
+      if (path === "/v1/clients") return handleClients(request, env);
+      if (path === "/v1/events") return handleEvents(request, env);
 
-    return json({ error: "not_found" }, { status: 404 });
+      const rotateMatch = /^\/v1\/clients\/([^/]+)\/rotate$/u.exec(path);
+      if (rotateMatch?.[1]) {
+        return handleRotateClient(request, env, decodeURIComponent(rotateMatch[1]));
+      }
+      const accountId = pathIdentifier(path, "/v1/accounts/");
+      if (accountId) return handleAccount(request, env, accountId);
+      const clientId = pathIdentifier(path, "/v1/clients/");
+      if (clientId) return handleClient(request, env, clientId);
+
+      return json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      console.log(`[request] failed: ${(error as Error).message}`);
+      return json({ error: "internal_error", message: (error as Error).message }, { status: 500 });
+    }
   },
 
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      (async () => {
-        try {
-          await refreshIfNeeded(env, { withinMs: CRON_REFRESH_WITHIN_MS, reason: "cron" });
-        } catch (e) {
-          console.log(`[cron] refresh check failed: ${(e as Error).message}`);
-        }
-      })(),
-    );
+  async scheduled(_event: unknown, env: Env, context: WorkerExecutionContext): Promise<void> {
+    context.waitUntil(runScheduledMaintenance(env));
   },
 };

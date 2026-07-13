@@ -17,6 +17,7 @@ import {
 
 const CHATGPT_CODEX_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_CODEX_ENDPOINT_ENV = "CHATGPT_CODEX_ENDPOINT";
+const CHATGPT_CODEX_IMAGES_ENDPOINT_ENV = "CHATGPT_CODEX_IMAGES_ENDPOINT";
 const CHATGPT_CODEX_PROXY_URL_ENV = "CHATGPT_CODEX_PROXY_URL";
 const CHATGPT_CODEX_PROXY_API_KEY_ENV = "CHATGPT_CODEX_PROXY_API_KEY";
 const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
@@ -127,6 +128,29 @@ export type ChatGptCodexRequest = {
 export type ChatGptCodexStreamEvent = {
   type?: string;
   [key: string]: unknown;
+};
+
+export type ChatGptCodexImageRequest = {
+  readonly prompt: string;
+  readonly background?: "opaque" | "auto";
+  readonly model: "gpt-image-2";
+  readonly n?: number;
+  readonly quality?: "low" | "medium" | "high" | "auto";
+  readonly size?: string;
+};
+
+export type ChatGptCodexImageEditRequest = ChatGptCodexImageRequest & {
+  readonly images: readonly { readonly image_url: string }[];
+};
+
+export type ChatGptCodexImageResponse = {
+  readonly created?: number;
+  readonly data: readonly { readonly b64_json: string }[];
+  readonly background?: "opaque" | "auto";
+  readonly output_format?: "png" | "jpeg" | "webp";
+  readonly quality?: "low" | "medium" | "high" | "auto";
+  readonly size?: string;
+  readonly usage?: unknown;
 };
 
 export type ChatGptCodexUsage = {
@@ -343,6 +367,40 @@ function resolveChatGptCodexEndpoint(): string {
   return process.env[CHATGPT_CODEX_ENDPOINT_ENV]?.trim() || CHATGPT_CODEX_ENDPOINT;
 }
 
+function replaceCodexEndpointResource(
+  rawUrl: string,
+  resource: "images/generations" | "images/edits",
+): string {
+  try {
+    const url = new URL(rawUrl);
+    const path = url.pathname.replace(/\/+$/u, "");
+    if (/(?:\/responses|\/images\/(?:generations|edits))$/u.test(path)) {
+      url.pathname = path.replace(
+        /(?:\/responses|\/images\/(?:generations|edits))$/u,
+        `/${resource}`,
+      );
+    } else {
+      url.pathname = `${path}/${resource}`.replace(/\/{2,}/gu, "/");
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function resolveChatGptCodexImagesEndpoint(
+  endpointConfig: ChatGptCodexEndpointConfig,
+  operation: "generations" | "edits",
+): string {
+  loadLocalEnv();
+  const configuredDirectEndpoint = process.env[CHATGPT_CODEX_IMAGES_ENDPOINT_ENV]?.trim();
+  const source =
+    endpointConfig.kind === "direct"
+      ? configuredDirectEndpoint || endpointConfig.url
+      : endpointConfig.url;
+  return replaceCodexEndpointResource(source, `images/${operation}`);
+}
+
 function resolveChatGptCodexProxyConfig(): Extract<
   ChatGptCodexEndpointConfig,
   { kind: "proxy" }
@@ -412,6 +470,47 @@ function buildChatGptCodexHeaders(options: {
     headers.session_id = options.sessionId;
   }
   return headers;
+}
+
+export async function requestChatGptCodexImages(options: {
+  readonly operation: "generations" | "edits";
+  readonly request: ChatGptCodexImageRequest | ChatGptCodexImageEditRequest;
+  readonly signal?: AbortSignal;
+}): Promise<ChatGptCodexImageResponse> {
+  const endpointConfig = await resolveChatGptCodexEndpointConfig();
+  const headers = buildChatGptCodexHeaders({
+    endpointConfig,
+    useWebSocket: false,
+  });
+  delete headers["OpenAI-Beta"];
+  headers.Accept = "application/json";
+  headers["Content-Type"] = "application/json";
+
+  const response = await fetch(
+    resolveChatGptCodexImagesEndpoint(endpointConfig, options.operation),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(options.request),
+      signal: options.signal,
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`ChatGPT Codex image request failed (${response.status}): ${body}`);
+  }
+  const payload = (await response.json()) as Partial<ChatGptCodexImageResponse>;
+  if (!Array.isArray(payload.data)) {
+    throw new Error("ChatGPT Codex image response did not include an image data array.");
+  }
+  const data = payload.data.filter(
+    (item): item is { readonly b64_json: string } =>
+      Boolean(item) && typeof item.b64_json === "string" && item.b64_json.length > 0,
+  );
+  return {
+    ...payload,
+    data,
+  };
 }
 
 export async function collectChatGptCodexResponse(options: {

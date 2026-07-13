@@ -8,6 +8,7 @@ crons = ["*/15 * * * *"]
 
 [vars]
 CHATGPT_AUTH_LOG_EMAIL = "1"
+CHATGPT_AUTH_AUDIT_RETENTION_DAYS = "30"
 
 [observability]
 # Enable Workers Observability (logs + traces).
@@ -29,9 +30,4 @@ head_sampling_rate = 1
 binding = "CHATGPT_AUTH_DB"
 database_name = "chatgpt-auth"
 database_id = "f41f50c9-9b02-4f94-b5aa-435499697de6"
-remote = true
-
-[[kv_namespaces]]
-binding = "CHATGPT_AUTH_KV"
-id = "623ac725dd4444ac85bbea9a41dc2b6b"
 remote = true

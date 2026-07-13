@@ -28,6 +28,7 @@ import { estimateCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
 import type { CallSchedulerRunMetrics } from "./utils/scheduler.js";
 import {
   collectChatGptCodexResponse,
+  requestChatGptCodexImages,
   type ChatGptInputItem,
   type ChatGptInputMessagePart,
 } from "./openai/chatgpt-codex.js";
@@ -66,6 +67,7 @@ import {
   resolveChatGptServiceTier,
   resolveOpenAiProviderModel,
   resolveOpenAiServiceTier,
+  resolveOpenAiGptImage2Size,
   validateOpenAiGptImage2Resolution,
   type ExperimentalChatGptModelId,
   type ChatGptImageModelId,
@@ -77,6 +79,7 @@ import {
   type OpenAiGptImage2PartialImageCount,
   type OpenAiGptImage2Quality,
   type OpenAiGptImage2Resolution,
+  type OpenAiGptImage2Size,
 } from "./openai/models.js";
 import {
   getCurrentAgentLoggingSession,
@@ -213,9 +216,28 @@ export type LlmOpenAiShellEnvironment =
       readonly containerId: string;
     };
 
+export type LlmOpenAiImageGenerationToolConfig = {
+  readonly type: "image-generation";
+  /** GPT Image renderer used by the hosted Responses tool. */
+  readonly model?: OpenAiImageModelId;
+  readonly action?: "auto" | "generate" | "edit";
+  readonly imageResolution?: OpenAiGptImage2Resolution;
+  readonly imageSize?: OpenAiGptImage2Size;
+  readonly imageQuality?: OpenAiGptImage2Quality;
+  readonly outputFormat?: OpenAiGptImage2OutputFormat;
+  readonly outputCompression?: number;
+  readonly background?: OpenAiGptImage2Background;
+  readonly moderation?: OpenAiGptImage2Moderation;
+  readonly inputImageMask?: {
+    readonly imageUrl?: string;
+    readonly fileId?: string;
+  };
+};
+
 export type LlmToolConfig =
   | { readonly type: "web-search"; readonly mode?: LlmWebSearchMode }
   | { readonly type: "code-execution" }
+  | LlmOpenAiImageGenerationToolConfig
   | {
       /**
        * OpenAI hosted shell tool. Runs commands in an OpenAI-managed container,
@@ -463,6 +485,7 @@ export type LlmImageData = {
 };
 
 export type LlmGptImage2Resolution = OpenAiGptImage2Resolution;
+export type LlmGptImage2Size = OpenAiGptImage2Size;
 export type LlmGptImage2Quality = OpenAiGptImage2Quality;
 export type LlmGptImage2OutputFormat = OpenAiGptImage2OutputFormat;
 export type LlmGptImage2Background = OpenAiGptImage2Background;
@@ -471,6 +494,7 @@ export type LlmGptImage2PartialImageCount = OpenAiGptImage2PartialImageCount;
 export type LlmGptImage2NumImages = OpenAiGptImage2NumImages;
 
 export type LlmOpenAiImageResolution = LlmGptImage2Resolution;
+export type LlmOpenAiImageSize = LlmGptImage2Size;
 export type LlmOpenAiImageQuality = LlmGptImage2Quality;
 export type LlmOpenAiImageOutputFormat = LlmGptImage2OutputFormat;
 export type LlmOpenAiImageBackground = LlmGptImage2Background;
@@ -478,13 +502,7 @@ export type LlmOpenAiImageModeration = LlmGptImage2Moderation;
 export type LlmOpenAiImagePartialImageCount = LlmGptImage2PartialImageCount;
 export type LlmOpenAiImageNumImages = LlmGptImage2NumImages;
 
-export type LlmChatGptImageResolution = LlmGptImage2Resolution;
-export type LlmChatGptImageQuality = LlmGptImage2Quality;
-export type LlmChatGptImageOutputFormat = LlmGptImage2OutputFormat;
 export type LlmChatGptImageBackground = LlmGptImage2Background;
-export type LlmChatGptImageModeration = LlmGptImage2Moderation;
-export type LlmChatGptImageNumImages = LlmGptImage2NumImages;
-export type LlmChatGptImageAction = "auto" | "generate" | "edit";
 
 type LlmGenerateImagesRequestBase = {
   readonly stylePrompt: string;
@@ -497,6 +515,7 @@ type LlmGenerateImagesRequestBase = {
 export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
   readonly model: OpenAiImageModelId;
   readonly imageResolution?: LlmOpenAiImageResolution;
+  readonly imageSize?: LlmOpenAiImageSize;
   readonly imageQuality?: LlmOpenAiImageQuality;
   readonly outputFormat?: LlmOpenAiImageOutputFormat;
   readonly outputCompression?: number;
@@ -508,14 +527,7 @@ export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
 
 export type LlmChatGptGenerateImagesRequest = LlmGenerateImagesRequestBase & {
   readonly model: ChatGptImageModelId;
-  readonly imageResolution?: LlmChatGptImageResolution;
-  readonly imageQuality?: LlmChatGptImageQuality;
-  readonly outputFormat?: LlmChatGptImageOutputFormat;
-  readonly outputCompression?: number;
   readonly background?: LlmChatGptImageBackground;
-  readonly moderation?: LlmChatGptImageModeration;
-  readonly action?: LlmChatGptImageAction;
-  readonly numImages?: LlmChatGptImageNumImages;
 };
 
 export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
@@ -628,6 +640,7 @@ export type LlmToolLoopStep = {
   readonly modelVersion: string;
   readonly text?: string;
   readonly thoughts?: string;
+  readonly content?: LlmContent;
   readonly toolCalls: readonly LlmToolCallResult[];
   readonly usage?: LlmUsageTokens;
   readonly costUsd: number;
@@ -637,6 +650,7 @@ export type LlmToolLoopStep = {
 export type LlmToolLoopResult = {
   readonly text: string;
   readonly thoughts: string;
+  readonly content?: LlmContent;
   readonly steps: readonly LlmToolLoopStep[];
   readonly totalCostUsd: number;
 };
@@ -2673,6 +2687,10 @@ function toGeminiTools(tools: readonly LlmToolConfig[] | undefined): GeminiTool[
         return { googleSearch: {} };
       case "code-execution":
         return { codeExecution: {} };
+      case "image-generation":
+        throw new Error(
+          "Gemini does not support the OpenAI hosted image_generation tool. Use createImageGenerationTool() as a runtime tool instead.",
+        );
       case "shell":
         throw new Error("Gemini provider does not support the OpenAI shell tool.");
       default:
@@ -2733,6 +2751,65 @@ function toOpenAiTools(
       }
       case "code-execution": {
         return { type: "code_interpreter", container: { type: "auto" } };
+      }
+      case "image-generation": {
+        if (options.provider !== "openai") {
+          throw new Error(
+            'The hosted image_generation tool is only supported for OpenAI API models. For ChatGPT-authenticated models, use createImageGenerationTool({ model: "chatgpt-gpt-image-2" }) as a runtime tool.',
+          );
+        }
+        if (tool.imageResolution !== undefined && tool.imageSize !== undefined) {
+          throw new Error("Provide only one of imageResolution or imageSize.");
+        }
+        if (
+          tool.outputCompression !== undefined &&
+          (!Number.isInteger(tool.outputCompression) ||
+            tool.outputCompression < 0 ||
+            tool.outputCompression > 100)
+        ) {
+          throw new Error("outputCompression must be an integer from 0 to 100.");
+        }
+        if (
+          tool.outputCompression !== undefined &&
+          tool.outputFormat !== "jpeg" &&
+          tool.outputFormat !== "webp"
+        ) {
+          throw new Error("outputCompression requires outputFormat to be jpeg or webp.");
+        }
+        const size =
+          tool.imageResolution ??
+          (tool.imageSize ? resolveOpenAiGptImage2Size(tool.imageSize) : undefined);
+        if (size !== undefined) {
+          const validation = validateOpenAiGptImage2Resolution(size);
+          if (!validation.valid) {
+            throw new Error(
+              `imageResolution ${JSON.stringify(size)} is not supported by ${tool.model ?? "gpt-image-2"}: ${validation.reason}`,
+            );
+          }
+        }
+        return {
+          type: "image_generation",
+          model: tool.model ?? "gpt-image-2",
+          ...(tool.action ? { action: tool.action } : {}),
+          ...(size ? { size } : {}),
+          ...(tool.imageQuality ? { quality: tool.imageQuality } : {}),
+          ...(tool.outputFormat ? { output_format: tool.outputFormat } : {}),
+          ...(tool.outputCompression !== undefined
+            ? { output_compression: tool.outputCompression }
+            : {}),
+          ...(tool.background ? { background: tool.background } : {}),
+          ...(tool.moderation ? { moderation: tool.moderation } : {}),
+          ...(tool.inputImageMask
+            ? {
+                input_image_mask: {
+                  ...(tool.inputImageMask.imageUrl
+                    ? { image_url: tool.inputImageMask.imageUrl }
+                    : {}),
+                  ...(tool.inputImageMask.fileId ? { file_id: tool.inputImageMask.fileId } : {}),
+                },
+              }
+            : {}),
+        };
       }
       case "shell": {
         if (options.provider !== "openai") {
@@ -4044,7 +4121,10 @@ function normalizeChatGptToolIds(params: {
   return { callId: callValue, itemId: itemValue };
 }
 
-function extractOpenAiResponseParts(response: { output?: unknown; output_text?: unknown }): {
+function extractOpenAiResponseParts(
+  response: { output?: unknown; output_text?: unknown },
+  options?: { readonly imageMimeType?: string },
+): {
   parts: LlmContentPart[];
   blocked: boolean;
 } {
@@ -4096,6 +4176,15 @@ function extractOpenAiResponseParts(response: { output?: unknown; output_text?: 
             }
           }
         }
+      } else if (itemType === "image_generation_call") {
+        const result = (item as { result?: unknown }).result;
+        if (typeof result === "string" && result.length > 0) {
+          parts.push({
+            type: "inlineData",
+            data: result,
+            mimeType: options?.imageMimeType ?? "image/png",
+          });
+        }
       } else if (
         itemType === "function_call" ||
         itemType === "tool_call" ||
@@ -4115,6 +4204,35 @@ function extractOpenAiResponseParts(response: { output?: unknown; output_text?: 
     }
   }
   return { parts, blocked };
+}
+
+function resolveOpenAiImageToolOutputMimeType(tools: readonly LlmToolConfig[] | undefined): string {
+  const imageTool = tools?.find(
+    (tool): tool is LlmOpenAiImageGenerationToolConfig => tool.type === "image-generation",
+  );
+  return resolveOpenAiImageMimeType(imageTool?.outputFormat);
+}
+
+function estimateHostedImageGenerationCostUsd(
+  tools: readonly LlmToolConfig[] | undefined,
+  responseImages: number,
+): number {
+  const imageTool = tools?.find(
+    (tool): tool is LlmOpenAiImageGenerationToolConfig => tool.type === "image-generation",
+  );
+  if (!imageTool || responseImages === 0) {
+    return 0;
+  }
+  const imageSize =
+    imageTool.imageResolution ??
+    (imageTool.imageSize ? resolveOpenAiGptImage2Size(imageTool.imageSize) : "auto");
+  return estimateCallCostUsd({
+    modelId: imageTool.model ?? "gpt-image-2",
+    tokens: undefined,
+    responseImages,
+    imageSize,
+    imageQuality: imageTool.imageQuality,
+  });
 }
 
 type OpenAiToolCall =
@@ -4989,24 +5107,25 @@ async function runTextCall(params: {
           }
           latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
 
-          // Fallback: if the stream did not deliver text deltas (rare), extract from final output.
-          if (!sawResponseDelta || !sawThoughtDelta) {
-            const needsResponseFallback = !sawResponseDelta;
-            const needsThoughtFallback = !sawThoughtDelta;
-            const fallback = extractOpenAiResponseParts(finalResponse);
-            blocked = blocked || fallback.blocked;
-            for (const part of fallback.parts) {
-              if (part.type === "text") {
-                const channel = part.thought === true ? "thought" : "response";
-                if (
-                  (channel === "response" && needsResponseFallback) ||
-                  (channel === "thought" && needsThoughtFallback)
-                ) {
-                  pushDelta(channel, part.text);
-                }
-              } else if (part.type === "inlineData") {
-                pushInline(part.data, part.mimeType);
+          // Always collect non-text output. Text is only used as a fallback when the
+          // stream omitted its corresponding delta events.
+          const needsResponseFallback = !sawResponseDelta;
+          const needsThoughtFallback = !sawThoughtDelta;
+          const fallback = extractOpenAiResponseParts(finalResponse, {
+            imageMimeType: resolveOpenAiImageToolOutputMimeType(request.tools),
+          });
+          blocked = blocked || fallback.blocked;
+          for (const part of fallback.parts) {
+            if (part.type === "text") {
+              const channel = part.thought === true ? "thought" : "response";
+              if (
+                (channel === "response" && needsResponseFallback) ||
+                (channel === "thought" && needsThoughtFallback)
+              ) {
+                pushDelta(channel, part.text);
               }
+            } else if (part.type === "inlineData") {
+              pushInline(part.data, part.mimeType);
             }
           }
         }, modelForProvider);
@@ -5236,13 +5355,14 @@ async function runTextCall(params: {
       const { text, thoughts } = extractTextByChannel(content);
       const outputAttachments = collectLoggedAttachmentsFromLlmParts(mergedParts, "output");
 
-      const costUsd = estimateCallCostUsd({
-        modelId: modelVersion,
-        pricingModelId: request.model,
-        tokens: latestUsage,
-        responseImages,
-        imageSize: request.imageSize,
-      });
+      const costUsd =
+        estimateCallCostUsd({
+          modelId: modelVersion,
+          pricingModelId: request.model,
+          tokens: latestUsage,
+          responseImages,
+          imageSize: request.imageSize,
+        }) + estimateHostedImageGenerationCostUsd(request.tools, responseImages);
 
       if (latestUsage) {
         pushEvent({ type: "usage", usage: latestUsage, costUsd, modelVersion });
@@ -5401,6 +5521,9 @@ export function streamText(request: LlmTextRequest): LlmTextStream {
 
 export async function generateText(request: LlmTextRequest): Promise<LlmTextResult> {
   const call = startTextStream(request, "generateText");
+  // The event iterable and result promise fail from the same underlying call. Attach
+  // a handler immediately so an event-loop failure cannot leave result unobserved.
+  void call.result.catch(() => undefined);
   // Drain events so the call runs even if the caller doesn't.
   for await (const _event of call.events) {
     // no-op
@@ -5915,8 +6038,8 @@ function extractOpenAiReasoningSummary(response: unknown): string {
 
 export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolLoopResult> {
   const toolEntries = Object.entries(request.tools);
-  if (toolEntries.length === 0) {
-    throw new Error("Tool loop requires at least one tool definition.");
+  if (toolEntries.length === 0 && (!request.modelTools || request.modelTools.length === 0)) {
+    throw new Error("Tool loop requires at least one runtime or provider-native tool definition.");
   }
 
   const contents = resolveToolLoopContents(request);
@@ -5984,6 +6107,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let blocked = false;
         let responseText = "";
         let reasoningSummary = "";
+        let responseContent: LlmContent | undefined;
         let stepToolCallText: string | undefined;
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
         const preparedInput = await maybePrepareOpenAiPromptInput(input, {
@@ -6096,8 +6220,18 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
           usageTokens = extractOpenAiUsageTokens((finalResponse as any).usage);
 
-          responseText = extractOpenAiResponseParts(finalResponse)
-            .parts.filter((p) => p.type === "text" && p.thought !== true)
+          const extractedResponse = extractOpenAiResponseParts(finalResponse, {
+            imageMimeType: resolveOpenAiImageToolOutputMimeType(request.modelTools),
+          });
+          const responseContentParts = extractedResponse.parts.filter(
+            (part) => part.type !== "text" || part.thought !== true,
+          );
+          responseContent =
+            responseContentParts.length > 0
+              ? { role: "assistant", parts: responseContentParts }
+              : undefined;
+          responseText = responseContentParts
+            .filter((p) => p.type === "text")
             .map((p) => (p as any).text as string)
             .join("")
             .trim();
@@ -6108,12 +6242,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
           const modelCompletedAtMs = Date.now();
 
-          const stepCostUsd = estimateCallCostUsd({
-            modelId: modelVersion,
-            pricingModelId: request.model,
-            tokens: usageTokens,
-            responseImages: 0,
-          });
+          const generatedImageCount = responseContentParts.filter(
+            (part) => part.type === "inlineData" && isInlineImageMime(part.mimeType),
+          ).length;
+          const stepCostUsd =
+            estimateCallCostUsd({
+              modelId: modelVersion,
+              pricingModelId: request.model,
+              tokens: usageTokens,
+              responseImages: 0,
+            }) + estimateHostedImageGenerationCostUsd(request.modelTools, generatedImageCount);
           totalCostUsd += stepCostUsd;
 
           if (usageTokens) {
@@ -6169,6 +6307,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               modelVersion,
               text: responseText || undefined,
               thoughts: reasoningSummary || undefined,
+              ...(responseContent ? { content: responseContent } : {}),
               toolCalls: [],
               usage: usageTokens,
               costUsd: stepCostUsd,
@@ -6191,7 +6330,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               },
             });
             if (steeringItems.length === 0) {
-              return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+              return {
+                text: finalText,
+                thoughts: finalThoughts,
+                ...(responseContent ? { content: responseContent } : {}),
+                steps,
+                totalCostUsd,
+              };
             }
             previousResponseId = (finalResponse as any).id;
             input = steeringItems;
@@ -6318,6 +6463,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             modelVersion,
             text: responseText || undefined,
             thoughts: reasoningSummary || undefined,
+            ...(responseContent ? { content: responseContent } : {}),
             toolCalls: stepToolCalls,
             usage: usageTokens,
             costUsd: stepCostUsd,
@@ -7605,11 +7751,15 @@ function buildOpenAiImagePrompt(params: {
   imagePrompt: string;
   hasStyleImages: boolean;
 }): string {
+  const stylePrompt = params.stylePrompt.trim();
+  if (!stylePrompt) {
+    return params.imagePrompt.trim();
+  }
   return [
     "Follow the requested visual style.",
     "",
     "Style:",
-    params.stylePrompt.trim(),
+    stylePrompt,
     ...(params.hasStyleImages
       ? [
           "",
@@ -7627,6 +7777,7 @@ function buildOpenAiImagePrompt(params: {
 type LlmGptImage2RequestOptions = {
   readonly model: string;
   readonly imageResolution?: LlmGptImage2Resolution;
+  readonly imageSize?: LlmGptImage2Size;
   readonly imageQuality?: LlmGptImage2Quality;
   readonly outputFormat?: LlmGptImage2OutputFormat;
   readonly outputCompression?: number;
@@ -7644,6 +7795,9 @@ function resolveGptImage2RequestParams(request: LlmGptImage2RequestOptions): {
   readonly background: LlmGptImage2Background | undefined;
   readonly moderation: LlmGptImage2Moderation | undefined;
 } {
+  if (request.imageResolution !== undefined && request.imageSize !== undefined) {
+    throw new Error("Provide only one of imageResolution or imageSize.");
+  }
   if (request.partialImages !== undefined) {
     throw new Error("partialImages is only supported for streaming image generation.");
   }
@@ -7662,7 +7816,9 @@ function resolveGptImage2RequestParams(request: LlmGptImage2RequestOptions): {
   ) {
     throw new Error("outputCompression requires outputFormat to be jpeg or webp.");
   }
-  const size = request.imageResolution ?? "auto";
+  const size =
+    request.imageResolution ??
+    (request.imageSize ? resolveOpenAiGptImage2Size(request.imageSize) : "auto");
   const sizeValidation = validateOpenAiGptImage2Resolution(size);
   if (!sizeValidation.valid) {
     throw new Error(
@@ -7816,29 +7972,7 @@ async function generateImagesWithOpenAiImageApi(
   }
 }
 
-function buildChatGptImageInputContent(params: {
-  prompt: string;
-  styleImages: readonly LlmImageData[] | undefined;
-}): LlmContent[] {
-  const parts: LlmContentPart[] = [
-    {
-      type: "text",
-      text: params.prompt,
-    },
-  ];
-  for (const [index, image] of (params.styleImages ?? []).entries()) {
-    const mimeType = image.mimeType ?? "image/png";
-    parts.push({
-      type: "inlineData",
-      data: image.data.toString("base64"),
-      mimeType,
-      filename: `style-${index + 1}.${resolveAttachmentExtension(mimeType)}`,
-    });
-  }
-  return [{ role: "user", parts }];
-}
-
-async function generateImagesWithChatGptImageTool(
+async function generateImagesWithChatGptImageApi(
   request: LlmChatGptGenerateImagesRequest,
 ): Promise<LlmImageData[]> {
   const promptEntries = Array.from(request.imagePrompts, (rawPrompt, index) => {
@@ -7852,6 +7986,24 @@ async function generateImagesWithChatGptImageTool(
     return [];
   }
 
+  const structuredRequest = request as unknown as Record<string, unknown>;
+  const unsupportedControl = [
+    "imageResolution",
+    "imageSize",
+    "imageQuality",
+    "outputFormat",
+    "outputCompression",
+    "moderation",
+    "action",
+    "partialImages",
+    "numImages",
+  ].find((control) => structuredRequest[control] !== undefined);
+  if (unsupportedControl) {
+    throw new Error(
+      `ChatGPT subscription image generation does not support structured control "${unsupportedControl}"; only background is configurable. It always uses automatic size and quality, so put the desired orientation or aspect ratio in the image prompt instead.`,
+    );
+  }
+
   const providerInfo = resolveProvider(request.model);
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
@@ -7860,10 +8012,14 @@ async function generateImagesWithChatGptImageTool(
     model: request.model,
   });
   const startedAtMs = Date.now();
-  const params = resolveGptImage2RequestParams(request);
-  const outputMimeType = resolveOpenAiImageMimeType(params.outputFormat);
+  const params = resolveGptImage2RequestParams({
+    model: request.model,
+    background: request.background,
+  });
+  if ((request.styleImages?.length ?? 0) > 5) {
+    throw new Error("ChatGPT image edits support at most 5 style images.");
+  }
   let totalUsage: LlmUsageTokens | undefined;
-  let costUsd = 0;
   let outputImages = 0;
 
   telemetry.emit({
@@ -7881,69 +8037,35 @@ async function generateImagesWithChatGptImageTool(
         imagePrompt,
         hasStyleImages: Boolean(request.styleImages && request.styleImages.length > 0),
       });
-      for (let imageIndex = 0; imageIndex < params.n; imageIndex += 1) {
-        const chatGptInput = toChatGptInput(
-          buildChatGptImageInputContent({
-            prompt,
-            styleImages: request.styleImages,
-          }),
-          { model: request.model },
-        );
-        const preparedInput = await maybePrepareOpenAiPromptInput(chatGptInput.input, {
-          model: request.model,
-          provider: "chatgpt",
-        });
-        const result = await collectChatGptCodexResponseWithRetry({
-          request: {
-            model: providerInfo.model,
-            store: false,
-            stream: true,
-            instructions:
-              chatGptInput.instructions ??
-              "Use the image_generation tool to generate exactly one image. Do not return prose instead of the image.",
-            input: preparedInput as ChatGptInputItem[],
-            tool_choice: "required",
-            parallel_tool_calls: false,
-            tools: [
-              {
-                type: "image_generation",
-                size: params.size,
-                quality: params.quality,
-                output_format: params.outputFormat ?? "png",
-                ...(request.outputCompression !== undefined
-                  ? { output_compression: request.outputCompression }
-                  : {}),
-                ...(params.background ? { background: params.background } : {}),
-                ...(params.moderation ? { moderation: params.moderation } : {}),
-                ...(request.action ? { action: request.action } : {}),
-              },
-            ],
-          },
-          signal: request.signal,
-        });
-        if (result.status && result.status !== "completed") {
-          throw new Error(`ChatGPT image generation response status ${result.status}`);
-        }
-        if (result.imageGenerationCalls.length === 0) {
-          throw new Error("ChatGPT image generation returned no image_generation_call result.");
-        }
-        for (const call of result.imageGenerationCalls) {
-          images.push({
-            mimeType: outputMimeType,
-            data: Buffer.from(call.result, "base64"),
-          });
-        }
-        outputImages = images.length;
-        const usage = extractChatGptUsageTokens(result.usage);
-        totalUsage = sumUsageTokens(totalUsage, usage);
-        costUsd += estimateCallCostUsd({
-          modelId: request.model,
-          tokens: usage,
-          responseImages: result.imageGenerationCalls.length,
-          imageSize: params.size,
-          imageQuality: params.quality,
+      const styleImages = request.styleImages?.map((image) => ({
+        image_url: `data:${image.mimeType ?? "image/png"};base64,${image.data.toString("base64")}`,
+      }));
+      const response = await requestChatGptCodexImages({
+        operation: styleImages && styleImages.length > 0 ? "edits" : "generations",
+        request: {
+          ...(styleImages && styleImages.length > 0 ? { images: styleImages } : {}),
+          prompt,
+          background: params.background ?? "auto",
+          model: providerInfo.model as "gpt-image-2",
+          n: params.n,
+          quality: "auto",
+          size: "auto",
+        },
+        signal: request.signal,
+      });
+      if (response.data.length === 0) {
+        throw new Error("ChatGPT Codex image response contained no generated images.");
+      }
+      const outputMimeType = resolveOpenAiImageMimeType(response.output_format);
+      for (const item of response.data) {
+        images.push({
+          mimeType: outputMimeType,
+          data: Buffer.from(item.b64_json, "base64"),
         });
       }
+      outputImages = images.length;
+      const usage = extractOpenAiUsageTokens(response.usage);
+      totalUsage = sumUsageTokens(totalUsage, usage);
     }
 
     telemetry.emit({
@@ -7952,9 +8074,9 @@ async function generateImagesWithChatGptImageTool(
       durationMs: Math.max(0, Date.now() - startedAtMs),
       modelVersion: request.model,
       usage: totalUsage,
-      costUsd,
+      costUsd: 0,
       imageCount: images.length,
-      attempts: promptEntries.length * params.n,
+      attempts: promptEntries.length,
     });
     return images;
   } catch (error) {
@@ -7964,7 +8086,7 @@ async function generateImagesWithChatGptImageTool(
       success: false,
       durationMs: Math.max(0, Date.now() - startedAtMs),
       usage: totalUsage,
-      costUsd,
+      costUsd: 0,
       imageCount: outputImages,
       error: err.message,
     });
@@ -7979,7 +8101,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
     return await generateImagesWithOpenAiImageApi(request);
   }
   if (isChatGptGenerateImagesRequest(request)) {
-    return await generateImagesWithChatGptImageTool(request);
+    return await generateImagesWithChatGptImageApi(request);
   }
 
   const maxAttempts = Math.max(1, Math.floor(request.maxAttempts ?? 4));

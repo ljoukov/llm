@@ -202,27 +202,15 @@ export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
     tokenProviderKey &&
     tokenProviderKey.trim().length > 0
   ) {
-    if (chatGptAuthState.cachedProfile && !isExpired(chatGptAuthState.cachedProfile)) {
-      return chatGptAuthState.cachedProfile;
-    }
-    if (chatGptAuthState.refreshPromise) {
-      return chatGptAuthState.refreshPromise;
-    }
-    chatGptAuthState.refreshPromise = (async () => {
-      try {
-        const store = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV];
-        const profile = await fetchChatGptAuthProfileFromTokenProvider({
-          baseUrl: tokenProviderUrl,
-          apiKey: tokenProviderKey,
-          store: store ?? undefined,
-        });
-        chatGptAuthState.cachedProfile = profile;
-        return profile;
-      } finally {
-        chatGptAuthState.refreshPromise = null;
-      }
-    })();
-    return chatGptAuthState.refreshPromise;
+    // The provider may own a pool of accounts. Fetch for every top-level request so
+    // concurrent callers can receive different accounts; caching here would pin the
+    // entire process to one subscription until its access token expired.
+    const store = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV];
+    return fetchChatGptAuthProfileFromTokenProvider({
+      baseUrl: tokenProviderUrl,
+      apiKey: tokenProviderKey,
+      store: store ?? undefined,
+    });
   }
 
   if (chatGptAuthState.cachedProfile && !isExpired(chatGptAuthState.cachedProfile)) {
@@ -260,6 +248,10 @@ function resolveCodexAuthJsonPath(): string {
 
 function loadAuthProfileFromCodexStore(): ChatGptAuthProfile {
   const authPath = resolveCodexAuthJsonPath();
+  return readChatGptAuthProfileFromFile(authPath);
+}
+
+export function readChatGptAuthProfileFromFile(authPath: string): ChatGptAuthProfile {
   let raw: string;
   try {
     raw = fs.readFileSync(authPath, "utf8");

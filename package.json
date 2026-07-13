@@ -1,6 +1,6 @@
 {
   "name": "@ljoukov/llm",
-  "version": "7.0.26",
+  "version": "8.0.0",
   "description": "Unified wrapper over OpenAI Responses API and Google Gemini (@google/genai), with streaming + usage/cost metrics.",
   "license": "MIT",
   "repository": {
@@ -39,10 +39,10 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
-    "format": "biome format --write src test benchmarks vercel biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
-    "format:check": "biome format src test benchmarks vercel biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
-    "lint": "biome lint src test benchmarks vercel tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
-    "lint:fix": "biome lint --write src test benchmarks vercel tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "format": "biome format --write src test benchmarks vercel workers biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "format:check": "biome format src test benchmarks vercel workers biome.json tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "lint": "biome lint src test benchmarks vercel workers tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
+    "lint:fix": "biome lint --write src test benchmarks vercel workers tsup.config.ts vitest.unit.config.ts vitest.integration.config.ts",
     "bench:agent": "tsx benchmarks/agent/run.ts",
     "bench:agent:estimate": "tsx benchmarks/agent/run.ts --estimate-only",
     "bench:agent:latest": "tsx benchmarks/agent/run.ts --tasks all --prune-traces",
@@ -51,6 +51,7 @@
     "bench:subagent-loop": "tsx benchmarks/subagent-loop/run.ts",
     "bench:lesson-generation": "tsx benchmarks/lesson-generation/run.ts",
     "example:cli-chat": "tsx examples/cli-chat.ts",
+    "chatgpt-auth": "tsx workers/chatgpt-auth/src/cli.ts",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "test:integration": "npm run test:integration:node",

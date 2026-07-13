@@ -47,13 +47,7 @@ export type {
   LlmBaseRequest,
   LlmBlockedEvent,
   LlmChatGptGenerateImagesRequest,
-  LlmChatGptImageAction,
   LlmChatGptImageBackground,
-  LlmChatGptImageModeration,
-  LlmChatGptImageNumImages,
-  LlmChatGptImageOutputFormat,
-  LlmChatGptImageQuality,
-  LlmChatGptImageResolution,
   LlmContent,
   LlmContentPart,
   LlmCustomTool,
@@ -76,6 +70,7 @@ export type {
   LlmGptImage2PartialImageCount,
   LlmGptImage2Quality,
   LlmGptImage2Resolution,
+  LlmGptImage2Size,
   LlmJsonRequest,
   LlmJsonStream,
   LlmJsonStreamEvent,
@@ -90,6 +85,7 @@ export type {
   LlmOpenAiImagePartialImageCount,
   LlmOpenAiImageQuality,
   LlmOpenAiImageResolution,
+  LlmOpenAiImageSize,
   LlmOpenAiGenerateImagesRequest,
   LlmOpenAiResponseContainerReference,
   LlmOpenAiResponseMetadata,
@@ -109,6 +105,7 @@ export type {
   LlmToolCallStartedEvent,
   LlmToolCallStreamEvent,
   LlmToolConfig,
+  LlmOpenAiImageGenerationToolConfig,
   LlmToolLoopRequest,
   LlmToolLoopResult,
   LlmToolLoopSteeringAppendResult,
@@ -164,6 +161,11 @@ export {
 } from "./utils/modelConcurrency.js";
 export type { ModelConcurrencyConfig, ModelConcurrencyProvider } from "./utils/modelConcurrency.js";
 export { runAgentLoop, streamAgentLoop } from "./agent.js";
+export { createImageGenerationTool } from "./tools/imageGeneration.js";
+export type {
+  LlmImageGenerationToolInput,
+  LlmImageGenerationToolOptions,
+} from "./tools/imageGeneration.js";
 export type {
   AgentLoopStream,
   AgentLoggingConfig,
@@ -171,6 +173,10 @@ export type {
   AgentLogLineSink,
   AgentFilesystemToolConfig,
   AgentFilesystemToolSelection,
+  AgentChatGptImageGenerationToolConfig,
+  AgentImageGenerationToolConfig,
+  AgentImageGenerationToolSelection,
+  AgentOpenAiImageGenerationToolConfig,
   AgentSubagentToolConfig,
   AgentSubagentToolPromptPattern,
   AgentSubagentToolSelection,
@@ -284,6 +290,8 @@ export {
   OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS,
   OPENAI_GPT_IMAGE_2_QUALITY_LEVELS,
   OPENAI_GPT_IMAGE_2_RESOLUTIONS,
+  OPENAI_GPT_IMAGE_2_SEMANTIC_SIZES,
+  OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS,
   OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
@@ -293,6 +301,7 @@ export {
   isOpenAiImageModelId,
   isOpenAiModelId,
   resolveChatGptImageProviderModel,
+  resolveOpenAiGptImage2Size,
   validateOpenAiGptImage2Resolution,
 } from "./openai/models.js";
 export type {
@@ -311,6 +320,8 @@ export type {
   OpenAiGptImage2Quality,
   OpenAiGptImage2Resolution,
   OpenAiGptImage2ResolutionValidationResult,
+  OpenAiGptImage2SemanticSize,
+  OpenAiGptImage2Size,
   OpenAiImageModelId,
   OpenAiModelId,
 } from "./openai/models.js";

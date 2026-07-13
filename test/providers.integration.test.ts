@@ -43,41 +43,14 @@ async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
   return { response, thought, sawUsage };
 }
 
-function readJpegDimensions(data: Buffer): { width: number; height: number } | undefined {
-  if (data[0] !== 0xff || data[1] !== 0xd8) {
+function readPngDimensions(data: Buffer): { width: number; height: number } | undefined {
+  if (data.length < 24 || data[0] !== 0x89 || data.subarray(1, 4).toString("ascii") !== "PNG") {
     return undefined;
   }
-  let offset = 2;
-  while (offset + 9 < data.length) {
-    if (data[offset] !== 0xff) {
-      offset += 1;
-      continue;
-    }
-    const marker = data[offset + 1];
-    const segmentLength = data.readUInt16BE(offset + 2);
-    if (
-      marker === 0xc0 ||
-      marker === 0xc1 ||
-      marker === 0xc2 ||
-      marker === 0xc3 ||
-      marker === 0xc5 ||
-      marker === 0xc6 ||
-      marker === 0xc7 ||
-      marker === 0xc9 ||
-      marker === 0xca ||
-      marker === 0xcb ||
-      marker === 0xcd ||
-      marker === 0xce ||
-      marker === 0xcf
-    ) {
-      return {
-        height: data.readUInt16BE(offset + 5),
-        width: data.readUInt16BE(offset + 7),
-      };
-    }
-    offset += 2 + segmentLength;
-  }
-  return undefined;
+  return {
+    width: data.readUInt32BE(16),
+    height: data.readUInt32BE(20),
+  };
 }
 
 describe("integration: text model matrix", () => {
@@ -154,23 +127,23 @@ describe("integration: image model matrix", () => {
         const images = await generateImages({
           model,
           stylePrompt: "Simple portrait poster style. White background, clean edges, no text.",
-          imagePrompts: ["A single blue square centered in the frame"],
-          imageResolution: "1024x1536",
-          imageQuality: "high",
-          outputFormat: "jpeg",
-          outputCompression: 50,
-          action: "generate",
+          imagePrompts: [
+            "A single blue square centered on a tall upright 2:3 portrait canvas. The final image must be taller than it is wide.",
+          ],
+          background: "opaque",
         });
 
         expect(images).toHaveLength(1);
         const image = images[0];
         expect(image).toBeDefined();
         expect(image?.data.length).toBeGreaterThan(0);
-        expect(image?.mimeType).toBe("image/jpeg");
-        expect(image ? readJpegDimensions(image.data) : undefined).toEqual({
-          width: 1024,
-          height: 1536,
-        });
+        expect(image?.mimeType).toBe("image/png");
+        const dimensions = image ? readPngDimensions(image.data) : undefined;
+        expect(dimensions?.width).toBeGreaterThan(0);
+        expect(dimensions?.height).toBeGreaterThan(0);
+        if (dimensions) {
+          expect(dimensions.height).toBeGreaterThan(dimensions.width);
+        }
         return;
       }
 
