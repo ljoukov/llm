@@ -8,8 +8,11 @@ const CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_API
 const CHATGPT_AUTH_API_KEY_ENV = "CHATGPT_AUTH_API_KEY";
 const CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_STORE";
 const CHATGPT_CODEX_UPSTREAM_URL_ENV = "CHATGPT_CODEX_UPSTREAM_URL";
+const CHATGPT_CODEX_IMAGES_UPSTREAM_URL_ENV = "CHATGPT_CODEX_IMAGES_UPSTREAM_URL";
 
 const DEFAULT_CHATGPT_CODEX_UPSTREAM_URL = "https://chatgpt.com/backend-api/codex/responses";
+const DEFAULT_CHATGPT_CODEX_IMAGES_UPSTREAM_URL =
+  "https://chatgpt.com/backend-api/codex/images/generations";
 const DEFAULT_OPENAI_BETA_HEADER = "responses=experimental";
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -140,6 +143,32 @@ function resolveUpstreamUrl(): string {
   return getEnv(CHATGPT_CODEX_UPSTREAM_URL_ENV) ?? DEFAULT_CHATGPT_CODEX_UPSTREAM_URL;
 }
 
+function replaceCodexEndpointResource(
+  rawUrl: string,
+  resource: "images/generations" | "images/edits",
+): string {
+  const url = new URL(rawUrl);
+  const path = url.pathname.replace(/\/+$/u, "");
+  if (/(?:\/responses|\/images\/(?:generations|edits))$/u.test(path)) {
+    url.pathname = path.replace(
+      /(?:\/responses|\/images\/(?:generations|edits))$/u,
+      `/${resource}`,
+    );
+  } else {
+    url.pathname = `${path}/${resource}`.replace(/\/{2,}/gu, "/");
+  }
+  return url.toString();
+}
+
+function resolveImagesUpstreamUrl(operation: "generations" | "edits"): string {
+  const configured =
+    getEnv(CHATGPT_CODEX_IMAGES_UPSTREAM_URL_ENV) ??
+    (getEnv(CHATGPT_CODEX_UPSTREAM_URL_ENV)
+      ? resolveUpstreamUrl()
+      : DEFAULT_CHATGPT_CODEX_IMAGES_UPSTREAM_URL);
+  return replaceCodexEndpointResource(configured, `images/${operation}`);
+}
+
 async function fetchChatGptCodexToken(): Promise<ChatGptCodexToken | Response> {
   const config = resolveTokenProviderConfig();
   if (config instanceof Response) {
@@ -209,7 +238,11 @@ function normalizeEpochMillis(value: unknown): number | null {
   return parsed < 1_000_000_000_000 ? parsed * 1000 : parsed;
 }
 
-function buildUpstreamHeaders(request: Request, token: ChatGptCodexToken): Headers {
+function buildUpstreamHeaders(
+  request: Request,
+  token: ChatGptCodexToken,
+  mode: "responses" | "images" = "responses",
+): Headers {
   const headers = new Headers();
   for (const [name, value] of request.headers) {
     const lower = name.toLowerCase();
@@ -228,14 +261,16 @@ function buildUpstreamHeaders(request: Request, token: ChatGptCodexToken): Heade
 
   headers.set("authorization", `Bearer ${token.accessToken}`);
   headers.set("chatgpt-account-id", token.accountId);
-  if (!headers.has("openai-beta")) {
+  if (mode === "responses" && !headers.has("openai-beta")) {
     headers.set("openai-beta", DEFAULT_OPENAI_BETA_HEADER);
+  } else if (mode === "images") {
+    headers.delete("openai-beta");
   }
   if (!headers.has("originator")) {
     headers.set("originator", "llm-vercel-codex-proxy");
   }
   if (!headers.has("accept")) {
-    headers.set("accept", "text/event-stream");
+    headers.set("accept", mode === "responses" ? "text/event-stream" : "application/json");
   }
   if (!headers.has("content-type")) {
     headers.set("content-type", "application/json");
@@ -302,6 +337,40 @@ export async function handleCodexResponsesRequest(request: Request): Promise<Res
 
   const upstreamResponse = await fetch(resolveUpstreamUrl(), upstreamRequestInit);
 
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: buildClientHeaders(upstreamResponse.headers),
+  });
+}
+
+export async function handleCodexImagesRequest(
+  request: Request,
+  operation: "generations" | "edits",
+): Promise<Response> {
+  if (!isAuthorized(request)) {
+    return unauthorized();
+  }
+  if (request.method !== "POST") {
+    return methodNotAllowed();
+  }
+
+  const token = await fetchChatGptCodexToken();
+  if (token instanceof Response) {
+    return token;
+  }
+
+  const upstreamRequestInit: StreamingRequestInit = {
+    method: "POST",
+    headers: buildUpstreamHeaders(request, token, "images"),
+    body: request.body,
+    signal: request.signal,
+  };
+  if (request.body) {
+    upstreamRequestInit.duplex = "half";
+  }
+
+  const upstreamResponse = await fetch(resolveImagesUpstreamUrl(operation), upstreamRequestInit);
   return new Response(upstreamResponse.body, {
     status: upstreamResponse.status,
     statusText: upstreamResponse.statusText,

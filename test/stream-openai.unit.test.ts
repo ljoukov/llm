@@ -13,6 +13,8 @@ import {
 
 let capturedRequest: any = null;
 let finalResponseModelOverride: string | undefined;
+let finalResponseOutput: unknown[] | undefined;
+let emitDefaultStreamDeltas = true;
 
 vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
@@ -21,14 +23,17 @@ vi.mock("@google-cloud/storage", async () => {
 vi.mock("../src/openai/calls.js", () => {
   const fakeStream = {
     async *[Symbol.asyncIterator]() {
-      yield { type: "response.output_text.delta", delta: "Hello" };
-      yield { type: "response.reasoning_summary_text.delta", delta: "Thinking" };
+      if (emitDefaultStreamDeltas) {
+        yield { type: "response.output_text.delta", delta: "Hello" };
+        yield { type: "response.reasoning_summary_text.delta", delta: "Thinking" };
+      }
     },
     async finalResponse() {
       return {
         id: "resp_123",
         model: finalResponseModelOverride ?? capturedRequest?.model ?? "gpt-5.4-mini",
         status: "completed",
+        ...(finalResponseOutput ? { output: finalResponseOutput } : {}),
         usage: {
           input_tokens: 10,
           output_tokens: 6,
@@ -58,6 +63,8 @@ describe("streamText (OpenAI)", () => {
   beforeEach(() => {
     capturedRequest = null;
     finalResponseModelOverride = undefined;
+    finalResponseOutput = undefined;
+    emitDefaultStreamDeltas = true;
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
     resetMockStorageState();
@@ -159,6 +166,71 @@ describe("streamText (OpenAI)", () => {
     expect(capturedRequest?.model).toBe("gpt-5.5");
     expect(capturedRequest?.service_tier).toBe("priority");
     expect(result.modelVersion).toBe("gpt-5.5");
+  });
+
+  it("maps the hosted image-generation tool and returns its image inline", async () => {
+    const imageData = Buffer.from("hosted image bytes").toString("base64");
+    emitDefaultStreamDeltas = false;
+    finalResponseOutput = [
+      {
+        type: "image_generation_call",
+        id: "ig_123",
+        status: "completed",
+        result: imageData,
+      },
+    ];
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "gpt-5.4-mini",
+      input: "Generate a landscape illustration",
+      tools: [
+        {
+          type: "image-generation",
+          model: "gpt-image-2",
+          imageSize: "landscape",
+          imageQuality: "high",
+          outputFormat: "webp",
+          background: "opaque",
+        },
+      ],
+    });
+
+    expect(capturedRequest?.tools).toEqual([
+      {
+        type: "image_generation",
+        model: "gpt-image-2",
+        size: "1536x1024",
+        quality: "high",
+        output_format: "webp",
+        background: "opaque",
+      },
+    ]);
+    expect(result.text).toBe("");
+    expect(result.content).toEqual({
+      role: "assistant",
+      parts: [{ type: "inlineData", data: imageData, mimeType: "image/webp" }],
+    });
+    expect(result.costUsd).toBeGreaterThanOrEqual(0.165);
+  });
+
+  it("rejects hosted image compression unless the output is JPEG or WebP", async () => {
+    const { generateText } = await import("../src/llm.js");
+
+    await expect(
+      generateText({
+        model: "gpt-5.4-mini",
+        input: "Generate an image",
+        tools: [
+          {
+            type: "image-generation",
+            model: "gpt-image-2",
+            outputFormat: "png",
+            outputCompression: 80,
+          },
+        ],
+      }),
+    ).rejects.toThrow("outputCompression requires outputFormat to be jpeg or webp");
   });
 
   it("prices gpt-5.5-fast at priority rates when OpenAI returns a concrete model version", async () => {

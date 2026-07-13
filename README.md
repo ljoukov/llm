@@ -106,23 +106,29 @@ If you deploy to multiple environments (Vercel, GCP, local dev, etc.), use a cen
 refresh-token rotation and serves short-lived access tokens.
 
 - `CHATGPT_AUTH_TOKEN_PROVIDER_URL` (example: `https://chatgpt-auth.<your-domain>`)
-- `CHATGPT_AUTH_API_KEY` (shared secret; sent as `Authorization: Bearer ...` and `x-chatgpt-auth: ...`)
-- `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (`kv` or `d1`, defaults to `kv`)
+- `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` (prefer a named caller token created by the provider CLI)
+- `CHATGPT_AUTH_API_KEY` (backward-compatible fallback; the Worker uses this as its admin secret)
+- `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (deprecated compatibility setting; the current Worker always uses D1)
 - `CHATGPT_CODEX_PROXY_URL` (optional Vercel proxy endpoint; accepts either `https://<project>.vercel.app` or `https://<project>.vercel.app/api/codex/responses`)
 - `CHATGPT_CODEX_PROXY_API_KEY` (bearer token for `CHATGPT_CODEX_PROXY_URL`)
 - `CHATGPT_CODEX_ENDPOINT` (optional direct endpoint override; defaults to `https://chatgpt.com/backend-api/codex/responses`)
+- `CHATGPT_CODEX_IMAGES_ENDPOINT` (optional direct Images endpoint override; generation/edit paths are derived from it)
 - `CHATGPT_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
 
 This repo includes a Cloudflare Workers token provider implementation in `workers/chatgpt-auth/`.
 It also includes a minimal Vercel streaming proxy app in `vercel/codex-proxy/`.
 
-If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` + `CHATGPT_AUTH_API_KEY` are set, `chatgpt-*` models will fetch tokens from the
-token provider and will not read the local Codex auth store.
+If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` plus `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` (or the legacy
+`CHATGPT_AUTH_API_KEY`) are set, `chatgpt-*` models fetch a newly selected account from the token provider for each
+top-level request and do not read the local Codex auth store. The included Worker rotates atomically across enabled
+subscription accounts and records which named caller received which account. See
+`workers/chatgpt-auth/README.md` for browser-assisted account login and caller-management commands.
 
-If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, `chatgpt-*` text requests are sent through that
-proxy and the local process does not need access to the Codex auth store or token provider. The Vercel proxy fetches
-short-lived ChatGPT access tokens from `workers/chatgpt-auth` and streams the upstream Codex response body back to the
-caller. These proxy bearer tokens should be server-side environment variables; do not expose them in browser bundles.
+If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, `chatgpt-*` text and image requests are sent
+through that proxy and the local process does not need access to the Codex auth store or token provider. The Vercel
+proxy fetches short-lived ChatGPT access tokens from `workers/chatgpt-auth`; it streams Responses traffic and forwards
+Images JSON. These proxy bearer tokens should be server-side environment variables; do not expose them in browser
+bundles.
 
 ### Responses transport
 
@@ -193,12 +199,27 @@ console.log(result.usage, result.costUsd);
 
 ### Image Generation
 
+`generateImages()` is the low-level, direct image API. Its `model` selects both the credential
+route and the image endpoint; no GPT text model is involved:
+
+| Library model | Authentication and billing | Endpoint |
+| --- | --- | --- |
+| `gpt-image-2` | `OPENAI_API_KEY` / public API billing | OpenAI Images API `/v1/images/generations` or `/v1/images/edits` |
+| `chatgpt-gpt-image-2` | ChatGPT/Codex login / subscription allowance | ChatGPT Codex `/backend-api/codex/images/generations` or `/backend-api/codex/images/edits` |
+
+Providing `styleImages` selects the corresponding edit endpoint. Otherwise, the generation
+endpoint is used. The subscription path calls GPT Image 2 directly; it does not send the prompt
+through Responses and does not use GPT-5.4 as an orchestrator.
+
+#### Direct public API
+
 ```ts
 import {
   generateImages,
   type LlmOpenAiImageResolution,
   OPENAI_GPT_IMAGE_2_QUALITY_LEVELS,
   OPENAI_GPT_IMAGE_2_RESOLUTIONS,
+  OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS,
   OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
 } from "@ljoukov/llm";
 
@@ -208,25 +229,61 @@ const images = await generateImages({
   model: "gpt-image-2",
   stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
   imagePrompts: ["A compact lab bench still life with glassware and an open notebook"],
-  imageResolution: customResolution,
+  imageSize: "landscape",
   imageQuality: "low",
   numImages: 1,
 });
 
 console.log(OPENAI_GPT_IMAGE_2_RESOLUTIONS, OPENAI_GPT_IMAGE_2_QUALITY_LEVELS);
+console.log(OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS);
 console.log(OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS);
 console.log(images[0]?.mimeType, images[0]?.data.byteLength);
+
+// Use imageResolution instead when exact/custom dimensions are required.
+const exactImages = await generateImages({
+  model: "gpt-image-2",
+  stylePrompt: "Technical product illustration.",
+  imagePrompts: ["An exploded view of a mechanical keyboard switch"],
+  imageResolution: customResolution,
+  imageQuality: "medium",
+  outputFormat: "webp",
+  outputCompression: 80,
+});
 ```
 
-`generateImages()` is typed as a discriminated union by `model`: `gpt-image-2` and
-`chatgpt-gpt-image-2` requests use `imageResolution`, while Gemini image requests use `imageSize`
-(`"1K" | "2K" | "4K"`). For GPT Image 2, `OPENAI_GPT_IMAGE_2_RESOLUTIONS` exposes the documented
-popular presets plus
-`"auto"`; custom literal `WIDTHxHEIGHT` resolutions are also accepted when they satisfy
-`OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS`: each edge must be at most 3840px, each edge must be a
-multiple of 16px, the long edge must be at most 3:1 relative to the short edge, and total pixels
-must be between 655,360 and 8,294,400. Resolutions above 3,686,400 pixels are documented as
-experimental by OpenAI.
+GPT Image 2 has two mutually exclusive size controls:
+
+- `imageSize`: `"square"` → `1024x1024`, `"landscape"` → `1536x1024`, `"portrait"` →
+  `1024x1536`, or `"auto"`.
+- `imageResolution`: `"auto"` or an exact `WIDTHxHEIGHT` string, including custom dimensions.
+
+Do not pass both. `OPENAI_GPT_IMAGE_2_RESOLUTIONS` exposes the popular exact presets plus
+`"auto"`. Custom resolutions must satisfy `OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS`: each edge is at
+most 3840px and a multiple of 16px, the aspect ratio is at most 3:1, and total pixels are between
+655,360 and 8,294,400. Resolutions above 3,686,400 pixels are experimental. Gemini image requests
+also use a property named `imageSize`, but their model-discriminated values are `"1K"`, `"2K"`,
+or `"4K"`.
+
+The direct public route supports `imageSize` or `imageResolution`, `imageQuality`, `numImages`,
+`background`, `outputFormat`, `outputCompression`, and `moderation`. `stylePrompt`, `styleImages`,
+and `imagePrompts` compose the generation/edit prompt. `imagePrompts` produces one request per
+entry, while `numImages` controls `n` within each request. `partialImages` is reserved for a
+streaming image API and is rejected by the non-streaming `generateImages()` call.
+
+As of July 13, 2026, the public API's estimated GPT Image 2 output charge for one image is:
+
+| Quality | Square `1024x1024` | Portrait `1024x1536` | Landscape `1536x1024` |
+| --- | ---: | ---: | ---: |
+| `low` | $0.006 | $0.005 | $0.005 |
+| `medium` | $0.053 | $0.041 | $0.041 |
+| `high` | $0.211 | $0.165 | $0.165 |
+
+Those are image-output estimates, not the complete request total. Public API billing also includes
+prompt text tokens and, for edits, input-image tokens; consult the current
+[OpenAI image generation cost calculator](https://developers.openai.com/api/docs/guides/image-generation#calculating-costs)
+before relying on a snapshot. Subscription-backed calls do not use this public-API price table.
+
+#### Direct ChatGPT subscription API
 
 To use ChatGPT/Codex subscription-backed image generation instead of the public Images API, use
 `chatgpt-gpt-image-2`:
@@ -235,21 +292,113 @@ To use ChatGPT/Codex subscription-backed image generation instead of the public 
 const images = await generateImages({
   model: "chatgpt-gpt-image-2",
   stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
-  imagePrompts: ["A compact lab bench still life with glassware and an open notebook"],
-  imageResolution: "1024x1536",
-  imageQuality: "high",
-  outputFormat: "jpeg",
-  outputCompression: 50,
-  action: "generate",
-  numImages: 1,
+  imagePrompts: [
+    "Create a tall upright 2:3 portrait canvas showing a compact lab bench with glassware and an open notebook. The final image must be taller than it is wide.",
+  ],
+  background: "auto",
 });
 ```
 
-That path reuses the same ChatGPT auth setup as other `chatgpt-*` models and sends the request
-through the ChatGPT/Codex Responses `image_generation` built-in tool. `imageResolution`,
-`imageQuality`, `outputFormat`, `outputCompression`, `background`, `moderation`, and `action` are
-passed as tool options. `numImages` is implemented as repeated one-image tool calls because the
-ChatGPT/Codex tool rejects `n` on `tools[0]`.
+This route reuses the same ChatGPT auth setup as other `chatgpt-*` models. It supports
+`background`; up to five `styleImages` can be supplied for an edit. It returns one image per
+`imagePrompts` entry, so repeat or vary entries when multiple images are needed. The library always
+sends `n: 1`, `size: "auto"`, and `quality: "auto"`, and therefore does not expose structured image
+count, size, resolution, or quality properties on `LlmChatGptGenerateImagesRequest`. The current
+subscription endpoint returns PNG and does not expose request controls for `outputFormat`,
+`outputCompression`, `moderation`, or `action`. Telemetry records `costUsd: 0` because calls consume
+the account's Codex/ChatGPT allowance rather than public API credits.
+
+Put the desired canvas orientation or aspect ratio directly in `imagePrompts`. In a live check on
+July 13, 2026, prompt instructions selected all three canvas shapes while the request kept size,
+quality, and background on `auto`:
+
+| Prompt intent | Observed service quality | Observed PNG dimensions |
+| --- | --- | --- |
+| Very wide panoramic 3:1 landscape canvas | `medium` | `2172x724` |
+| Tall upright 2:3 portrait canvas | `low` | `1024x1536` |
+| Exact 1:1 square icon canvas | `low` | `1254x1254` |
+
+Structured non-auto size requests were normalized by the private service and are intentionally not
+part of the subscription API. Prompt-driven aspect ratios work, but exact pixel dimensions remain
+service-selected. Use public `gpt-image-2` with `imageResolution` when pixel dimensions are a hard
+requirement.
+
+#### Image generation in agent loops
+
+For the common agent case, enable `imageGenerationTool` on `runAgentLoop()`. The outer `model` is
+always the text/reasoning model that decides whether to invoke image generation:
+
+```ts
+import { runAgentLoop } from "@ljoukov/llm";
+
+const result = await runAgentLoop({
+  model: "chatgpt-gpt-5.6-sol",
+  input:
+    "Create a very wide panoramic 3:1 landscape canvas illustrating a moonlit paper-cut forest. The final image must be much wider than it is tall.",
+  imageGenerationTool: true,
+});
+
+console.log(result.steps.flatMap((step) => step.toolCalls));
+```
+
+By default, the convenience option follows the outer model's credential route:
+
+- An OpenAI API text model such as `gpt-5.6` receives the provider-hosted Responses
+  `image_generation` tool with nested `model: "gpt-image-2"`.
+- A ChatGPT-authenticated text model receives a runtime `image_generation` function tool that
+  directly calls the subscription Images endpoint with `model: "gpt-image-2"`.
+
+Set `imageGenerationTool.model` to override that default and choose the other credential route.
+Structured size and quality options require an explicit public `model: "gpt-image-2"`; subscription
+tools derive aspect ratio from the prompt and let the service select quality automatically.
+
+For advanced routing, wire the tool explicitly. This example deliberately uses a public OpenAI
+text model for orchestration and the ChatGPT subscription for rendering:
+
+```ts
+import { createImageGenerationTool, runToolLoop } from "@ljoukov/llm";
+
+const result = await runToolLoop({
+  model: "gpt-5.6",
+  input:
+    "Generate a tall upright 2:3 portrait poster canvas of a glass observatory above the clouds. The final image must be taller than it is wide.",
+  tools: {
+    image_generation: createImageGenerationTool({
+      model: "chatgpt-gpt-image-2",
+    }),
+  },
+});
+```
+
+To expose the public hosted Responses tool directly, use `modelTools`. Hosted image output is
+returned as an `inlineData` part in `result.content`:
+
+```ts
+const result = await runToolLoop({
+  model: "gpt-5.6",
+  input: "Generate a wide watercolor panorama of a coastal village.",
+  tools: {},
+  modelTools: [
+    {
+      type: "image-generation",
+      model: "gpt-image-2",
+      imageSize: "landscape",
+      imageQuality: "high",
+      outputFormat: "webp",
+      background: "opaque",
+    },
+  ],
+});
+
+const generated = result.content?.parts.find((part) => part.type === "inlineData");
+```
+
+The hosted public tool additionally exposes `action`, `outputFormat`, `outputCompression`,
+`moderation`, and `inputImageMask`. It is only available with OpenAI API text models. For a
+ChatGPT-authenticated outer model, use `imageGenerationTool` or `createImageGenerationTool()` so
+rendering happens through the direct subscription endpoint. GPT Image 2 always processes input
+images at high fidelity, and this library does not expose paid partial-image streaming until it can
+surface those intermediate images as events.
 
 ### Streaming (response + thoughts + usage)
 

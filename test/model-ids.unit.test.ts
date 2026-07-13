@@ -25,14 +25,16 @@ import {
   OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS,
   OPENAI_GPT_IMAGE_2_QUALITY_LEVELS,
   OPENAI_GPT_IMAGE_2_RESOLUTIONS,
+  OPENAI_GPT_IMAGE_2_SEMANTIC_SIZES,
+  OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS,
   OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
   validateOpenAiGptImage2Resolution,
+  resolveOpenAiGptImage2Size,
 } from "../src/index.js";
 import type {
   LlmChatGptGenerateImagesRequest,
-  LlmChatGptImageResolution,
   LlmGeminiGenerateImagesRequest,
   LlmOpenAiImageResolution,
   LlmOpenAiGenerateImagesRequest,
@@ -43,6 +45,7 @@ const _openAiImageRequestTypeCheck = {
   stylePrompt: "style",
   imagePrompts: ["prompt"],
   imageResolution: "1440x960",
+  imageSize: undefined,
   imageQuality: "low",
   numImages: 2,
 } satisfies LlmOpenAiGenerateImagesRequest;
@@ -56,7 +59,7 @@ const _invalidOpenAiImageSizeTypeCheck = {
   model: "gpt-image-2",
   stylePrompt: "style",
   imagePrompts: ["prompt"],
-  // @ts-expect-error gpt-image-2 uses imageResolution, not Gemini imageSize.
+  // @ts-expect-error gpt-image-2 imageSize accepts semantic orientations, not Gemini size names.
   imageSize: "2K",
 } satisfies LlmOpenAiGenerateImagesRequest;
 
@@ -73,24 +76,31 @@ const _chatGptImageRequestTypeCheck = {
   model: "chatgpt-gpt-image-2",
   stylePrompt: "style",
   imagePrompts: ["prompt"],
-  imageResolution: "1440x960",
-  imageQuality: "high",
-  outputFormat: "jpeg",
-  outputCompression: 50,
   background: "opaque",
-  moderation: "low",
-  action: "generate",
-  numImages: 2,
 } satisfies LlmChatGptGenerateImagesRequest;
-
-const _customChatGptResolutionTypeCheck = "1440x960" satisfies LlmChatGptImageResolution;
 
 const _invalidChatGptImageSizeTypeCheck = {
   model: "chatgpt-gpt-image-2",
   stylePrompt: "style",
   imagePrompts: ["prompt"],
-  // @ts-expect-error ChatGPT image generation uses GPT Image 2 imageResolution, not Gemini imageSize.
-  imageSize: "2K",
+  // @ts-expect-error Subscription image generation derives aspect ratio from the prompt.
+  imageSize: "portrait",
+} satisfies LlmChatGptGenerateImagesRequest;
+
+const _invalidChatGptImageQualityTypeCheck = {
+  model: "chatgpt-gpt-image-2",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  // @ts-expect-error Subscription image generation always lets the service select quality.
+  imageQuality: "high",
+} satisfies LlmChatGptGenerateImagesRequest;
+
+const _invalidChatGptNumImagesTypeCheck = {
+  model: "chatgpt-gpt-image-2",
+  stylePrompt: "style",
+  imagePrompts: ["prompt"],
+  // @ts-expect-error ChatGPT subscription image generation returns one image per prompt.
+  numImages: 2,
 } satisfies LlmChatGptGenerateImagesRequest;
 
 describe("model id lists", () => {
@@ -146,6 +156,16 @@ describe("model id lists", () => {
       ...OPENAI_GPT_IMAGE_2_POPULAR_RESOLUTIONS,
       "auto",
     ]);
+    expect(OPENAI_GPT_IMAGE_2_SEMANTIC_SIZES).toEqual(["square", "landscape", "portrait"]);
+    expect(OPENAI_GPT_IMAGE_2_SEMANTIC_SIZE_RESOLUTIONS).toEqual({
+      square: "1024x1024",
+      landscape: "1536x1024",
+      portrait: "1024x1536",
+    });
+    expect(resolveOpenAiGptImage2Size("auto")).toBe("auto");
+    expect(resolveOpenAiGptImage2Size("square")).toBe("1024x1024");
+    expect(resolveOpenAiGptImage2Size("landscape")).toBe("1536x1024");
+    expect(resolveOpenAiGptImage2Size("portrait")).toBe("1024x1536");
     expect(OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS).toEqual({
       maxEdgePixels: 3840,
       edgeMultiplePixels: 16,

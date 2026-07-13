@@ -165,6 +165,74 @@ describe("runAgentLoop", () => {
     ]);
   });
 
+  it("maps imageGenerationTool to the hosted Responses tool for OpenAI models", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "gpt-5.6",
+      input: "Generate a portrait",
+      imageGenerationTool: {
+        model: "gpt-image-2",
+        imageSize: "portrait",
+        imageQuality: "high",
+        background: "opaque",
+      },
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+      modelTools?: unknown[];
+    };
+    expect(call.tools).toEqual({});
+    expect(call.modelTools).toEqual([
+      {
+        type: "image-generation",
+        model: "gpt-image-2",
+        imageSize: "portrait",
+        imageQuality: "high",
+        background: "opaque",
+      },
+    ]);
+  });
+
+  it("maps imageGenerationTool to a subscription-backed runtime tool for ChatGPT models", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await runAgentLoop({
+      model: "chatgpt-gpt-5.6-sol",
+      input: "Generate a landscape",
+      image_generation_tool: {
+        background: "auto",
+      },
+    });
+
+    const call = runToolLoopMock.mock.calls[0]?.[0] as {
+      tools: Record<string, unknown>;
+      modelTools?: unknown[];
+    };
+    expect(Object.keys(call.tools)).toEqual(["image_generation"]);
+    expect(call.modelTools).toBeUndefined();
+  });
+
+  it("rejects structured size or quality controls for subscription image generation", async () => {
+    runToolLoopMock.mockClear();
+    const { runAgentLoop } = await import("../src/agent.js");
+
+    await expect(
+      runAgentLoop({
+        model: "chatgpt-gpt-5.6-sol",
+        input: "Generate a landscape",
+        imageGenerationTool: {
+          imageSize: "landscape",
+          imageQuality: "high",
+        } as never,
+      }),
+    ).rejects.toThrow("always uses automatic size and quality");
+    expect(runToolLoopMock).not.toHaveBeenCalled();
+  });
+
   it("adds codex-style subagent tools when enabled", async () => {
     runToolLoopMock.mockClear();
     const { runAgentLoop } = await import("../src/agent.js");
@@ -453,6 +521,11 @@ describe("runAgentLoop", () => {
         maxAgents: 2,
         maxDepth: 2,
       },
+      imageGenerationTool: {
+        model: "gpt-image-2",
+        imageSize: "square",
+        imageQuality: "low",
+      },
       telemetry: {
         sink: {
           emit: (event) => {
@@ -465,6 +538,16 @@ describe("runAgentLoop", () => {
     });
 
     expect(runToolLoopMock).toHaveBeenCalledTimes(2);
+    for (const [call] of runToolLoopMock.mock.calls) {
+      expect((call as { modelTools?: unknown[] }).modelTools).toEqual([
+        {
+          type: "image-generation",
+          model: "gpt-image-2",
+          imageSize: "square",
+          imageQuality: "low",
+        },
+      ]);
+    }
     const started = events.filter((event) => event.type === "agent.run.started");
     const completed = events.filter((event) => event.type === "agent.run.completed");
     expect(started).toHaveLength(2);

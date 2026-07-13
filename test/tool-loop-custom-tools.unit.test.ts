@@ -11,7 +11,7 @@ let chatGptRequests: any[] = [];
 let chatGptCallCount = 0;
 let geminiRequests: any[] = [];
 let geminiCallCount = 0;
-let openAiScenario: "custom" | "image_function" = "custom";
+let openAiScenario: "custom" | "image_function" | "hosted_image" = "custom";
 let chatGptScenario: "custom" | "image_function" = "custom";
 let geminiScenario: "image_function" | "duplicate_function_calls" = "image_function";
 
@@ -22,35 +22,50 @@ vi.mock("../src/openai/calls.js", () => {
         openAiRequests.push(request);
         const callIndex = openAiCallCount++;
         const firstResponse =
-          openAiScenario === "image_function"
+          openAiScenario === "hosted_image"
             ? {
                 id: "resp_1",
                 model: "gpt-5.4-mini",
+                status: "completed",
                 usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
                 output: [
                   {
-                    type: "function_call",
-                    id: "fc_1",
-                    call_id: "call_function_1",
-                    name: "view_image",
-                    arguments: '{"path":"image.png"}',
+                    type: "image_generation_call",
+                    id: "ig_1",
+                    status: "completed",
+                    result: Buffer.from("tool loop image bytes").toString("base64"),
                   },
                 ],
               }
-            : {
-                id: "resp_1",
-                model: "gpt-5.4-mini",
-                usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-                output: [
-                  {
-                    type: "custom_tool_call",
-                    id: "ctc_1",
-                    call_id: "call_custom_1",
-                    name: "apply_patch",
-                    input: "*** Begin Patch\n*** End Patch\n",
-                  },
-                ],
-              };
+            : openAiScenario === "image_function"
+              ? {
+                  id: "resp_1",
+                  model: "gpt-5.4-mini",
+                  usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+                  output: [
+                    {
+                      type: "function_call",
+                      id: "fc_1",
+                      call_id: "call_function_1",
+                      name: "view_image",
+                      arguments: '{"path":"image.png"}',
+                    },
+                  ],
+                }
+              : {
+                  id: "resp_1",
+                  model: "gpt-5.4-mini",
+                  usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+                  output: [
+                    {
+                      type: "custom_tool_call",
+                      id: "ctc_1",
+                      call_id: "call_custom_1",
+                      name: "apply_patch",
+                      input: "*** Begin Patch\n*** End Patch\n",
+                    },
+                  ],
+                };
         const secondResponse = {
           id: "resp_2",
           model: "gpt-5.4-mini",
@@ -267,6 +282,48 @@ describe("runToolLoop custom tools", () => {
     expect(openAiRequests[0]?.tools?.[0]?.type).toBe("custom");
     expect(openAiRequests[0]?.tools?.[0]?.name).toBe("apply_patch");
     expect(openAiRequests[1]?.input?.[0]?.type).toBe("custom_tool_call_output");
+  });
+
+  it("supports a provider-native-only OpenAI image-generation tool loop", async () => {
+    openAiScenario = "hosted_image";
+    openAiRequests = [];
+    openAiCallCount = 0;
+
+    const { runToolLoop } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "gpt-5.4-mini",
+      input: "Generate a portrait illustration",
+      tools: {},
+      modelTools: [
+        {
+          type: "image-generation",
+          model: "gpt-image-2",
+          imageResolution: "1024x1536",
+          imageQuality: "medium",
+          background: "opaque",
+        },
+      ],
+    });
+
+    const imageData = Buffer.from("tool loop image bytes").toString("base64");
+    expect(openAiRequests).toHaveLength(1);
+    expect(openAiRequests[0]?.tools).toEqual([
+      {
+        type: "image_generation",
+        model: "gpt-image-2",
+        size: "1024x1536",
+        quality: "medium",
+        background: "opaque",
+      },
+    ]);
+    expect(result.text).toBe("");
+    expect(result.content).toEqual({
+      role: "assistant",
+      parts: [{ type: "inlineData", data: imageData, mimeType: "image/png" }],
+    });
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]?.content).toEqual(result.content);
+    expect(result.steps[0]?.toolCalls).toEqual([]);
   });
 
   it("supports ChatGPT custom/freeform tools", async () => {

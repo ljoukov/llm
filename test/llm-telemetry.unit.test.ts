@@ -12,6 +12,7 @@ let openAiContainerRequests: any[] = [];
 let openAiContainerFiles: any[] = [];
 let chatGptCodexRequests: any[] = [];
 let chatGptCodexResponse: any = null;
+let chatGptImageResponse: any = null;
 let geminiRequests: any[] = [];
 let geminiChunks: any[] = [];
 
@@ -127,6 +128,10 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
       chatGptCodexRequests.push(request);
       return chatGptCodexResponse;
     },
+    requestChatGptCodexImages: async ({ operation, request }: any) => {
+      chatGptCodexRequests.push({ operation, request });
+      return chatGptImageResponse;
+    },
   };
 });
 
@@ -196,6 +201,14 @@ describe("LLM telemetry", () => {
         output_tokens: 20,
         total_tokens: 30,
       },
+    };
+    chatGptImageResponse = {
+      created: 1,
+      data: [{ b64_json: Buffer.from("fake-chatgpt-image").toString("base64") }],
+      output_format: "png",
+      background: "opaque",
+      quality: "high",
+      size: "1024x1536",
     };
     geminiRequests = [];
     geminiChunks = [];
@@ -505,6 +518,7 @@ describe("LLM telemetry", () => {
       imageResolution: "2048x1152",
       imageQuality: "low",
       outputFormat: "png",
+      background: "opaque",
       numImages: 1,
     });
 
@@ -520,6 +534,7 @@ describe("LLM telemetry", () => {
         size: "2048x1152",
         quality: "low",
         output_format: "png",
+        background: "opaque",
       },
     });
     expect(openAiImageRequests[0]?.request?.prompt).toContain("Warm amber light");
@@ -544,45 +559,30 @@ describe("LLM telemetry", () => {
     expect(openAiImageRequests[0]?.request?.prompt).toContain("attached reference image");
   });
 
-  it("calls the ChatGPT image_generation tool for chatgpt-gpt-image-2 generateImages", async () => {
+  it("calls the direct ChatGPT Codex Images API for chatgpt-gpt-image-2", async () => {
     const { generateImages } = await import("../src/llm.js");
 
     const images = await generateImages({
       model: "chatgpt-gpt-image-2",
       stylePrompt: "Clean icon style.",
       imagePrompts: ["A blue square"],
-      imageResolution: "1024x1536",
-      imageQuality: "high",
-      outputFormat: "jpeg",
-      outputCompression: 50,
       background: "opaque",
-      moderation: "low",
-      action: "generate",
-      numImages: 1,
     });
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.mimeType).toBe("image/jpeg");
+    expect(images[0]?.mimeType).toBe("image/png");
     expect(images[0]?.data.toString()).toBe("fake-chatgpt-image");
     expect(chatGptCodexRequests).toHaveLength(1);
-    expect(chatGptCodexRequests[0]).toMatchObject({
-      model: "gpt-5.4",
-      store: false,
-      stream: true,
-      tool_choice: "required",
-      parallel_tool_calls: false,
-      tools: [
-        {
-          type: "image_generation",
-          size: "1024x1536",
-          quality: "high",
-          output_format: "jpeg",
-          output_compression: 50,
-          background: "opaque",
-          moderation: "low",
-          action: "generate",
-        },
-      ],
+    expect(chatGptCodexRequests[0]).toEqual({
+      operation: "generations",
+      request: {
+        prompt: expect.stringContaining("A blue square"),
+        model: "gpt-image-2",
+        n: 1,
+        size: "auto",
+        quality: "auto",
+        background: "opaque",
+      },
     });
   });
 });

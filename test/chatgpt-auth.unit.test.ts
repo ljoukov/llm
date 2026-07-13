@@ -114,7 +114,7 @@ describe("chatgpt-auth", () => {
     expect(persisted.tokens.account_id).toBe("acct_test_opaque");
   });
 
-  it("uses CHATGPT_AUTH_TOKEN_PROVIDER_URL when configured (no local refresh)", async () => {
+  it("fetches the token provider for each request so provider accounts can rotate", async () => {
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
 
@@ -132,14 +132,16 @@ describe("chatgpt-auth", () => {
       refresh_token: "rt_should_be_ignored",
     });
 
+    let requestNumber = 0;
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input);
       expect(url).toContain("/v1/token");
       expect(url).toContain("store=kv");
+      requestNumber += 1;
       return new Response(
         JSON.stringify({
-          accessToken: "at_test",
-          accountId: "acct_test",
+          accessToken: `at_test_${requestNumber}`,
+          accountId: `acct_test_${requestNumber}`,
           expiresAt: Date.now() + 60_000,
         }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -151,9 +153,10 @@ describe("chatgpt-auth", () => {
     const a = await getChatGptAuthProfile();
     const b = await getChatGptAuthProfile();
 
-    expect(a.access).toBe("at_test");
-    expect(a.accountId).toBe("acct_test");
-    expect(b.access).toBe("at_test");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a.access).toBe("at_test_1");
+    expect(a.accountId).toBe("acct_test_1");
+    expect(b.access).toBe("at_test_2");
+    expect(b.accountId).toBe("acct_test_2");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
