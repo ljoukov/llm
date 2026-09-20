@@ -8,6 +8,12 @@ import {
 export type OpenAiPricing = {
   readonly inputRate: number;
   readonly cachedRate: number;
+  readonly cacheWriteRate?: number;
+  readonly longInput?: {
+    readonly threshold: number;
+    readonly inputMultiplier: number;
+    readonly outputMultiplier: number;
+  };
   readonly outputRate: number;
 };
 
@@ -24,6 +30,8 @@ export type OpenAiImagePricing = {
   >;
 };
 
+const OPENAI_GPT_6_ASTRA_MODEL_IDS = ["gpt-6-astra", "chatgpt-gpt-6-astra"] as const;
+const OPENAI_GPT_6_ASTRA_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-6-astra-\d{4}-\d{2}-\d{2}$/u;
 const OPENAI_GPT_55_FAST_MODEL_IDS = ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"] as const;
 const OPENAI_GPT_55_STANDARD_MODEL_IDS = ["gpt-5.5", "chatgpt-gpt-5.5"] as const;
 const OPENAI_GPT_55_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.5-\d{4}-\d{2}-\d{2}$/u;
@@ -63,6 +71,16 @@ const OPENAI_GPT_54_STANDARD_MODEL_IDS = ["gpt-5.4", "chatgpt-gpt-5.4"] as const
 // Pricing snapshot (best-effort). For current official pricing, see:
 // https://platform.openai.com/docs/pricing
 // Keep this conservative: unknown models -> cost 0.
+// API-equivalent estimates for ChatGPT subscription calls, not billed subscription charges.
+// https://developers.openai.com/api/docs/models/gpt-6-astra
+const OPENAI_GPT_6_ASTRA_PRICING: OpenAiPricing = {
+  inputRate: 10 / 1_000_000,
+  cachedRate: 1 / 1_000_000,
+  cacheWriteRate: 12.5 / 1_000_000,
+  outputRate: 50 / 1_000_000,
+  longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+};
+
 const OPENAI_GPT_56_SOL_PRICING: OpenAiPricing = {
   inputRate: 5 / 1_000_000,
   cachedRate: 0.5 / 1_000_000,
@@ -158,6 +176,12 @@ const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
 };
 
 export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
+  if (
+    (OPENAI_GPT_6_ASTRA_MODEL_IDS as readonly string[]).includes(modelId) ||
+    OPENAI_GPT_6_ASTRA_CONCRETE_MODEL_ID_RE.test(modelId)
+  ) {
+    return OPENAI_GPT_6_ASTRA_PRICING;
+  }
   if (isExperimentalChatGptModelId(modelId)) {
     return OPENAI_GPT_54_PRICING;
   }

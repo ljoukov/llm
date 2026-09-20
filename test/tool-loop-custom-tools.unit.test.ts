@@ -125,8 +125,15 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           reasoningSummaryText: "",
           toolCalls,
           webSearchCalls: [],
-          usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-          model: "gpt-5.3-codex-spark",
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            total_tokens: 15,
+            ...(options.request.model === "gpt-6-astra"
+              ? { input_tokens_details: { cached_tokens: 2, cache_write_tokens: 3 } }
+              : {}),
+          },
+          model: options.request.model,
           status: "completed",
           blocked: false,
         };
@@ -137,8 +144,15 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
         reasoningSummaryText: "",
         toolCalls: [],
         webSearchCalls: [],
-        usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
-        model: "gpt-5.3-codex-spark",
+        usage: {
+          input_tokens: 8,
+          output_tokens: 4,
+          total_tokens: 12,
+          ...(options.request.model === "gpt-6-astra"
+            ? { input_tokens_details: { cached_tokens: 1, cache_write_tokens: 2 } }
+            : {}),
+        },
+        model: options.request.model,
         status: "completed",
         blocked: false,
       };
@@ -326,14 +340,18 @@ describe("runToolLoop custom tools", () => {
     expect(result.steps[0]?.toolCalls).toEqual([]);
   });
 
-  it("supports ChatGPT custom/freeform tools", async () => {
+  it.each([
+    "chatgpt-gpt-6-astra",
+    "chatgpt-gpt-5.4",
+  ] as const)("supports %s custom/freeform tools and accumulates usage", async (model) => {
     chatGptScenario = "custom";
     chatGptRequests = [];
     chatGptCallCount = 0;
 
     const { customTool, runToolLoop } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.4",
+      model,
+      thinkingLevel: "high",
       input: "apply a patch",
       tools: {
         apply_patch: customTool({
@@ -350,6 +368,17 @@ describe("runToolLoop custom tools", () => {
     });
 
     expect(result.text).toBe("done");
+    expect(
+      chatGptRequests.every((request) => request.model === model.slice("chatgpt-".length)),
+    ).toBe(true);
+    expect(chatGptRequests.every((request) => request.reasoning.effort === "high")).toBe(true);
+    if (model === "chatgpt-gpt-6-astra") {
+      expect(result.steps.map((step) => step.usage?.cacheWriteTokens)).toEqual([3, 2]);
+      expect(result.steps.map((step) => step.usage?.cachedTokens)).toEqual([2, 1]);
+      expect(result.totalCostUsd).toBeCloseTo(0.0006155, 10);
+    } else {
+      expect(result.steps.every((step) => step.usage?.cacheWriteTokens === undefined)).toBe(true);
+    }
     expect(chatGptRequests).toHaveLength(2);
     expect(chatGptRequests[0]?.tools?.[0]?.type).toBe("custom");
     const appendedInput = chatGptRequests[1]?.input ?? [];

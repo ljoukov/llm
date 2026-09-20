@@ -662,18 +662,23 @@ console.log(result.text);
 
 ### ChatGPT subscription models
 
-Use a `chatgpt-` prefix:
+Use an explicitly supported `chatgpt-` model id. These calls reuse ChatGPT/Codex subscription authentication, without OpenRouter or an OpenAI API key:
 
 ```ts
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "chatgpt-gpt-5.6-sol",
+  model: "chatgpt-gpt-6-astra",
+  thinkingLevel: "high",
   input: "Return exactly: OK",
 });
 
 console.log(result.text);
 ```
+
+`chatgpt-gpt-6-astra` supports `low`, `medium` (default), `high`, `xhigh`, and `max`; `ultra` maps to `max`. `none` and `minimal` are not accepted by the public `thinkingLevel` type. Astra uses the existing ChatGPT streaming, JSON, and tool-loop transport.
+
+For ChatGPT text calls, `costUsd` is an API-equivalent estimate, not a billed subscription charge. [Astra API-equivalent rates](https://developers.openai.com/api/docs/models/gpt-6-astra) use $10 input, $1 cached input, $12.50 cache writes, and $50 output per million tokens; requests above 272,000 input tokens apply 2× input/cache rates and 1.5× output rates. `usage.cacheWriteTokens` is populated only when the provider reports it; unreported cache writes are not inferred.
 
 Each GPT-5.6 variant has a `-fast` convenience alias that sends the same provider model with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics. The existing `gpt-5.5-fast`, `chatgpt-gpt-5.5-fast`, and `chatgpt-gpt-5.4-fast` aliases remain supported.
 
@@ -681,7 +686,7 @@ Supported OpenAI and ChatGPT model ids are fixed literal unions in code, not arb
 
 - OpenAI API text: `gpt-5.6` (Sol alias), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each; plus `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
 - OpenAI API image: `gpt-image-2`
-- ChatGPT auth text: `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-luna`, and a `-fast` form of each; plus `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
+- ChatGPT auth text: `chatgpt-gpt-6-astra`; `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-luna`, and a `-fast` form of each; plus `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
 - ChatGPT auth image: `chatgpt-gpt-image-2`
 
 ## JSON outputs
@@ -722,7 +727,7 @@ const { value } = await generateJson({
 });
 ```
 
-`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. In ordinary text and tool-loop calls, `ultra` sends the provider's highest supported reasoning level (`max` for GPT-5.6). In `runAgentLoop()` and `streamAgentLoop()`, it additionally enables the built-in subagent tools and Codex-style proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining maximum provider reasoning.
+`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. In ordinary text and tool-loop calls, `ultra` sends the provider's highest supported reasoning level (`max` for GPT-6 Astra and GPT-5.6). In `runAgentLoop()` and `streamAgentLoop()`, it additionally enables the built-in subagent tools and Codex-style proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining maximum provider reasoning.
 
 ### Streaming JSON outputs
 
@@ -1017,7 +1022,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models (the GPT-5.6 family, `gpt-5.5`, `gpt-5.5-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
+- Codex-like models (`chatgpt-gpt-6-astra`, the GPT-5.6 family, `gpt-5.5`, `gpt-5.5-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 

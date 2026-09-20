@@ -15,6 +15,7 @@ let capturedRequest: any = null;
 let finalResponseModelOverride: string | undefined;
 let finalResponseOutput: unknown[] | undefined;
 let emitDefaultStreamDeltas = true;
+let inputTokenDetails: { cached_tokens?: number; cache_write_tokens?: number } | undefined;
 
 vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
@@ -36,6 +37,7 @@ vi.mock("../src/openai/calls.js", () => {
         ...(finalResponseOutput ? { output: finalResponseOutput } : {}),
         usage: {
           input_tokens: 10,
+          input_tokens_details: inputTokenDetails,
           output_tokens: 6,
           output_tokens_details: { reasoning_tokens: 2 },
           total_tokens: 16,
@@ -63,6 +65,7 @@ describe("streamText (OpenAI)", () => {
   beforeEach(() => {
     capturedRequest = null;
     finalResponseModelOverride = undefined;
+    inputTokenDetails = undefined;
     finalResponseOutput = undefined;
     emitDefaultStreamDeltas = true;
     vi.resetModules();
@@ -91,6 +94,15 @@ describe("streamText (OpenAI)", () => {
     expect(events.some((e) => e.type === "delta" && e.channel === "response")).toBe(true);
     expect(events.some((e) => e.type === "delta" && e.channel === "thought")).toBe(true);
     expect(events.some((e) => e.type === "usage")).toBe(true);
+  });
+
+  it("preserves optional OpenAI cache-write metadata without changing older-model estimates", async () => {
+    inputTokenDetails = { cached_tokens: 2, cache_write_tokens: 3 };
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({ model: "gpt-5.4-mini", input: "hi" });
+    expect(result.usage?.cacheWriteTokens).toBe(3);
+    expect(result.usage?.cachedTokens).toBe(2);
+    expect(result.costUsd).toBeCloseTo(0.00001405, 10);
   });
 
   it("maps thinkingLevel=high to OpenAI high reasoning effort", async () => {

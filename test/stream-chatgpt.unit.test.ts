@@ -16,6 +16,7 @@ let chatGptCallCount = 0;
 let failFirstTerminated = false;
 let failFirstFileDownload = false;
 let emitChatGptDeltas = true;
+let inputTokenDetails: { cached_tokens?: number; cache_write_tokens?: number } | undefined;
 
 vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
@@ -46,11 +47,12 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
         webSearchCalls: [],
         usage: {
           input_tokens: 10,
+          input_tokens_details: inputTokenDetails,
           output_tokens: 6,
           output_tokens_details: { reasoning_tokens: 2 },
           total_tokens: 16,
         },
-        model: "gpt-5.4-mini",
+        model: options.request.model,
         status: "completed",
         blocked: false,
       };
@@ -65,10 +67,46 @@ describe("streamText (ChatGPT)", () => {
     failFirstTerminated = false;
     failFirstFileDownload = false;
     emitChatGptDeltas = true;
+    inputTokenDetails = undefined;
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
     resetMockStorageState();
     installMockStorageEnv();
+  });
+
+  it.each([
+    [undefined, "medium"],
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+    ["max", "max"],
+    ["ultra", "max"],
+  ] as const)("routes Astra thinkingLevel=%s through ChatGPT with effort=%s", async (thinkingLevel, effort) => {
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({ model: "chatgpt-gpt-6-astra", input: "hi", thinkingLevel });
+    expect(result.provider).toBe("chatgpt");
+    expect(result.modelVersion).toBe("chatgpt-gpt-6-astra");
+    expect(capturedRequest.model).toBe("gpt-6-astra");
+    expect(capturedRequest.reasoning.effort).toBe(effort);
+    expect(capturedRequest.service_tier).toBeUndefined();
+    expect(capturedRequest.temperature).toBeUndefined();
+    expect(capturedRequest.top_p).toBeUndefined();
+    expect(result.usage?.cacheWriteTokens).toBeUndefined();
+    expect(result.costUsd).toBeCloseTo(0.0004, 10);
+  });
+
+  it("preserves reported Astra cache writes without charging ordinary input twice", async () => {
+    inputTokenDetails = { cached_tokens: 2, cache_write_tokens: 3 };
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({
+      model: "chatgpt-gpt-6-astra",
+      input: "hi",
+      thinkingLevel: "high",
+    });
+    expect(result.usage?.cachedTokens).toBe(2);
+    expect(result.usage?.cacheWriteTokens).toBe(3);
+    expect(result.costUsd).toBeCloseTo(0.0003895, 10);
   });
 
   it("streams response + thought deltas and returns usage/cost", async () => {

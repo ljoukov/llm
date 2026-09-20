@@ -29,7 +29,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           output_tokens_details: { reasoning_tokens: 2 },
           total_tokens: 16,
         },
-        model: "gpt-5.4-mini",
+        model: options.request.model,
         status: "completed",
         blocked: false,
       };
@@ -38,7 +38,10 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 });
 
 describe("generateJson (ChatGPT)", () => {
-  it("passes json_schema text.format when using chatgpt-* models", async () => {
+  it.each([
+    "chatgpt-gpt-6-astra",
+    "chatgpt-gpt-5.4-mini",
+  ] as const)("passes json_schema text.format through %s", async (model) => {
     const { generateJson } = await import("../src/llm.js");
 
     callCount = 0;
@@ -46,8 +49,9 @@ describe("generateJson (ChatGPT)", () => {
     failFirstStructuredAttempt = false;
     const schema = z.object({ ok: z.boolean(), message: z.string() });
     let streamedThoughts = "";
-    const { value } = await generateJson({
-      model: "chatgpt-gpt-5.4-mini",
+    const { value, result } = await generateJson({
+      model,
+      thinkingLevel: "high",
       input: "Return JSON",
       schema,
       onEvent: (event) => {
@@ -58,8 +62,12 @@ describe("generateJson (ChatGPT)", () => {
     });
 
     expect(value).toEqual({ ok: true, message: "hello" });
+    expect(result.provider).toBe("chatgpt");
+    expect(result.modelVersion).toBe(model);
     expect(streamedThoughts).toContain("Thinking");
     expect(capturedRequest?.text?.format?.type).toBe("json_schema");
+    expect(capturedRequest?.reasoning?.effort).toBe("high");
+    expect(capturedRequest?.model).toBe(model.slice("chatgpt-".length));
   });
 
   it("retries without json_schema when ChatGPT rejects structured format", async () => {

@@ -5,6 +5,56 @@ import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
   it.each([
+    "chatgpt-gpt-6-astra",
+    "gpt-6-astra",
+    "chatgpt-gpt-6-astra-2026-09-01",
+  ])("estimates %s at Astra rates rather than GPT-5 rates", (modelId) => {
+    expect(
+      estimateCallCostUsd({
+        modelId,
+        tokens: { promptTokens: 1000, cachedTokens: 100, responseTokens: 500, thinkingTokens: 100 },
+        responseImages: 0,
+      }),
+    ).toBeCloseTo(0.0391, 8);
+  });
+
+  it.each([
+    [1000, 0.0396],
+    [272000, 2.7496],
+    [272001, 5.48422],
+  ])("prices Astra cache writes and the long-input boundary at %s tokens", (promptTokens, expectedCost) => {
+    expect(
+      estimateCallCostUsd({
+        modelId: "chatgpt-gpt-6-astra",
+        tokens: {
+          promptTokens,
+          cachedTokens: 100,
+          cacheWriteTokens: 200,
+          responseTokens: 500,
+          thinkingTokens: 100,
+        },
+        responseImages: 0,
+      }),
+    ).toBeCloseTo(expectedCost, 8);
+  });
+
+  it("counts cache writes as ordinary input for models without a separate write rate", () => {
+    const tokens = {
+      promptTokens: 1000,
+      cachedTokens: 100,
+      responseTokens: 500,
+      thinkingTokens: 100,
+    };
+    const estimate = (cacheWriteTokens?: number) =>
+      estimateCallCostUsd({
+        modelId: "chatgpt-gpt-5.6-sol",
+        tokens: { ...tokens, cacheWriteTokens },
+        responseImages: 0,
+      });
+    expect(estimate(200)).toBeCloseTo(estimate(), 10);
+  });
+
+  it.each([
     ["gpt-5.6-sol", 0.02255],
     ["chatgpt-gpt-5.6-terra", 0.011275],
     ["gpt-5.6-luna", 0.00451],
