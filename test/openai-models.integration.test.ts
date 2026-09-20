@@ -10,13 +10,27 @@ import {
   streamText,
   type LlmTextModelId,
 } from "../src/index.js";
-import { assertIntegrationCredentialsForModels } from "./integration-env.js";
+import {
+  assertIntegrationCredentialsForModels,
+  resolveIntegrationRequestedModels,
+} from "./integration-env.js";
 
-const supportedOpenAiTextModels = [
+const allSupportedOpenAiTextModels = [
   ...OPENAI_MODEL_IDS,
   ...CHATGPT_MODEL_IDS,
 ] as const satisfies readonly LlmTextModelId[];
 
+const supportedOpenAiTextModels = process.env.LLM_INTEGRATION_MODELS?.trim()
+  ? resolveIntegrationRequestedModels()
+  : allSupportedOpenAiTextModels;
+const outsideMatrix = supportedOpenAiTextModels.filter(
+  (model) => !(allSupportedOpenAiTextModels as readonly string[]).includes(model),
+);
+if (outsideMatrix.length > 0 || supportedOpenAiTextModels.length === 0) {
+  throw new Error(
+    `LLM_INTEGRATION_MODELS must select supported OpenAI/ChatGPT text models; received: ${supportedOpenAiTextModels.join(", ")}`,
+  );
+}
 assertIntegrationCredentialsForModels(supportedOpenAiTextModels);
 
 async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
@@ -56,8 +70,7 @@ describe.concurrent("integration: supported OpenAI text models", () => {
           ? { thinkingLevel: "low" as const }
           : {}),
       });
-      const streamed = await streamToStrings(call);
-      const result = await call.result;
+      const [streamed, result] = await Promise.all([streamToStrings(call), call.result]);
 
       expect(result.text.toUpperCase()).toContain("OK");
       expect(streamed.response.toUpperCase()).toContain("OK");

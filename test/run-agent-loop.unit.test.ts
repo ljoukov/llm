@@ -401,11 +401,18 @@ describe("runAgentLoop", () => {
             step: 1,
             modelVersion: "chatgpt-gpt-5.3-codex-spark",
             toolCalls: [{ toolName: "list_dir", input: {}, output: {} }],
-            usage: { promptTokens: 10, responseTokens: 3, totalTokens: 13 },
+            usage: { promptTokens: 10, cacheWriteTokens: 3, responseTokens: 3, totalTokens: 13 },
+            costUsd: 0.01,
+          },
+          {
+            step: 2,
+            modelVersion: "chatgpt-gpt-6-astra",
+            toolCalls: [],
+            usage: { promptTokens: 8, cacheWriteTokens: 2, responseTokens: 4, totalTokens: 12 },
             costUsd: 0.01,
           },
         ],
-        totalCostUsd: 0.01,
+        totalCostUsd: 0.02,
       };
     });
 
@@ -439,6 +446,7 @@ describe("runAgentLoop", () => {
       stepCount?: number;
       toolCallCount?: number;
       totalCostUsd?: number;
+      usage?: { cacheWriteTokens?: number };
     }>;
     expect(started).toBeDefined();
     expect(streamed).toBeDefined();
@@ -450,9 +458,10 @@ describe("runAgentLoop", () => {
     expect(streamed.type).toBe("agent.run.stream");
     expect(completed.type).toBe("agent.run.completed");
     expect(completed.success).toBe(true);
-    expect(completed.stepCount).toBe(1);
+    expect(completed.stepCount).toBe(2);
     expect(completed.toolCallCount).toBe(1);
-    expect(completed.totalCostUsd).toBe(0.01);
+    expect(completed.totalCostUsd).toBe(0.02);
+    expect(completed.usage?.cacheWriteTokens).toBe(5);
     expect(started.depth).toBe(0);
     expect(started.parentRunId).toBeUndefined();
     expect(started.runId).toBe(streamed.runId);

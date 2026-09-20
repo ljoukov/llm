@@ -2898,6 +2898,7 @@ function mergeTokenUpdates(
     promptTextTokens: next.promptTextTokens ?? current.promptTextTokens,
     promptImageTokens: next.promptImageTokens ?? current.promptImageTokens,
     cachedTokens: next.cachedTokens ?? current.cachedTokens,
+    cacheWriteTokens: next.cacheWriteTokens ?? current.cacheWriteTokens,
     responseTokens: next.responseTokens ?? current.responseTokens,
     responseTextTokens: next.responseTextTokens ?? current.responseTextTokens,
     responseImageTokens: next.responseImageTokens ?? current.responseImageTokens,
@@ -2930,6 +2931,7 @@ function sumUsageTokens(
     promptTextTokens: sumUsageValue(current?.promptTextTokens, next.promptTextTokens),
     promptImageTokens: sumUsageValue(current?.promptImageTokens, next.promptImageTokens),
     cachedTokens: sumUsageValue(current?.cachedTokens, next.cachedTokens),
+    cacheWriteTokens: sumUsageValue(current?.cacheWriteTokens, next.cacheWriteTokens),
     responseTokens: sumUsageValue(current?.responseTokens, next.responseTokens),
     responseTextTokens: sumUsageValue(current?.responseTextTokens, next.responseTextTokens),
     responseImageTokens: sumUsageValue(current?.responseImageTokens, next.responseImageTokens),
@@ -3081,6 +3083,10 @@ function extractOpenAiUsageTokens(usage: unknown): LlmUsageTokens | undefined {
     (usage as { input_tokens_details?: { cached_tokens?: unknown } }).input_tokens_details
       ?.cached_tokens,
   );
+  const cacheWriteTokens = toMaybeNumber(
+    (usage as { input_tokens_details?: { cache_write_tokens?: unknown } }).input_tokens_details
+      ?.cache_write_tokens,
+  );
   const promptTextTokens = toMaybeNumber(
     (usage as { input_tokens_details?: { text_tokens?: unknown } }).input_tokens_details
       ?.text_tokens,
@@ -3111,6 +3117,7 @@ function extractOpenAiUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   if (
     promptTokens === undefined &&
     cachedTokens === undefined &&
+    cacheWriteTokens === undefined &&
     responseTokens === undefined &&
     reasoningTokens === undefined &&
     totalTokens === undefined
@@ -3122,6 +3129,7 @@ function extractOpenAiUsageTokens(usage: unknown): LlmUsageTokens | undefined {
     promptTextTokens,
     promptImageTokens,
     cachedTokens,
+    cacheWriteTokens,
     responseTokens,
     responseTextTokens,
     responseImageTokens,
@@ -3139,6 +3147,10 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
     (usage as { input_tokens_details?: { cached_tokens?: unknown } }).input_tokens_details
       ?.cached_tokens,
   );
+  const cacheWriteTokens = toMaybeNumber(
+    (usage as { input_tokens_details?: { cache_write_tokens?: unknown } }).input_tokens_details
+      ?.cache_write_tokens,
+  );
   const outputTokensRaw = toMaybeNumber((usage as { output_tokens?: unknown }).output_tokens);
   const reasoningTokens = toMaybeNumber(
     (usage as { output_tokens_details?: { reasoning_tokens?: unknown } }).output_tokens_details
@@ -3153,6 +3165,7 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   if (
     promptTokens === undefined &&
     cachedTokens === undefined &&
+    cacheWriteTokens === undefined &&
     responseTokens === undefined &&
     reasoningTokens === undefined &&
     totalTokens === undefined
@@ -3162,6 +3175,7 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   return {
     promptTokens,
     cachedTokens,
+    cacheWriteTokens,
     responseTokens,
     thinkingTokens: reasoningTokens,
     totalTokens,

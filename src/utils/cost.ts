@@ -12,6 +12,8 @@ export type LlmUsageTokens = {
   readonly promptTextTokens?: number;
   readonly promptImageTokens?: number;
   readonly cachedTokens?: number;
+  /** Prompt tokens written to cache, only when reported by the provider. */
+  readonly cacheWriteTokens?: number;
   readonly responseTokens?: number;
   readonly responseTextTokens?: number;
   readonly responseImageTokens?: number;
@@ -113,11 +115,18 @@ export function estimateCallCostUsd({
 
   const openAiPricing = resolvePricing(pricingModelIds, getOpenAiPricing);
   if (openAiPricing) {
-    const inputCost = nonCachedPrompt * openAiPricing.inputRate;
+    const cacheWriteTokens = Math.min(nonCachedPrompt, resolveUsageNumber(tokens.cacheWriteTokens));
+    const longInput = openAiPricing.longInput;
+    const useLongInput = longInput && promptTokenTotal > longInput.threshold;
+    const inputMultiplier = useLongInput ? longInput.inputMultiplier : 1;
+    const outputMultiplier = useLongInput ? longInput.outputMultiplier : 1;
+    const inputCost = (nonCachedPrompt - cacheWriteTokens) * openAiPricing.inputRate;
     const cachedCost = cachedTokens * openAiPricing.cachedRate;
+    const cacheWriteCost =
+      cacheWriteTokens * (openAiPricing.cacheWriteRate ?? openAiPricing.inputRate);
     const outputTokens = responseTokens + thinkingTokens;
-    const outputCost = outputTokens * openAiPricing.outputRate;
-    return inputCost + cachedCost + outputCost;
+    const outputCost = outputTokens * openAiPricing.outputRate * outputMultiplier;
+    return (inputCost + cachedCost + cacheWriteCost) * inputMultiplier + outputCost;
   }
 
   return 0;

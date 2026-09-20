@@ -769,6 +769,7 @@ function summarizeResultUsage(result: LlmToolLoopResult): LlmUsageTokens | undef
       promptTextTokens: sumUsageValue(summary?.promptTextTokens, usage.promptTextTokens),
       promptImageTokens: sumUsageValue(summary?.promptImageTokens, usage.promptImageTokens),
       cachedTokens: sumUsageValue(summary?.cachedTokens, usage.cachedTokens),
+      cacheWriteTokens: sumUsageValue(summary?.cacheWriteTokens, usage.cacheWriteTokens),
       responseTokens: sumUsageValue(summary?.responseTokens, usage.responseTokens),
       responseTextTokens: sumUsageValue(summary?.responseTextTokens, usage.responseTextTokens),
       responseImageTokens: sumUsageValue(summary?.responseImageTokens, usage.responseImageTokens),

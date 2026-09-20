@@ -104,6 +104,15 @@ const _invalidChatGptNumImagesTypeCheck = {
 } satisfies LlmChatGptGenerateImagesRequest;
 
 describe("model id lists", () => {
+  it("supports Astra only through its explicit ChatGPT subscription id", () => {
+    expect(isChatGptModelId("chatgpt-gpt-6-astra")).toBe(true);
+    expect(isLlmTextModelId("chatgpt-gpt-6-astra")).toBe(true);
+    expect(isOpenAiModelId("gpt-6-astra")).toBe(false);
+    expect(isLlmTextModelId("gpt-6-astra")).toBe(false);
+    expect(isChatGptModelId("chatgpt-gpt-6-astra-fast")).toBe(false);
+    expect(isChatGptModelId("chatgpt-arbitrary-model")).toBe(false);
+  });
+
   it("defines provider model ids as explicit const lists", () => {
     expect(OPENAI_MODEL_IDS).toEqual([
       "gpt-5.6",
@@ -121,6 +130,7 @@ describe("model id lists", () => {
       "gpt-5.4-nano",
     ]);
     expect(CHATGPT_MODEL_IDS).toEqual([
+      "chatgpt-gpt-6-astra",
       "chatgpt-gpt-5.6-sol",
       "chatgpt-gpt-5.6-sol-fast",
       "chatgpt-gpt-5.6-terra",
