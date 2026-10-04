@@ -40,7 +40,9 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 describe("generateJson (ChatGPT)", () => {
   it.each([
     "chatgpt-gpt-6-astra",
-    "chatgpt-gpt-5.4-mini",
+    "chatgpt-gpt-6.1-sol",
+    "chatgpt-gpt-6-sol",
+    "chatgpt-gpt-6-luna",
   ] as const)("passes json_schema text.format through %s", async (model) => {
     const { generateJson } = await import("../src/llm.js");
 
@@ -79,7 +81,7 @@ describe("generateJson (ChatGPT)", () => {
     const schema = z.object({ ok: z.boolean(), message: z.string() });
 
     const { value } = await generateJson({
-      model: "chatgpt-gpt-5.4-mini",
+      model: "chatgpt-gpt-6-luna",
       input: "Return JSON",
       schema,
       maxAttempts: 2,

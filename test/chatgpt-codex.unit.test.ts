@@ -90,7 +90,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         store: false,
         stream: true,
         input: [{ role: "user", content: "hi" }],
@@ -121,7 +121,7 @@ describe("collectChatGptCodexResponse", () => {
         {
           type: "response.completed",
           response: {
-            model: "gpt-5.3-codex-spark",
+            model: "gpt-6-luna",
             status: "completed",
           },
         },
@@ -131,7 +131,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-5.3-codex-spark",
+        model: "gpt-6-luna",
         store: false,
         stream: true,
         input: [{ role: "user", content: "hi" }],
@@ -165,7 +165,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         store: false,
         stream: true,
         input: [{ role: "user", content: "hi" }],
@@ -198,7 +198,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-5.3-codex-spark",
+        model: "gpt-6-luna",
         store: false,
         stream: true,
         input: [{ role: "user", content: "hi" }],
@@ -220,7 +220,7 @@ describe("collectChatGptCodexResponse", () => {
           JSON.stringify({
             error: {
               message:
-                "Unsupported parameter: 'reasoning.summary' is not supported with the 'gpt-5.3-codex-spark' model.",
+                "Unsupported parameter: 'reasoning.summary' is not supported with the 'gpt-6-luna' model.",
               type: "invalid_request_error",
               param: "reasoning.summary",
               code: "unsupported_parameter",
@@ -241,7 +241,7 @@ describe("collectChatGptCodexResponse", () => {
         {
           type: "response.completed",
           response: {
-            model: "gpt-5.3-codex-spark",
+            model: "gpt-6-luna",
             status: "completed",
             usage: {
               input_tokens: 2,
@@ -256,7 +256,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-5.3-codex-spark",
+        model: "gpt-6-luna",
         store: false,
         stream: true,
         input: [{ role: "user", content: "hi" }],
@@ -269,7 +269,7 @@ describe("collectChatGptCodexResponse", () => {
     expect(requestBodies[1]?.reasoning?.summary).toBeUndefined();
     expect(requestBodies[1]?.reasoning?.effort).toBe("low");
     expect(result.text).toBe("OK");
-    expect(result.model).toBe("gpt-5.3-codex-spark");
+    expect(result.model).toBe("gpt-6-luna");
   });
 
   it("collects completed image_generation_call results", async () => {
@@ -288,7 +288,7 @@ describe("collectChatGptCodexResponse", () => {
         {
           type: "response.completed",
           response: {
-            model: "gpt-5.4",
+            model: "gpt-6-sol",
             status: "completed",
             usage: {
               input_tokens: 2,
@@ -303,7 +303,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-5.4",
+        model: "gpt-6-sol",
         store: false,
         stream: true,
         input: [{ role: "user", content: "draw a blue square" }],

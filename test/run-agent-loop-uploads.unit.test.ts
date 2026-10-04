@@ -39,7 +39,7 @@ vi.mock("../src/openai/calls.js", () => {
           callIndex === 0
             ? {
                 id: "resp_1",
-                model: "gpt-5.4-mini",
+                model: "gpt-6-luna",
                 usage: {
                   input_tokens: 10,
                   output_tokens: 5,
@@ -49,7 +49,7 @@ vi.mock("../src/openai/calls.js", () => {
               }
             : {
                 id: "resp_2",
-                model: "gpt-5.4-mini",
+                model: "gpt-6-luna",
                 usage: {
                   input_tokens: 8,
                   output_tokens: 4,
@@ -96,7 +96,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => ({
         })),
         webSearchCalls: [],
         usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-        model: "gpt-5.4",
+        model: "gpt-6-sol",
         status: "completed",
         blocked: false,
       };
@@ -108,7 +108,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => ({
       toolCalls: [],
       webSearchCalls: [],
       usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
-      model: "gpt-5.4",
+      model: "gpt-6-sol",
       status: "completed",
       blocked: false,
     };
@@ -157,7 +157,7 @@ describe("runAgentLoop uploads", () => {
       const telemetryEvents: any[] = [];
       const { runAgentLoop } = await import("../src/agent.js");
       const result = await runAgentLoop({
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         input: "Inspect all of the images and finish.",
         filesystemTool: {
           profile: "codex",
@@ -236,7 +236,7 @@ describe("runAgentLoop uploads", () => {
 
       const { runAgentLoop } = await import("../src/agent.js");
       const result = await runAgentLoop({
-        model: "chatgpt-gpt-5.4",
+        model: "chatgpt-gpt-6-sol",
         input: "Inspect all of the images and finish.",
         filesystemTool: {
           profile: "codex",

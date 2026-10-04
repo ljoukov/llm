@@ -27,23 +27,23 @@ describe("filesystemTools profiles", () => {
     expect(resolveFilesystemToolProfile("gpt-5.6-sol-fast")).toBe("codex");
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.6-terra")).toBe("codex");
     expect(resolveFilesystemToolProfile("chatgpt-gpt-5.6-luna-fast")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-5.5")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-5.5-fast")).toBe("codex");
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.5")).toBe("codex");
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.5-fast")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-5.4")).toBe("codex");
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.4")).toBe("codex");
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.4-fast")).toBe("codex");
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.3-codex-spark")).toBe("codex");
+    expect(resolveFilesystemToolProfile("gpt-6.1-sol")).toBe("codex");
+    expect(resolveFilesystemToolProfile("gpt-6.1-sol-fast")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-6.1-sol")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-6.1-sol-fast")).toBe("codex");
+    expect(resolveFilesystemToolProfile("gpt-6-sol")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-6-sol")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-6-sol-fast")).toBe("codex");
+    expect(resolveFilesystemToolProfile("chatgpt-gpt-6-luna")).toBe("codex");
     expect(resolveFilesystemToolProfile("experimental-chatgpt-private-model")).toBe("codex");
     expect(resolveFilesystemToolProfile("gemini-2.5-pro")).toBe("gemini");
     expect(resolveFilesystemToolProfile("gemini-3.1-pro-preview")).toBe("gemini");
-    expect(resolveFilesystemToolProfile("gpt-5.4-mini")).toBe("model-agnostic");
-    expect(resolveFilesystemToolProfile("chatgpt-gpt-5.4-mini")).toBe("model-agnostic");
+    expect(resolveFilesystemToolProfile("unknown-model")).toBe("model-agnostic");
+    expect(resolveFilesystemToolProfile("another-model")).toBe("model-agnostic");
   });
 
   it("creates codex toolset for codex-like model ids", () => {
-    const toolSet = createFilesystemToolSetForModel("chatgpt-gpt-5.4");
+    const toolSet = createFilesystemToolSetForModel("chatgpt-gpt-6-sol");
     expect(Object.keys(toolSet).sort()).toEqual([
       "apply_patch",
       "grep_files",

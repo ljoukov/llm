@@ -1,6 +1,5 @@
 import {
   isChatGptImageModelId,
-  isExperimentalChatGptModelId,
   isOpenAiImageModelId,
   type OpenAiGptImage2Quality,
 } from "./models.js";
@@ -30,127 +29,59 @@ export type OpenAiImagePricing = {
   >;
 };
 
-const OPENAI_GPT_6_ASTRA_MODEL_IDS = ["gpt-6-astra", "chatgpt-gpt-6-astra"] as const;
-const OPENAI_GPT_6_ASTRA_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-6-astra-\d{4}-\d{2}-\d{2}$/u;
-const OPENAI_GPT_55_FAST_MODEL_IDS = ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"] as const;
-const OPENAI_GPT_55_STANDARD_MODEL_IDS = ["gpt-5.5", "chatgpt-gpt-5.5"] as const;
-const OPENAI_GPT_55_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.5-\d{4}-\d{2}-\d{2}$/u;
-const OPENAI_GPT_56_SOL_FAST_MODEL_IDS = [
-  "gpt-5.6-fast",
-  "gpt-5.6-sol-fast",
-  "chatgpt-gpt-5.6-sol-fast",
-] as const;
-const OPENAI_GPT_56_SOL_STANDARD_MODEL_IDS = [
-  "gpt-5.6",
-  "gpt-5.6-sol",
-  "chatgpt-gpt-5.6-sol",
-] as const;
-const OPENAI_GPT_56_SOL_CONCRETE_MODEL_ID_RE =
-  /^(?:chatgpt-)?gpt-5\.6(?:-sol)?-\d{4}-\d{2}-\d{2}$/u;
-const OPENAI_GPT_56_TERRA_FAST_MODEL_IDS = [
-  "gpt-5.6-terra-fast",
-  "chatgpt-gpt-5.6-terra-fast",
-] as const;
-const OPENAI_GPT_56_TERRA_STANDARD_MODEL_IDS = ["gpt-5.6-terra", "chatgpt-gpt-5.6-terra"] as const;
-const OPENAI_GPT_56_TERRA_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.6-terra-\d{4}-\d{2}-\d{2}$/u;
-const OPENAI_GPT_56_LUNA_FAST_MODEL_IDS = [
-  "gpt-5.6-luna-fast",
-  "chatgpt-gpt-5.6-luna-fast",
-] as const;
-const OPENAI_GPT_56_LUNA_STANDARD_MODEL_IDS = ["gpt-5.6-luna", "chatgpt-gpt-5.6-luna"] as const;
-const OPENAI_GPT_56_LUNA_CONCRETE_MODEL_ID_RE = /^(?:chatgpt-)?gpt-5\.6-luna-\d{4}-\d{2}-\d{2}$/u;
-const OPENAI_GPT_54_FAST_MODEL_IDS = ["gpt-5.4-fast", "chatgpt-gpt-5.4-fast"] as const;
-const OPENAI_GPT_54_MINI_MODEL_IDS = ["gpt-5.4-mini", "chatgpt-gpt-5.4-mini"] as const;
-const OPENAI_GPT_54_NANO_MODEL_IDS = ["gpt-5.4-nano"] as const;
-const OPENAI_GPT_53_CODEX_SPARK_MODEL_IDS = [
-  "gpt-5.3-codex-spark",
-  "chatgpt-gpt-5.3-codex-spark",
-] as const;
-const OPENAI_GPT_54_STANDARD_MODEL_IDS = ["gpt-5.4", "chatgpt-gpt-5.4"] as const;
-
-// Pricing snapshot (best-effort). For current official pricing, see:
-// https://platform.openai.com/docs/pricing
-// Keep this conservative: unknown models -> cost 0.
-// API-equivalent estimates for ChatGPT subscription calls, not billed subscription charges.
-// https://developers.openai.com/api/docs/models/gpt-6-astra
-const OPENAI_GPT_6_ASTRA_PRICING: OpenAiPricing = {
-  inputRate: 10 / 1_000_000,
-  cachedRate: 1 / 1_000_000,
-  cacheWriteRate: 12.5 / 1_000_000,
-  outputRate: 50 / 1_000_000,
-  longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
-};
-
-const OPENAI_GPT_56_SOL_PRICING: OpenAiPricing = {
-  inputRate: 5 / 1_000_000,
-  cachedRate: 0.5 / 1_000_000,
-  outputRate: 30 / 1_000_000,
-};
-
-const OPENAI_GPT_56_SOL_PRIORITY_PRICING: OpenAiPricing = {
-  inputRate: 10 / 1_000_000,
-  cachedRate: 1 / 1_000_000,
-  outputRate: 60 / 1_000_000,
-};
-
-const OPENAI_GPT_56_TERRA_PRICING: OpenAiPricing = {
-  inputRate: 2.5 / 1_000_000,
-  cachedRate: 0.25 / 1_000_000,
-  outputRate: 15 / 1_000_000,
-};
-
-const OPENAI_GPT_56_TERRA_PRIORITY_PRICING: OpenAiPricing = {
-  inputRate: 5 / 1_000_000,
-  cachedRate: 0.5 / 1_000_000,
-  outputRate: 30 / 1_000_000,
-};
-
-const OPENAI_GPT_56_LUNA_PRICING: OpenAiPricing = {
-  inputRate: 1 / 1_000_000,
-  cachedRate: 0.1 / 1_000_000,
-  outputRate: 6 / 1_000_000,
-};
-
-const OPENAI_GPT_56_LUNA_PRIORITY_PRICING: OpenAiPricing = {
-  inputRate: 2 / 1_000_000,
-  cachedRate: 0.2 / 1_000_000,
-  outputRate: 12 / 1_000_000,
-};
-
-const OPENAI_GPT_55_PRICING: OpenAiPricing = {
-  inputRate: 5 / 1_000_000,
-  cachedRate: 0.5 / 1_000_000,
-  outputRate: 30 / 1_000_000,
-};
-
-const OPENAI_GPT_55_PRIORITY_PRICING: OpenAiPricing = {
-  inputRate: 12.5 / 1_000_000,
-  cachedRate: 1.25 / 1_000_000,
-  outputRate: 75 / 1_000_000,
-};
-
-const OPENAI_GPT_54_PRICING: OpenAiPricing = {
-  inputRate: 2.5 / 1_000_000,
-  cachedRate: 0.25 / 1_000_000,
-  outputRate: 15 / 1_000_000,
-};
-
-const OPENAI_GPT_54_PRIORITY_PRICING: OpenAiPricing = {
-  inputRate: 5 / 1_000_000,
-  cachedRate: 0.5 / 1_000_000,
-  outputRate: 30 / 1_000_000,
-};
-
-const OPENAI_GPT_54_MINI_PRICING: OpenAiPricing = {
-  inputRate: 0.25 / 1_000_000,
-  cachedRate: 0.025 / 1_000_000,
-  outputRate: 2 / 1_000_000,
-};
-
-const OPENAI_GPT_54_NANO_PRICING: OpenAiPricing = {
-  inputRate: 0.05 / 1_000_000,
-  cachedRate: 0.005 / 1_000_000,
-  outputRate: 0.4 / 1_000_000,
+// Official pricing snapshot, 2026-10-03: https://developers.openai.com/api/docs/pricing
+// ChatGPT costs are API-equivalent estimates, not billed subscription charges.
+// Unknown models have no rate; callers may supply a known pricingModelId explicitly.
+const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
+  "gpt-6.1-sol": {
+    inputRate: 2 / 1_000_000,
+    cachedRate: 0.1 / 1_000_000,
+    cacheWriteRate: 2.5 / 1_000_000,
+    outputRate: 10 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-6-astra": {
+    inputRate: 10 / 1_000_000,
+    cachedRate: 1 / 1_000_000,
+    cacheWriteRate: 12.5 / 1_000_000,
+    outputRate: 50 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-6-sol": {
+    inputRate: 2 / 1_000_000,
+    cachedRate: 0.2 / 1_000_000,
+    cacheWriteRate: 2.5 / 1_000_000,
+    outputRate: 10 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-6-luna": {
+    inputRate: 0.1 / 1_000_000,
+    cachedRate: 0.01 / 1_000_000,
+    cacheWriteRate: 0.125 / 1_000_000,
+    outputRate: 0.5 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-5.6-sol": {
+    inputRate: 4 / 1_000_000,
+    cachedRate: 0.4 / 1_000_000,
+    cacheWriteRate: 5 / 1_000_000,
+    outputRate: 20 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-5.6-terra": {
+    inputRate: 2 / 1_000_000,
+    cachedRate: 0.2 / 1_000_000,
+    cacheWriteRate: 2.5 / 1_000_000,
+    outputRate: 12 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-5.6-luna": {
+    inputRate: 0.2 / 1_000_000,
+    cachedRate: 0.02 / 1_000_000,
+    cacheWriteRate: 0.25 / 1_000_000,
+    outputRate: 1.2 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
 };
 
 const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
@@ -176,68 +107,19 @@ const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
 };
 
 export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
-  if (
-    (OPENAI_GPT_6_ASTRA_MODEL_IDS as readonly string[]).includes(modelId) ||
-    OPENAI_GPT_6_ASTRA_CONCRETE_MODEL_ID_RE.test(modelId)
-  ) {
-    return OPENAI_GPT_6_ASTRA_PRICING;
-  }
-  if (isExperimentalChatGptModelId(modelId)) {
-    return OPENAI_GPT_54_PRICING;
-  }
-  if ((OPENAI_GPT_56_SOL_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_56_SOL_PRIORITY_PRICING;
-  }
-  if (
-    (OPENAI_GPT_56_SOL_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
-    OPENAI_GPT_56_SOL_CONCRETE_MODEL_ID_RE.test(modelId)
-  ) {
-    return OPENAI_GPT_56_SOL_PRICING;
-  }
-  if ((OPENAI_GPT_56_TERRA_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_56_TERRA_PRIORITY_PRICING;
-  }
-  if (
-    (OPENAI_GPT_56_TERRA_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
-    OPENAI_GPT_56_TERRA_CONCRETE_MODEL_ID_RE.test(modelId)
-  ) {
-    return OPENAI_GPT_56_TERRA_PRICING;
-  }
-  if ((OPENAI_GPT_56_LUNA_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_56_LUNA_PRIORITY_PRICING;
-  }
-  if (
-    (OPENAI_GPT_56_LUNA_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
-    OPENAI_GPT_56_LUNA_CONCRETE_MODEL_ID_RE.test(modelId)
-  ) {
-    return OPENAI_GPT_56_LUNA_PRICING;
-  }
-  if ((OPENAI_GPT_55_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_55_PRIORITY_PRICING;
-  }
-  if (
-    (OPENAI_GPT_55_STANDARD_MODEL_IDS as readonly string[]).includes(modelId) ||
-    OPENAI_GPT_55_CONCRETE_MODEL_ID_RE.test(modelId)
-  ) {
-    return OPENAI_GPT_55_PRICING;
-  }
-  if ((OPENAI_GPT_54_FAST_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_54_PRIORITY_PRICING;
-  }
-  if ((OPENAI_GPT_54_MINI_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_54_MINI_PRICING;
-  }
-  if ((OPENAI_GPT_54_NANO_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_54_NANO_PRICING;
-  }
-  // gpt-5.3-codex-spark is priced as the GPT-5.4 mini tier in this library.
-  if ((OPENAI_GPT_53_CODEX_SPARK_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_54_MINI_PRICING;
-  }
-  if ((OPENAI_GPT_54_STANDARD_MODEL_IDS as readonly string[]).includes(modelId)) {
-    return OPENAI_GPT_54_PRICING;
-  }
-  return undefined;
+  const priority = modelId.endsWith("-fast");
+  let normalized = modelId.replace(/^chatgpt-/u, "").replace(/-fast$/u, "");
+  normalized = normalized.replace(/-\d{4}-\d{2}-\d{2}$/u, "");
+  if (normalized === "gpt-5.6") normalized = "gpt-5.6-sol";
+  const standard = Object.hasOwn(TEXT_PRICING, normalized) ? TEXT_PRICING[normalized] : undefined;
+  if (!standard || !priority) return standard;
+  return {
+    ...standard,
+    inputRate: standard.inputRate * 2,
+    cachedRate: standard.cachedRate * 2,
+    cacheWriteRate: standard.cacheWriteRate === undefined ? undefined : standard.cacheWriteRate * 2,
+    outputRate: standard.outputRate * 2,
+  };
 }
 
 export function getOpenAiImagePricing(modelId: string): OpenAiImagePricing | undefined {

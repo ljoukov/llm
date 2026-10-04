@@ -96,7 +96,7 @@ describe("subagent tools", () => {
         0,
       ),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -166,7 +166,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -203,7 +203,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -242,7 +242,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -259,7 +259,7 @@ describe("subagent tools", () => {
     });
     const agentId = spawned.agent_id as string;
     expect(agentId).toBeTypeOf("string");
-    expect(spawned.agent?.model).toBe("gpt-5.4-mini");
+    expect(spawned.agent?.model).toBe("gpt-6-luna");
 
     const completed = await wait.execute({ agent_id: agentId, timeout_ms: 200 });
     expect(completed.timed_out).toBe(false);
@@ -284,7 +284,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
       onBackgroundMessage: background,
     });
@@ -314,7 +314,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -368,7 +368,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -400,7 +400,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -421,7 +421,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -442,7 +442,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -466,7 +466,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       runSubagent,
     });
 
@@ -476,7 +476,7 @@ describe("subagent tools", () => {
     if (parsed.success) {
       expect("model" in parsed.data).toBe(false);
       const spawned = await spawn.execute(parsed.data);
-      expect(spawned.agent?.model).toBe("gpt-5.4-mini");
+      expect(spawned.agent?.model).toBe("gpt-6-luna");
     }
   });
 
@@ -495,7 +495,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-5.4-mini",
+      parentModel: "gpt-6-luna",
       forkContextMessages: [
         { role: "system", content: "parent-system" },
         { role: "assistant", content: "parent-assistant" },

@@ -158,7 +158,7 @@ configureModelConcurrency({
     fireworks: 8,
   },
   modelCaps: {
-    "gpt-5.4-mini": 24,
+    "gpt-6-luna": 24,
   },
   providerModelCaps: {
     google: {
@@ -189,7 +189,7 @@ Use OpenAI-style request fields:
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Write one sentence about TypeScript.",
 });
 
@@ -209,7 +209,7 @@ route and the image endpoint; no GPT text model is involved:
 
 Providing `styleImages` selects the corresponding edit endpoint. Otherwise, the generation
 endpoint is used. The subscription path calls GPT Image 2 directly; it does not send the prompt
-through Responses and does not use GPT-5.4 as an orchestrator.
+through Responses or an orchestrating text model.
 
 #### Direct public API
 
@@ -406,7 +406,7 @@ surface those intermediate images as events.
 import { streamText } from "@ljoukov/llm";
 
 const call = streamText({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Explain what a hash function is in one paragraph.",
 });
 
@@ -452,7 +452,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.4-mini", input });
+const result = await generateText({ model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -480,7 +480,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.4-mini", input });
+const result = await generateText({ model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -538,7 +538,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.4-mini", input });
+const result = await generateText({ model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -555,7 +555,7 @@ You can also control image analysis fidelity with request-level `mediaResolution
 
 ```ts
 const result = await generateText({
-  model: "gpt-5.4",
+  model: "gpt-6-sol",
   mediaResolution: "original",
   input,
 });
@@ -602,7 +602,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.4-mini", input });
+const result = await generateText({ model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -628,7 +628,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-5.4-mini", input });
+const result = await generateText({ model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -680,14 +680,15 @@ console.log(result.text);
 
 For ChatGPT text calls, `costUsd` is an API-equivalent estimate, not a billed subscription charge. [Astra API-equivalent rates](https://developers.openai.com/api/docs/models/gpt-6-astra) use $10 input, $1 cached input, $12.50 cache writes, and $50 output per million tokens; requests above 272,000 input tokens apply 2× input/cache rates and 1.5× output rates. `usage.cacheWriteTokens` is populated only when the provider reports it; unreported cache writes are not inferred.
 
-Each GPT-5.6 variant has a `-fast` convenience alias that sends the same provider model with priority processing enabled (`service_tier="priority"`), matching Codex `/fast` semantics. The existing `gpt-5.5-fast`, `chatgpt-gpt-5.5-fast`, and `chatgpt-gpt-5.4-fast` aliases remain supported.
+Every supported text variant has a `-fast` convenience alias that sends the same provider model with priority processing enabled (`service_tier="priority"`). Priority rates are twice standard rates. [Official pricing](https://developers.openai.com/api/docs/pricing) includes cache writes and the long-input rate above 272,000 tokens. Private experimental model pricing is unknown (zero estimate). To calculate an explicit API-equivalent estimate, pass a supported `pricingModelId` to `estimateCallCostUsd()`.
 
-Supported OpenAI and ChatGPT model ids are fixed literal unions in code, not arbitrary strings:
+Supported OpenAI and ChatGPT model ids are fixed literal unions in code:
 
-- OpenAI API text: `gpt-5.6` (Sol alias), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each; plus `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`
-- OpenAI API image: `gpt-image-2`
-- ChatGPT auth text: `chatgpt-gpt-6-astra`; `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-luna`, and a `-fast` form of each; plus `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`
-- ChatGPT auth image: `chatgpt-gpt-image-2`
+- OpenAI API text: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6` (Sol alias), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each.
+- ChatGPT subscription text: the same named variants with a `chatgpt-` prefix, including their `-fast` forms; the generic `chatgpt-gpt-5.6` alias is not supported.
+- OpenAI API image: `gpt-image-2`; ChatGPT subscription image: `chatgpt-gpt-image-2`.
+
+Version 9 removes GPT-5.5 and earlier text IDs. Migrate smaller-model calls to `gpt-6-luna` or `chatgpt-gpt-6-luna`, and general calls to `gpt-6.1-sol` or `chatgpt-gpt-6.1-sol`. Image IDs are unchanged. Standard text API estimates per million tokens are $2 / $0.10 / $10 (input / cached input / output) for GPT-6.1 Sol and $0.10 / $0.01 / $0.50 for GPT-6 Luna. Subscription estimates describe equivalent API usage, not a charge against the subscription.
 
 ## JSON outputs
 
@@ -708,7 +709,7 @@ const schema = z.object({
 });
 
 const { value } = await generateJson({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
 });
@@ -727,7 +728,7 @@ const { value } = await generateJson({
 });
 ```
 
-`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. In ordinary text and tool-loop calls, `ultra` sends the provider's highest supported reasoning level (`max` for GPT-6 Astra and GPT-5.6). In `runAgentLoop()` and `streamAgentLoop()`, it additionally enables the built-in subagent tools and Codex-style proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining maximum provider reasoning.
+`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. In ordinary text and tool-loop calls, `ultra` sends the provider's highest supported reasoning level (`max` for GPT-6 and GPT-5.6). In `runAgentLoop()` and `streamAgentLoop()`, it additionally enables the built-in subagent tools and Codex-style proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining maximum provider reasoning.
 
 ### Streaming JSON outputs
 
@@ -744,7 +745,7 @@ const schema = z.object({
 });
 
 const call = streamJson({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
 });
@@ -766,7 +767,7 @@ If you only want thought deltas (no partial JSON), set `streamMode: "final"`.
 
 ```ts
 const call = streamJson({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
   streamMode: "final",
@@ -777,7 +778,7 @@ If you want to keep `generateJson()` but still stream thoughts, pass an `onEvent
 
 ```ts
 const { value } = await generateJson({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
   onEvent: (event) => {
@@ -814,13 +815,13 @@ configureTelemetry({
 });
 
 const { value } = await generateJson({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Return { ok: true }.",
   schema: z.object({ ok: z.boolean() }),
 });
 
 await runAgentLoop({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Inspect the repo and update the file.",
   filesystemTool: true,
 });
@@ -830,7 +831,7 @@ Per-call opt-out:
 
 ```ts
 await generateJson({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "Return { ok: true }.",
   schema: z.object({ ok: z.boolean() }),
   telemetry: false,
@@ -931,7 +932,7 @@ import { runToolLoop, tool } from "@ljoukov/llm";
 import { z } from "zod";
 
 const result = await runToolLoop({
-  model: "gpt-5.4-mini",
+  model: "gpt-6-luna",
   input: "What is 12 * 9? Use the tool.",
   tools: {
     multiply: tool({
@@ -957,7 +958,7 @@ import { streamToolLoop, tool } from "@ljoukov/llm";
 import { z } from "zod";
 
 const call = streamToolLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Start implementing the feature.",
   tools: {
     echo: tool({
@@ -981,7 +982,7 @@ import { createToolLoopSteeringChannel, runAgentLoop } from "@ljoukov/llm";
 
 const steering = createToolLoopSteeringChannel();
 const run = runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Implement the task.",
   filesystemTool: true,
   steering,
@@ -1007,7 +1008,7 @@ For interactive runs where you want to stream events and inject steering mid-run
 import { streamAgentLoop } from "@ljoukov/llm";
 
 const call = streamAgentLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Start implementation.",
   filesystemTool: true,
 });
@@ -1022,7 +1023,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models (`chatgpt-gpt-6-astra`, the GPT-5.6 family, `gpt-5.5`, `gpt-5.5-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `gpt-5.4`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, and `chatgpt-gpt-5.3-codex-spark`): Codex-compatible filesystem tool shape.
+- Codex-like models (`chatgpt-gpt-6-astra`, the GPT-5.6 family, `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `chatgpt-gpt-6.1-sol`, `chatgpt-gpt-6.1-sol-fast`, `gpt-6-sol`, `chatgpt-gpt-6-sol`, `chatgpt-gpt-6-sol-fast`, and `chatgpt-gpt-6-luna`): Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 
@@ -1046,7 +1047,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -1074,7 +1075,7 @@ Enable `subagentTool` to allow delegation via Codex-style control tools:
 import { runAgentLoop } from "@ljoukov/llm";
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Plan the work, delegate in parallel where useful, and return a final merged result.",
   subagentTool: {
     enabled: true,
@@ -1096,7 +1097,7 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -1140,7 +1141,7 @@ import path from "node:path";
 import { runAgentLoop } from "@ljoukov/llm";
 
 await runAgentLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Do the task",
   filesystemTool: true,
   logging: {
@@ -1169,13 +1170,13 @@ import {
 } from "@ljoukov/llm";
 
 const fs = createInMemoryAgentFilesystem({ "/repo/a.ts": "export const n = 1;\n" });
-const tools = createFilesystemToolSetForModel("chatgpt-gpt-5.3-codex-spark", {
+const tools = createFilesystemToolSetForModel("chatgpt-gpt-6-luna", {
   cwd: "/repo",
   fs,
 });
 
 const result = await runToolLoop({
-  model: "chatgpt-gpt-5.3-codex-spark",
+  model: "chatgpt-gpt-6-luna",
   input: "Update n to 2.",
   tools,
 });

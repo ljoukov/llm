@@ -104,17 +104,27 @@ const _invalidChatGptNumImagesTypeCheck = {
 } satisfies LlmChatGptGenerateImagesRequest;
 
 describe("model id lists", () => {
-  it("supports Astra only through its explicit ChatGPT subscription id", () => {
-    expect(isChatGptModelId("chatgpt-gpt-6-astra")).toBe(true);
-    expect(isLlmTextModelId("chatgpt-gpt-6-astra")).toBe(true);
-    expect(isOpenAiModelId("gpt-6-astra")).toBe(false);
-    expect(isLlmTextModelId("gpt-6-astra")).toBe(false);
-    expect(isChatGptModelId("chatgpt-gpt-6-astra-fast")).toBe(false);
+  it("keeps new API and subscription routes explicit", () => {
+    for (const model of ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+      expect(isOpenAiModelId(model)).toBe(true);
+      expect(isOpenAiModelId(model + "-fast")).toBe(true);
+      expect(isChatGptModelId("chatgpt-" + model)).toBe(true);
+      expect(isChatGptModelId("chatgpt-" + model + "-fast")).toBe(true);
+    }
+    expect(isOpenAiModelId("gpt-6-arbitrary")).toBe(false);
     expect(isChatGptModelId("chatgpt-arbitrary-model")).toBe(false);
   });
 
   it("defines provider model ids as explicit const lists", () => {
     expect(OPENAI_MODEL_IDS).toEqual([
+      "gpt-6.1-sol",
+      "gpt-6.1-sol-fast",
+      "gpt-6-astra",
+      "gpt-6-astra-fast",
+      "gpt-6-sol",
+      "gpt-6-sol-fast",
+      "gpt-6-luna",
+      "gpt-6-luna-fast",
       "gpt-5.6",
       "gpt-5.6-fast",
       "gpt-5.6-sol",
@@ -123,26 +133,22 @@ describe("model id lists", () => {
       "gpt-5.6-terra-fast",
       "gpt-5.6-luna",
       "gpt-5.6-luna-fast",
-      "gpt-5.5",
-      "gpt-5.5-fast",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.4-nano",
     ]);
     expect(CHATGPT_MODEL_IDS).toEqual([
+      "chatgpt-gpt-6.1-sol",
+      "chatgpt-gpt-6.1-sol-fast",
       "chatgpt-gpt-6-astra",
+      "chatgpt-gpt-6-astra-fast",
+      "chatgpt-gpt-6-sol",
+      "chatgpt-gpt-6-sol-fast",
+      "chatgpt-gpt-6-luna",
+      "chatgpt-gpt-6-luna-fast",
       "chatgpt-gpt-5.6-sol",
       "chatgpt-gpt-5.6-sol-fast",
       "chatgpt-gpt-5.6-terra",
       "chatgpt-gpt-5.6-terra-fast",
       "chatgpt-gpt-5.6-luna",
       "chatgpt-gpt-5.6-luna-fast",
-      "chatgpt-gpt-5.5",
-      "chatgpt-gpt-5.5-fast",
-      "chatgpt-gpt-5.4",
-      "chatgpt-gpt-5.4-fast",
-      "chatgpt-gpt-5.4-mini",
-      "chatgpt-gpt-5.3-codex-spark",
     ]);
     expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
     expect(OPENAI_IMAGE_MODEL_IDS).toEqual(["gpt-image-2"]);
@@ -228,69 +234,40 @@ describe("model id lists", () => {
     expect(isLlmModelId("gpt-5-codex")).toBe(false);
   });
 
-  it("recognizes the supported OpenAI allowlist", () => {
-    for (const model of [
-      "gpt-5.6",
-      "gpt-5.6-fast",
-      "gpt-5.6-sol",
-      "gpt-5.6-sol-fast",
-      "gpt-5.6-terra",
-      "gpt-5.6-terra-fast",
-      "gpt-5.6-luna",
-      "gpt-5.6-luna-fast",
-    ]) {
+  it("recognizes the supported allowlists and rejects pre-5.6 text models", () => {
+    for (const model of OPENAI_MODEL_IDS) {
       expect(isOpenAiModelId(model)).toBe(true);
       expect(isLlmTextModelId(model)).toBe(true);
       expect(isLlmModelId(model)).toBe(true);
     }
-    for (const model of [
-      "chatgpt-gpt-5.6-sol",
-      "chatgpt-gpt-5.6-sol-fast",
-      "chatgpt-gpt-5.6-terra",
-      "chatgpt-gpt-5.6-terra-fast",
-      "chatgpt-gpt-5.6-luna",
-      "chatgpt-gpt-5.6-luna-fast",
-    ]) {
+    for (const model of CHATGPT_MODEL_IDS) {
       expect(isChatGptModelId(model)).toBe(true);
       expect(isLlmTextModelId(model)).toBe(true);
       expect(isLlmModelId(model)).toBe(true);
     }
-    expect(isOpenAiModelId("gpt-5.5")).toBe(true);
-    expect(isOpenAiModelId("gpt-5.5-fast")).toBe(true);
-    expect(isOpenAiModelId("gpt-5.4")).toBe(true);
-    expect(isOpenAiModelId("gpt-5.4-mini")).toBe(true);
-    expect(isOpenAiModelId("gpt-5.4-nano")).toBe(true);
-    expect(isChatGptModelId("chatgpt-gpt-5.5")).toBe(true);
-    expect(isChatGptModelId("chatgpt-gpt-5.5-fast")).toBe(true);
-    expect(isChatGptModelId("chatgpt-gpt-5.4")).toBe(true);
-    expect(isChatGptModelId("chatgpt-gpt-5.4-fast")).toBe(true);
-    expect(isChatGptModelId("chatgpt-gpt-5.4-mini")).toBe(true);
-    expect(isChatGptModelId("chatgpt-gpt-5.3-codex-spark")).toBe(true);
+    for (const old of [
+      "gpt-5.5",
+      "gpt-5.5-fast",
+      "gpt-5.4",
+      "gpt-5.4-fast",
+      "gpt-5.4-mini",
+      "gpt-5.4-nano",
+      "gpt-5.3-codex-spark",
+    ]) {
+      expect(isOpenAiModelId(old)).toBe(false);
+      expect(isChatGptModelId("chatgpt-" + old)).toBe(false);
+      expect(isLlmTextModelId(old)).toBe(false);
+      expect(isLlmModelId("chatgpt-" + old)).toBe(false);
+    }
     expect(isChatGptModelId("experimental-chatgpt-private-model")).toBe(true);
     expect(isExperimentalChatGptModelId("experimental-chatgpt-private-model")).toBe(true);
-    expect(CHATGPT_MODEL_IDS).not.toContain("experimental-chatgpt-private-model");
-    expect(isLlmTextModelId("gpt-5.5")).toBe(true);
-    expect(isLlmTextModelId("gpt-5.5-fast")).toBe(true);
-    expect(isLlmTextModelId("gpt-5.4")).toBe(true);
-    expect(isLlmTextModelId("gpt-5.4-mini")).toBe(true);
-    expect(isLlmTextModelId("gpt-5.4-nano")).toBe(true);
-    expect(isLlmTextModelId("chatgpt-gpt-5.5")).toBe(true);
-    expect(isLlmTextModelId("chatgpt-gpt-5.5-fast")).toBe(true);
-    expect(isLlmTextModelId("chatgpt-gpt-5.4-fast")).toBe(true);
-    expect(isLlmTextModelId("chatgpt-gpt-5.4-mini")).toBe(true);
     expect(isLlmTextModelId("experimental-chatgpt-private-model")).toBe(true);
-    expect(isOpenAiImageModelId("gpt-image-2")).toBe(true);
-    expect(isChatGptImageModelId("chatgpt-gpt-image-2")).toBe(true);
-    expect(isLlmImageModelId("gpt-image-2")).toBe(true);
-    expect(isLlmImageModelId("chatgpt-gpt-image-2")).toBe(true);
-    expect(isLlmTextModelId("gpt-image-2")).toBe(false);
-    expect(isLlmTextModelId("chatgpt-gpt-image-2")).toBe(false);
-    expect(isLlmModelId("gpt-image-2")).toBe(true);
-    expect(isLlmModelId("chatgpt-gpt-image-2")).toBe(true);
-    expect(isLlmModelId("gpt-5.5-fast")).toBe(true);
-    expect(isLlmModelId("chatgpt-gpt-5.5-fast")).toBe(true);
-    expect(isLlmModelId("chatgpt-gpt-5.4-fast")).toBe(true);
-    expect(isLlmModelId("experimental-chatgpt-private-model")).toBe(true);
+    expect(CHATGPT_MODEL_IDS).not.toContain("experimental-chatgpt-private-model");
+    for (const model of ["gpt-image-2", "chatgpt-gpt-image-2"]) {
+      expect(isLlmImageModelId(model)).toBe(true);
+      expect(isLlmTextModelId(model)).toBe(false);
+      expect(isLlmModelId(model)).toBe(true);
+    }
   });
 
   it("aggregates text and image model ids", () => {

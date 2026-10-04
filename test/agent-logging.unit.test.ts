@@ -47,7 +47,7 @@ describe("agent logging", () => {
       session.logLine("[agent:test-run] run_started");
       const call = session.startLlmCall({
         provider: "openai",
-        modelId: "gpt-5.4-mini",
+        modelId: "gpt-6-luna",
         requestText: "hello",
         requestMetadata: {
           image_url: "data:image/png;base64,QUJDRA==",
@@ -152,7 +152,7 @@ describe("agent logging", () => {
 
       const call = session.startLlmCall({
         provider: "chatgpt",
-        modelId: "chatgpt-gpt-5.4",
+        modelId: "chatgpt-gpt-6-sol",
         requestText: "hello",
       });
       call.appendResponseDelta("partial");
@@ -202,7 +202,7 @@ describe("agent logging", () => {
       session.logLine("[agent:test-run] custom_root");
       const call = session.startLlmCall({
         provider: "openai",
-        modelId: "gpt-5.4-mini",
+        modelId: "gpt-6-luna",
         requestText: "hello",
       });
       call.appendResponseDelta("answer");

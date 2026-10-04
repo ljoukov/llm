@@ -89,7 +89,7 @@ describe("vercel codex proxy", () => {
           "x-app-extra": "should-not-forward",
         },
         body: JSON.stringify({
-          model: "gpt-5.3-codex-spark",
+          model: "gpt-6-luna",
           stream: true,
           input: [{ role: "user", content: "hi" }],
         }),
