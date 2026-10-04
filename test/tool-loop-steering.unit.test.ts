@@ -17,7 +17,7 @@ vi.mock("../src/openai/calls.js", () => {
         const callIndex = openAiCallCount++;
         const firstResponse = {
           id: "resp_1",
-          model: "gpt-5.4-mini",
+          model: "gpt-6-luna",
           usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
           output: [
             {
@@ -28,7 +28,7 @@ vi.mock("../src/openai/calls.js", () => {
         };
         const secondResponse = {
           id: "resp_2",
-          model: "gpt-5.4-mini",
+          model: "gpt-6-luna",
           usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
           output: [
             {
@@ -76,7 +76,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           toolCalls: [],
           webSearchCalls: [],
           usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-          model: "gpt-5.3-codex-spark",
+          model: "gpt-6-luna",
           status: "completed",
           blocked: false,
         };
@@ -88,7 +88,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
         toolCalls: [],
         webSearchCalls: [],
         usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
-        model: "gpt-5.3-codex-spark",
+        model: "gpt-6-luna",
         status: "completed",
         blocked: false,
       };
@@ -117,7 +117,7 @@ describe("streamToolLoop steering", () => {
 
     const { streamToolLoop, tool } = await import("../src/llm.js");
     const call = streamToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "start",
       tools: {
         noop: tool({
@@ -163,7 +163,7 @@ describe("streamToolLoop steering", () => {
 
     const { streamToolLoop, tool } = await import("../src/llm.js");
     const call = streamToolLoop({
-      model: "chatgpt-gpt-5.3-codex-spark",
+      model: "chatgpt-gpt-6-luna",
       input: "start",
       tools: {
         noop: tool({
@@ -223,7 +223,7 @@ describe("streamToolLoop steering", () => {
     ]);
     const steering = createToolLoopSteeringChannel();
     const call = streamToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "start",
       steering,
       tools: {

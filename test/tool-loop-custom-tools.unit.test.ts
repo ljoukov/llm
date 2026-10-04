@@ -25,7 +25,7 @@ vi.mock("../src/openai/calls.js", () => {
           openAiScenario === "hosted_image"
             ? {
                 id: "resp_1",
-                model: "gpt-5.4-mini",
+                model: "gpt-6-luna",
                 status: "completed",
                 usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
                 output: [
@@ -40,7 +40,7 @@ vi.mock("../src/openai/calls.js", () => {
             : openAiScenario === "image_function"
               ? {
                   id: "resp_1",
-                  model: "gpt-5.4-mini",
+                  model: "gpt-6-luna",
                   usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
                   output: [
                     {
@@ -54,7 +54,7 @@ vi.mock("../src/openai/calls.js", () => {
                 }
               : {
                   id: "resp_1",
-                  model: "gpt-5.4-mini",
+                  model: "gpt-6-luna",
                   usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
                   output: [
                     {
@@ -68,7 +68,7 @@ vi.mock("../src/openai/calls.js", () => {
                 };
         const secondResponse = {
           id: "resp_2",
-          model: "gpt-5.4-mini",
+          model: "gpt-6-luna",
           usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
           output: [
             {
@@ -275,7 +275,7 @@ describe("runToolLoop custom tools", () => {
 
     const { customTool, runToolLoop } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "apply a patch",
       tools: {
         apply_patch: customTool({
@@ -305,7 +305,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "Generate a portrait illustration",
       tools: {},
       modelTools: [
@@ -342,7 +342,7 @@ describe("runToolLoop custom tools", () => {
 
   it.each([
     "chatgpt-gpt-6-astra",
-    "chatgpt-gpt-5.4",
+    "chatgpt-gpt-6-sol",
   ] as const)("supports %s custom/freeform tools and accumulates usage", async (model) => {
     chatGptScenario = "custom";
     chatGptRequests = [];
@@ -393,7 +393,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "inspect image",
       tools: {
         view_image: tool({
@@ -424,7 +424,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "finish",
       tools: {
         view_image: tool({
@@ -459,7 +459,7 @@ describe("runToolLoop custom tools", () => {
 
       await runWithAgentLoggingSession(session, async () => {
         await runToolLoop({
-          model: "gpt-5.4-mini",
+          model: "gpt-6-luna",
           input: "inspect image",
           tools: {
             view_image: tool({
@@ -517,7 +517,7 @@ describe("runToolLoop custom tools", () => {
     const observedContexts: unknown[] = [];
 
     const result = await runToolLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "inspect image",
       tools: {
         view_image: tool({
@@ -553,7 +553,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.4",
+      model: "chatgpt-gpt-6-sol",
       input: "inspect image",
       tools: {
         view_image: tool({
@@ -584,7 +584,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.4",
+      model: "chatgpt-gpt-6-sol",
       input: "finish",
       tools: {
         view_image: tool({
@@ -608,7 +608,7 @@ describe("runToolLoop custom tools", () => {
 
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "chatgpt-gpt-5.4",
+      model: "chatgpt-gpt-6-sol",
       input: "inspect image",
       tools: {
         view_image: tool({

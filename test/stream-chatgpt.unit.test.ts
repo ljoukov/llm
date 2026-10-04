@@ -112,7 +112,7 @@ describe("streamText (ChatGPT)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "chatgpt-gpt-5.4-mini", input: "hi" });
+    const call = streamText({ model: "chatgpt-gpt-6-luna", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -136,7 +136,7 @@ describe("streamText (ChatGPT)", () => {
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
-      model: "chatgpt-gpt-5.4-mini",
+      model: "chatgpt-gpt-6-luna",
       input: [
         {
           role: "user",
@@ -165,7 +165,7 @@ describe("streamText (ChatGPT)", () => {
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
     const beforeCallMs = Date.now();
     await generateText({
-      model: "chatgpt-gpt-5.4-mini",
+      model: "chatgpt-gpt-6-luna",
       input: [
         {
           role: "user",
@@ -207,7 +207,7 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-5.4-mini",
+      model: "chatgpt-gpt-6-luna",
       input: "hi",
     });
 
@@ -220,7 +220,7 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-5.4-mini",
+      model: "chatgpt-gpt-6-luna",
       input: "hi",
     });
 
@@ -228,17 +228,17 @@ describe("streamText (ChatGPT)", () => {
     expect(chatGptCallCount).toBe(2);
   });
 
-  it("maps chatgpt-gpt-5.4-fast to gpt-5.4 with priority service tier", async () => {
+  it("maps chatgpt-gpt-6-sol-fast to gpt-6-sol with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-5.4-fast",
+      model: "chatgpt-gpt-6-sol-fast",
       input: "hi",
     });
 
-    expect(capturedRequest?.model).toBe("gpt-5.4");
+    expect(capturedRequest?.model).toBe("gpt-6-sol");
     expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("chatgpt-gpt-5.4-fast");
+    expect(result.modelVersion).toBe("chatgpt-gpt-6-sol-fast");
   });
 
   it("maps thinkingLevel=max to ChatGPT max reasoning effort", async () => {
@@ -266,6 +266,10 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it.each([
+    ["chatgpt-gpt-6.1-sol-fast", "gpt-6.1-sol"],
+    ["chatgpt-gpt-6-astra-fast", "gpt-6-astra"],
+    ["chatgpt-gpt-6-sol-fast", "gpt-6-sol"],
+    ["chatgpt-gpt-6-luna-fast", "gpt-6-luna"],
     ["chatgpt-gpt-5.6-sol-fast", "gpt-5.6-sol"],
     ["chatgpt-gpt-5.6-terra-fast", "gpt-5.6-terra"],
     ["chatgpt-gpt-5.6-luna-fast", "gpt-5.6-luna"],
@@ -278,24 +282,24 @@ describe("streamText (ChatGPT)", () => {
     expect(capturedRequest?.service_tier).toBe("priority");
   });
 
-  it("maps chatgpt-gpt-5.5-fast to gpt-5.5 with priority service tier", async () => {
+  it("maps chatgpt-gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-5.5-fast",
+      model: "chatgpt-gpt-6.1-sol-fast",
       input: "hi",
     });
 
-    expect(capturedRequest?.model).toBe("gpt-5.5");
+    expect(capturedRequest?.model).toBe("gpt-6.1-sol");
     expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("chatgpt-gpt-5.5-fast");
+    expect(result.modelVersion).toBe("chatgpt-gpt-6.1-sol-fast");
   });
 
   it("rejects the OpenAI shell tool for ChatGPT-authenticated models", async () => {
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({
-      model: "chatgpt-gpt-5.5",
+      model: "chatgpt-gpt-6.1-sol",
       input: "Use shell.",
       tools: [{ type: "shell" }],
     });
@@ -326,11 +330,11 @@ describe("streamText (ChatGPT)", () => {
     expect(result.modelVersion).toBe("experimental-chatgpt-private-model");
   });
 
-  it("maps mediaResolution=original to ChatGPT image detail on gpt-5.4", async () => {
+  it("maps mediaResolution=original to ChatGPT image detail on gpt-6-sol", async () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "chatgpt-gpt-5.4",
+      model: "chatgpt-gpt-6-sol",
       mediaResolution: "original",
       input: [
         {
@@ -368,7 +372,7 @@ describe("streamText (ChatGPT)", () => {
 
       const result = await runWithAgentLoggingSession(session, async () => {
         return await generateText({
-          model: "chatgpt-gpt-5.4-mini",
+          model: "chatgpt-gpt-6-luna",
           input: "hi",
         });
       });

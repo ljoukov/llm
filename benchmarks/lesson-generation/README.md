@@ -5,9 +5,9 @@ Spark-style lesson creation benchmark focused on generation + verification loops
 ## Scope
 
 - Task: `subagent-generation-verification`
-- Model default: `chatgpt-gpt-5.3-codex-spark`
+- Model default: `chatgpt-gpt-6-luna`
 - Variant default: `subagents`
-- Rubrics: schema validation + tool trace + 4-pass `chatgpt-gpt-5.4-mini` grading
+- Rubrics: schema validation + tool trace + 4-pass `chatgpt-gpt-6-luna` grading
 - Extra artifacts:
   - `artifacts/logs/llm-call-trace.json`
   - `artifacts/logs/stale-diagnostic.json`
@@ -17,7 +17,7 @@ Spark-style lesson creation benchmark focused on generation + verification loops
 ```bash
 npx tsx benchmarks/lesson-generation/run.ts \
   --tasks subagent-generation-verification \
-  --models chatgpt-gpt-5.3-codex-spark \
+  --models chatgpt-gpt-6-luna \
   --variants subagents \
   --runs 1
 ```

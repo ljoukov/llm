@@ -35,7 +35,7 @@ describe("runAgentLoop", () => {
     };
 
     const result = await runAgentLoop({
-      model: "chatgpt-gpt-5.3-codex-spark",
+      model: "chatgpt-gpt-6-luna",
       input: "test",
       filesystemTool: true,
       tools: customTools,
@@ -57,12 +57,12 @@ describe("runAgentLoop", () => {
     ]);
   });
 
-  it("auto-selects codex filesystem tools for gpt-5.4", async () => {
+  it("auto-selects codex filesystem tools for gpt-6-sol", async () => {
     runToolLoopMock.mockClear();
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-5.4",
+      model: "chatgpt-gpt-6-sol",
       input: "test",
       filesystemTool: true,
     });
@@ -93,7 +93,7 @@ describe("runAgentLoop", () => {
       );
 
       await runAgentLoop({
-        model: "chatgpt-gpt-5.4",
+        model: "chatgpt-gpt-6-sol",
         input: "test",
         mediaResolution: "original",
         filesystemTool: {
@@ -238,7 +238,7 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "delegate",
       subagentTool: true,
     });
@@ -315,7 +315,7 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "delegate",
       subagent_tool: {
         promptPattern: "none",
@@ -342,7 +342,7 @@ describe("runAgentLoop", () => {
 
     await expect(
       runAgentLoop({
-        model: "chatgpt-gpt-5.3-codex-spark",
+        model: "chatgpt-gpt-6-luna",
         input: "test",
         filesystemTool: true,
         tools: {
@@ -361,7 +361,7 @@ describe("runAgentLoop", () => {
 
     await expect(
       runAgentLoop({
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         input: "test",
         subagentTool: true,
         tools: {
@@ -380,7 +380,7 @@ describe("runAgentLoop", () => {
 
     await expect(
       runAgentLoop({
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         input: "test",
       }),
     ).rejects.toThrow("runAgentLoop requires at least one tool");
@@ -399,7 +399,7 @@ describe("runAgentLoop", () => {
         steps: [
           {
             step: 1,
-            modelVersion: "chatgpt-gpt-5.3-codex-spark",
+            modelVersion: "chatgpt-gpt-6-luna",
             toolCalls: [{ toolName: "list_dir", input: {}, output: {} }],
             usage: { promptTokens: 10, cacheWriteTokens: 3, responseTokens: 3, totalTokens: 13 },
             costUsd: 0.01,
@@ -421,7 +421,7 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-5.3-codex-spark",
+      model: "chatgpt-gpt-6-luna",
       input: "test",
       filesystemTool: true,
       onEvent,
@@ -494,7 +494,7 @@ describe("runAgentLoop", () => {
           steps: [
             {
               step: 1,
-              modelVersion: "gpt-5.4-mini",
+              modelVersion: "gpt-6-luna",
               toolCalls: [
                 { toolName: "spawn_agent", input: {}, output: { agent_id: spawnResult.agent_id } },
               ],
@@ -510,7 +510,7 @@ describe("runAgentLoop", () => {
         steps: [
           {
             step: 1,
-            modelVersion: "gpt-5.4-mini",
+            modelVersion: "gpt-6-luna",
             toolCalls: [],
             costUsd: 0,
           },
@@ -523,7 +523,7 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "delegate",
       subagentTool: {
         enabled: true,
@@ -586,7 +586,7 @@ describe("runAgentLoop", () => {
     const order: string[] = [];
     const { runAgentLoop } = await import("../src/agent.js");
     await runAgentLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "test",
       subagentTool: true,
       telemetry: {
@@ -630,7 +630,7 @@ describe("runAgentLoop", () => {
 
     const { streamAgentLoop } = await import("../src/agent.js");
     const call = streamAgentLoop({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "test",
       subagentTool: true,
     });

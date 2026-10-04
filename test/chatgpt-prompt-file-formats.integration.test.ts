@@ -85,7 +85,7 @@ function buildPdfWithToken(token: string): Buffer {
 
 const requestedModels = resolveIntegrationRequestedModels();
 const requestedChatGptModel = requestedModels.find((model) => isChatGptModelId(model));
-const chatGptModel = requestedChatGptModel ?? "chatgpt-gpt-5.4";
+const chatGptModel = requestedChatGptModel ?? "chatgpt-gpt-6-sol";
 const chatGptFormatIt = requestedChatGptModel && hasCanonicalFilesBackend() ? it : it.skip;
 
 assertIntegrationCredentialsForModels([chatGptModel]);

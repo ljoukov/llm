@@ -5,27 +5,41 @@ import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
   it.each([
-    "chatgpt-gpt-6-astra",
-    "gpt-6-astra",
-    "chatgpt-gpt-6-astra-2026-09-01",
-  ])("estimates %s at Astra rates rather than GPT-5 rates", (modelId) => {
-    expect(
-      estimateCallCostUsd({
-        modelId,
-        tokens: { promptTokens: 1000, cachedTokens: 100, responseTokens: 500, thinkingTokens: 100 },
-        responseImages: 0,
-      }),
-    ).toBeCloseTo(0.0391, 8);
+    ["gpt-6.1-sol", 0.00781],
+    ["chatgpt-gpt-6.1-sol", 0.00781],
+    ["gpt-6-sol", 0.00782],
+    ["chatgpt-gpt-6-luna", 0.000391],
+    ["gpt-6-astra", 0.0391],
+    ["chatgpt-gpt-6-astra", 0.0391],
+    ["gpt-5.6-sol", 0.01564],
+    ["chatgpt-gpt-5.6-terra", 0.00902],
+    ["gpt-5.6-luna", 0.000902],
+  ] as const)("prices %s standard, priority, and concrete versions", (modelId, expectedCost) => {
+    const tokens = {
+      promptTokens: 1000,
+      cachedTokens: 100,
+      responseTokens: 500,
+      thinkingTokens: 100,
+    };
+    const estimate = (model: string, pricingModelId?: string) =>
+      estimateCallCostUsd({ modelId: model, pricingModelId, tokens, responseImages: 0 });
+    expect(estimate(modelId)).toBeCloseTo(expectedCost, 10);
+    expect(estimate(modelId + "-fast")).toBeCloseTo(expectedCost * 2, 10);
+    expect(estimate(modelId + "-2026-10-03")).toBeCloseTo(expectedCost, 10);
+    expect(estimate(modelId + "-2026-10-03", modelId + "-fast")).toBeCloseTo(expectedCost * 2, 10);
   });
 
   it.each([
-    [1000, 0.0396],
-    [272000, 2.7496],
-    [272001, 5.48422],
-  ])("prices Astra cache writes and the long-input boundary at %s tokens", (promptTokens, expectedCost) => {
+    ["gpt-6.1-sol", 1000, 0.00791],
+    ["gpt-6.1-sol", 272000, 0.54991],
+    ["gpt-6.1-sol", 272001, 1.096824],
+    ["chatgpt-gpt-6-astra", 1000, 0.0396],
+    ["chatgpt-gpt-6-astra", 272000, 2.7496],
+    ["chatgpt-gpt-6-astra", 272001, 5.48422],
+  ] as const)("prices %s cache writes at the %s token boundary", (modelId, promptTokens, expectedCost) => {
     expect(
       estimateCallCostUsd({
-        modelId: "chatgpt-gpt-6-astra",
+        modelId,
         tokens: {
           promptTokens,
           cachedTokens: 100,
@@ -35,286 +49,34 @@ describe("estimateCallCostUsd", () => {
         },
         responseImages: 0,
       }),
-    ).toBeCloseTo(expectedCost, 8);
+    ).toBeCloseTo(expectedCost, 10);
   });
 
-  it("counts cache writes as ordinary input for models without a separate write rate", () => {
-    const tokens = {
-      promptTokens: 1000,
-      cachedTokens: 100,
-      responseTokens: 500,
-      thinkingTokens: 100,
-    };
-    const estimate = (cacheWriteTokens?: number) =>
+  it("does not invent pricing for retired or private models", () => {
+    for (const modelId of [
+      "gpt-5.5",
+      "gpt-5.4-mini",
+      "experimental-chatgpt-private-model",
+      "__proto__",
+      "constructor",
+      "unlisted-model",
+    ]) {
+      expect(
+        estimateCallCostUsd({
+          modelId,
+          tokens: { promptTokens: 1000, responseTokens: 600 },
+          responseImages: 0,
+        }),
+      ).toBe(0);
+    }
+    expect(
       estimateCallCostUsd({
-        modelId: "chatgpt-gpt-5.6-sol",
-        tokens: { ...tokens, cacheWriteTokens },
+        modelId: "experimental-chatgpt-private-model",
+        pricingModelId: "gpt-6-sol",
+        tokens: { promptTokens: 1000, responseTokens: 600 },
         responseImages: 0,
-      });
-    expect(estimate(200)).toBeCloseTo(estimate(), 10);
-  });
-
-  it.each([
-    ["gpt-5.6-sol", 0.02255],
-    ["chatgpt-gpt-5.6-terra", 0.011275],
-    ["gpt-5.6-luna", 0.00451],
-  ] as const)("estimates %s standard costs", (modelId, expectedCost) => {
-    const cost = estimateCallCostUsd({
-      modelId,
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    expect(cost).toBeCloseTo(expectedCost, 8);
-  });
-
-  it.each([
-    ["gpt-5.6-fast", 0.0451],
-    ["chatgpt-gpt-5.6-sol-fast", 0.0451],
-    ["gpt-5.6-terra-fast", 0.02255],
-    ["chatgpt-gpt-5.6-luna-fast", 0.00902],
-  ] as const)("estimates %s priority costs", (modelId, expectedCost) => {
-    const cost = estimateCallCostUsd({
-      modelId,
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    expect(cost).toBeCloseTo(expectedCost, 8);
-  });
-
-  it("prices concrete GPT-5.6 model versions at their variant rates", () => {
-    const cases = [
-      ["gpt-5.6-sol-2026-07-09", 0.02255],
-      ["chatgpt-gpt-5.6-terra-2026-07-09", 0.011275],
-      ["gpt-5.6-luna-2026-07-09", 0.00451],
-    ] as const;
-
-    for (const [modelId, expectedCost] of cases) {
-      const cost = estimateCallCostUsd({
-        modelId,
-        tokens: {
-          promptTokens: 1000,
-          cachedTokens: 100,
-          responseTokens: 500,
-          thinkingTokens: 100,
-        },
-        responseImages: 0,
-      });
-      expect(cost).toBeCloseTo(expectedCost, 8);
-    }
-  });
-
-  it("estimates GPT-5.5 costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-5.5",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (5/1M) = 0.0045
-    // cached: 100 * (0.5/1M) = 0.00005
-    // output: 600 * (30/1M) = 0.018
-    expect(cost).toBeCloseTo(0.02255, 8);
-  });
-
-  it("prices GPT-5.5 fast aliases at priority rates", () => {
-    for (const modelId of ["gpt-5.5-fast", "chatgpt-gpt-5.5-fast"]) {
-      const cost = estimateCallCostUsd({
-        modelId,
-        tokens: {
-          promptTokens: 1000,
-          cachedTokens: 100,
-          responseTokens: 500,
-          thinkingTokens: 100,
-        },
-        responseImages: 0,
-      });
-
-      // non-cached prompt: 900 * (12.5/1M) = 0.01125
-      // cached: 100 * (1.25/1M) = 0.000125
-      // output: 600 * (75/1M) = 0.045
-      expect(cost).toBeCloseTo(0.056375, 8);
-    }
-  });
-
-  it("prices concrete GPT-5.5 model versions at standard rates", () => {
-    for (const modelId of ["gpt-5.5-2026-04-23", "chatgpt-gpt-5.5-2026-04-23"]) {
-      const cost = estimateCallCostUsd({
-        modelId,
-        tokens: {
-          promptTokens: 1000,
-          cachedTokens: 100,
-          responseTokens: 500,
-          thinkingTokens: 100,
-        },
-        responseImages: 0,
-      });
-
-      // non-cached prompt: 900 * (5/1M) = 0.0045
-      // cached: 100 * (0.5/1M) = 0.00005
-      // output: 600 * (30/1M) = 0.018
-      expect(cost).toBeCloseTo(0.02255, 8);
-    }
-  });
-
-  it("keeps fast pricing when a fast request returns a concrete GPT-5.5 version", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-5.5-2026-04-23",
-      pricingModelId: "gpt-5.5-fast",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (12.5/1M) = 0.01125
-    // cached: 100 * (1.25/1M) = 0.000125
-    // output: 600 * (75/1M) = 0.045
-    expect(cost).toBeCloseTo(0.056375, 8);
-  });
-
-  it("estimates GPT-5.4 mini costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-5.4-mini",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 0,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // input: 1000 * (0.25/1M) = 0.00025
-    // output: 600 * (2/1M) = 0.0012
-    expect(cost).toBeCloseTo(0.00145, 8);
-  });
-
-  it("estimates GPT-5.4 costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-5.4",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (2.5/1M) = 0.00225
-    // cached: 100 * (0.25/1M) = 0.000025
-    // output: 600 * (15/1M) = 0.009
-    expect(cost).toBeCloseTo(0.011275, 8);
-  });
-
-  it("estimates ChatGPT codex spark costs (gpt-5.3-codex-spark) at GPT-5 mini rates", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "chatgpt-gpt-5.3-codex-spark",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (0.25/1M) = 0.000225
-    // cached: 100 * (0.025/1M) = 0.0000025
-    // output: 600 * (2/1M) = 0.0012
-    expect(cost).toBeCloseTo(0.0014275, 8);
-  });
-
-  it("estimates GPT-5.4 nano costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-5.4-nano",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (0.05/1M) = 0.000045
-    // cached: 100 * (0.005/1M) = 0.0000005
-    // output: 600 * (0.4/1M) = 0.00024
-    expect(cost).toBeCloseTo(0.0002855, 8);
-  });
-
-  it("prices chatgpt-gpt-5.4-fast at GPT-5.4 priority rates", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "chatgpt-gpt-5.4-fast",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (5/1M) = 0.0045
-    // cached: 100 * (0.5/1M) = 0.00005
-    // output: 600 * (30/1M) = 0.018
-    expect(cost).toBeCloseTo(0.02255, 8);
-  });
-
-  it("prices experimental ChatGPT models at GPT-5.4 standard rates", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "experimental-chatgpt-private-model",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (2.5/1M) = 0.00225
-    // cached: 100 * (0.25/1M) = 0.000025
-    // output: 600 * (15/1M) = 0.009
-    expect(cost).toBeCloseTo(0.011275, 8);
-  });
-
-  it("prices gpt-5.4-fast at GPT-5.4 priority rates", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-5.4-fast",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (5/1M) = 0.0045
-    // cached: 100 * (0.5/1M) = 0.00005
-    // output: 600 * (30/1M) = 0.018
-    expect(cost).toBeCloseTo(0.02255, 8);
+      }),
+    ).toBeCloseTo(0.008, 10);
   });
 
   it("estimates Fireworks kimi-k2.5 costs", () => {

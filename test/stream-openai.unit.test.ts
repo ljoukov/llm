@@ -32,7 +32,7 @@ vi.mock("../src/openai/calls.js", () => {
     async finalResponse() {
       return {
         id: "resp_123",
-        model: finalResponseModelOverride ?? capturedRequest?.model ?? "gpt-5.4-mini",
+        model: finalResponseModelOverride ?? capturedRequest?.model ?? "gpt-6-luna",
         status: "completed",
         ...(finalResponseOutput ? { output: finalResponseOutput } : {}),
         usage: {
@@ -77,7 +77,7 @@ describe("streamText (OpenAI)", () => {
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.4-mini", input: "hi" });
+    const call = streamText({ model: "gpt-6-luna", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -96,19 +96,19 @@ describe("streamText (OpenAI)", () => {
     expect(events.some((e) => e.type === "usage")).toBe(true);
   });
 
-  it("preserves optional OpenAI cache-write metadata without changing older-model estimates", async () => {
+  it("prices reported Luna cache writes separately from ordinary input", async () => {
     inputTokenDetails = { cached_tokens: 2, cache_write_tokens: 3 };
     const { generateText } = await import("../src/llm.js");
-    const result = await generateText({ model: "gpt-5.4-mini", input: "hi" });
+    const result = await generateText({ model: "gpt-6-luna", input: "hi" });
     expect(result.usage?.cacheWriteTokens).toBe(3);
     expect(result.usage?.cachedTokens).toBe(2);
-    expect(result.costUsd).toBeCloseTo(0.00001405, 10);
+    expect(result.costUsd).toBeCloseTo(0.000003895, 10);
   });
 
   it("maps thinkingLevel=high to OpenAI high reasoning effort", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.4-mini", input: "hi", thinkingLevel: "high" });
+    const call = streamText({ model: "gpt-6-luna", input: "hi", thinkingLevel: "high" });
     for await (const _event of call.events) {
       // Drain stream.
     }
@@ -120,7 +120,7 @@ describe("streamText (OpenAI)", () => {
   it("maps thinkingLevel=xhigh to OpenAI xhigh reasoning effort", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.5", input: "hi", thinkingLevel: "xhigh" });
+    const call = streamText({ model: "gpt-6.1-sol", input: "hi", thinkingLevel: "xhigh" });
     for await (const _event of call.events) {
       // Drain stream.
     }
@@ -154,6 +154,10 @@ describe("streamText (OpenAI)", () => {
   });
 
   it.each([
+    ["gpt-6.1-sol-fast", "gpt-6.1-sol"],
+    ["gpt-6-astra-fast", "gpt-6-astra"],
+    ["gpt-6-sol-fast", "gpt-6-sol"],
+    ["gpt-6-luna-fast", "gpt-6-luna"],
     ["gpt-5.6-fast", "gpt-5.6"],
     ["gpt-5.6-sol-fast", "gpt-5.6-sol"],
     ["gpt-5.6-terra-fast", "gpt-5.6-terra"],
@@ -167,17 +171,17 @@ describe("streamText (OpenAI)", () => {
     expect(capturedRequest?.service_tier).toBe("priority");
   });
 
-  it("maps gpt-5.5-fast to gpt-5.5 with priority service tier", async () => {
+  it("maps gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "gpt-5.5-fast",
+      model: "gpt-6.1-sol-fast",
       input: "hi",
     });
 
-    expect(capturedRequest?.model).toBe("gpt-5.5");
+    expect(capturedRequest?.model).toBe("gpt-6.1-sol");
     expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("gpt-5.5");
+    expect(result.modelVersion).toBe("gpt-6.1-sol");
   });
 
   it("maps the hosted image-generation tool and returns its image inline", async () => {
@@ -194,7 +198,7 @@ describe("streamText (OpenAI)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: "Generate a landscape illustration",
       tools: [
         {
@@ -231,7 +235,7 @@ describe("streamText (OpenAI)", () => {
 
     await expect(
       generateText({
-        model: "gpt-5.4-mini",
+        model: "gpt-6-luna",
         input: "Generate an image",
         tools: [
           {
@@ -245,26 +249,26 @@ describe("streamText (OpenAI)", () => {
     ).rejects.toThrow("outputCompression requires outputFormat to be jpeg or webp");
   });
 
-  it("prices gpt-5.5-fast at priority rates when OpenAI returns a concrete model version", async () => {
-    finalResponseModelOverride = "gpt-5.5-2026-04-23";
+  it("prices gpt-6.1-sol-fast at priority rates when OpenAI returns a concrete model version", async () => {
+    finalResponseModelOverride = "gpt-6.1-sol-2026-10-03";
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "gpt-5.5-fast",
+      model: "gpt-6.1-sol-fast",
       input: "hi",
     });
 
-    expect(capturedRequest?.model).toBe("gpt-5.5");
+    expect(capturedRequest?.model).toBe("gpt-6.1-sol");
     expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("gpt-5.5-2026-04-23");
-    expect(result.costUsd).toBeCloseTo(0.000575, 8);
+    expect(result.modelVersion).toBe("gpt-6.1-sol-2026-10-03");
+    expect(result.costUsd).toBeCloseTo(0.00016, 8);
   });
 
   it("maps the OpenAI shell tool to a hosted container environment", async () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "gpt-5.5",
+      model: "gpt-6.1-sol",
       input: "Use shell.",
       tools: [
         {
@@ -290,11 +294,11 @@ describe("streamText (OpenAI)", () => {
     ]);
   });
 
-  it("maps mediaResolution=original to OpenAI image detail on gpt-5.4", async () => {
+  it("maps mediaResolution=original to OpenAI image detail on gpt-6-sol", async () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "gpt-5.4",
+      model: "gpt-6-sol",
       mediaResolution: "original",
       input: [
         {
@@ -322,7 +326,7 @@ describe("streamText (OpenAI)", () => {
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: [
         {
           role: "user",
@@ -349,7 +353,7 @@ describe("streamText (OpenAI)", () => {
 
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
     await generateText({
-      model: "gpt-5.4-mini",
+      model: "gpt-6-luna",
       input: [
         {
           role: "user",
@@ -399,7 +403,7 @@ describe("streamText (OpenAI)", () => {
       const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
       await runWithAgentLoggingSession(session, async () => {
         await generateText({
-          model: "gpt-5.4-mini",
+          model: "gpt-6-luna",
           input: [
             {
               role: "user",

@@ -6,12 +6,12 @@ This benchmark evaluates a filesystem-based agent that must:
 - read JSON schema files from disk,
 - write a required set of JSON outputs that satisfy those schemas,
 - ground claims in report evidence (line refs and quotes), and
-- pass an LLM grader (`chatgpt-gpt-5.4-mini`) for fidelity and coverage.
+- pass an LLM grader (`chatgpt-gpt-6-luna`) for fidelity and coverage.
 
 It runs the agent with (default model set):
 
-- ChatGPT Codex (Spark): `chatgpt-gpt-5.3-codex-spark`
-- OpenAI Responses: `gpt-5.4`, `gpt-5.4-mini`
+- ChatGPT Codex (Spark): `chatgpt-gpt-6-luna`
+- OpenAI Responses: `gpt-6-sol`, `gpt-6-luna`
 - Fireworks: `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`
 - Gemini Pro: `gemini-2.5-pro`, `gemini-3.1-pro-preview`
 - Gemini Flash: `gemini-flash-latest`, `gemini-3-flash-preview`
@@ -51,12 +51,12 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-5.3-codex-spark,gpt-5.4,gpt-5.4-mini,kimi-k2.5,glm-5,minimax-m2.1,gpt-oss-120b,gemini-2.5-pro,gemini-flash-latest,gemini-3.1-pro-preview,gemini-3-flash-preview \
+  --models chatgpt-gpt-6-luna,gpt-6-sol,gpt-6-luna,kimi-k2.5,glm-5,minimax-m2.1,gpt-oss-120b,gemini-2.5-pro,gemini-flash-latest,gemini-3.1-pro-preview,gemini-3-flash-preview \
   --tasks all \
   --variants baseline,subagents \
   --runs 3 \
   --reasoning medium \
-  --grader-model chatgpt-gpt-5.4-mini \
+  --grader-model chatgpt-gpt-6-luna \
   --max-steps 100
 ```
 
@@ -70,7 +70,7 @@ Patch `traces/latest` with only newly rerun cases (keep older model/task results
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-5.3-codex-spark,gpt-5.4 \
+  --models chatgpt-gpt-6-luna,gpt-6-sol \
   --tasks all \
   --merge-latest
 ```
@@ -87,7 +87,7 @@ npx tsx benchmarks/agent/run.ts \
    - at least one successful write call.
    - path policy checks: no absolute paths and no `..` traversal in tool arguments.
    - trace artifacts are written to `filesystem-access-trace.json` and `agent-run.json`.
-4. LLM grading with `chatgpt-gpt-5.4-mini`:
+4. LLM grading with `chatgpt-gpt-6-luna`:
    - faithfulness,
    - coverage,
    - practical usefulness.

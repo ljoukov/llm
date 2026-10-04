@@ -23,9 +23,9 @@
 ## OpenAI Model Policy
 
 - OpenAI text and image model ids are closed literal allowlists. Do not add support for arbitrary strings.
-- Supported OpenAI API model ids: `gpt-5.6`, `gpt-5.6-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`, `gpt-5.5`, `gpt-5.5-fast`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`.
+- Supported OpenAI API model ids: `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `gpt-6-astra`, `gpt-6-astra-fast`, `gpt-6-sol`, `gpt-6-sol-fast`, `gpt-6-luna`, `gpt-6-luna-fast`, `gpt-5.6`, `gpt-5.6-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`.
 - Supported OpenAI image model ids: `gpt-image-2`.
-- Supported ChatGPT-authenticated text model ids: `chatgpt-gpt-6-astra`, `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-sol-fast`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-terra-fast`, `chatgpt-gpt-5.6-luna`, `chatgpt-gpt-5.6-luna-fast`, `chatgpt-gpt-5.5`, `chatgpt-gpt-5.5-fast`, `chatgpt-gpt-5.4`, `chatgpt-gpt-5.4-fast`, `chatgpt-gpt-5.4-mini`, `chatgpt-gpt-5.3-codex-spark`.
+- Supported ChatGPT-authenticated text model ids: `chatgpt-gpt-6.1-sol`, `chatgpt-gpt-6.1-sol-fast`, `chatgpt-gpt-6-astra`, `chatgpt-gpt-6-astra-fast`, `chatgpt-gpt-6-sol`, `chatgpt-gpt-6-sol-fast`, `chatgpt-gpt-6-luna`, `chatgpt-gpt-6-luna-fast`, `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-sol-fast`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-terra-fast`, `chatgpt-gpt-5.6-luna`, `chatgpt-gpt-5.6-luna-fast`.
 - Supported ChatGPT-authenticated image model ids: `chatgpt-gpt-image-2`.
 - Experimental ChatGPT-authenticated model ids may use the public `experimental-chatgpt-*` prefix so private/internal model suffixes do not need to be committed to this package.
 - Remove old aliases instead of keeping backward-compatibility shims.
