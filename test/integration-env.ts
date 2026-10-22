@@ -6,6 +6,7 @@ import {
   isChatGptModelId,
   isChatGptImageModelId,
   isAnthropicModelId,
+  isClaudeModelId,
   isFireworksModelId,
   isGeminiImageModelId,
   isGeminiTextModelId,
@@ -24,6 +25,7 @@ export type IntegrationProviderAvailability = {
   readonly openAi: boolean;
   readonly gemini: boolean;
   readonly anthropic: boolean;
+  readonly claude: boolean;
   readonly fireworks: boolean;
   readonly chatGpt: boolean;
 };
@@ -70,6 +72,9 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
     openAi: hasOpenAi,
     gemini: hasGemini,
     anthropic: hasAnthropic,
+    // The explicit opt-in asserts that Claude Code is installed and logged into a subscription.
+    // Ordinary credential checks do not launch the CLI or inspect its credential store.
+    claude: process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1",
     fireworks: hasFireworks,
     chatGpt: hasChatGpt,
   };
@@ -97,6 +102,9 @@ export function hasIntegrationCredentialsForModel(
   if (isAnthropicModelId(model)) {
     return availability.anthropic;
   }
+  if (isClaudeModelId(model)) {
+    return availability.claude;
+  }
   if (isFireworksModelId(model)) {
     return availability.fireworks;
   }
@@ -116,6 +124,9 @@ function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId):
   }
   if (isAnthropicModelId(model)) {
     return "ANTHROPIC_API_KEY";
+  }
+  if (isClaudeModelId(model)) {
+    return "Claude Code subscription login + LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1";
   }
   if (isFireworksModelId(model)) {
     return "FIREWORKS_TOKEN or FIREWORKS_API_KEY";

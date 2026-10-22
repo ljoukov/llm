@@ -8,7 +8,8 @@
 Unified TypeScript wrapper over:
 
 - **OpenAI Responses API** (`openai`)
-- **Anthropic Claude** via the native Messages API (Haiku 5.5, Sonnet 5.5, Opus 5.5, and Fable 5.1)
+- **Anthropic Claude API** via short `haiku-*`, `sonnet-*`, `opus-*`, and `fable-*` model ids
+- **Claude Code subscription models** via `claude-*` model ids and the locally authenticated Claude Code runtime
 - **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`@google/genai`)
 - **Fireworks direct serverless models** (DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
@@ -94,11 +95,22 @@ If deploying to Cloudflare Workers/Pages:
 jq -c . < path/to/service-account.json | wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON
 ```
 
-### Anthropic Claude
+### Anthropic Claude API
 
 - `ANTHROPIC_API_KEY`
 
 Keep provider keys in server-side environment variables or a git-ignored `.env.local` file.
+
+### Claude Code subscription models
+
+Install Claude Code and sign in with your Claude subscription using `claude auth login`. The `claude-*` models reuse
+that local login through the Claude Agent SDK, which launches Claude Code as a subprocess. They require a local
+Node.js environment where Claude Code can run; the subscription route is unsuitable for edge runtimes.
+The executable defaults to `claude` on `PATH`; set `LLM_CLAUDE_EXECUTABLE` to use a specific installation.
+
+The library keeps API-key authentication separate from this route so a parent process's `ANTHROPIC_API_KEY` cannot
+silently turn a subscription call into an API-key call. It does not read or copy raw OAuth credentials into the library.
+Claude subscription limits and any enabled Claude Code extra usage apply.
 
 ### Fireworks
 
@@ -165,6 +177,7 @@ configureModelConcurrency({
     google: 3,
     fireworks: 8,
     anthropic: 4,
+    claude: 2,
   },
   modelCaps: {
     "gpt-6-luna": 24,
@@ -184,6 +197,7 @@ Default caps (without configuration):
 - Other Google models: `4`
 - Fireworks: `6`
 - Anthropic: `4`
+- Claude Code subscription: `2`
 
 ## Usage
 
@@ -659,7 +673,27 @@ console.log(result.text);
 The text allowlist includes `gemini-4-argon` and `gemini-3.8-flash`. Both support text streaming,
 structured JSON, function tools, and `low`, `medium`, or `high` thinking (`xhigh`, `max`, and `ultra` map to `high`).
 
-### Anthropic Claude
+### Anthropic Claude API
+
+```ts
+import { generateText } from "@ljoukov/llm";
+
+const result = await generateText({
+  model: "sonnet-5-5",
+  thinkingLevel: "low",
+  input: "Return exactly: OK",
+});
+
+console.log(result.text, result.usage, result.costUsd);
+```
+
+Supported API IDs are `haiku-5-5`, `sonnet-5-5`, `opus-5-5`, and `fable-5-1`. They resolve to Anthropic's native
+`claude-*` names on the wire. The API route uses the native Messages API with response/thought streaming, validated
+JSON outputs, and JSON function tools.
+Tool loops accept `maxOutputTokens` (default `32_000`, maximum `128_000`), including reasoning. Unsupported hosted
+tools and freeform tools return explicit errors.
+
+### Claude Code subscription models
 
 ```ts
 import { generateText } from "@ljoukov/llm";
@@ -670,13 +704,30 @@ const result = await generateText({
   input: "Return exactly: OK",
 });
 
+console.log(result.provider); // "claude"
 console.log(result.text, result.usage, result.costUsd);
 ```
 
-Supported IDs are `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-fable-5-1`.
-Claude uses the native Messages API with response/thought streaming, validated JSON outputs, and JSON function tools.
-Tool loops accept `maxOutputTokens` (default `32_000`, maximum `128_000`), including reasoning. Unsupported hosted
-tools and freeform tools return explicit errors.
+Supported subscription IDs are `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-fable-5-1`.
+Each call launches the Claude Code runtime through the Agent SDK and uses its existing local subscription login.
+The subscription and API routes have separate provider names and concurrency settings.
+
+The subscription route supports text/thought streaming, schema-validated JSON, application function tools, terminal
+tools, cancellation, steering, and inherited subagent models. Only the caller's tools are enabled; Claude Code's
+built-in tools and local project customizations are disabled. Previous messages are supplied as a role-labeled
+transcript because the Agent SDK accepts a user prompt rather than a Messages API history; user images and PDFs
+remain native media blocks. Tool schemas must describe a Zod object. The Claude concurrency cap limits top-level
+sessions; nested calls with the inherited model share their ancestor's slot to avoid waiting on themselves.
+
+Version 11 changes the earlier API naming: migrate an API call from `claude-sonnet-5-5` to `sonnet-5-5` (likewise Haiku,
+Opus, and Fable). Keeping the `claude-` prefix selects the subscription route. The old API route has no alias.
+
+Subscription `costUsd` values are API-equivalent token estimates for comparison; they are not subscription charges or
+remaining plan allowance. To run integration tests against the local subscription, opt in explicitly:
+
+```sh
+LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1 LLM_INTEGRATION_MODELS=claude-sonnet-5-5 npm run test:integration:claude-subscription
+```
 
 ### Gemini and Claude token costs
 
@@ -691,11 +742,11 @@ Prices below are USD per million tokens. Output rates include billed reasoning t
 | `gemini-4-argon`, from Dec 1, 2026 | $4 | $0.20 | $20 | — |
 | `gemini-3.8-flash`, through Dec 31, 2026 | $0.75 | $0.075 | $3.75 | — |
 | `gemini-3.8-flash`, from Jan 1, 2027 | $1.50 | $0.15 | $7.50 | — |
-| `claude-haiku-5-5`, prompt ≤100,000 tokens | $0.10 | $0.01 | $0.50 | $0.125 / $0.20 |
-| `claude-haiku-5-5`, prompt >100,000 tokens | $0.50 | $0.05 | $2.50 | $0.625 / $1 |
-| `claude-sonnet-5-5` | $2 | $0.10 | $10 | $2.50 / $4 |
-| `claude-opus-5-5` | $4 | $0.20 | $20 | $5 / $8 |
-| `claude-fable-5-1` | $10 | $0.25 | $50 | $12.50 / $20 |
+| `haiku-5-5`, prompt ≤100,000 tokens | $0.10 | $0.01 | $0.50 | $0.125 / $0.20 |
+| `haiku-5-5`, prompt >100,000 tokens | $0.50 | $0.05 | $2.50 | $0.625 / $1 |
+| `sonnet-5-5` | $2 | $0.10 | $10 | $2.50 / $4 |
+| `opus-5-5` | $4 | $0.20 | $20 | $5 / $8 |
+| `fable-5-1` | $10 | $0.25 | $50 | $12.50 / $20 |
 
 The estimator automatically switches Gemini rates at the published UTC dates. Gemini Argon supports implicit caching
 only. Haiku's threshold includes uncached input, cache reads, and cache writes; the higher rates apply to the whole
@@ -770,7 +821,8 @@ Version 9 removes GPT-5.5 and earlier text IDs. Migrate smaller-model calls to `
 
 - OpenAI API models use structured outputs (`json_schema`) when possible.
 - Gemini uses `responseJsonSchema`.
-- Claude uses native JSON schema outputs and validates the result with Zod.
+- The Anthropic API uses native JSON schema outputs; Claude Code subscription calls use the SDK's structured output.
+  Both validate the result with Zod.
 - `chatgpt-*` models try to use structured outputs too; if the endpoint/account/model rejects `json_schema`, the call
   retries with best-effort JSON parsing.
 

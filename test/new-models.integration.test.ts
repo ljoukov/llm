@@ -19,10 +19,10 @@ import {
 const newModels = [
   "gemini-4-argon",
   "gemini-3.8-flash",
-  "claude-haiku-5-5",
-  "claude-sonnet-5-5",
-  "claude-opus-5-5",
-  "claude-fable-5-1",
+  "haiku-5-5",
+  "sonnet-5-5",
+  "opus-5-5",
+  "fable-5-1",
 ] as const satisfies readonly LlmTextModelId[];
 type NewModel = (typeof newModels)[number];
 
@@ -54,15 +54,15 @@ function ratesFor(model: NewModel, promptTokens: number) {
       return Date.now() < Date.parse("2027-01-01T00:00:00Z")
         ? { input: 0.75, output: 3.75, cached: 0.075, write5m: 0, write1h: 0 }
         : { input: 1.5, output: 7.5, cached: 0.15, write5m: 0, write1h: 0 };
-    case "claude-haiku-5-5":
+    case "haiku-5-5":
       return promptTokens <= 100_000
         ? { input: 0.1, output: 0.5, cached: 0.01, write5m: 0.125, write1h: 0.2 }
         : { input: 0.5, output: 2.5, cached: 0.05, write5m: 0.625, write1h: 1 };
-    case "claude-sonnet-5-5":
+    case "sonnet-5-5":
       return { input: 2, output: 10, cached: 0.1, write5m: 2.5, write1h: 4 };
-    case "claude-opus-5-5":
+    case "opus-5-5":
       return { input: 4, output: 20, cached: 0.2, write5m: 5, write1h: 8 };
-    case "claude-fable-5-1":
+    case "fable-5-1":
       return { input: 10, output: 50, cached: 0.25, write5m: 12.5, write1h: 20 };
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@ljoukov/llm",
-  "version": "10.2.0",
+  "version": "11.0.0",
   "description": "Unified wrapper over OpenAI, Anthropic Claude, Google Gemini and Fireworks, with streaming, tool loops and usage/cost metrics.",
   "license": "MIT",
   "repository": {
@@ -65,10 +65,12 @@
     "typecheck:vercel-codex-proxy": "tsc -p vercel/codex-proxy/tsconfig.json --noEmit",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build",
     "prepack": "npm run verify",
-    "test:integration:new-models": "vitest run --config vitest.integration.config.ts test/new-models.integration.test.ts"
+    "test:integration:new-models": "vitest run --config vitest.integration.config.ts test/new-models.integration.test.ts",
+    "test:integration:claude-subscription": "vitest run --config vitest.integration.config.ts test/claude-subscription.integration.test.ts"
   },
   "dependencies": {
     "@alcyone-labs/zod-to-json-schema": "^4.0.10",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.308",
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.45.0",
     "ajv": "^8.18.0",

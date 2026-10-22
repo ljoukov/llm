@@ -5,6 +5,7 @@ import {
   generateImages,
   generateJson,
   isAnthropicModelId,
+  isClaudeModelId,
   isChatGptImageModelId,
   isChatGptModelId,
   isOpenAiImageModelId,
@@ -80,6 +81,8 @@ describe("integration: text model matrix", () => {
         expect(result.provider).toBe("gemini");
       } else if (isAnthropicModelId(model)) {
         expect(result.provider).toBe("anthropic");
+      } else if (isClaudeModelId(model)) {
+        expect(result.provider).toBe("claude");
       } else {
         expect(result.provider).toBe("fireworks");
       }
