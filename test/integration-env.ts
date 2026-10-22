@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   isChatGptModelId,
   isChatGptImageModelId,
+  isAnthropicModelId,
   isFireworksModelId,
   isGeminiImageModelId,
   isGeminiTextModelId,
@@ -22,6 +23,7 @@ import {
 export type IntegrationProviderAvailability = {
   readonly openAi: boolean;
   readonly gemini: boolean;
+  readonly anthropic: boolean;
   readonly fireworks: boolean;
   readonly chatGpt: boolean;
 };
@@ -49,7 +51,12 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
   loadLocalEnv();
 
   const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const hasGemini = Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
+  const hasGemini = Boolean(
+    process.env.GEMINI_API_KEY?.trim() ||
+      process.env.GOOGLE_API_KEY?.trim() ||
+      process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim(),
+  );
+  const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
   const hasFireworks = Boolean(
     process.env.FIREWORKS_TOKEN?.trim() || process.env.FIREWORKS_API_KEY?.trim(),
   );
@@ -62,6 +69,7 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
   availabilityCache = {
     openAi: hasOpenAi,
     gemini: hasGemini,
+    anthropic: hasAnthropic,
     fireworks: hasFireworks,
     chatGpt: hasChatGpt,
   };
@@ -86,6 +94,9 @@ export function hasIntegrationCredentialsForModel(
   if (isGeminiImageModelId(model)) {
     return availability.gemini;
   }
+  if (isAnthropicModelId(model)) {
+    return availability.anthropic;
+  }
   if (isFireworksModelId(model)) {
     return availability.fireworks;
   }
@@ -101,7 +112,10 @@ function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId):
     return "CHATGPT_AUTH_TOKEN_PROVIDER_URL + CHATGPT_AUTH_API_KEY (or CODEX auth store)";
   }
   if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {
-    return "GOOGLE_SERVICE_ACCOUNT_JSON";
+    return "GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_SERVICE_ACCOUNT_JSON";
+  }
+  if (isAnthropicModelId(model)) {
+    return "ANTHROPIC_API_KEY";
   }
   if (isFireworksModelId(model)) {
     return "FIREWORKS_TOKEN or FIREWORKS_API_KEY";

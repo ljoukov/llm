@@ -168,7 +168,8 @@ export function sanitiseLogValue(value: unknown, seen = new WeakSet<object>()): 
   const output: Record<string, unknown> = {};
   const hasInlineMime =
     (typeof record.mimeType === "string" && record.mimeType.trim().length > 0) ||
-    (typeof record.mime_type === "string" && record.mime_type.trim().length > 0);
+    (typeof record.mime_type === "string" && record.mime_type.trim().length > 0) ||
+    (typeof record.media_type === "string" && record.media_type.trim().length > 0);
 
   for (const [key, entryValue] of Object.entries(record)) {
     if (key === "image_url") {

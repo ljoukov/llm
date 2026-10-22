@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANTHROPIC_MODEL_IDS,
   CHATGPT_IMAGE_MODEL_IDS,
   CHATGPT_MODEL_IDS,
   FIREWORKS_MODEL_IDS,
   GEMINI_IMAGE_MODEL_IDS,
   GEMINI_TEXT_MODEL_IDS,
-  isChatGptImageModelId,
+  isAnthropicModelId,
+  isGeminiTextModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
   isLlmImageModelId,
   isLlmModelId,
   isLlmTextModelId,
-  isOpenAiImageModelId,
   isOpenAiModelId,
   LLM_IMAGE_MODEL_IDS,
   LLM_MODEL_IDS,
@@ -151,11 +152,40 @@ describe("model id lists", () => {
       "chatgpt-gpt-5.6-luna-fast",
     ]);
     expect(FIREWORKS_MODEL_IDS).toEqual(["deepseek-v4.1-flash-1017", "glm-5.3", "kimi-k3"]);
+    expect(ANTHROPIC_MODEL_IDS).toEqual([
+      "claude-haiku-5-5",
+      "claude-sonnet-5-5",
+      "claude-opus-5-5",
+      "claude-fable-5-1",
+    ]);
     expect(OPENAI_IMAGE_MODEL_IDS).toEqual(["gpt-image-2"]);
     expect(CHATGPT_IMAGE_MODEL_IDS).toEqual(["chatgpt-gpt-image-2"]);
     expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.1-pro-preview");
+    expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-4-argon");
+    expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.8-flash");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3-pro-image-preview");
     expect(GEMINI_IMAGE_MODEL_IDS).toContain("gemini-3.1-flash-image-preview");
+  });
+
+  it("recognizes the requested Gemini and Claude routes without allowing arbitrary ids", () => {
+    for (const model of ["gemini-4-argon", "gemini-3.8-flash"]) {
+      expect(isGeminiTextModelId(model)).toBe(true);
+      expect(isLlmTextModelId(model)).toBe(true);
+      expect(isLlmModelId(model)).toBe(true);
+      expect(LLM_TEXT_MODEL_IDS).toContain(model);
+      expect(isLlmImageModelId(model)).toBe(false);
+    }
+    for (const model of ANTHROPIC_MODEL_IDS) {
+      expect(isAnthropicModelId(model)).toBe(true);
+      expect(isLlmTextModelId(model)).toBe(true);
+      expect(isLlmModelId(model)).toBe(true);
+      expect(LLM_TEXT_MODEL_IDS).toContain(model);
+      expect(isLlmImageModelId(model)).toBe(false);
+    }
+    expect(isAnthropicModelId("claude-arbitrary")).toBe(false);
+    expect(isGeminiTextModelId("gemini-arbitrary")).toBe(false);
+    expect(isLlmTextModelId("claude-arbitrary")).toBe(false);
+    expect(isLlmTextModelId("gemini-arbitrary")).toBe(false);
   });
 
   it("exposes gpt-image-2 option constants from the official image docs", () => {

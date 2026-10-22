@@ -7,8 +7,9 @@ export const DEFAULT_OPENAI_MODEL_CONCURRENCY_CAP = 12;
 export const DEFAULT_GOOGLE_MODEL_CONCURRENCY_CAP = 4;
 export const DEFAULT_GOOGLE_PREVIEW_MODEL_CONCURRENCY_CAP = 2;
 export const DEFAULT_FIREWORKS_MODEL_CONCURRENCY_CAP = 6;
+export const DEFAULT_ANTHROPIC_MODEL_CONCURRENCY_CAP = 4;
 
-export type ModelConcurrencyProvider = "openai" | "google" | "fireworks";
+export type ModelConcurrencyProvider = "openai" | "google" | "fireworks" | "anthropic";
 
 export type ModelConcurrencyConfig = {
   readonly globalCap?: number;
@@ -30,6 +31,7 @@ const MODEL_CONCURRENCY_PROVIDERS: readonly ModelConcurrencyProvider[] = [
   "openai",
   "google",
   "fireworks",
+  "anthropic",
 ];
 
 const modelConcurrencyState = getRuntimeSingleton(
@@ -93,6 +95,7 @@ function normalizeModelConcurrencyConfig(
     openai: new Map<string, number>(),
     google: new Map<string, number>(),
     fireworks: new Map<string, number>(),
+    anthropic: new Map<string, number>(),
   };
   for (const provider of MODEL_CONCURRENCY_PROVIDERS) {
     const providerCap = normalizeCap(config.providerCaps?.[provider]);
@@ -122,6 +125,9 @@ function resolveDefaultProviderCap(
     return modelId?.includes("preview")
       ? DEFAULT_GOOGLE_PREVIEW_MODEL_CONCURRENCY_CAP
       : DEFAULT_GOOGLE_MODEL_CONCURRENCY_CAP;
+  }
+  if (provider === "anthropic") {
+    return DEFAULT_ANTHROPIC_MODEL_CONCURRENCY_CAP;
   }
   return DEFAULT_FIREWORKS_MODEL_CONCURRENCY_CAP;
 }

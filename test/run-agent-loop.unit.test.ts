@@ -401,14 +401,27 @@ describe("runAgentLoop", () => {
             step: 1,
             modelVersion: "chatgpt-gpt-6-luna",
             toolCalls: [{ toolName: "list_dir", input: {}, output: {} }],
-            usage: { promptTokens: 10, cacheWriteTokens: 3, responseTokens: 3, totalTokens: 13 },
+            usage: {
+              promptTokens: 10,
+              cacheWriteTokens: 3,
+              anthropicCacheCreation5mInputTokens: 2,
+              anthropicCacheCreation1hInputTokens: 1,
+              responseTokens: 3,
+              totalTokens: 13,
+            },
             costUsd: 0.01,
           },
           {
             step: 2,
             modelVersion: "chatgpt-gpt-6-astra",
             toolCalls: [],
-            usage: { promptTokens: 8, cacheWriteTokens: 2, responseTokens: 4, totalTokens: 12 },
+            usage: {
+              promptTokens: 8,
+              cacheWriteTokens: 2,
+              anthropicCacheCreation5mInputTokens: 2,
+              responseTokens: 4,
+              totalTokens: 12,
+            },
             costUsd: 0.01,
           },
         ],
@@ -446,7 +459,11 @@ describe("runAgentLoop", () => {
       stepCount?: number;
       toolCallCount?: number;
       totalCostUsd?: number;
-      usage?: { cacheWriteTokens?: number };
+      usage?: {
+        cacheWriteTokens?: number;
+        anthropicCacheCreation5mInputTokens?: number;
+        anthropicCacheCreation1hInputTokens?: number;
+      };
     }>;
     expect(started).toBeDefined();
     expect(streamed).toBeDefined();
@@ -462,6 +479,8 @@ describe("runAgentLoop", () => {
     expect(completed.toolCallCount).toBe(1);
     expect(completed.totalCostUsd).toBe(0.02);
     expect(completed.usage?.cacheWriteTokens).toBe(5);
+    expect(completed.usage?.anthropicCacheCreation5mInputTokens).toBe(4);
+    expect(completed.usage?.anthropicCacheCreation1hInputTokens).toBe(1);
     expect(started.depth).toBe(0);
     expect(started.parentRunId).toBeUndefined();
     expect(started.runId).toBe(streamed.runId);

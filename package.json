@@ -1,7 +1,7 @@
 {
   "name": "@ljoukov/llm",
-  "version": "10.1.0",
-  "description": "Unified wrapper over OpenAI Responses API and Google Gemini (@google/genai), with streaming + usage/cost metrics.",
+  "version": "10.2.0",
+  "description": "Unified wrapper over OpenAI, Anthropic Claude, Google Gemini and Fireworks, with streaming, tool loops and usage/cost metrics.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,6 +12,8 @@
   "keywords": [
     "llm",
     "openai",
+    "anthropic",
+    "claude",
     "gemini",
     "vertex-ai",
     "chatgpt",
@@ -62,7 +64,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck:vercel-codex-proxy",
     "typecheck:vercel-codex-proxy": "tsc -p vercel/codex-proxy/tsconfig.json --noEmit",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build",
-    "prepack": "npm run verify"
+    "prepack": "npm run verify",
+    "test:integration:new-models": "vitest run --config vitest.integration.config.ts test/new-models.integration.test.ts"
   },
   "dependencies": {
     "@alcyone-labs/zod-to-json-schema": "^4.0.10",

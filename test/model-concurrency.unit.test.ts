@@ -66,6 +66,28 @@ describe("model concurrency config", () => {
     ).toBe(64);
   });
 
+  it("supports Anthropic defaults and provider/model overrides", () => {
+    expect(
+      resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-sonnet-5-5" }),
+    ).toBe(4);
+
+    configureModelConcurrency({
+      providerCaps: { anthropic: 5 },
+      providerModelCaps: { anthropic: { " CLAUDE-SONNET-5-5 ": 7 } },
+    });
+    expect(
+      resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-sonnet-5-5" }),
+    ).toBe(7);
+    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-haiku-5-5" })).toBe(
+      5,
+    );
+
+    resetModelConcurrencyConfig();
+    expect(
+      resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-sonnet-5-5" }),
+    ).toBe(4);
+  });
+
   it("supports resetting configured caps", () => {
     configureModelConcurrency({
       providerCaps: {

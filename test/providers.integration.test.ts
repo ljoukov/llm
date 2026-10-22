@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   generateImages,
   generateJson,
+  isAnthropicModelId,
   isChatGptImageModelId,
   isChatGptModelId,
   isOpenAiImageModelId,
@@ -77,6 +78,8 @@ describe("integration: text model matrix", () => {
         expect(result.provider).toBe("chatgpt");
       } else if (model.startsWith("gemini-")) {
         expect(result.provider).toBe("gemini");
+      } else if (isAnthropicModelId(model)) {
+        expect(result.provider).toBe("anthropic");
       } else {
         expect(result.provider).toBe("fireworks");
       }
