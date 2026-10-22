@@ -16,7 +16,30 @@ export type GeminiImagePricing = {
   readonly imagePrices: Record<string, number>;
 };
 
-// Gemini pricing snapshot (best-effort, Standard tier). For current official pricing, see:
+// Gemini Developer API Standard pricing, verified October 22, 2026:
+// https://ai.google.dev/gemini-api/docs/pricing
+// These models have flat context rates. Scheduled price increases take effect in UTC.
+function flatTextPricing(input: number, output: number, cached: number): GeminiProPricing {
+  return {
+    threshold: Number.POSITIVE_INFINITY,
+    inputRateLow: input / 1_000_000,
+    inputRateHigh: input / 1_000_000,
+    cachedRateLow: cached / 1_000_000,
+    cachedRateHigh: cached / 1_000_000,
+    outputRateLow: output / 1_000_000,
+    outputRateHigh: output / 1_000_000,
+  };
+}
+
+const GEMINI_4_ARGON_INTRO_PRICING = flatTextPricing(2, 10, 0.1);
+const GEMINI_4_ARGON_PRICING = flatTextPricing(4, 20, 0.2);
+const GEMINI_4_ARGON_PRICE_INCREASE_AT = Date.parse("2026-12-01T00:00:00Z");
+
+const GEMINI_3_8_FLASH_INTRO_PRICING = flatTextPricing(0.75, 3.75, 0.075);
+const GEMINI_3_8_FLASH_PRICING = flatTextPricing(1.5, 7.5, 0.15);
+const GEMINI_3_8_FLASH_PRICE_INCREASE_AT = Date.parse("2027-01-01T00:00:00Z");
+
+// Earlier Gemini pricing snapshot (best-effort, Standard tier). Official pricing:
 // https://cloud.google.com/vertex-ai/generative-ai/pricing
 const GEMINI_3_PRO_PREVIEW_PRICING: GeminiProPricing = {
   threshold: 200_000,
@@ -96,6 +119,16 @@ const GEMINI_3_1_FLASH_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
 };
 
 export function getGeminiProPricing(modelId: string): GeminiProPricing | undefined {
+  if (modelId.includes("gemini-4-argon")) {
+    return Date.now() < GEMINI_4_ARGON_PRICE_INCREASE_AT
+      ? GEMINI_4_ARGON_INTRO_PRICING
+      : GEMINI_4_ARGON_PRICING;
+  }
+  if (modelId.includes("gemini-3.8-flash")) {
+    return Date.now() < GEMINI_3_8_FLASH_PRICE_INCREASE_AT
+      ? GEMINI_3_8_FLASH_INTRO_PRICING
+      : GEMINI_3_8_FLASH_PRICING;
+  }
   if (modelId.includes("gemini-2.5-pro")) {
     return GEMINI_2_5_PRO_PRICING;
   }

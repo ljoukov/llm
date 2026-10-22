@@ -1,3 +1,4 @@
+import { getAnthropicPricing } from "../anthropic/pricing.js";
 import { getFireworksPricing } from "../fireworks/pricing.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
 import {
@@ -14,6 +15,10 @@ export type LlmUsageTokens = {
   readonly cachedTokens?: number;
   /** Prompt tokens written to cache, only when reported by the provider. */
   readonly cacheWriteTokens?: number;
+  /** Anthropic cache-write tokens with a five-minute TTL, included in cacheWriteTokens. */
+  readonly anthropicCacheCreation5mInputTokens?: number;
+  /** Anthropic cache-write tokens with a one-hour TTL, included in cacheWriteTokens. */
+  readonly anthropicCacheCreation1hInputTokens?: number;
   readonly responseTokens?: number;
   readonly responseTextTokens?: number;
   readonly responseImageTokens?: number;
@@ -66,6 +71,34 @@ export function estimateCallCostUsd({
   const toolUsePromptTokens = resolveUsageNumber(tokens.toolUsePromptTokens);
   const promptTokenTotal = promptTokens + toolUsePromptTokens;
   const nonCachedPrompt = Math.max(0, promptTokenTotal - cachedTokens);
+
+  const anthropicPricing = resolvePricing(pricingModelIds, (id) =>
+    getAnthropicPricing(id, promptTokenTotal),
+  );
+  if (anthropicPricing) {
+    const cacheReadTokens = Math.min(promptTokenTotal, cachedTokens);
+    const cacheWrite1hTokens = resolveUsageNumber(tokens.anthropicCacheCreation1hInputTokens);
+    const cacheWrite5mTokens = resolveUsageNumber(tokens.anthropicCacheCreation5mInputTokens);
+    const cacheWriteTokens = Math.min(
+      nonCachedPrompt,
+      Math.max(
+        resolveUsageNumber(tokens.cacheWriteTokens),
+        cacheWrite5mTokens + cacheWrite1hTokens,
+      ),
+    );
+    const billedCacheWrite1hTokens = Math.min(cacheWriteTokens, cacheWrite1hTokens);
+    // If the provider omits the TTL breakdown, cache writes use the default five-minute TTL.
+    const billedCacheWrite5mTokens = cacheWriteTokens - billedCacheWrite1hTokens;
+    const inputCost = (nonCachedPrompt - cacheWriteTokens) * anthropicPricing.inputRate;
+    const cacheReadCost = cacheReadTokens * anthropicPricing.cachedRate;
+    const cacheWriteCost =
+      billedCacheWrite5mTokens * anthropicPricing.cacheWrite5mRate +
+      billedCacheWrite1hTokens * anthropicPricing.cacheWrite1hRate;
+    // Anthropic output_tokens already includes thinking; do not charge it a second time.
+    return (
+      inputCost + cacheReadCost + cacheWriteCost + responseTokens * anthropicPricing.outputRate
+    );
+  }
 
   const imagePreviewPricing = resolvePricing(pricingModelIds, getGeminiImagePricing);
   if (imagePreviewPricing) {

@@ -33,6 +33,14 @@ import {
   type ChatGptInputMessagePart,
 } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
+import { runAnthropicCall } from "./anthropic/calls.js";
+import type {
+  AnthropicContentBlock,
+  AnthropicMessage,
+  AnthropicMessageParam,
+  AnthropicMessageRequest,
+} from "./anthropic/client.js";
+import { ANTHROPIC_MODEL_IDS, isAnthropicModelId } from "./anthropic/models.js";
 import {
   FIREWORKS_MODEL_IDS,
   isFireworksModelId,
@@ -95,6 +103,7 @@ import {
   ensureVertexFileMirror,
   getCurrentFileUploadMetrics,
   filesCreate,
+  filesContent,
   getCanonicalFileMetadata,
   getCanonicalFileSignedUrl,
   runWithFileUploadSource,
@@ -261,7 +270,7 @@ export type LlmUsageEvent = {
 export type LlmModelEvent = {
   readonly type: "model";
   readonly modelVersion: string;
-  /** Raw provider completion reason when available (currently Fireworks tool loops). */
+  /** Raw provider completion reason when available (Fireworks and Anthropic). */
   readonly finishReason?: string;
 };
 
@@ -305,12 +314,13 @@ export type LlmStreamEvent =
   | LlmBlockedEvent
   | LlmToolCallStreamEvent;
 
-export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks";
+export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks" | "anthropic";
 export const LLM_TEXT_MODEL_IDS = [
   ...OPENAI_MODEL_IDS,
   ...CHATGPT_MODEL_IDS,
   ...FIREWORKS_MODEL_IDS,
   ...GEMINI_TEXT_MODEL_IDS,
+  ...ANTHROPIC_MODEL_IDS,
 ] as const;
 export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number] | ExperimentalChatGptModelId;
 
@@ -329,6 +339,7 @@ export function isLlmTextModelId(value: string): value is LlmTextModelId {
     isOpenAiModelId(value) ||
     isChatGptModelId(value) ||
     isFireworksModelId(value) ||
+    isAnthropicModelId(value) ||
     isGeminiTextModelId(value)
   );
 }
@@ -640,7 +651,7 @@ export type LlmToolLoopStepTiming = {
 export type LlmToolLoopStep = {
   readonly step: number;
   readonly modelVersion: string;
-  /** Raw provider completion reason. Fireworks "length" means an output/context limit. */
+  /** Raw provider completion reason. Fireworks "length" and Anthropic "max_tokens" indicate limits. */
   readonly finishReason?: string;
   readonly text?: string;
   readonly thoughts?: string;
@@ -686,8 +697,8 @@ export type LlmToolLoopRequest = LlmInput & {
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
-  /** Maximum generated tokens per Fireworks completion, including reasoning.
-   * Omit to retain the provider default. Other providers reject this option.
+  /** Maximum generated tokens per Fireworks or Anthropic completion, including reasoning.
+   * Omit to retain the Fireworks default or Anthropic's 32,000 token limit.
    */
   readonly maxOutputTokens?: number;
   readonly thinkingLevel?: LlmThinkingLevel;
@@ -1368,6 +1379,9 @@ function resolveProvider(model: LlmModelId): {
   }
   if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {
     return { provider: "gemini", model };
+  }
+  if (isAnthropicModelId(model)) {
+    return { provider: "anthropic", model };
   }
   if (isFireworksModelId(model)) {
     const fireworksModel = resolveFireworksModelId(model);
@@ -2694,6 +2708,271 @@ ${JSON.stringify(options.responseJsonSchema)}`);
   return messages;
 }
 
+const ANTHROPIC_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+async function toAnthropicContentPart(part: LlmContentPart): Promise<AnthropicContentBlock> {
+  if (part.type === "text") return { type: "text", text: part.text };
+  if (part.type === "input_image" && part.detail && part.detail !== "auto") {
+    throw new Error("Anthropic does not support input_image.detail; omit it or use auto.");
+  }
+  let mimeType =
+    part.type === "inlineData" ? part.mimeType : inferToolOutputMimeTypeFromFilename(part.filename);
+  let data: string | undefined;
+  let url: string | undefined;
+  if (part.type === "inlineData") {
+    data = part.data;
+  } else if (part.file_id) {
+    const metadata = await getCanonicalFileMetadata(part.file_id);
+    mimeType = metadata.mimeType;
+    if (mimeType.startsWith("text/") || mimeType === "application/json") {
+      const response = await filesContent(part.file_id);
+      return {
+        type: "document",
+        source: { type: "text", media_type: "text/plain", data: await response.text() },
+      };
+    }
+    url = await getCanonicalFileSignedUrl({ fileId: part.file_id });
+  } else if (part.type === "input_image") {
+    url = part.image_url ?? undefined;
+  } else {
+    data = part.file_data ?? undefined;
+    url = part.file_url ?? undefined;
+  }
+  const parsed = parseDataUrlPayload(data ?? url ?? "");
+  if (parsed) {
+    mimeType = parsed.mimeType;
+    data = parsed.dataBase64;
+    url = undefined;
+  }
+  const isImage = part.type === "input_image" || isInlineImageMime(mimeType);
+  if (isImage) {
+    if (data) {
+      if (!mimeType || !ANTHROPIC_IMAGE_MIME_TYPES.has(mimeType)) {
+        throw new Error(
+          `Anthropic image input requires JPEG, PNG, GIF, or WebP (received ${mimeType ?? "unknown"}).`,
+        );
+      }
+      return { type: "image", source: { type: "base64", media_type: mimeType, data } };
+    }
+    if (url) return { type: "image", source: { type: "url", url } };
+    throw new Error("Anthropic image input requires image_url or file_id.");
+  }
+  if (mimeType === "application/pdf") {
+    if (data) return { type: "document", source: { type: "base64", media_type: mimeType, data } };
+    if (url) return { type: "document", source: { type: "url", url } };
+  }
+  if (data && (mimeType?.startsWith("text/") || mimeType === "application/json")) {
+    return {
+      type: "document",
+      source: {
+        type: "text",
+        media_type: "text/plain",
+        data: decodeInlineDataBuffer(data).toString("utf8"),
+      },
+    };
+  }
+  throw new Error(
+    `Anthropic file input supports PDF, images, and inline text documents; received ${mimeType ?? "unknown MIME type"}.`,
+  );
+}
+
+async function toAnthropicMessages(contents: readonly LlmContent[]): Promise<{
+  system?: string;
+  messages: AnthropicMessageParam[];
+}> {
+  const system: string[] = [];
+  const messages: AnthropicMessageParam[] = [];
+  for (const content of contents) {
+    if (content.role === "system" || content.role === "developer") {
+      if (content.parts.some((part) => part.type !== "text")) {
+        throw new Error("Anthropic system and developer messages only support text.");
+      }
+      system.push(...content.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])));
+      continue;
+    }
+    if (content.role === "tool") {
+      throw new Error("Anthropic tool results must be supplied through runToolLoop.");
+    }
+    const parts: AnthropicContentBlock[] = [];
+    for (const part of content.parts) {
+      if (part.type === "text" && part.thought) continue;
+      if (content.role === "assistant" && part.type !== "text") {
+        throw new Error("Anthropic assistant input only supports text.");
+      }
+      parts.push(await toAnthropicContentPart(part));
+    }
+    messages.push({
+      role: content.role,
+      content: parts.length > 0 ? parts : [{ type: "text", text: "(empty content)" }],
+    });
+  }
+  return { ...(system.length ? { system: system.join("\n\n") } : {}), messages };
+}
+
+function normalizeAnthropicSchema(schema: JsonSchema): JsonSchema {
+  const output: JsonSchema = {};
+  const removed: string[] = [];
+  const unsupported = new Set([
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minLength",
+    "maxLength",
+    "maxItems",
+    "uniqueItems",
+  ]);
+  const supportedFormats = new Set([
+    "date-time",
+    "time",
+    "date",
+    "duration",
+    "email",
+    "hostname",
+    "uri",
+    "ipv4",
+    "ipv6",
+    "uuid",
+  ]);
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "$schema" || key === "propertyOrdering") continue;
+    if (
+      unsupported.has(key) ||
+      (key === "minItems" && value !== 0 && value !== 1) ||
+      (key === "format" && !supportedFormats.has(String(value)))
+    ) {
+      removed.push(`${key}: ${JSON.stringify(value)}`);
+      continue;
+    }
+    if (
+      (key === "properties" || key === "$defs" || key === "definitions") &&
+      isPlainRecord(value)
+    ) {
+      output[key] = Object.fromEntries(
+        Object.entries(value).map(([name, child]) => [
+          name,
+          isPlainRecord(child) ? normalizeAnthropicSchema(child) : child,
+        ]),
+      );
+    } else if (["items", "not"].includes(key) && isPlainRecord(value)) {
+      output[key] = normalizeAnthropicSchema(value);
+    } else if (["anyOf", "oneOf", "allOf"].includes(key) && Array.isArray(value)) {
+      output[key === "oneOf" ? "anyOf" : key] = value.map((child) =>
+        isPlainRecord(child) ? normalizeAnthropicSchema(child) : child,
+      );
+    } else {
+      output[key] = value;
+    }
+  }
+  if (output.type === "object" || isPlainRecord(output.properties))
+    output.additionalProperties = false;
+  if (removed.length)
+    output.description = [output.description, ...removed].filter(Boolean).join("; ");
+  return output;
+}
+
+function anthropicRequestConfig(
+  request: Pick<
+    LlmBaseRequest,
+    | "thinkingLevel"
+    | "responseMimeType"
+    | "responseJsonSchema"
+    | "responseModalities"
+    | "imageAspectRatio"
+    | "imageSize"
+    | "mediaResolution"
+    | "openAiTextFormat"
+  >,
+): Pick<AnthropicMessageRequest, "thinking" | "output_config"> {
+  if (
+    request.imageAspectRatio ||
+    request.imageSize ||
+    request.openAiTextFormat ||
+    (request.mediaResolution && request.mediaResolution !== "auto") ||
+    request.responseModalities?.some((value) => value.toLowerCase() !== "text")
+  ) {
+    throw new Error(
+      "Anthropic does not support image generation, media resolution, or OpenAI text format options.",
+    );
+  }
+  if (
+    request.responseMimeType &&
+    !["application/json", "text/plain"].includes(request.responseMimeType)
+  ) {
+    throw new Error(`Anthropic does not support response MIME type ${request.responseMimeType}.`);
+  }
+  const effort = request.thinkingLevel === "ultra" ? "max" : request.thinkingLevel;
+  return {
+    thinking: { type: "adaptive", display: "summarized" },
+    ...(effort || request.responseJsonSchema
+      ? {
+          output_config: {
+            ...(effort ? { effort } : {}),
+            ...(request.responseJsonSchema
+              ? {
+                  format: {
+                    type: "json_schema",
+                    schema: normalizeAnthropicSchema(request.responseJsonSchema),
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function extractAnthropicUsageTokens(usage: AnthropicMessage["usage"]): LlmUsageTokens | undefined {
+  if (!usage) return undefined;
+  const input = toMaybeNumber(usage.input_tokens) ?? 0;
+  const cachedTokens = toMaybeNumber(usage.cache_read_input_tokens) ?? 0;
+  const cacheWriteTokens = toMaybeNumber(usage.cache_creation_input_tokens) ?? 0;
+  const responseTokens = toMaybeNumber(usage.output_tokens) ?? 0;
+  const promptTokens = input + cachedTokens + cacheWriteTokens;
+  return {
+    promptTokens,
+    cachedTokens,
+    cacheWriteTokens,
+    responseTokens,
+    totalTokens: promptTokens + responseTokens,
+    anthropicCacheCreation5mInputTokens: toMaybeNumber(
+      usage.cache_creation?.ephemeral_5m_input_tokens,
+    ),
+    anthropicCacheCreation1hInputTokens: toMaybeNumber(
+      usage.cache_creation?.ephemeral_1h_input_tokens,
+    ),
+  };
+}
+
+function extractAnthropicText(response: AnthropicMessage): { text: string; thoughts: string } {
+  let text = "";
+  let thoughts = "";
+  for (const block of response.content) {
+    if (block.type === "text") text += block.text;
+    if (block.type === "thinking") thoughts += block.thinking;
+  }
+  return { text, thoughts };
+}
+
+async function toAnthropicToolResultContent(
+  output: unknown,
+): Promise<string | AnthropicContentBlock[]> {
+  const items = isLlmToolOutputContentItem(output)
+    ? [output]
+    : Array.isArray(output) && output.every(isLlmToolOutputContentItem)
+      ? output
+      : undefined;
+  if (!items) return mergeToolOutput(output);
+  return await Promise.all(
+    items.map((item) =>
+      item.type === "input_text"
+        ? Promise.resolve({ type: "text" as const, text: item.text })
+        : toAnthropicContentPart(item),
+    ),
+  );
+}
+
 function toGeminiTools(tools: readonly LlmToolConfig[] | undefined): GeminiTool[] | undefined {
   if (!tools || tools.length === 0) {
     return undefined;
@@ -2916,6 +3195,10 @@ function mergeTokenUpdates(
     promptImageTokens: next.promptImageTokens ?? current.promptImageTokens,
     cachedTokens: next.cachedTokens ?? current.cachedTokens,
     cacheWriteTokens: next.cacheWriteTokens ?? current.cacheWriteTokens,
+    anthropicCacheCreation5mInputTokens:
+      next.anthropicCacheCreation5mInputTokens ?? current.anthropicCacheCreation5mInputTokens,
+    anthropicCacheCreation1hInputTokens:
+      next.anthropicCacheCreation1hInputTokens ?? current.anthropicCacheCreation1hInputTokens,
     responseTokens: next.responseTokens ?? current.responseTokens,
     responseTextTokens: next.responseTextTokens ?? current.responseTextTokens,
     responseImageTokens: next.responseImageTokens ?? current.responseImageTokens,
@@ -2949,6 +3232,14 @@ function sumUsageTokens(
     promptImageTokens: sumUsageValue(current?.promptImageTokens, next.promptImageTokens),
     cachedTokens: sumUsageValue(current?.cachedTokens, next.cachedTokens),
     cacheWriteTokens: sumUsageValue(current?.cacheWriteTokens, next.cacheWriteTokens),
+    anthropicCacheCreation5mInputTokens: sumUsageValue(
+      current?.anthropicCacheCreation5mInputTokens,
+      next.anthropicCacheCreation5mInputTokens,
+    ),
+    anthropicCacheCreation1hInputTokens: sumUsageValue(
+      current?.anthropicCacheCreation1hInputTokens,
+      next.anthropicCacheCreation1hInputTokens,
+    ),
     responseTokens: sumUsageValue(current?.responseTokens, next.responseTokens),
     responseTextTokens: sumUsageValue(current?.responseTextTokens, next.responseTextTokens),
     responseImageTokens: sumUsageValue(current?.responseImageTokens, next.responseImageTokens),
@@ -4637,12 +4928,22 @@ function collectPayloadAttachments(
     return;
   }
   const record = value as Record<string, unknown>;
-  const mimeType = typeof record.mimeType === "string" ? record.mimeType : undefined;
+  const mimeType =
+    typeof record.mimeType === "string"
+      ? record.mimeType
+      : typeof record.media_type === "string"
+        ? record.media_type
+        : typeof record.mime_type === "string"
+          ? record.mime_type
+          : undefined;
   if (typeof record.data === "string" && mimeType) {
     try {
       options.attachments.push({
         filename: buildLoggedAttachmentFilename(options.prefix, options.counter, mimeType),
-        bytes: decodeInlineDataBuffer(record.data),
+        bytes:
+          record.type === "text"
+            ? Buffer.from(record.data, "utf8")
+            : decodeInlineDataBuffer(record.data),
       });
       options.counter += 1;
     } catch {
@@ -4771,6 +5072,19 @@ function extractToolCallResponsePayloadFromFireworksMessages(
 function extractToolCallResponseTextFromGeminiContents(contents: unknown): string | undefined {
   const responses = extractToolCallResponsePayloadFromGeminiContents(contents);
   return serialiseLogArtifactText(responses);
+}
+
+function extractToolCallResponsePayloadFromAnthropicMessages(
+  messages: unknown,
+): unknown[] | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  const results = messages.flatMap((message) => {
+    if (!isPlainRecord(message) || !Array.isArray(message.content)) return [];
+    return message.content
+      .filter((block: unknown) => isPlainRecord(block) && block.type === "tool_result")
+      .map((block: Record<string, unknown>) => sanitiseLogValue(block));
+  });
+  return results.length ? results : undefined;
 }
 
 function extractToolCallResponsePayloadFromGeminiContents(
@@ -4946,25 +5260,35 @@ function startLlmCallLoggerFromPayload(options: {
       ? extractToolCallResponseTextFromOpenAiInput(
           (options.requestPayload as { input?: unknown }).input,
         )
-      : options.provider === "fireworks"
-        ? extractToolCallResponseTextFromFireworksMessages(
-            (options.requestPayload as { messages?: unknown }).messages,
+      : options.provider === "anthropic"
+        ? serialiseLogArtifactText(
+            extractToolCallResponsePayloadFromAnthropicMessages(
+              (options.requestPayload as { messages?: unknown }).messages,
+            ),
           )
-        : extractToolCallResponseTextFromGeminiContents(
-            (options.requestPayload as { contents?: unknown }).contents,
-          );
+        : options.provider === "fireworks"
+          ? extractToolCallResponseTextFromFireworksMessages(
+              (options.requestPayload as { messages?: unknown }).messages,
+            )
+          : extractToolCallResponseTextFromGeminiContents(
+              (options.requestPayload as { contents?: unknown }).contents,
+            );
   const toolCallResponsePayload =
     options.provider === "openai" || options.provider === "chatgpt"
       ? extractToolCallResponsePayloadFromOpenAiInput(
           (options.requestPayload as { input?: unknown }).input,
         )
-      : options.provider === "fireworks"
-        ? extractToolCallResponsePayloadFromFireworksMessages(
+      : options.provider === "anthropic"
+        ? extractToolCallResponsePayloadFromAnthropicMessages(
             (options.requestPayload as { messages?: unknown }).messages,
           )
-        : extractToolCallResponsePayloadFromGeminiContents(
-            (options.requestPayload as { contents?: unknown }).contents,
-          );
+        : options.provider === "fireworks"
+          ? extractToolCallResponsePayloadFromFireworksMessages(
+              (options.requestPayload as { messages?: unknown }).messages,
+            )
+          : extractToolCallResponsePayloadFromGeminiContents(
+              (options.requestPayload as { contents?: unknown }).contents,
+            );
   return session.startLlmCall({
     provider: options.provider,
     modelId: options.modelId,
@@ -5247,6 +5571,44 @@ async function runTextCall(params: {
         if (!sawResponseDelta && fallbackText.length > 0) {
           pushDelta("response", fallbackText);
         }
+      } else if (provider === "anthropic") {
+        if (request.tools?.length) {
+          throw new Error(
+            "Anthropic provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
+          );
+        }
+        const prompt = await toAnthropicMessages(contents);
+        if (request.responseMimeType === "application/json" && !request.responseJsonSchema) {
+          prompt.system = [
+            prompt.system,
+            "Return valid JSON only. Do not include markdown or prose outside JSON.",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+        }
+        const config = anthropicRequestConfig(request);
+        const response = await runAnthropicCall(
+          (client) =>
+            client.streamMessage(
+              { model: modelForProvider, max_tokens: 32_000, ...prompt, ...config },
+              { signal, onDelta: pushDelta },
+            ),
+          modelForProvider,
+        );
+        modelVersion = response.model || request.model;
+        pushEvent({
+          type: "model",
+          modelVersion,
+          ...(response.stop_reason ? { finishReason: response.stop_reason } : {}),
+        });
+        if (response.stop_reason === "refusal") {
+          blocked = true;
+          pushEvent({ type: "blocked" });
+        }
+        const fallback = extractAnthropicText(response);
+        if (!sawResponseDelta) pushDelta("response", fallback.text);
+        if (!sawThoughtDelta) pushDelta("thought", fallback.thoughts);
+        latestUsage = extractAnthropicUsageTokens(response.usage);
       } else if (provider === "fireworks") {
         if (request.tools && request.tools.length > 0) {
           throw new Error(
@@ -6100,8 +6462,13 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     if (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0) {
       throw new Error("maxOutputTokens must be a positive safe integer.");
     }
-    if (providerInfo.provider !== "fireworks") {
-      throw new Error("maxOutputTokens is only supported for Fireworks tool loops.");
+    if (providerInfo.provider !== "fireworks" && providerInfo.provider !== "anthropic") {
+      throw new Error(
+        "maxOutputTokens is only supported for Fireworks tool loops and Anthropic tool loops.",
+      );
+    }
+    if (providerInfo.provider === "anthropic" && request.maxOutputTokens > 128_000) {
+      throw new Error("Anthropic maxOutputTokens must not exceed 128000.");
     }
   }
   const steeringInternal = resolveToolLoopSteeringInternal(request.steering);
@@ -7288,6 +7655,274 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         }
       }
 
+      throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+    }
+
+    if (providerInfo.provider === "anthropic") {
+      if (request.modelTools?.length) {
+        throw new Error(
+          "Anthropic provider does not support provider-native modelTools in runToolLoop.",
+        );
+      }
+      const tools = Object.entries(request.tools).map(([name, definition]) => {
+        if (isCustomTool(definition)) {
+          throw new Error(
+            `Anthropic provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
+          );
+        }
+        const inputSchema = resolveOpenAiSchemaRoot(
+          zodToJsonSchema(definition.inputSchema, { name, target: "jsonSchema7" }) as JsonSchema,
+        );
+        if (!isJsonSchemaObject(inputSchema))
+          throw new Error(`Anthropic tool schema for ${name} must be a JSON object at the root.`);
+        return {
+          name,
+          ...(definition.description ? { description: definition.description } : {}),
+          input_schema: inputSchema,
+        };
+      });
+      const prompt = await toAnthropicMessages(contents);
+      const config = anthropicRequestConfig(request);
+      for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
+        const turn = stepIndex + 1;
+        const stepStartedAtMs = Date.now();
+        let firstModelEventAtMs: number | undefined;
+        let schedulerMetrics: CallSchedulerRunMetrics | undefined;
+        let modelVersion: string = request.model;
+        let finishReason: string | undefined;
+        let usageTokens: LlmUsageTokens | undefined;
+        let responseText = "";
+        let thoughts = "";
+        let stepToolCallText: string | undefined;
+        let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
+        const stepRequestPayload: AnthropicMessageRequest = {
+          model: providerInfo.model,
+          max_tokens: request.maxOutputTokens ?? 32_000,
+          ...prompt,
+          ...config,
+          tools,
+          tool_choice: { type: "auto" },
+        };
+        const stepCallLogger = startLlmCallLoggerFromPayload({
+          provider: "anthropic",
+          modelId: request.model,
+          requestPayload: stepRequestPayload,
+          step: turn,
+        });
+        try {
+          let sawResponseDelta = false;
+          let sawThoughtDelta = false;
+          const pushDelta = (channel: "response" | "thought", text: string): void => {
+            if (!text) return;
+            firstModelEventAtMs ??= Date.now();
+            if (channel === "response") {
+              sawResponseDelta = true;
+              responseText += text;
+              stepCallLogger?.appendResponseDelta(text);
+            } else {
+              sawThoughtDelta = true;
+              thoughts += text;
+              stepCallLogger?.appendThoughtDelta(text);
+            }
+            request.onEvent?.({ type: "delta", channel, text });
+          };
+          const response = await runAnthropicCall(
+            (client) =>
+              client.streamMessage(stepRequestPayload, {
+                signal: request.signal,
+                onDelta: pushDelta,
+              }),
+            providerInfo.model,
+            {
+              onSettled: (metrics) => {
+                schedulerMetrics = metrics;
+              },
+            },
+          );
+          const modelCompletedAtMs = Date.now();
+          modelVersion = response.model || request.model;
+          finishReason = response.stop_reason ?? undefined;
+          request.onEvent?.({ type: "model", modelVersion, finishReason });
+          const blocked = finishReason === "refusal";
+          if (blocked) request.onEvent?.({ type: "blocked" });
+          const fallback = extractAnthropicText(response);
+          if (!sawResponseDelta) pushDelta("response", fallback.text);
+          if (!sawThoughtDelta) pushDelta("thought", fallback.thoughts);
+          usageTokens = extractAnthropicUsageTokens(response.usage);
+          const stepCostUsd = estimateCallCostUsd({
+            modelId: modelVersion,
+            pricingModelId: request.model,
+            tokens: usageTokens,
+            responseImages: 0,
+          });
+          totalCostUsd += stepCostUsd;
+          if (usageTokens)
+            request.onEvent?.({
+              type: "usage",
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              modelVersion,
+            });
+          const calls = response.content.filter((block) => block.type === "tool_use");
+          stepToolCallPayload = toLoggedOpenAiStyleToolCalls(
+            calls.map((call) => ({
+              kind: "function",
+              name: call.name,
+              arguments: JSON.stringify(call.input),
+              callId: call.id,
+            })),
+          );
+          stepToolCallText = serialiseLogArtifactText(stepToolCallPayload);
+          const callInputs = calls.map((call, index) => ({
+            call,
+            toolName: call.name,
+            value: call.input,
+            toolIndex: index + 1,
+            toolId: buildToolLogId(turn, index + 1),
+            turn,
+          }));
+          for (const entry of callInputs)
+            request.onEvent?.({
+              type: "tool_call",
+              phase: "started",
+              turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: "function",
+              callId: entry.call.id,
+              input: entry.value,
+            });
+          const callResults = await maybeSpillCombinedToolCallOutputs(
+            await Promise.all(
+              callInputs.map(async (entry) =>
+                toolCallContextStorage.run(
+                  {
+                    toolName: entry.toolName,
+                    toolId: entry.toolId,
+                    turn,
+                    toolIndex: entry.toolIndex,
+                  },
+                  async () => {
+                    const executed = await executeToolCall({
+                      callKind: "function",
+                      toolName: entry.toolName,
+                      tool: request.tools[entry.toolName],
+                      rawInput: entry.value,
+                      provider: "anthropic",
+                    });
+                    return { entry, ...executed };
+                  },
+                ),
+              ),
+            ),
+            { provider: "anthropic" },
+          );
+          const toolCalls: LlmToolCallResult[] = [];
+          const toolResults: AnthropicContentBlock[] = [];
+          let toolExecutionMs = 0;
+          let waitToolMs = 0;
+          for (const { entry, result, outputPayload } of callResults) {
+            toolCalls.push({ ...result, callId: entry.call.id });
+            const durationMs = toToolResultDuration(result);
+            toolExecutionMs += durationMs;
+            if (entry.toolName.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) waitToolMs += durationMs;
+            request.onEvent?.({
+              type: "tool_call",
+              phase: "completed",
+              turn,
+              toolIndex: entry.toolIndex,
+              toolName: entry.toolName,
+              toolId: entry.toolId,
+              callKind: "function",
+              callId: entry.call.id,
+              input: entry.value,
+              output: result.output,
+              error: result.error,
+              durationMs: result.durationMs,
+            });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: entry.call.id,
+              content: await toAnthropicToolResultContent(outputPayload),
+              ...(result.error ? { is_error: true } : {}),
+            });
+          }
+          const stepCompletedAtMs = Date.now();
+          const timing = buildStepTiming({
+            stepStartedAtMs,
+            stepCompletedAtMs,
+            modelCompletedAtMs,
+            firstModelEventAtMs,
+            schedulerMetrics,
+            toolExecutionMs,
+            waitToolMs,
+          });
+          steps.push({
+            step: steps.length + 1,
+            modelVersion,
+            finishReason,
+            text: responseText || undefined,
+            thoughts: thoughts || undefined,
+            toolCalls,
+            usage: usageTokens,
+            costUsd: stepCostUsd,
+            timing,
+          });
+          const terminalToolCall = findTerminalToolCall(request.tools, toolCalls);
+          const steeringContents = terminalToolCall
+            ? []
+            : (steeringInternal?.drainPendingContents() ?? []);
+          const finalStep =
+            terminalToolCall !== null || (calls.length === 0 && steeringContents.length === 0);
+          stepCallLogger?.complete({
+            responseText,
+            toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
+            metadata: {
+              provider: "anthropic",
+              model: request.model,
+              modelVersion,
+              finishReason,
+              step: turn,
+              usage: usageTokens,
+              costUsd: stepCostUsd,
+              blocked,
+              responseChars: responseText.length,
+              thoughtChars: thoughts.length,
+              toolCalls: toolCalls.length,
+              finalStep,
+            },
+          });
+          if (finalStep) {
+            finalText = terminalToolCall
+              ? terminalToolCallText(terminalToolCall) || responseText
+              : responseText;
+            finalThoughts = thoughts;
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          }
+          // Preserve the complete signed assistant turn unchanged; Claude binds thinking to its prefix.
+          prompt.messages.push({ role: "assistant", content: response.content });
+          if (toolResults.length) prompt.messages.push({ role: "user", content: toolResults });
+          if (steeringContents.length)
+            prompt.messages.push(...(await toAnthropicMessages(steeringContents)).messages);
+        } catch (error) {
+          stepCallLogger?.fail(error, {
+            responseText,
+            toolCallText: stepToolCallText,
+            toolCallPayload: stepToolCallPayload,
+            metadata: {
+              provider: "anthropic",
+              model: request.model,
+              modelVersion,
+              finishReason,
+              step: turn,
+              usage: usageTokens,
+            },
+          });
+          throw error;
+        }
+      }
       throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
     }
 

@@ -8,6 +8,7 @@
 Unified TypeScript wrapper over:
 
 - **OpenAI Responses API** (`openai`)
+- **Anthropic Claude** via the native Messages API (Haiku 5.5, Sonnet 5.5, Opus 5.5, and Fable 5.1)
 - **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`@google/genai`)
 - **Fireworks direct serverless models** (DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
@@ -51,7 +52,8 @@ Use one backend:
 - `VERTEX_GCS_BUCKET` for Vertex-backed Gemini file attachments / `file_id` inputs
 - `VERTEX_GCS_PREFIX` (optional object-name prefix inside `VERTEX_GCS_BUCKET`)
 
-If a Gemini API key is present, the library uses the Gemini Developer API. Otherwise it falls back to Vertex AI.
+`GOOGLE_SERVICE_ACCOUNT_JSON` selects Vertex AI when set, including when an API key is also present. Otherwise,
+`GEMINI_API_KEY` or `GOOGLE_API_KEY` selects the Gemini Developer API. Unset the service account variable to use an API key.
 
 Canonical files are stored in GCS with a default `48h` TTL. OpenAI and ChatGPT consume those files via signed HTTPS
 URLs. Gemini still mirrors canonical files lazily into provider-native storage when needed:
@@ -91,6 +93,12 @@ If deploying to Cloudflare Workers/Pages:
 ```bash
 jq -c . < path/to/service-account.json | wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON
 ```
+
+### Anthropic Claude
+
+- `ANTHROPIC_API_KEY`
+
+Keep provider keys in server-side environment variables or a git-ignored `.env.local` file.
 
 ### Fireworks
 
@@ -156,6 +164,7 @@ configureModelConcurrency({
     openai: 16,
     google: 3,
     fireworks: 8,
+    anthropic: 4,
   },
   modelCaps: {
     "gpt-6-luna": 24,
@@ -174,6 +183,7 @@ Default caps (without configuration):
 - Google preview models (`*preview*`): `2`
 - Other Google models: `4`
 - Fireworks: `6`
+- Anthropic: `4`
 
 ## Usage
 
@@ -638,12 +648,61 @@ console.log(result.text);
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "gemini-2.5-pro",
+  model: "gemini-4-argon",
+  thinkingLevel: "low",
   input: "Return exactly: OK",
 });
 
 console.log(result.text);
 ```
+
+The text allowlist includes `gemini-4-argon` and `gemini-3.8-flash`. Both support text streaming,
+structured JSON, function tools, and `low`, `medium`, or `high` thinking (`xhigh`, `max`, and `ultra` map to `high`).
+
+### Anthropic Claude
+
+```ts
+import { generateText } from "@ljoukov/llm";
+
+const result = await generateText({
+  model: "claude-sonnet-5-5",
+  thinkingLevel: "low",
+  input: "Return exactly: OK",
+});
+
+console.log(result.text, result.usage, result.costUsd);
+```
+
+Supported IDs are `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-fable-5-1`.
+Claude uses the native Messages API with response/thought streaming, validated JSON outputs, and JSON function tools.
+Tool loops accept `maxOutputTokens` (default `32_000`, maximum `128_000`), including reasoning. Unsupported hosted
+tools and freeform tools return explicit errors.
+
+### Gemini and Claude token costs
+
+Standard global API rates checked October 22, 2026 against the official
+[Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and
+[Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) pages.
+Prices below are USD per million tokens. Output rates include billed reasoning tokens.
+
+| Model | Input | Cached input | Output | Cache writes (5m / 1h) |
+| --- | ---: | ---: | ---: | ---: |
+| `gemini-4-argon`, through Nov 30, 2026 | $2 | $0.10 | $10 | — |
+| `gemini-4-argon`, from Dec 1, 2026 | $4 | $0.20 | $20 | — |
+| `gemini-3.8-flash`, through Dec 31, 2026 | $0.75 | $0.075 | $3.75 | — |
+| `gemini-3.8-flash`, from Jan 1, 2027 | $1.50 | $0.15 | $7.50 | — |
+| `claude-haiku-5-5`, prompt ≤100,000 tokens | $0.10 | $0.01 | $0.50 | $0.125 / $0.20 |
+| `claude-haiku-5-5`, prompt >100,000 tokens | $0.50 | $0.05 | $2.50 | $0.625 / $1 |
+| `claude-sonnet-5-5` | $2 | $0.10 | $10 | $2.50 / $4 |
+| `claude-opus-5-5` | $4 | $0.20 | $20 | $5 / $8 |
+| `claude-fable-5-1` | $10 | $0.25 | $50 | $12.50 / $20 |
+
+The estimator automatically switches Gemini rates at the published UTC dates. Gemini Argon supports implicit caching
+only. Haiku's threshold includes uncached input, cache reads, and cache writes; the higher rates apply to the whole
+request. Claude `usage.promptTokens` includes all three categories, while `usage.responseTokens` already includes
+reasoning, so it is charged once. Cache-write usage is priced when reported; the library does not enable caching
+implicitly. Estimates cover token inference; search/tool charges, cache storage, taxes, and account-specific discounts
+are excluded.
 
 ### Fireworks
 
@@ -660,7 +719,7 @@ Version 10 removes retired `kimi-k2.5`, `glm-5`, and `minimax-m2.1`; use `kimi-k
 Fireworks `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
 
 
-Since 10.1, Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer; other providers explicitly reject this option. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
+Since 10.1, Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer. Anthropic also accepts this option starting in 10.2; other providers explicitly reject it. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
 
 Fireworks tool-loop steps and `model` events expose the raw optional `finishReason`. In particular, `"length"` indicates an output or context budget limit, including completions containing only reasoning and no final text. It must not be interpreted as a completed mathematical answer. `"stop"` and `"tool_calls"` retain their provider meanings; unknown reasons are preserved. The library does not automatically retry or add a continuation when a limit is reached. See [Fireworks completion limits](https://docs.fireworks.ai/api-reference/post-chatcompletions#body-max-tokens).
 
@@ -711,6 +770,7 @@ Version 9 removes GPT-5.5 and earlier text IDs. Migrate smaller-model calls to `
 
 - OpenAI API models use structured outputs (`json_schema`) when possible.
 - Gemini uses `responseJsonSchema`.
+- Claude uses native JSON schema outputs and validates the result with Zod.
 - `chatgpt-*` models try to use structured outputs too; if the endpoint/account/model rejects `json_schema`, the call
   retries with best-effort JSON parsing.
 
@@ -1241,6 +1301,15 @@ Standard integration suite:
 ```bash
 npm run test:integration
 ```
+
+Run only the six Gemini/Claude models added in 10.2 (streams, JSON schemas, and function-tool round trips):
+
+```bash
+npm run test:integration:new-models
+```
+
+`LLM_INTEGRATION_MODELS` can narrow this matrix to a comma-separated subset. To test the Gemini Developer API
+when a Vertex service account is configured in `.env.local`, use `GOOGLE_SERVICE_ACCOUNT_JSON= npm run test:integration:new-models`.
 
 Large-file live integration tests are opt-in because they upload multi-megabyte fixtures to real canonical/provider
 file stores:

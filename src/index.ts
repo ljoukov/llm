@@ -346,3 +346,6 @@ export {
   resolveFireworksModelId,
 } from "./fireworks/fireworks.js";
 export type { FireworksModelId } from "./fireworks/fireworks.js";
+
+export { ANTHROPIC_MODEL_IDS, isAnthropicModelId } from "./anthropic/models.js";
+export type { AnthropicModelId } from "./anthropic/models.js";

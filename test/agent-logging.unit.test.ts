@@ -26,6 +26,10 @@ describe("agent logging", () => {
         mimeType: "application/pdf",
         data: "Zm9vYmFy",
       },
+      anthropicImage: {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: "QUJDRA==" },
+      },
     }) as Record<string, unknown>;
 
     expect(value.image_url).toBe("data:image/png;base64,...");
@@ -33,6 +37,10 @@ describe("agent logging", () => {
       url: "data:image/png;base64,...",
     });
     expect((value.inlineData as Record<string, unknown>).data).toBe("[omitted:8b]");
+    expect(value.anthropicImage).toEqual({
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: "[omitted:8b]" },
+    });
   });
 
   it("writes agent.log and per-call artifacts", async () => {

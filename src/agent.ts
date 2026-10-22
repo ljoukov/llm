@@ -770,6 +770,14 @@ function summarizeResultUsage(result: LlmToolLoopResult): LlmUsageTokens | undef
       promptImageTokens: sumUsageValue(summary?.promptImageTokens, usage.promptImageTokens),
       cachedTokens: sumUsageValue(summary?.cachedTokens, usage.cachedTokens),
       cacheWriteTokens: sumUsageValue(summary?.cacheWriteTokens, usage.cacheWriteTokens),
+      anthropicCacheCreation5mInputTokens: sumUsageValue(
+        summary?.anthropicCacheCreation5mInputTokens,
+        usage.anthropicCacheCreation5mInputTokens,
+      ),
+      anthropicCacheCreation1hInputTokens: sumUsageValue(
+        summary?.anthropicCacheCreation1hInputTokens,
+        usage.anthropicCacheCreation1hInputTokens,
+      ),
       responseTokens: sumUsageValue(summary?.responseTokens, usage.responseTokens),
       responseTextTokens: sumUsageValue(summary?.responseTextTokens, usage.responseTextTokens),
       responseImageTokens: sumUsageValue(summary?.responseImageTokens, usage.responseImageTokens),
