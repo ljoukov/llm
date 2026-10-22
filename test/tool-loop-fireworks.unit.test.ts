@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 let requests: any[] = [];
 let callCount = 0;
+let responseOverride: any = null;
 
 vi.mock("../src/fireworks/calls.js", () => {
   const fakeClient = {
@@ -11,6 +12,7 @@ vi.mock("../src/fireworks/calls.js", () => {
         create: async (request: any) => {
           requests.push(structuredClone(request));
           const current = callCount++;
+          if (responseOverride) return structuredClone(responseOverride);
           if (current === 0) {
             return {
               model: "kimi-k3",
@@ -69,6 +71,11 @@ vi.mock("../src/fireworks/calls.js", () => {
 });
 
 describe("runToolLoop (Fireworks)", () => {
+  beforeEach(() => {
+    requests = [];
+    callCount = 0;
+    responseOverride = null;
+  });
   it.each([
     "deepseek-v4.1-flash-1017",
     "glm-5.3",
@@ -96,6 +103,8 @@ describe("runToolLoop (Fireworks)", () => {
     expect(result.steps[0]?.usage?.thinkingTokens).toBe(2);
     expect(result.steps[0]?.usage?.responseTokens).toBe(3);
     expect(requests[0]?.reasoning_effort).toBe("high");
+    expect(requests[0]).not.toHaveProperty("max_tokens");
+    expect(result.steps.map((step) => step.finishReason)).toEqual(["tool_calls", "stop"]);
     expect(result.steps).toHaveLength(2);
     expect(requests).toHaveLength(2);
     expect(requests[0]?.tools?.[0]?.function?.name).toBe("multiply");
@@ -127,6 +136,117 @@ describe("runToolLoop (Fireworks)", () => {
       },
     });
     expect(requests[0]?.reasoning_effort).toBe(expectedEffort);
+  });
+
+  it("forwards maxOutputTokens on each Fireworks completion", async () => {
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    await runToolLoop({
+      model: "deepseek-v4.1-flash-1017",
+      input: "Use multiply then return result",
+      maxOutputTokens: 131_072,
+      tools: {
+        multiply: tool({
+          inputSchema: z.object({ a: z.number(), b: z.number() }),
+          execute: ({ a, b }) => ({ value: a * b }),
+        }),
+      },
+    });
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.max_tokens).toBe(131_072);
+      expect(request).not.toHaveProperty("max_completion_tokens");
+    }
+  });
+
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("rejects invalid maxOutputTokens %s before inference", async (maxOutputTokens) => {
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    await expect(
+      runToolLoop({
+        model: "kimi-k3",
+        input: "test",
+        maxOutputTokens,
+        tools: { unused: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
+      }),
+    ).rejects.toThrow("maxOutputTokens must be a positive safe integer");
+    expect(requests).toHaveLength(0);
+  });
+
+  it.each([
+    "gpt-6-luna",
+    "chatgpt-gpt-6-luna",
+    "gemini-3.1-pro-preview",
+  ] as const)("rejects maxOutputTokens for unsupported route %s before inference", async (model) => {
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    await expect(
+      runToolLoop({
+        model,
+        input: "test",
+        maxOutputTokens: 1024,
+        tools: { unused: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
+      }),
+    ).rejects.toThrow("maxOutputTokens is only supported for Fireworks tool loops");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("retains a reasoning-only length stop in steps and events without retrying", async () => {
+    responseOverride = {
+      model: "accounts/fireworks/models/deepseek-v4p1-flash-1017",
+      choices: [
+        {
+          finish_reason: "length",
+          message: { content: null, reasoning_content: "unfinished work" },
+        },
+      ],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 3,
+        completion_tokens_details: { reasoning_tokens: 3 },
+        total_tokens: 13,
+      },
+    };
+    const events: unknown[] = [];
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "deepseek-v4.1-flash-1017",
+      input: "test",
+      maxOutputTokens: 3,
+      onEvent: (event) => events.push(event),
+      tools: { unused: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
+    });
+    expect(requests).toHaveLength(1);
+    expect(result.text).toBe("");
+    expect(result.thoughts).toBe("unfinished work");
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]?.finishReason).toBe("length");
+    expect(result.steps[0]?.usage?.thinkingTokens).toBe(3);
+    expect(result.steps[0]?.usage?.responseTokens).toBe(0);
+    expect(events).toContainEqual({
+      type: "model",
+      modelVersion: responseOverride.model,
+      finishReason: "length",
+    });
+  });
+
+  it("preserves unknown provider finish reasons without reclassifying them", async () => {
+    responseOverride = {
+      model: "kimi-k3",
+      choices: [{ finish_reason: "vendor_future_stop", message: { content: "6" } }],
+    };
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      model: "kimi-k3",
+      input: "test",
+      tools: { unused: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
+    });
+    expect(result.steps[0]?.finishReason).toBe("vendor_future_stop");
+    expect(result.text).toBe("6");
   });
 
   it("rejects custom/freeform tools for Fireworks provider", async () => {

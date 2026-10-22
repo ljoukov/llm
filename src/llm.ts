@@ -261,6 +261,8 @@ export type LlmUsageEvent = {
 export type LlmModelEvent = {
   readonly type: "model";
   readonly modelVersion: string;
+  /** Raw provider completion reason when available (currently Fireworks tool loops). */
+  readonly finishReason?: string;
 };
 
 export type LlmBlockedEvent = {
@@ -638,6 +640,8 @@ export type LlmToolLoopStepTiming = {
 export type LlmToolLoopStep = {
   readonly step: number;
   readonly modelVersion: string;
+  /** Raw provider completion reason. Fireworks "length" means an output/context limit. */
+  readonly finishReason?: string;
   readonly text?: string;
   readonly thoughts?: string;
   readonly content?: LlmContent;
@@ -682,6 +686,10 @@ export type LlmToolLoopRequest = LlmInput & {
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
+  /** Maximum generated tokens per Fireworks completion, including reasoning.
+   * Omit to retain the provider default. Other providers reject this option.
+   */
+  readonly maxOutputTokens?: number;
   readonly thinkingLevel?: LlmThinkingLevel;
   readonly mediaResolution?: LlmMediaResolution;
   readonly steering?: LlmToolLoopSteeringChannel;
@@ -6088,6 +6096,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
   const maxSteps = Math.max(1, Math.floor(request.maxSteps ?? DEFAULT_TOOL_LOOP_MAX_STEPS));
   const providerInfo = resolveProvider(request.model);
+  if (request.maxOutputTokens !== undefined) {
+    if (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0) {
+      throw new Error("maxOutputTokens must be a positive safe integer.");
+    }
+    if (providerInfo.provider !== "fireworks") {
+      throw new Error("maxOutputTokens is only supported for Fireworks tool loops.");
+    }
+  }
   const steeringInternal = resolveToolLoopSteeringInternal(request.steering);
 
   const steps: LlmToolLoopStep[] = [];
@@ -6958,6 +6974,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         const stepStartedAtMs = Date.now();
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
         let modelVersion: string = request.model;
+        let finishReason: string | undefined;
         let usageTokens: LlmUsageTokens | undefined;
         let responseText = "";
         let reasoningContent: string | undefined;
@@ -6970,6 +6987,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           tools: fireworksTools,
           tool_choice: "auto" as const,
           parallel_tool_calls: true,
+          ...(request.maxOutputTokens !== undefined ? { max_tokens: request.maxOutputTokens } : {}),
           ...(request.thinkingLevel
             ? {
                 reasoning_effort: resolveFireworksReasoningEffort(request.thinkingLevel),
@@ -7000,9 +7018,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           const modelCompletedAtMs = Date.now();
 
           modelVersion = typeof response.model === "string" ? response.model : request.model;
-          request.onEvent?.({ type: "model", modelVersion });
-
           const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+          finishReason =
+            typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined;
+          request.onEvent?.({ type: "model", modelVersion, finishReason });
           if (choice?.finish_reason === "content_filter") {
             blocked = true;
             request.onEvent?.({ type: "blocked" });
@@ -7065,6 +7084,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             steps.push({
               step: steps.length + 1,
               modelVersion,
+              finishReason,
               text: responseText || undefined,
               thoughts: reasoningContent || undefined,
               toolCalls: [],
@@ -7078,6 +7098,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 provider: "fireworks",
                 model: request.model,
                 modelVersion,
+                finishReason,
                 step: turn,
                 usage: usageTokens,
                 costUsd: stepCostUsd,
@@ -7203,6 +7224,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           steps.push({
             step: steps.length + 1,
             modelVersion,
+            finishReason,
             text: responseText || undefined,
             thoughts: reasoningContent || undefined,
             toolCalls: stepToolCalls,
@@ -7219,6 +7241,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               provider: "fireworks",
               model: request.model,
               modelVersion,
+              finishReason,
               step: turn,
               usage: usageTokens,
               costUsd: stepCostUsd,
@@ -7255,6 +7278,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               provider: "fireworks",
               model: request.model,
               modelVersion,
+              finishReason,
               step: turn,
               usage: usageTokens,
               blocked,
