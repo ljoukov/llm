@@ -659,6 +659,11 @@ Version 10 removes retired `kimi-k2.5`, `glm-5`, and `minimax-m2.1`; use `kimi-k
 
 Fireworks `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
 
+
+Since 10.1, Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer; other providers explicitly reject this option. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
+
+Fireworks tool-loop steps and `model` events expose the raw optional `finishReason`. In particular, `"length"` indicates an output or context budget limit, including completions containing only reasoning and no final text. It must not be interpreted as a completed mathematical answer. `"stop"` and `"tool_calls"` retain their provider meanings; unknown reasons are preserved. The library does not automatically retry or add a continuation when a limit is reached. See [Fireworks completion limits](https://docs.fireworks.ai/api-reference/post-chatcompletions#body-max-tokens).
+
 ```ts
 import { generateText } from "@ljoukov/llm";
 
