@@ -54,10 +54,42 @@ export function estimateCallCostUsd({
   if (openAiImagePricing) {
     return estimateOpenAiImageCostUsd({
       pricing: openAiImagePricing,
+      tokens,
       responseImages,
       imageSize,
       imageQuality,
     });
+  }
+
+  const imagePreviewPricing = resolvePricing(pricingModelIds, getGeminiImagePricing);
+  if (imagePreviewPricing) {
+    const promptTokenTotal =
+      resolveUsageNumber(tokens?.promptTokens) + resolveUsageNumber(tokens?.toolUsePromptTokens);
+    const cachedTokens = resolveUsageNumber(tokens?.cachedTokens);
+    const nonCachedPrompt = Math.max(0, promptTokenTotal - cachedTokens);
+    const responseTokens = resolveUsageNumber(tokens?.responseTokens);
+    const responseImageTokens = resolveUsageNumber(tokens?.responseImageTokens);
+    const thinkingTokens = resolveUsageNumber(tokens?.thinkingTokens);
+    const resolvedImageSize =
+      imageSize && imagePreviewPricing.imagePrices[imageSize] ? imageSize : "2K";
+    const imageRate = imagePreviewPricing.imagePrices[resolvedImageSize] ?? 0;
+    const tokensPerImage =
+      imagePreviewPricing.outputImageRate > 0 ? imageRate / imagePreviewPricing.outputImageRate : 0;
+    let responseTextForPricing = Math.max(0, responseTokens - responseImageTokens);
+    let imageTokensForPricing = responseImageTokens;
+    if (imageTokensForPricing <= 0 && responseImages > 0 && tokensPerImage > 0) {
+      const estimatedImageTokens = responseImages * tokensPerImage;
+      imageTokensForPricing = estimatedImageTokens;
+      if (responseTextForPricing >= estimatedImageTokens) {
+        responseTextForPricing -= estimatedImageTokens;
+      }
+    }
+    const textOutputCost =
+      (responseTextForPricing + thinkingTokens) * imagePreviewPricing.outputTextRate;
+    const inputCost = nonCachedPrompt * imagePreviewPricing.inputRate;
+    const cachedCost = cachedTokens * imagePreviewPricing.cachedRate;
+    const imageOutputCost = imageTokensForPricing * imagePreviewPricing.outputImageRate;
+    return inputCost + cachedCost + textOutputCost + imageOutputCost;
   }
 
   if (!tokens) {
@@ -66,7 +98,6 @@ export function estimateCallCostUsd({
   const promptTokens = resolveUsageNumber(tokens.promptTokens);
   const cachedTokens = resolveUsageNumber(tokens.cachedTokens);
   const responseTokens = resolveUsageNumber(tokens.responseTokens);
-  const responseImageTokens = resolveUsageNumber(tokens.responseImageTokens);
   const thinkingTokens = resolveUsageNumber(tokens.thinkingTokens);
   const toolUsePromptTokens = resolveUsageNumber(tokens.toolUsePromptTokens);
   const promptTokenTotal = promptTokens + toolUsePromptTokens;
@@ -98,30 +129,6 @@ export function estimateCallCostUsd({
     return (
       inputCost + cacheReadCost + cacheWriteCost + responseTokens * anthropicPricing.outputRate
     );
-  }
-
-  const imagePreviewPricing = resolvePricing(pricingModelIds, getGeminiImagePricing);
-  if (imagePreviewPricing) {
-    const resolvedImageSize =
-      imageSize && imagePreviewPricing.imagePrices[imageSize] ? imageSize : "2K";
-    const imageRate = imagePreviewPricing.imagePrices[resolvedImageSize] ?? 0;
-    const tokensPerImage =
-      imagePreviewPricing.outputImageRate > 0 ? imageRate / imagePreviewPricing.outputImageRate : 0;
-    let responseTextForPricing = Math.max(0, responseTokens - responseImageTokens);
-    let imageTokensForPricing = responseImageTokens;
-    if (imageTokensForPricing <= 0 && responseImages > 0 && tokensPerImage > 0) {
-      const estimatedImageTokens = responseImages * tokensPerImage;
-      imageTokensForPricing = estimatedImageTokens;
-      if (responseTextForPricing >= estimatedImageTokens) {
-        responseTextForPricing -= estimatedImageTokens;
-      }
-    }
-    const textOutputCost =
-      (responseTextForPricing + thinkingTokens) * imagePreviewPricing.outputTextRate;
-    const inputCost = nonCachedPrompt * imagePreviewPricing.inputRate;
-    const cachedCost = cachedTokens * imagePreviewPricing.cachedRate;
-    const imageOutputCost = imageTokensForPricing * imagePreviewPricing.outputImageRate;
-    return inputCost + cachedCost + textOutputCost + imageOutputCost;
   }
 
   const geminiPricing = resolvePricing(pricingModelIds, getGeminiProPricing);
@@ -167,6 +174,11 @@ export function estimateCallCostUsd({
 
 function resolvePricingModelIds(modelId: string, pricingModelId: string | undefined): string[] {
   if (pricingModelId && pricingModelId !== modelId) {
+    // Latest Gemini aliases change targets; a known concrete response version
+    // gives a better rate than the alias's last documented fallback.
+    if (pricingModelId === "gemini-flash-latest" || pricingModelId === "gemini-flash-lite-latest") {
+      return [modelId, pricingModelId];
+    }
     return [pricingModelId, modelId];
   }
   return [modelId];
@@ -187,24 +199,41 @@ function resolvePricing<T>(
 
 function estimateOpenAiImageCostUsd({
   pricing,
+  tokens,
   responseImages,
   imageSize,
   imageQuality,
 }: {
   pricing: OpenAiImagePricing;
+  tokens: LlmUsageTokens | undefined;
   responseImages: number;
   imageSize?: string;
   imageQuality?: string;
 }): number {
-  if (responseImages <= 0) {
-    return 0;
+  const inputImages = resolveUsageNumber(tokens?.promptImageTokens);
+  const inputText =
+    tokens?.promptTextTokens !== undefined
+      ? resolveUsageNumber(tokens.promptTextTokens)
+      : Math.max(0, resolveUsageNumber(tokens?.promptTokens) - inputImages);
+  // Direct Images API requests do not receive the Responses API cache discount.
+  const inputCost = inputText * pricing.inputTextRate + inputImages * pricing.inputImageRate;
+  const outputImageTokens =
+    tokens?.responseImageTokens ??
+    (tokens?.responseTokens !== undefined
+      ? Math.max(
+          0,
+          resolveUsageNumber(tokens.responseTokens) - resolveUsageNumber(tokens.responseTextTokens),
+        )
+      : undefined);
+  if (outputImageTokens !== undefined) {
+    return inputCost + resolveUsageNumber(outputImageTokens) * pricing.outputImageRate;
   }
   const quality =
     imageQuality === "low" || imageQuality === "medium" || imageQuality === "high"
       ? imageQuality
       : pricing.defaultQuality;
   const resolution = resolveOpenAiImagePriceResolution(imageSize) ?? pricing.defaultResolution;
-  return responseImages * pricing.imagePrices[quality][resolution];
+  return inputCost + Math.max(0, responseImages) * pricing.imagePrices[quality][resolution];
 }
 
 function resolveOpenAiImagePriceResolution(

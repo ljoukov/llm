@@ -11,6 +11,34 @@ import {
   sanitiseLogValue,
 } from "../src/agentLogging.js";
 
+const realSetTimeout = setTimeout;
+
+async function waitForIo<T>(check: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      return await check();
+    } catch (error) {
+      lastError = error;
+      await new Promise<void>((resolve) => realSetTimeout(resolve, 5));
+    }
+  }
+  throw lastError;
+}
+
+async function getCallDir(logsRootDir: string): Promise<string> {
+  return waitForIo(async () => {
+    const runDirs = await fs.readdir(logsRootDir);
+    expect(runDirs).toHaveLength(1);
+    const runDir = path.join(logsRootDir, runDirs[0] ?? "");
+    const modelDirs = await fs.readdir(runDir);
+    expect(modelDirs).toHaveLength(1);
+    const callDir = path.join(runDir, modelDirs[0] ?? "");
+    await fs.readFile(path.join(callDir, "request.metadata.json"), "utf8");
+    return callDir;
+  });
+}
+
 describe("agent logging", () => {
   it("redacts data-url image payloads", () => {
     const dataUrl = "data:image/png;base64,AAAA";
@@ -229,6 +257,160 @@ describe("agent logging", () => {
     }
   });
 
+  it("persists throttled thought and response batches every five seconds while a call runs", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-agent-logging-"));
+    vi.useFakeTimers();
+    try {
+      const session = createAgentLoggingSession({
+        workspaceDir: tempRoot,
+        mirrorToConsole: false,
+      });
+      const call = session.startLlmCall({
+        provider: "fireworks",
+        modelId: "deepseek-v4-pro",
+        requestText: "hello",
+      });
+      call.appendThoughtDelta("thinking");
+      call.appendThoughtDelta(" through");
+      call.appendResponseDelta("ans");
+      const callDir = await getCallDir(session.logsRootDir);
+      const thoughtsPath = path.join(callDir, "thoughts.txt");
+      const responsePath = path.join(callDir, "response.txt");
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      await expect(fs.readFile(thoughtsPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(fs.readFile(responsePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      call.appendThoughtDelta(" this");
+      call.appendResponseDelta("wer");
+
+      await vi.advanceTimersByTimeAsync(1);
+      await waitForIo(async () => {
+        expect(await fs.readFile(thoughtsPath, "utf8")).toBe("thinking through this");
+        expect(await fs.readFile(responsePath, "utf8")).toBe("answer");
+      });
+      await expect(fs.readFile(path.join(callDir, "response.metadata.json"))).rejects.toMatchObject(
+        {
+          code: "ENOENT",
+        },
+      );
+
+      call.appendThoughtDelta(" more");
+      call.appendResponseDelta(" next");
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(await fs.readFile(thoughtsPath, "utf8")).toBe("thinking through this");
+      expect(await fs.readFile(responsePath, "utf8")).toBe("answer");
+      await vi.advanceTimersByTimeAsync(1);
+      await waitForIo(async () => {
+        expect(await fs.readFile(thoughtsPath, "utf8")).toBe("thinking through this more");
+        expect(await fs.readFile(responsePath, "utf8")).toBe("answer next");
+      });
+      expect(vi.getTimerCount()).toBe(0);
+      call.complete();
+      await session.flush();
+    } finally {
+      vi.useRealTimers();
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    "complete",
+    "fail",
+  ] as const)("flushes pending deltas immediately on %s and ignores late deltas", async (closeMethod) => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-agent-logging-"));
+    vi.useFakeTimers();
+    try {
+      const session = createAgentLoggingSession({
+        workspaceDir: tempRoot,
+        mirrorToConsole: false,
+      });
+      const call = session.startLlmCall({
+        provider: "fireworks",
+        modelId: "deepseek-v4-pro",
+        requestText: "hello",
+      });
+      call.appendThoughtDelta("partial");
+      call.appendResponseDelta("partial");
+      const callDir = await getCallDir(session.logsRootDir);
+      vi.advanceTimersByTime(5_000);
+      call.appendThoughtDelta(" thought");
+      call.appendResponseDelta(" response");
+      if (closeMethod === "complete") {
+        call.complete();
+      } else {
+        call.fail(new Error("interrupted"));
+      }
+      expect(vi.getTimerCount()).toBe(0);
+      await waitForIo(async () => {
+        expect(await fs.readFile(path.join(callDir, "thoughts.txt"), "utf8")).toBe(
+          "partial thought",
+        );
+        expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe(
+          "partial response",
+        );
+        expect(
+          JSON.parse(await fs.readFile(path.join(callDir, "response.metadata.json"), "utf8"))
+            .status,
+        ).toBe(closeMethod === "complete" ? "completed" : "failed");
+      });
+
+      call.appendThoughtDelta(" ignored");
+      call.appendResponseDelta(" ignored");
+      call.complete();
+      call.fail(new Error("ignored"));
+      await vi.advanceTimersByTimeAsync(10_000);
+      await session.flush();
+      expect(await fs.readFile(path.join(callDir, "thoughts.txt"), "utf8")).toBe("partial thought");
+      expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe(
+        "partial response",
+      );
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("drains pending call deltas on an explicit session flush and keeps the call open", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "llm-agent-logging-"));
+    vi.useFakeTimers();
+    try {
+      const session = createAgentLoggingSession({
+        workspaceDir: tempRoot,
+        mirrorToConsole: false,
+      });
+      const call = session.startLlmCall({
+        provider: "fireworks",
+        modelId: "deepseek-v4-pro",
+        requestText: "hello",
+      });
+      call.appendThoughtDelta("one");
+      call.appendResponseDelta("first");
+      await session.flush();
+      const callDir = await getCallDir(session.logsRootDir);
+      expect(await fs.readFile(path.join(callDir, "thoughts.txt"), "utf8")).toBe("one");
+      expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe("first");
+      expect(vi.getTimerCount()).toBe(0);
+
+      call.appendThoughtDelta(" two");
+      call.appendResponseDelta(" second");
+      call.complete({ responseText: "first second final" });
+      await session.flush();
+      expect(await fs.readFile(path.join(callDir, "thoughts.txt"), "utf8")).toBe("one two");
+      expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe(
+        "first second final",
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await session.flush();
+      expect(await fs.readFile(path.join(callDir, "response.txt"), "utf8")).toBe(
+        "first second final",
+      );
+    } finally {
+      vi.useRealTimers();
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("throttles thought delta log lines and flushes before response deltas", () => {
     vi.useFakeTimers();
     try {
@@ -242,7 +424,7 @@ describe("agent logging", () => {
       logger.appendEvent({ type: "delta", channel: "thought", text: "hel" });
       logger.appendEvent({ type: "delta", channel: "thought", text: "lo" });
 
-      vi.advanceTimersByTime(3_999);
+      vi.advanceTimersByTime(4_999);
       expect(lines).toEqual([]);
 
       logger.appendEvent({ type: "delta", channel: "response", text: "answer" });
@@ -253,7 +435,7 @@ describe("agent logging", () => {
     }
   });
 
-  it("emits at most one aggregated thought delta log per four seconds", () => {
+  it("emits at most one aggregated thought delta log per five seconds", () => {
     vi.useFakeTimers();
     try {
       const lines: string[] = [];
@@ -266,7 +448,7 @@ describe("agent logging", () => {
       logger.appendEvent({ type: "delta", channel: "thought", text: "alpha" });
       logger.appendEvent({ type: "delta", channel: "thought", text: " beta" });
 
-      vi.advanceTimersByTime(4_000);
+      vi.advanceTimersByTime(5_000);
       expect(lines).toEqual(["thought_delta: alpha beta"]);
 
       logger.appendEvent({ type: "delta", channel: "thought", text: " gamma" });

@@ -7,7 +7,7 @@ export type FireworksPricing = {
 };
 
 // USD per token, from the direct serverless model catalogue on 2026-10-22.
-// Source: https://app.fireworks.ai/models?type=llm&capability=serverless
+// Source: https://docs.fireworks.ai/serverless/pricing
 const FIREWORKS_PRICING: Record<FireworksModelId, FireworksPricing> = {
   "deepseek-v4.1-flash-1017": {
     inputRate: 0.3 / 1_000_000,

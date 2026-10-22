@@ -19,6 +19,9 @@ export type OpenAiPricing = {
 export type OpenAiImagePriceResolution = "1024x1024" | "1024x1536" | "1536x1024";
 
 export type OpenAiImagePricing = {
+  readonly inputTextRate: number;
+  readonly inputImageRate: number;
+  readonly outputImageRate: number;
   readonly defaultQuality: Exclude<OpenAiGptImage2Quality, "auto">;
   readonly defaultResolution: OpenAiImagePriceResolution;
   readonly imagePrices: Readonly<
@@ -29,7 +32,7 @@ export type OpenAiImagePricing = {
   >;
 };
 
-// Official pricing snapshot, 2026-10-03: https://developers.openai.com/api/docs/pricing
+// Official pricing snapshot, 2026-10-22: https://developers.openai.com/api/docs/pricing
 // ChatGPT costs are API-equivalent estimates, not billed subscription charges.
 // Unknown models have no rate; callers may supply a known pricingModelId explicitly.
 const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
@@ -85,6 +88,9 @@ const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
 };
 
 const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
+  inputTextRate: 5 / 1_000_000,
+  inputImageRate: 8 / 1_000_000,
+  outputImageRate: 30 / 1_000_000,
   defaultQuality: "medium",
   defaultResolution: "1024x1024",
   imagePrices: {

@@ -33,6 +33,7 @@ import {
   type ChatGptInputMessagePart,
 } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
+import { streamFireworksChatCompletion } from "./fireworks/stream.js";
 import { runAnthropicCall } from "./anthropic/calls.js";
 import { runClaudeQuery } from "./claude/calls.js";
 import { CLAUDE_MODEL_IDS, isClaudeModelId } from "./claude/models.js";
@@ -5678,7 +5679,8 @@ async function runTextCall(params: {
               ? { type: "json_object" as const }
               : undefined;
 
-          const response = await client.chat.completions.create(
+          const response = await streamFireworksChatCompletion(
+            client,
             {
               model: modelForProvider,
               messages: fireworksMessages as any,
@@ -5689,7 +5691,7 @@ async function runTextCall(params: {
                   }
                 : {}),
             } as any,
-            { signal } as any,
+            { signal, onDelta: pushDelta },
           );
 
           modelVersion = typeof response.model === "string" ? response.model : request.model;
@@ -5699,16 +5701,6 @@ async function runTextCall(params: {
           if (choice?.finish_reason === "content_filter") {
             blocked = true;
             pushEvent({ type: "blocked" });
-          }
-
-          const message = (choice as { message?: unknown } | undefined)?.message;
-          const reasoningContent = extractFireworksReasoningText(message);
-          if (reasoningContent) {
-            pushDelta("thought", reasoningContent);
-          }
-          const textOutput = extractFireworksMessageText(message);
-          if (textOutput.length > 0) {
-            pushDelta("response", textOutput);
           }
 
           latestUsage = extractFireworksUsageTokens(response.usage);
@@ -7403,6 +7395,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           model: providerInfo.model,
           messages,
           tools: fireworksTools,
+          stream: true as const,
+          stream_options: { include_usage: true },
           tool_choice: "auto" as const,
           parallel_tool_calls: true,
           ...(request.maxOutputTokens !== undefined ? { max_tokens: request.maxOutputTokens } : {}),
@@ -7421,10 +7415,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         try {
           const response = await runFireworksCall(
             async (client) => {
-              return await client.chat.completions.create(
-                stepRequestPayload as any,
-                { signal: request.signal } as any,
-              );
+              return await streamFireworksChatCompletion(client, stepRequestPayload, {
+                signal: request.signal,
+                onDelta: (channel, text) => {
+                  if (channel === "thought") {
+                    reasoningContent = (reasoningContent ?? "") + text;
+                    stepCallLogger?.appendThoughtDelta(text);
+                  } else {
+                    responseText += text;
+                    stepCallLogger?.appendResponseDelta(text);
+                  }
+                  request.onEvent?.({ type: "delta", channel, text });
+                },
+              });
             },
             providerInfo.model,
             {
@@ -7446,15 +7449,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           }
           const message = (choice as { message?: unknown } | undefined)?.message;
           reasoningContent = extractFireworksReasoningText(message);
-          if (reasoningContent) {
-            stepCallLogger?.appendThoughtDelta(reasoningContent);
-            request.onEvent?.({ type: "delta", channel: "thought", text: reasoningContent });
-          }
           responseText = extractFireworksMessageText(message).trim();
-          if (responseText.length > 0) {
-            stepCallLogger?.appendResponseDelta(responseText);
-            request.onEvent?.({ type: "delta", channel: "response", text: responseText });
-          }
 
           usageTokens = extractFireworksUsageTokens(response.usage);
           const stepCostUsd = estimateCallCostUsd({
@@ -9035,6 +9030,7 @@ async function generateImagesWithChatGptImageApi(
     throw new Error("ChatGPT image edits support at most 5 style images.");
   }
   let totalUsage: LlmUsageTokens | undefined;
+  let costUsd = 0;
   let outputImages = 0;
 
   telemetry.emit({
@@ -9081,6 +9077,13 @@ async function generateImagesWithChatGptImageApi(
       outputImages = images.length;
       const usage = extractOpenAiUsageTokens(response.usage);
       totalUsage = sumUsageTokens(totalUsage, usage);
+      costUsd += estimateCallCostUsd({
+        modelId: request.model,
+        tokens: usage,
+        responseImages: response.data.length,
+        imageSize: response.size ?? "auto",
+        imageQuality: response.quality ?? "auto",
+      });
     }
 
     telemetry.emit({
@@ -9089,7 +9092,7 @@ async function generateImagesWithChatGptImageApi(
       durationMs: Math.max(0, Date.now() - startedAtMs),
       modelVersion: request.model,
       usage: totalUsage,
-      costUsd: 0,
+      costUsd,
       imageCount: images.length,
       attempts: promptEntries.length,
     });
@@ -9101,7 +9104,7 @@ async function generateImagesWithChatGptImageApi(
       success: false,
       durationMs: Math.max(0, Date.now() - startedAtMs),
       usage: totalUsage,
-      costUsd: 0,
+      costUsd,
       imageCount: outputImages,
       error: err.message,
     });

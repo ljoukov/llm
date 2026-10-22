@@ -11,7 +11,8 @@ const chatGptAuthMock = vi.hoisted(() => ({
 
 vi.mock("../src/openai/chatgpt-auth.js", () => chatGptAuthMock);
 
-import { createImageGenerationTool, generateImages } from "../src/index.js";
+import { createImageGenerationTool, estimateCallCostUsd, generateImages } from "../src/index.js";
+import type { TelemetryEvent } from "../src/telemetry.js";
 import {
   configureChatGptCodexProxy,
   requestChatGptCodexImages,
@@ -291,6 +292,172 @@ describe("ChatGPT subscription image wrappers", () => {
         imagePrompts: ["A blue square"],
       }),
     ).rejects.toThrow("ChatGPT Codex image response contained no generated images");
+  });
+
+  it("reports aggregate API-equivalent cost and usage for successful image responses", async () => {
+    const usage = {
+      input_tokens: 120,
+      input_tokens_details: { text_tokens: 100, image_tokens: 20, cached_tokens: 10 },
+      output_tokens: 200,
+      output_tokens_details: { image_tokens: 200 },
+      total_tokens: 320,
+    };
+    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      expect(parseRequestBody(init)).toMatchObject({ quality: "auto", size: "auto" });
+      return imageResponse({ usage, quality: "high", size: "1536x1024" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const events: TelemetryEvent[] = [];
+
+    const images = await generateImages({
+      model: "chatgpt-gpt-image-2",
+      stylePrompt: "",
+      imagePrompts: ["A lighthouse", "A forest"],
+      telemetry: {
+        sink: {
+          emit: (event) => {
+            events.push(event);
+          },
+        },
+      },
+    });
+
+    expect(images).toHaveLength(2);
+    const completed = events.find((event) => event.type === "llm.call.completed");
+    expect(completed).toMatchObject({
+      success: true,
+      imageCount: 2,
+      attempts: 2,
+      model: "chatgpt-gpt-image-2",
+      usage: {
+        promptTokens: 240,
+        promptTextTokens: 200,
+        promptImageTokens: 40,
+        cachedTokens: 20,
+        responseTokens: 400,
+        responseImageTokens: 400,
+        totalTokens: 640,
+      },
+    });
+    if (completed?.type !== "llm.call.completed") throw new Error("Missing completed telemetry.");
+    const expectedPerResponse = estimateCallCostUsd({
+      modelId: "gpt-image-2",
+      tokens: {
+        promptTokens: 120,
+        promptTextTokens: 100,
+        promptImageTokens: 20,
+        cachedTokens: 10,
+        responseTokens: 200,
+        responseImageTokens: 200,
+        totalTokens: 320,
+      },
+      responseImages: 1,
+      imageSize: "1536x1024",
+      imageQuality: "high",
+    });
+    expect(completed.costUsd).toBeGreaterThan(0);
+    expect(completed.costUsd).toBeCloseTo(2 * expectedPerResponse, 12);
+    expect(completed.costUsd).not.toBeCloseTo(
+      2 *
+        estimateCallCostUsd({
+          modelId: "gpt-image-2",
+          tokens: undefined,
+          responseImages: 1,
+          imageSize: "1536x1024",
+          imageQuality: "high",
+        }),
+      12,
+    );
+  });
+
+  it.each([
+    {
+      name: "service quality and size",
+      response: { quality: "high", size: "1536x1024" },
+      quality: "high",
+      size: "1536x1024",
+    },
+    {
+      name: "automatic defaults when service controls are absent",
+      response: { quality: undefined, size: undefined },
+      quality: "auto",
+      size: "auto",
+    },
+  ])("estimates missing usage using $name", async ({ response, quality, size }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        imageResponse({
+          ...response,
+          data: [{ b64_json: generatedBase64 }, { b64_json: generatedBase64 }],
+        }),
+      ),
+    );
+    const events: TelemetryEvent[] = [];
+    await generateImages({
+      model: "chatgpt-gpt-image-2",
+      stylePrompt: "",
+      imagePrompts: ["A panorama"],
+      telemetry: {
+        sink: {
+          emit: (event) => {
+            events.push(event);
+          },
+        },
+      },
+    });
+    const completed = events.find((event) => event.type === "llm.call.completed");
+    expect(completed).toMatchObject({ success: true, imageCount: 2 });
+    if (completed?.type !== "llm.call.completed") throw new Error("Missing completed telemetry.");
+    expect(completed.usage).toBeUndefined();
+    expect(completed.costUsd).toBeGreaterThan(0);
+    expect(completed.costUsd).toBe(
+      estimateCallCostUsd({
+        modelId: "gpt-image-2",
+        tokens: undefined,
+        responseImages: 2,
+        imageQuality: quality,
+        imageSize: size,
+      }),
+    );
+  });
+
+  it("retains cost for completed images if a later image request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(imageResponse({ quality: "high", size: "1024x1536" }))
+        .mockResolvedValueOnce(new Response("quota exhausted", { status: 429 })),
+    );
+    const events: TelemetryEvent[] = [];
+    await expect(
+      generateImages({
+        model: "chatgpt-gpt-image-2",
+        stylePrompt: "",
+        imagePrompts: ["A lighthouse", "A forest"],
+        telemetry: {
+          sink: {
+            emit: (event) => {
+              events.push(event);
+            },
+          },
+        },
+      }),
+    ).rejects.toThrow("quota exhausted");
+    const completed = events.find((event) => event.type === "llm.call.completed");
+    expect(completed).toMatchObject({ success: false, imageCount: 1 });
+    if (completed?.type !== "llm.call.completed") throw new Error("Missing completed telemetry.");
+    expect(completed.costUsd).toBeGreaterThan(0);
+    expect(completed.costUsd).toBe(
+      estimateCallCostUsd({
+        modelId: "gpt-image-2",
+        tokens: undefined,
+        responseImages: 1,
+        imageQuality: "high",
+        imageSize: "1024x1536",
+      }),
+    );
   });
 
   it("rejects unsupported subscription controls instead of silently ignoring them", async () => {
