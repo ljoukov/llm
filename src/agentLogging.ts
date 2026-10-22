@@ -63,7 +63,8 @@ export type AgentStreamEventLogger = {
   readonly flush: () => void;
 };
 
-const DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS = 4_000;
+const DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS = 5_000;
+const CALL_DELTA_PERSIST_THROTTLE_MS = 5_000;
 
 function toIsoNow(): string {
   return new Date().toISOString();
@@ -374,6 +375,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
   private readonly agentLogPath: string;
   private readonly ensureReady: Promise<void>;
   private readonly pending = new Set<Promise<void>>();
+  private readonly callDeltaFlushers = new Set<() => void>();
   private lineChain: Promise<void> = Promise.resolve();
   private callCounter = 0;
 
@@ -515,6 +517,9 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
     this.track(chain);
 
     let closed = false;
+    let pendingThoughtChunks: string[] = [];
+    let pendingResponseChunks: string[] = [];
+    let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
     const enqueue = (operation: () => Promise<void>): void => {
       const next = chain.then(operation);
@@ -523,28 +528,62 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
       this.track(tracked);
     };
 
+    const flushDeltas = (): void => {
+      if (deltaFlushTimer !== null) {
+        clearTimeout(deltaFlushTimer);
+        deltaFlushTimer = null;
+      }
+      const thoughts = pendingThoughtChunks.join("");
+      const response = pendingResponseChunks.join("");
+      pendingThoughtChunks = [];
+      pendingResponseChunks = [];
+      if (thoughts.length > 0) {
+        enqueue(async () => {
+          await appendFile(thoughtsPath, thoughts, "utf8");
+        });
+      }
+      if (response.length > 0) {
+        enqueue(async () => {
+          await appendFile(responsePath, response, "utf8");
+        });
+      }
+    };
+
+    const scheduleDeltaFlush = (): void => {
+      if (deltaFlushTimer !== null) {
+        return;
+      }
+      deltaFlushTimer = setTimeout(flushDeltas, CALL_DELTA_PERSIST_THROTTLE_MS);
+      deltaFlushTimer.unref?.();
+    };
+
+    const close = (): void => {
+      closed = true;
+      flushDeltas();
+      this.callDeltaFlushers.delete(flushDeltas);
+    };
+    this.callDeltaFlushers.add(flushDeltas);
+
     return {
       appendThoughtDelta: (text: string) => {
         if (closed || text.length === 0) {
           return;
         }
-        enqueue(async () => {
-          await appendFile(thoughtsPath, text, "utf8");
-        });
+        pendingThoughtChunks.push(text);
+        scheduleDeltaFlush();
       },
       appendResponseDelta: (text: string) => {
         if (closed || text.length === 0) {
           return;
         }
-        enqueue(async () => {
-          await appendFile(responsePath, text, "utf8");
-        });
+        pendingResponseChunks.push(text);
+        scheduleDeltaFlush();
       },
       complete: (options?: AgentLlmCallCompletion) => {
         if (closed) {
           return;
         }
-        closed = true;
+        close();
         enqueue(async () => {
           if (hasNonEmptyText(options?.responseText)) {
             await writeFile(responsePath, options.responseText, "utf8");
@@ -576,7 +615,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
         if (closed) {
           return;
         }
-        closed = true;
+        close();
         enqueue(async () => {
           if (hasNonEmptyText(options?.responseText)) {
             await writeFile(responsePath, options.responseText, "utf8");
@@ -610,6 +649,9 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
   }
 
   async flush(): Promise<void> {
+    for (const flushDeltas of this.callDeltaFlushers) {
+      flushDeltas();
+    }
     while (this.pending.size > 0) {
       await Promise.allSettled([...this.pending]);
     }

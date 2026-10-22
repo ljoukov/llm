@@ -39,8 +39,14 @@ const GEMINI_3_8_FLASH_INTRO_PRICING = flatTextPricing(0.75, 3.75, 0.075);
 const GEMINI_3_8_FLASH_PRICING = flatTextPricing(1.5, 7.5, 0.15);
 const GEMINI_3_8_FLASH_PRICE_INCREASE_AT = Date.parse("2027-01-01T00:00:00Z");
 
-// Earlier Gemini pricing snapshot (best-effort, Standard tier). Official pricing:
-// https://cloud.google.com/vertex-ai/generative-ai/pricing
+const GEMINI_3_FLASH_PREVIEW_PRICING = flatTextPricing(0.5, 3, 0.05);
+
+// Concrete versions may be reported by the API when a supported latest alias is requested.
+// Standard global rates: https://cloud.google.com/vertex-ai/generative-ai/pricing
+const GEMINI_3_5_FLASH_PRICING = flatTextPricing(1.5, 9, 0.15);
+const GEMINI_3_5_FLASH_LITE_PRICING = flatTextPricing(0.3, 2.5, 0.03);
+
+// Gemini 3.1 Pro Standard rates: https://ai.google.dev/gemini-api/docs/pricing
 const GEMINI_3_PRO_PREVIEW_PRICING: GeminiProPricing = {
   threshold: 200_000,
   inputRateLow: 2 / 1_000_000,
@@ -82,13 +88,13 @@ const GEMINI_2_5_FLASH_PRICING: GeminiProPricing = {
 // Pricing from Gemini 2.5 Flash Lite public rates (standard, text/image/video):
 // - Input: $0.10
 // - Output (including thinking): $0.40
-// - Context caching: $0.025
+// - Context caching: $0.01
 const GEMINI_2_5_FLASH_LITE_PRICING: GeminiProPricing = {
   threshold: 200_000,
   inputRateLow: 0.1 / 1_000_000,
   inputRateHigh: 0.1 / 1_000_000,
-  cachedRateLow: 0.025 / 1_000_000,
-  cachedRateHigh: 0.025 / 1_000_000,
+  cachedRateLow: 0.01 / 1_000_000,
+  cachedRateHigh: 0.01 / 1_000_000,
   outputRateLow: 0.4 / 1_000_000,
   outputRateHigh: 0.4 / 1_000_000,
 };
@@ -99,22 +105,22 @@ const GEMINI_3_PRO_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
   outputTextRate: 12 / 1_000_000,
   outputImageRate: 120 / 1_000_000,
   imagePrices: {
-    "1K": 0.134,
-    "2K": 0.134,
-    "4K": 0.24,
+    "1K": (1120 * 120) / 1_000_000,
+    "2K": (1120 * 120) / 1_000_000,
+    "4K": (2000 * 120) / 1_000_000,
   },
 };
 
 const GEMINI_3_1_FLASH_IMAGE_PREVIEW_PRICING: GeminiImagePricing = {
   inputRate: 0.5 / 1_000_000,
-  cachedRate: 0.125 / 1_000_000,
+  cachedRate: 0.05 / 1_000_000,
   outputTextRate: 3 / 1_000_000,
   outputImageRate: 60 / 1_000_000,
   imagePrices: {
-    "512": 0.045,
-    "1K": 0.067,
-    "2K": 0.101,
-    "4K": 0.15,
+    "512": (747 * 60) / 1_000_000,
+    "1K": (1120 * 60) / 1_000_000,
+    "2K": (1680 * 60) / 1_000_000,
+    "4K": (2520 * 60) / 1_000_000,
   },
 };
 
@@ -124,7 +130,11 @@ export function getGeminiProPricing(modelId: string): GeminiProPricing | undefin
       ? GEMINI_4_ARGON_INTRO_PRICING
       : GEMINI_4_ARGON_PRICING;
   }
-  if (modelId.includes("gemini-3.8-flash")) {
+  if (
+    modelId.includes("gemini-3.8-flash") ||
+    modelId.includes("gemini-3.7-flash") ||
+    modelId.includes("gemini-3.6-flash")
+  ) {
     return Date.now() < GEMINI_3_8_FLASH_PRICE_INCREASE_AT
       ? GEMINI_3_8_FLASH_INTRO_PRICING
       : GEMINI_3_8_FLASH_PRICING;
@@ -132,14 +142,24 @@ export function getGeminiProPricing(modelId: string): GeminiProPricing | undefin
   if (modelId.includes("gemini-2.5-pro")) {
     return GEMINI_2_5_PRO_PRICING;
   }
-  if (modelId.includes("gemini-flash-lite-latest")) {
+  if (modelId.includes("gemini-3.5-flash-lite")) {
+    return GEMINI_3_5_FLASH_LITE_PRICING;
+  }
+  // The May 19, 2026 changelog explicitly switched flash-latest to 3.5 Flash.
+  // https://ai.google.dev/gemini-api/docs/changelog#may-19-2026
+  // Latest aliases can change; prefer a known concrete modelVersion from the response.
+  if (modelId.includes("gemini-3.5-flash") || modelId.includes("gemini-flash-latest")) {
+    return GEMINI_3_5_FLASH_PRICING;
+  }
+  if (modelId.includes("gemini-2.5-flash-lite") || modelId.includes("gemini-flash-lite-latest")) {
+    // Google's current docs do not identify the latest alias target. Retain the
+    // earlier 2.5 fallback; response modelVersion pricing takes precedence.
     return GEMINI_2_5_FLASH_LITE_PRICING;
   }
-  if (
-    modelId.includes("gemini-2.5-flash") ||
-    modelId.includes("gemini-flash-latest") ||
-    modelId.includes("gemini-3-flash-preview")
-  ) {
+  if (modelId.includes("gemini-3-flash-preview")) {
+    return GEMINI_3_FLASH_PREVIEW_PRICING;
+  }
+  if (modelId.includes("gemini-2.5-flash")) {
     return GEMINI_2_5_FLASH_PRICING;
   }
   if (modelId.includes("gemini-3-pro") || modelId.includes("gemini-3.1-pro")) {

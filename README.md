@@ -294,7 +294,7 @@ and `imagePrompts` compose the generation/edit prompt. `imagePrompts` produces o
 entry, while `numImages` controls `n` within each request. `partialImages` is reserved for a
 streaming image API and is rejected by the non-streaming `generateImages()` call.
 
-As of July 13, 2026, the public API's estimated GPT Image 2 output charge for one image is:
+The official GPT Image 2 output estimates for one image, checked October 22, 2026, are:
 
 | Quality | Square `1024x1024` | Portrait `1024x1536` | Landscape `1536x1024` |
 | --- | ---: | ---: | ---: |
@@ -302,10 +302,14 @@ As of July 13, 2026, the public API's estimated GPT Image 2 output charge for on
 | `medium` | $0.053 | $0.041 | $0.041 |
 | `high` | $0.211 | $0.165 | $0.165 |
 
-Those are image-output estimates, not the complete request total. Public API billing also includes
-prompt text tokens and, for edits, input-image tokens; consult the current
+When usage is reported, the library prices prompt text at $5, input images at $8, and image output
+at $30 per million tokens. It uses reported output tokens for any generated resolution and avoids
+adding the per-image estimate again. Direct Images API calls have no cached-input discount.
+When output usage is missing, the table supplies an approximate output charge; custom resolutions
+use the nearest listed orientation, and `auto` uses the medium square default. Known input tokens
+are still added. Consult the current
 [OpenAI image generation cost calculator](https://developers.openai.com/api/docs/guides/image-generation#calculating-costs)
-before relying on a snapshot. Subscription-backed calls do not use this public-API price table.
+before relying on a snapshot.
 
 #### Direct ChatGPT subscription API
 
@@ -329,8 +333,9 @@ This route reuses the same ChatGPT auth setup as other `chatgpt-*` models. It su
 sends `n: 1`, `size: "auto"`, and `quality: "auto"`, and therefore does not expose structured image
 count, size, resolution, or quality properties on `LlmChatGptGenerateImagesRequest`. The current
 subscription endpoint returns PNG and does not expose request controls for `outputFormat`,
-`outputCompression`, `moderation`, or `action`. Telemetry records `costUsd: 0` because calls consume
-the account's Codex/ChatGPT allowance rather than public API credits.
+`outputCompression`, `moderation`, or `action`. Telemetry records an API-equivalent `costUsd`
+estimate from returned usage, or the service's returned quality/size when usage is absent. These
+estimates are for comparison; they are not subscription charges or remaining plan allowance.
 
 Put the desired canvas orientation or aspect ratio directly in `imagePrompts`. In a live check on
 July 13, 2026, prompt instructions selected all three canvas shapes while the request kept size,
@@ -731,6 +736,11 @@ LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1 LLM_INTEGRATION_MODELS=claude-sonnet-5-5 n
 
 ### Gemini and Claude token costs
 
+All 48 listed text IDs and 4 image IDs have cost data. Tests check input, output, and cached-input
+rates independently, plus cache writes where supported and image fallback estimates when usage
+is absent. Private `experimental-chatgpt-*` IDs have unknown prices unless a known `pricingModelId`
+is supplied explicitly. ChatGPT and Claude subscription estimates use API-equivalent rates.
+
 Standard global API rates checked October 22, 2026 against the official
 [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and
 [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) pages.
@@ -755,6 +765,10 @@ reasoning, so it is charged once. Cache-write usage is priced when reported; the
 implicitly. Estimates cover token inference; search/tool charges, cache storage, taxes, and account-specific discounts
 are excluded.
 
+Gemini `latest` aliases use the concrete response model version's rate when known, with the last
+documented alias target as a fallback. Image estimates use reported image tokens when available
+and published output-token counts by image size otherwise.
+
 ### Fireworks
 
 Use the short library model IDs below; they resolve to the exact direct Fireworks model paths. These direct serverless models and pricing were checked on October 22, 2026 against the [Fireworks catalogue](https://app.fireworks.ai/models?type=llm&capability=serverless) and authenticated inference `/models` endpoint. Routers and embedding/reranking models are excluded.
@@ -768,6 +782,8 @@ Use the short library model IDs below; they resolve to the exact direct Firework
 Version 10 removes retired `kimi-k2.5`, `glm-5`, and `minimax-m2.1`; use `kimi-k3`, `glm-5.3`, or `deepseek-v4.1-flash-1017` for current research runs. The Fireworks allowlist is intentionally limited to these three models; obsolete default exports are removed.
 
 Fireworks `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
+
+Fireworks text generation and tool loops request streaming completions, including when you await `generateText()` or `runToolLoop()`. Thought and response deltas arrive while inference is running. Fragmented tool calls are assembled before execution, and usage is collected from the final stream chunk.
 
 
 Since 10.1, Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer. Anthropic also accepts this option starting in 10.2; other providers explicitly reject it. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
@@ -1254,9 +1270,11 @@ console.log(result.text);
 Each LLM call writes:
 
 - `request.txt`, `request.metadata.json`, `tool_call_response.txt` plus `tool_call_response.json` (when the request includes tool outputs), and `input-<n>.<ext>` attachments immediately,
-- streamed `thoughts.txt` deltas during generation,
-- `response.txt` for assistant text responses, `tool_call.txt` plus `tool_call.json` when the model asks to call tools, `output-<n>.<ext>` for inline output media, and `response.metadata.json` at completion,
+- streamed `thoughts.txt` and `response.txt` deltas during generation, batched to disk every five seconds while data is pending,
+- `tool_call.txt` plus `tool_call.json` when the model asks to call tools, `output-<n>.<ext>` for inline output media, and `response.metadata.json` at completion,
 - `error.txt` plus `response.metadata.json` on failure.
+
+Completion, failure, and an explicit logging-session `flush()` immediately drain pending file deltas. Thought lines in `agent.log` are also batched every five seconds and flushed before other events and at the end of a run. Stream events themselves remain immediate. Only reasoning that the provider sends can be logged; an already-running non-streaming request must finish or be restarted with the updated library to gain live traces.
 
 `image_url` data URLs are redacted in text/metadata logs (`data:...,...`) so base64 payloads are not printed inline.
 Every canonical upload or provider mirror is also appended to `agent.log` as a `[upload] ...` line with source,

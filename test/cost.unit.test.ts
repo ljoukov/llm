@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { isChatGptImageModelId, isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
@@ -111,9 +111,13 @@ describe("estimateCallCostUsd", () => {
     expect(cost).toBeCloseTo(0.005025, 8);
   });
 
-  it("estimates Gemini 2.5 Flash costs (including gemini-flash-latest alias)", () => {
-    const modelIds = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3-flash-preview"] as const;
-    for (const modelId of modelIds) {
+  it("estimates distinct Gemini Flash model costs", () => {
+    const modelCosts = [
+      ["gemini-2.5-flash", 0.001246],
+      ["gemini-flash-latest", 0.00483],
+      ["gemini-3-flash-preview", 0.00161],
+    ] as const;
+    for (const [modelId, expectedCost] of modelCosts) {
       const cost = estimateCallCostUsd({
         modelId,
         tokens: {
@@ -125,10 +129,7 @@ describe("estimateCallCostUsd", () => {
         responseImages: 0,
       });
 
-      // non-cached prompt: 800 * (0.30/1M) = 0.00024
-      // cached: 200 * (0.03/1M) = 0.000006
-      // output: 400 * (2.5/1M) = 0.001
-      expect(cost).toBeCloseTo(0.001246, 8);
+      expect(cost).toBeCloseTo(expectedCost, 8);
     }
   });
 
@@ -145,9 +146,9 @@ describe("estimateCallCostUsd", () => {
     });
 
     // non-cached prompt: 800 * (0.10/1M) = 0.00008
-    // cached: 200 * (0.025/1M) = 0.000005
+    // cached: 200 * (0.01/1M) = 0.000002
     // output: 400 * (0.40/1M) = 0.00016
-    expect(cost).toBeCloseTo(0.000245, 8);
+    expect(cost).toBeCloseTo(0.000242, 8);
   });
 
   it("estimates Gemini 3.1 Pro preview costs", () => {
@@ -203,6 +204,70 @@ describe("estimateCallCostUsd", () => {
 
     expect(squareLowCost).toBeCloseTo(0.006, 8);
     expect(landscapeHighCost).toBeCloseTo(0.165, 8);
+  });
+
+  it.each([
+    "gpt-image-2",
+    "chatgpt-gpt-image-2",
+  ])("prices %s reported input and output tokens without charging per-image estimates again", (modelId) => {
+    expect(
+      estimateCallCostUsd({
+        modelId,
+        tokens: {
+          promptTokens: 1000,
+          promptTextTokens: 200,
+          promptImageTokens: 800,
+          cachedTokens: 500,
+          responseTokens: 6000,
+        },
+        responseImages: 2,
+        imageSize: "3840x2160",
+        imageQuality: "high",
+      }),
+    ).toBeCloseTo((200 * 5 + 800 * 8 + 6000 * 30) / 1_000_000, 12);
+  });
+
+  it("uses the GPT Image output token breakdown when available", () => {
+    expect(
+      estimateCallCostUsd({
+        modelId: "gpt-image-2",
+        tokens: {
+          promptTokens: 100,
+          responseTokens: 500,
+          responseImageTokens: 400,
+          responseTextTokens: 100,
+        },
+        responseImages: 1,
+      }),
+    ).toBeCloseTo((100 * 5 + 400 * 30) / 1_000_000, 12);
+  });
+
+  it("adds known GPT Image input costs to the output fallback when output usage is missing", () => {
+    expect(
+      estimateCallCostUsd({
+        modelId: "gpt-image-2",
+        tokens: { promptTokens: 1000, promptImageTokens: 800 },
+        responseImages: 2,
+        imageQuality: "low",
+        imageSize: "1024x1024",
+      }),
+    ).toBeCloseTo(0.012 + (200 * 5 + 800 * 8) / 1_000_000, 12);
+  });
+
+  it("prices a Gemini latest alias using the concrete model returned by the service", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-22T00:00:00Z"));
+    try {
+      expect(
+        estimateCallCostUsd({
+          modelId: "gemini-3.8-flash-001",
+          pricingModelId: "gemini-flash-latest",
+          tokens: { promptTokens: 1000, responseTokens: 1000 },
+          responseImages: 0,
+        }),
+      ).toBeCloseTo(0.0045, 12);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("estimates Gemini 3.1 Flash image-preview costs lower than Gemini 3 Pro image-preview", () => {
