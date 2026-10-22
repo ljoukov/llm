@@ -9,12 +9,13 @@ vi.mock("../src/fireworks/calls.js", () => {
         create: async (request: any) => {
           capturedRequest = request;
           return {
-            model: "kimi-k2.5",
+            model: "kimi-k3",
             choices: [
               {
                 finish_reason: "stop",
                 message: {
                   content: "Hello",
+                  reasoning_content: "I should greet the user.",
                 },
               },
             ],
@@ -35,10 +36,10 @@ vi.mock("../src/fireworks/calls.js", () => {
 });
 
 describe("streamText (Fireworks)", () => {
-  it("routes kimi-k2.5 through Fireworks provider and reports usage", async () => {
+  it("routes kimi-k3 through Fireworks provider and reports usage", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "kimi-k2.5", input: "hi" });
+    const call = streamText({ model: "kimi-k3", input: "hi" });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -48,6 +49,8 @@ describe("streamText (Fireworks)", () => {
 
     expect(result.provider).toBe("fireworks");
     expect(result.text).toBe("Hello");
+    expect(result.thoughts).toBe("I should greet the user.");
+    expect(events.some((e) => e.type === "delta" && e.channel === "thought")).toBe(true);
     expect(result.usage?.totalTokens).toBe(16);
     expect(result.costUsd).toBeGreaterThan(0);
 
@@ -60,19 +63,21 @@ describe("streamText (Fireworks)", () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "glm-5",
+      model: "glm-5.3",
+      thinkingLevel: "high",
       input: "Return JSON.",
       responseMimeType: "application/json",
     });
 
     expect(capturedRequest?.response_format).toEqual({ type: "json_object" });
+    expect(capturedRequest?.reasoning_effort).toBe("high");
   });
 
   it("rejects provider-native shell tools for Fireworks models", async () => {
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({
-      model: "kimi-k2.5",
+      model: "kimi-k3",
       input: "Use shell.",
       tools: [{ type: "shell" }],
     });

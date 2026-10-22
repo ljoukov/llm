@@ -12,7 +12,7 @@ It runs the agent with (default model set):
 
 - ChatGPT Codex (Spark): `chatgpt-gpt-6-luna`
 - OpenAI Responses: `gpt-6-sol`, `gpt-6-luna`
-- Fireworks: `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`
+- Fireworks: `kimi-k3`, `glm-5.3`, `deepseek-v4.1-flash-1017`
 - Gemini Pro: `gemini-2.5-pro`, `gemini-3.1-pro-preview`
 - Gemini Flash: `gemini-flash-latest`, `gemini-3-flash-preview`
 
@@ -51,7 +51,7 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-6-luna,gpt-6-sol,gpt-6-luna,kimi-k2.5,glm-5,minimax-m2.1,gpt-oss-120b,gemini-2.5-pro,gemini-flash-latest,gemini-3.1-pro-preview,gemini-3-flash-preview \
+  --models chatgpt-gpt-6-luna,gpt-6-sol,gpt-6-luna,kimi-k3,glm-5.3,deepseek-v4.1-flash-1017,gemini-2.5-pro,gemini-flash-latest,gemini-3.1-pro-preview,gemini-3-flash-preview \
   --tasks all \
   --variants baseline,subagents \
   --runs 3 \

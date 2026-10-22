@@ -150,7 +150,7 @@ describe("model id lists", () => {
       "chatgpt-gpt-5.6-luna",
       "chatgpt-gpt-5.6-luna-fast",
     ]);
-    expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
+    expect(FIREWORKS_MODEL_IDS).toEqual(["deepseek-v4.1-flash-1017", "glm-5.3", "kimi-k3"]);
     expect(OPENAI_IMAGE_MODEL_IDS).toEqual(["gpt-image-2"]);
     expect(CHATGPT_IMAGE_MODEL_IDS).toEqual(["chatgpt-gpt-image-2"]);
     expect(GEMINI_TEXT_MODEL_IDS).toContain("gemini-3.1-pro-preview");

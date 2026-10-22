@@ -147,7 +147,7 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "kimi-k2.5",
+      model: "kimi-k3",
       input: "test",
       filesystemTool: true,
     });

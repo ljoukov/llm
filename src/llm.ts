@@ -1415,6 +1415,15 @@ function resolveOpenAiReasoningEffort(
   return DEFAULT_OPENAI_REASONING_EFFORT;
 }
 
+function resolveFireworksReasoningEffort(
+  thinkingLevel?: LlmThinkingLevel,
+): Exclude<LlmThinkingLevel, "ultra"> | undefined {
+  if (!thinkingLevel) {
+    return undefined;
+  }
+  return thinkingLevel === "ultra" ? "max" : thinkingLevel;
+}
+
 type OpenAiReasoningEffortParam = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 function toOpenAiReasoningEffort(effort: OpenAiReasoningEffort): OpenAiReasoningEffortParam {
@@ -4337,6 +4346,14 @@ function extractFireworksMessageText(message: unknown): string {
   return text;
 }
 
+function extractFireworksReasoningText(message: unknown): string | undefined {
+  if (!message || typeof message !== "object") {
+    return undefined;
+  }
+  const reasoning = (message as { reasoning_content?: unknown }).reasoning_content;
+  return typeof reasoning === "string" ? reasoning : undefined;
+}
+
 function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[] {
   if (!message || typeof message !== "object") {
     return [];
@@ -5252,6 +5269,11 @@ async function runTextCall(params: {
               model: modelForProvider,
               messages: fireworksMessages as any,
               ...(responseFormat ? { response_format: responseFormat } : {}),
+              ...(request.thinkingLevel
+                ? {
+                    reasoning_effort: resolveFireworksReasoningEffort(request.thinkingLevel),
+                  }
+                : {}),
             } as any,
             { signal } as any,
           );
@@ -5265,9 +5287,12 @@ async function runTextCall(params: {
             pushEvent({ type: "blocked" });
           }
 
-          const textOutput = extractFireworksMessageText(
-            (choice as { message?: unknown } | undefined)?.message,
-          );
+          const message = (choice as { message?: unknown } | undefined)?.message;
+          const reasoningContent = extractFireworksReasoningText(message);
+          if (reasoningContent) {
+            pushDelta("thought", reasoningContent);
+          }
+          const textOutput = extractFireworksMessageText(message);
           if (textOutput.length > 0) {
             pushDelta("response", textOutput);
           }
@@ -6935,6 +6960,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let modelVersion: string = request.model;
         let usageTokens: LlmUsageTokens | undefined;
         let responseText = "";
+        let reasoningContent: string | undefined;
         let blocked = false;
         let stepToolCallText: string | undefined;
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
@@ -6944,6 +6970,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           tools: fireworksTools,
           tool_choice: "auto" as const,
           parallel_tool_calls: true,
+          ...(request.thinkingLevel
+            ? {
+                reasoning_effort: resolveFireworksReasoningEffort(request.thinkingLevel),
+              }
+            : {}),
         };
         const stepCallLogger = startLlmCallLoggerFromPayload({
           provider: "fireworks",
@@ -6955,13 +6986,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           const response = await runFireworksCall(
             async (client) => {
               return await client.chat.completions.create(
-                {
-                  model: providerInfo.model,
-                  messages: messages as any,
-                  tools: fireworksTools as any,
-                  tool_choice: "auto" as const,
-                  parallel_tool_calls: true,
-                } as any,
+                stepRequestPayload as any,
                 { signal: request.signal } as any,
               );
             },
@@ -6983,6 +7008,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             request.onEvent?.({ type: "blocked" });
           }
           const message = (choice as { message?: unknown } | undefined)?.message;
+          reasoningContent = extractFireworksReasoningText(message);
+          if (reasoningContent) {
+            stepCallLogger?.appendThoughtDelta(reasoningContent);
+            request.onEvent?.({ type: "delta", channel: "thought", text: reasoningContent });
+          }
           responseText = extractFireworksMessageText(message).trim();
           if (responseText.length > 0) {
             stepCallLogger?.appendResponseDelta(responseText);
@@ -7022,7 +7052,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             const steeringMessages =
               steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
             finalText = responseText;
-            finalThoughts = "";
+            finalThoughts = reasoningContent ?? "";
             const stepCompletedAtMs = Date.now();
             const timing = buildStepTiming({
               stepStartedAtMs,
@@ -7036,7 +7066,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               step: steps.length + 1,
               modelVersion,
               text: responseText || undefined,
-              thoughts: undefined,
+              thoughts: reasoningContent || undefined,
               toolCalls: [],
               usage: usageTokens,
               costUsd: stepCostUsd,
@@ -7053,7 +7083,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 costUsd: stepCostUsd,
                 blocked,
                 responseChars: responseText.length,
-                thoughtChars: 0,
+                thoughtChars: reasoningContent?.length ?? 0,
                 toolCalls: 0,
                 finalStep: steeringMessages.length === 0,
               },
@@ -7062,7 +7092,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
             }
             if (responseText.length > 0) {
-              messages.push({ role: "assistant", content: responseText });
+              messages.push({
+                role: "assistant",
+                content: responseText,
+                ...(reasoningContent !== undefined ? { reasoning_content: reasoningContent } : {}),
+              });
             }
             messages.push(...steeringMessages);
             continue;
@@ -7170,7 +7204,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             step: steps.length + 1,
             modelVersion,
             text: responseText || undefined,
-            thoughts: undefined,
+            thoughts: reasoningContent || undefined,
             toolCalls: stepToolCalls,
             usage: usageTokens,
             costUsd: stepCostUsd,
@@ -7190,14 +7224,14 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               costUsd: stepCostUsd,
               blocked,
               responseChars: responseText.length,
-              thoughtChars: 0,
+              thoughtChars: reasoningContent?.length ?? 0,
               toolCalls: stepToolCalls.length,
               finalStep: terminalToolCall !== null,
             },
           });
           if (terminalToolCall) {
             finalText = terminalToolCallText(terminalToolCall) || responseText;
-            finalThoughts = "";
+            finalThoughts = reasoningContent ?? "";
             return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
           }
 
@@ -7205,6 +7239,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             role: "assistant",
             ...(responseText.length > 0 ? { content: responseText } : {}),
             tool_calls: assistantToolCalls,
+            ...(reasoningContent !== undefined ? { reasoning_content: reasoningContent } : {}),
           });
           messages.push(...toolMessages);
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];

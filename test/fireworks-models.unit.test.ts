@@ -1,39 +1,55 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FIREWORKS_DEFAULT_DEEPSEEK_MODEL,
+  FIREWORKS_DEFAULT_GLM_MODEL,
+  FIREWORKS_DEFAULT_KIMI_MODEL,
   FIREWORKS_MODEL_IDS,
   isFireworksModelId,
+  isLlmTextModelId,
   resolveFireworksModelId,
-} from "../src/fireworks/models.js";
+} from "../src/index.js";
+import { getFireworksPricing } from "../src/fireworks/pricing.js";
+
+const currentModels = [
+  ["deepseek-v4.1-flash-1017", "accounts/fireworks/models/deepseek-v4p1-flash-1017"],
+  ["glm-5.3", "accounts/fireworks/models/glm-5p3"],
+  ["kimi-k3", "accounts/fireworks/models/kimi-k3"],
+] as const;
 
 describe("fireworks model ids", () => {
-  it("includes gpt-oss-120b in supported ids", () => {
-    expect(FIREWORKS_MODEL_IDS).toContain("gpt-oss-120b");
+  it("matches the current direct serverless LLM catalogue", () => {
+    expect(FIREWORKS_MODEL_IDS).toEqual(currentModels.map(([model]) => model));
   });
 
-  it("recognizes gpt-oss-120b as a Fireworks model id", () => {
-    expect(isFireworksModelId("gpt-oss-120b")).toBe(true);
+  it.each(currentModels)("resolves %s to %s", (model, canonical) => {
+    expect(isFireworksModelId(model)).toBe(true);
+    expect(isLlmTextModelId(model)).toBe(true);
+    expect(resolveFireworksModelId(model)).toBe(canonical);
+    expect(resolveFireworksModelId(` ${model} `)).toBe(canonical);
+    expect(getFireworksPricing(canonical)).toEqual(getFireworksPricing(model));
   });
 
-  it("resolves gpt-oss-120b to the canonical Fireworks model id", () => {
-    expect(resolveFireworksModelId("gpt-oss-120b")).toBe("accounts/fireworks/models/gpt-oss-120b");
-    expect(resolveFireworksModelId(" gpt-oss-120b ")).toBe(
-      "accounts/fireworks/models/gpt-oss-120b",
-    );
+  it.each([
+    "kimi-k2.5",
+    "glm-5",
+    "minimax-m2.1",
+    "firerouter/auto",
+    "qwen3-embedding-8b",
+    "glm-5.3-unknown",
+    "glm-5p3",
+    "__proto__",
+    "constructor",
+  ])("rejects retired, routed, non-text, and unknown model %s", (model) => {
+    expect(isFireworksModelId(model)).toBe(false);
+    expect(isLlmTextModelId(model)).toBe(false);
+    expect(resolveFireworksModelId(model)).toBeUndefined();
+    expect(getFireworksPricing(model)).toBeUndefined();
   });
 
-  it("includes minimax-m2.1 in supported ids", () => {
-    expect(FIREWORKS_MODEL_IDS).toContain("minimax-m2.1");
-  });
-
-  it("recognizes minimax-m2.1 as a Fireworks model id", () => {
-    expect(isFireworksModelId("minimax-m2.1")).toBe(true);
-  });
-
-  it("resolves minimax-m2.1 to the canonical Fireworks model id", () => {
-    expect(resolveFireworksModelId("minimax-m2.1")).toBe("accounts/fireworks/models/minimax-m2p1");
-    expect(resolveFireworksModelId(" minimax-m2.1 ")).toBe(
-      "accounts/fireworks/models/minimax-m2p1",
-    );
+  it("selects current default family models", () => {
+    expect(FIREWORKS_DEFAULT_DEEPSEEK_MODEL).toBe("deepseek-v4.1-flash-1017");
+    expect(FIREWORKS_DEFAULT_KIMI_MODEL).toBe("kimi-k3");
+    expect(FIREWORKS_DEFAULT_GLM_MODEL).toBe("glm-5.3");
   });
 });
