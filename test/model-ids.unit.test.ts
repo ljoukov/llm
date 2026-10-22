@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   ANTHROPIC_MODEL_IDS,
+  CLAUDE_MODEL_IDS,
   CHATGPT_IMAGE_MODEL_IDS,
   CHATGPT_MODEL_IDS,
   FIREWORKS_MODEL_IDS,
   GEMINI_IMAGE_MODEL_IDS,
   GEMINI_TEXT_MODEL_IDS,
   isAnthropicModelId,
+  isClaudeModelId,
   isGeminiTextModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
@@ -33,6 +35,8 @@ import {
   OPENAI_MODEL_IDS,
   validateOpenAiGptImage2Resolution,
   resolveOpenAiGptImage2Size,
+  resolveAnthropicProviderModel,
+  resolveClaudeProviderModel,
 } from "../src/index.js";
 import type {
   LlmChatGptGenerateImagesRequest,
@@ -152,7 +156,8 @@ describe("model id lists", () => {
       "chatgpt-gpt-5.6-luna-fast",
     ]);
     expect(FIREWORKS_MODEL_IDS).toEqual(["deepseek-v4.1-flash-1017", "glm-5.3", "kimi-k3"]);
-    expect(ANTHROPIC_MODEL_IDS).toEqual([
+    expect(ANTHROPIC_MODEL_IDS).toEqual(["haiku-5-5", "sonnet-5-5", "opus-5-5", "fable-5-1"]);
+    expect(CLAUDE_MODEL_IDS).toEqual([
       "claude-haiku-5-5",
       "claude-sonnet-5-5",
       "claude-opus-5-5",
@@ -177,11 +182,26 @@ describe("model id lists", () => {
     }
     for (const model of ANTHROPIC_MODEL_IDS) {
       expect(isAnthropicModelId(model)).toBe(true);
+      expect(isClaudeModelId(model)).toBe(false);
+      expect(resolveAnthropicProviderModel(model)).toBe(`claude-${model}`);
       expect(isLlmTextModelId(model)).toBe(true);
       expect(isLlmModelId(model)).toBe(true);
       expect(LLM_TEXT_MODEL_IDS).toContain(model);
       expect(isLlmImageModelId(model)).toBe(false);
     }
+    for (const model of CLAUDE_MODEL_IDS) {
+      expect(isClaudeModelId(model)).toBe(true);
+      expect(isAnthropicModelId(model)).toBe(false);
+      expect(resolveClaudeProviderModel(model)).toBe(model);
+      expect(isLlmTextModelId(model)).toBe(true);
+      expect(isLlmModelId(model)).toBe(true);
+      expect(LLM_TEXT_MODEL_IDS).toContain(model);
+      expect(isLlmImageModelId(model)).toBe(false);
+    }
+    expect(isAnthropicModelId("sonnet-arbitrary")).toBe(false);
+    expect(isAnthropicModelId("claude-sonnet-5-5")).toBe(false);
+    expect(isClaudeModelId("sonnet-5-5")).toBe(false);
+    expect(isClaudeModelId("claude-arbitrary")).toBe(false);
     expect(isAnthropicModelId("claude-arbitrary")).toBe(false);
     expect(isGeminiTextModelId("gemini-arbitrary")).toBe(false);
     expect(isLlmTextModelId("claude-arbitrary")).toBe(false);

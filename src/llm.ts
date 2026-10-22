@@ -34,13 +34,19 @@ import {
 } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
 import { runAnthropicCall } from "./anthropic/calls.js";
+import { runClaudeQuery } from "./claude/calls.js";
+import { CLAUDE_MODEL_IDS, isClaudeModelId } from "./claude/models.js";
 import type {
   AnthropicContentBlock,
   AnthropicMessage,
   AnthropicMessageParam,
   AnthropicMessageRequest,
 } from "./anthropic/client.js";
-import { ANTHROPIC_MODEL_IDS, isAnthropicModelId } from "./anthropic/models.js";
+import {
+  ANTHROPIC_MODEL_IDS,
+  isAnthropicModelId,
+  resolveAnthropicProviderModel,
+} from "./anthropic/models.js";
 import {
   FIREWORKS_MODEL_IDS,
   isFireworksModelId,
@@ -314,13 +320,14 @@ export type LlmStreamEvent =
   | LlmBlockedEvent
   | LlmToolCallStreamEvent;
 
-export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks" | "anthropic";
+export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks" | "anthropic" | "claude";
 export const LLM_TEXT_MODEL_IDS = [
   ...OPENAI_MODEL_IDS,
   ...CHATGPT_MODEL_IDS,
   ...FIREWORKS_MODEL_IDS,
   ...GEMINI_TEXT_MODEL_IDS,
   ...ANTHROPIC_MODEL_IDS,
+  ...CLAUDE_MODEL_IDS,
 ] as const;
 export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number] | ExperimentalChatGptModelId;
 
@@ -340,6 +347,7 @@ export function isLlmTextModelId(value: string): value is LlmTextModelId {
     isChatGptModelId(value) ||
     isFireworksModelId(value) ||
     isAnthropicModelId(value) ||
+    isClaudeModelId(value) ||
     isGeminiTextModelId(value)
   );
 }
@@ -697,7 +705,7 @@ export type LlmToolLoopRequest = LlmInput & {
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
-  /** Maximum generated tokens per Fireworks or Anthropic completion, including reasoning.
+  /** Maximum generated tokens per Fireworks, Anthropic, or Claude completion, including reasoning.
    * Omit to retain the Fireworks default or Anthropic's 32,000 token limit.
    */
   readonly maxOutputTokens?: number;
@@ -1381,7 +1389,10 @@ function resolveProvider(model: LlmModelId): {
     return { provider: "gemini", model };
   }
   if (isAnthropicModelId(model)) {
-    return { provider: "anthropic", model };
+    return { provider: "anthropic", model: resolveAnthropicProviderModel(model) };
+  }
+  if (isClaudeModelId(model)) {
+    return { provider: "claude", model };
   }
   if (isFireworksModelId(model)) {
     const fireworksModel = resolveFireworksModelId(model);
@@ -5260,7 +5271,7 @@ function startLlmCallLoggerFromPayload(options: {
       ? extractToolCallResponseTextFromOpenAiInput(
           (options.requestPayload as { input?: unknown }).input,
         )
-      : options.provider === "anthropic"
+      : options.provider === "anthropic" || options.provider === "claude"
         ? serialiseLogArtifactText(
             extractToolCallResponsePayloadFromAnthropicMessages(
               (options.requestPayload as { messages?: unknown }).messages,
@@ -5278,7 +5289,7 @@ function startLlmCallLoggerFromPayload(options: {
       ? extractToolCallResponsePayloadFromOpenAiInput(
           (options.requestPayload as { input?: unknown }).input,
         )
-      : options.provider === "anthropic"
+      : options.provider === "anthropic" || options.provider === "claude"
         ? extractToolCallResponsePayloadFromAnthropicMessages(
             (options.requestPayload as { messages?: unknown }).messages,
           )
@@ -5571,6 +5582,39 @@ async function runTextCall(params: {
         if (!sawResponseDelta && fallbackText.length > 0) {
           pushDelta("response", fallbackText);
         }
+      } else if (provider === "claude") {
+        if (request.tools?.length) {
+          throw new Error(
+            "Claude subscription calls do not support provider-native tools; use runToolLoop for function tools.",
+          );
+        }
+        const prompt = await toAnthropicMessages(contents);
+        if (request.responseMimeType === "application/json" && !request.responseJsonSchema) {
+          prompt.system = [
+            prompt.system,
+            "Return valid JSON only. Do not include markdown or prose outside JSON.",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+        }
+        const config = anthropicRequestConfig(request);
+        const response = await runClaudeQuery({
+          model: modelForProvider,
+          ...prompt,
+          effort: config.output_config?.effort,
+          jsonSchema: config.output_config?.format?.schema as Record<string, unknown> | undefined,
+          signal,
+          onDelta: pushDelta,
+        });
+        modelVersion = response.model || request.model;
+        pushEvent({ type: "model", modelVersion, finishReason: response.finishReason });
+        if (response.finishReason === "refusal") {
+          blocked = true;
+          pushEvent({ type: "blocked" });
+        }
+        if (!sawResponseDelta) pushDelta("response", response.text);
+        if (!sawThoughtDelta) pushDelta("thought", response.thoughts);
+        latestUsage = extractAnthropicUsageTokens(response.usage);
       } else if (provider === "anthropic") {
         if (request.tools?.length) {
           throw new Error(
@@ -5593,7 +5637,7 @@ async function runTextCall(params: {
               { model: modelForProvider, max_tokens: 32_000, ...prompt, ...config },
               { signal, onDelta: pushDelta },
             ),
-          modelForProvider,
+          request.model,
         );
         modelVersion = response.model || request.model;
         pushEvent({
@@ -6462,12 +6506,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     if (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0) {
       throw new Error("maxOutputTokens must be a positive safe integer.");
     }
-    if (providerInfo.provider !== "fireworks" && providerInfo.provider !== "anthropic") {
+    if (
+      providerInfo.provider !== "fireworks" &&
+      providerInfo.provider !== "anthropic" &&
+      providerInfo.provider !== "claude"
+    ) {
       throw new Error(
-        "maxOutputTokens is only supported for Fireworks tool loops and Anthropic tool loops.",
+        "maxOutputTokens is only supported for Fireworks tool loops, Anthropic tool loops, and Claude subscription tool loops.",
       );
     }
-    if (providerInfo.provider === "anthropic" && request.maxOutputTokens > 128_000) {
+    if (
+      (providerInfo.provider === "anthropic" || providerInfo.provider === "claude") &&
+      request.maxOutputTokens > 128_000
+    ) {
       throw new Error("Anthropic maxOutputTokens must not exceed 128000.");
     }
   }
@@ -7658,6 +7709,262 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
     }
 
+    if (providerInfo.provider === "claude") {
+      if (request.modelTools?.length) {
+        throw new Error(
+          "Claude subscription calls do not support provider-native modelTools; supply runtime function tools.",
+        );
+      }
+      const prompt = await toAnthropicMessages(contents);
+      const config = anthropicRequestConfig(request);
+      const deferredSteering: LlmContent[] = [];
+      for (const [name, definition] of toolEntries) {
+        if (isCustomTool(definition)) {
+          throw new Error(
+            `Claude subscription calls do not support custom/freeform tools (${name}); use JSON function tools.`,
+          );
+        }
+      }
+      while (steps.length < maxSteps) {
+        const offset = steps.length;
+        const queryStartedAtMs = Date.now();
+        type ClaudeTurnState = {
+          message?: AnthropicMessage;
+          modelCompletedAtMs?: number;
+          toolCalls: LlmToolCallResult[];
+          toolExecutionMs: number;
+          waitToolMs: number;
+        };
+        const turns = new Map<number, ClaudeTurnState>();
+        const stateFor = (turn: number): ClaudeTurnState => {
+          let state = turns.get(turn);
+          if (!state) {
+            state = { toolCalls: [], toolExecutionMs: 0, waitToolMs: 0 };
+            turns.set(turn, state);
+          }
+          return state;
+        };
+        let terminalCall: LlmToolCallResult | null = null;
+        const queryLogger = startLlmCallLoggerFromPayload({
+          provider: "claude",
+          modelId: request.model,
+          step: offset + 1,
+          requestPayload: {
+            model: providerInfo.model,
+            ...prompt,
+            tools: toolEntries.map(([name, definition]) => ({
+              name,
+              input_schema: isCustomTool(definition)
+                ? undefined
+                : buildOpenAiToolSchema(definition.inputSchema, name),
+            })),
+          },
+        });
+        try {
+          const outcome = await runClaudeQuery({
+            model: providerInfo.model,
+            ...prompt,
+            effort: config.output_config?.effort,
+            maxSteps: maxSteps - offset,
+            maxOutputTokens: request.maxOutputTokens,
+            signal: request.signal,
+            drainSteering: () => {
+              const pending = steeringInternal?.drainPendingContents() ?? [];
+              const text: string[] = [];
+              for (const message of pending) {
+                if (message.parts.every((part) => part.type === "text")) {
+                  text.push(
+                    message.parts.map((part) => (part.type === "text" ? part.text : "")).join(""),
+                  );
+                } else deferredSteering.push(message);
+              }
+              return text.length ? text.join("\n\n") : undefined;
+            },
+            onDelta: (channel, text) => {
+              if (channel === "thought") queryLogger?.appendThoughtDelta(text);
+              else queryLogger?.appendResponseDelta(text);
+              request.onEvent?.({ type: "delta", channel, text });
+            },
+            onAssistantMessage: (message, context) => {
+              const state = stateFor(context.turn);
+              state.message = message;
+              state.modelCompletedAtMs = Date.now();
+              request.onEvent?.({
+                type: "model",
+                modelVersion: message.model || request.model,
+                finishReason: message.stop_reason ?? undefined,
+              });
+              if (message.stop_reason === "refusal") request.onEvent?.({ type: "blocked" });
+            },
+            tools: toolEntries.map(([name, definition]) => ({
+              name,
+              description: definition.description,
+              inputSchema: (definition as LlmFunctionTool<z.ZodType, unknown>).inputSchema,
+              execute: async (input, context) => {
+                const turn = offset + context.turn;
+                const toolId = buildToolLogId(turn, context.toolIndex);
+                const state = stateFor(context.turn);
+                request.onEvent?.({
+                  type: "tool_call",
+                  phase: "started",
+                  turn,
+                  toolIndex: context.toolIndex,
+                  toolName: name,
+                  toolId,
+                  callKind: "function",
+                  callId: context.callId,
+                  input,
+                });
+                const executed = await toolCallContextStorage.run(
+                  { toolName: name, toolId, turn, toolIndex: context.toolIndex },
+                  () =>
+                    executeToolCall({
+                      callKind: "function",
+                      toolName: name,
+                      tool: definition,
+                      rawInput: input,
+                      provider: "claude",
+                    }),
+                );
+                const [spilled] = await maybeSpillCombinedToolCallOutputs(
+                  [{ entry: { toolName: name }, ...executed }],
+                  { provider: "claude" },
+                );
+                const { result, outputPayload } = spilled ?? executed;
+                const resultWithId = { ...result, callId: context.callId };
+                state.toolCalls.push(resultWithId);
+                const durationMs = toToolResultDuration(result);
+                state.toolExecutionMs += durationMs;
+                if (name.toLowerCase() === SUBAGENT_WAIT_TOOL_NAME) state.waitToolMs += durationMs;
+                request.onEvent?.({
+                  type: "tool_call",
+                  phase: "completed",
+                  turn,
+                  toolIndex: context.toolIndex,
+                  toolName: name,
+                  toolId,
+                  callKind: "function",
+                  callId: context.callId,
+                  input,
+                  output: result.output,
+                  error: result.error,
+                  durationMs: result.durationMs,
+                });
+                const terminal = definition.terminal === true && !result.error;
+                if (terminal) terminalCall = resultWithId;
+                return {
+                  content: await toAnthropicToolResultContent(outputPayload),
+                  isError: Boolean(result.error),
+                  terminal,
+                };
+              },
+            })),
+          });
+          if (outcome.finishReason === "max_steps" && !terminalCall) {
+            throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+          }
+          if (turns.size === 0) stateFor(1);
+          const ordered = [...turns.entries()].sort(([a], [b]) => a - b);
+          const reportedUsage = extractAnthropicUsageTokens(outcome.usage);
+          const priorUsage: Record<string, number> = {};
+          let previousCompletedAtMs = queryStartedAtMs;
+          for (const [index, [, state]] of ordered.entries()) {
+            const last = index === ordered.length - 1;
+            const extracted = state.message
+              ? extractAnthropicText(state.message)
+              : { text: "", thoughts: "" };
+            const usage =
+              last && reportedUsage
+                ? (Object.fromEntries(
+                    Object.entries(reportedUsage)
+                      .filter(([, value]) => typeof value === "number")
+                      .map(([key, value]) => [
+                        key,
+                        Math.max(0, (value as number) - (priorUsage[key] ?? 0)),
+                      ]),
+                  ) as LlmUsageTokens)
+                : state.message
+                  ? extractAnthropicUsageTokens(state.message.usage)
+                  : undefined;
+            for (const [key, value] of Object.entries(usage ?? {})) {
+              if (typeof value === "number") priorUsage[key] = (priorUsage[key] ?? 0) + value;
+            }
+            const costUsd = estimateCallCostUsd({
+              modelId: state.message?.model || outcome.model,
+              pricingModelId: request.model,
+              tokens: usage,
+              responseImages: 0,
+            });
+            totalCostUsd += costUsd;
+            const modelVersion = state.message?.model || outcome.model || request.model;
+            const completedAtMs = last
+              ? Date.now()
+              : Math.max(previousCompletedAtMs, state.modelCompletedAtMs ?? previousCompletedAtMs) +
+                state.toolExecutionMs;
+            steps.push({
+              step: steps.length + 1,
+              modelVersion,
+              finishReason:
+                state.message?.stop_reason ?? (last ? outcome.finishReason : "tool_use"),
+              text:
+                last && !state.toolCalls.length
+                  ? outcome.text || extracted.text || undefined
+                  : extracted.text || undefined,
+              thoughts: extracted.thoughts || (last ? outcome.thoughts : "") || undefined,
+              toolCalls: state.toolCalls,
+              usage,
+              costUsd,
+              timing: buildStepTiming({
+                stepStartedAtMs: previousCompletedAtMs,
+                stepCompletedAtMs: completedAtMs,
+                modelCompletedAtMs: state.modelCompletedAtMs ?? completedAtMs,
+                toolExecutionMs: state.toolExecutionMs,
+                waitToolMs: state.waitToolMs,
+              }),
+            });
+            previousCompletedAtMs = completedAtMs;
+            if (usage) request.onEvent?.({ type: "usage", usage, costUsd, modelVersion });
+          }
+          const lastStep = steps[steps.length - 1];
+          finalText = terminalCall
+            ? terminalToolCallText(terminalCall) || outcome.text
+            : outcome.text;
+          finalThoughts = lastStep?.thoughts ?? outcome.thoughts;
+          queryLogger?.complete({
+            responseText: outcome.text,
+            metadata: {
+              provider: "claude",
+              model: request.model,
+              modelVersion: outcome.model,
+              usage: reportedUsage,
+              costUsd: steps.slice(offset).reduce((sum, step) => sum + step.costUsd, 0),
+              steps: steps.length - offset,
+              finalStep: true,
+            },
+          });
+          const pending = terminalCall
+            ? []
+            : [...deferredSteering.splice(0), ...(steeringInternal?.drainPendingContents() ?? [])];
+          if (pending.length === 0)
+            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          // A new SDK query receives completed work as explicit conversation context.
+          // It never re-executes the tools from the preceding query.
+          prompt.messages.push({ role: "assistant", content: outcome.text });
+          const completedTools = steps.slice(offset).flatMap((step) => step.toolCalls);
+          if (completedTools.length)
+            prompt.messages.push({
+              role: "user",
+              content: `Previously completed runtime tool calls (context only):\n${JSON.stringify(completedTools.map(({ toolName, input, output, error }) => ({ toolName, input, output, error })))}`,
+            });
+          prompt.messages.push(...(await toAnthropicMessages(pending)).messages);
+        } catch (error) {
+          queryLogger?.fail(error, { metadata: { provider: "claude", model: request.model } });
+          throw error;
+        }
+      }
+      throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
+    }
+
     if (providerInfo.provider === "anthropic") {
       if (request.modelTools?.length) {
         throw new Error(
@@ -7732,7 +8039,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 signal: request.signal,
                 onDelta: pushDelta,
               }),
-            providerInfo.model,
+            request.model,
             {
               onSettled: (metrics) => {
                 schedulerMetrics = metrics;

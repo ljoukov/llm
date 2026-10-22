@@ -40,10 +40,10 @@ describe("Anthropic text and JSON streams", () => {
   });
 
   it.each([
-    "claude-haiku-5-5",
-    "claude-sonnet-5-5",
-    "claude-opus-5-5",
-    "claude-fable-5-1",
+    "haiku-5-5",
+    "sonnet-5-5",
+    "opus-5-5",
+    "fable-5-1",
   ] as const)("streams %s with usage and cost", async (model) => {
     const { streamText } = await import("../src/llm.js");
     const call = streamText({ model, input: "Hi", instructions: "System", thinkingLevel: "ultra" });
@@ -51,6 +51,8 @@ describe("Anthropic text and JSON streams", () => {
     for await (const event of call.events) events.push(event);
     const result = await call.result;
     expect(result.provider).toBe("anthropic");
+    expect(result.model).toBe(model);
+    expect(result.modelVersion).toBe(`claude-${model}`);
     expect(result.text).toBe("Hello");
     expect(result.thoughts).toBe("A short summary.");
     expect(result.usage).toMatchObject({
@@ -68,7 +70,7 @@ describe("Anthropic text and JSON streams", () => {
     ).toHaveLength(2);
     expect(events.some((event) => event.type === "usage")).toBe(true);
     expect(requests[0]).toMatchObject({
-      model,
+      model: `claude-${model}`,
       max_tokens: 32_000,
       system: "System",
       thinking: { type: "adaptive", display: "summarized" },
@@ -80,7 +82,7 @@ describe("Anthropic text and JSON streams", () => {
     responseText = '{"count":4}';
     const { generateJson } = await import("../src/llm.js");
     const result = await generateJson({
-      model: "claude-sonnet-5-5",
+      model: "sonnet-5-5",
       input: "Return count",
       schema: z.object({ count: z.number().min(3) }),
     });
@@ -101,7 +103,7 @@ describe("Anthropic text and JSON streams", () => {
     const { generateJson } = await import("../src/llm.js");
     await expect(
       generateJson({
-        model: "claude-sonnet-5-5",
+        model: "sonnet-5-5",
         input: "Return count",
         schema: z.object({ count: z.number().min(3) }),
         maxAttempts: 1,
@@ -112,7 +114,7 @@ describe("Anthropic text and JSON streams", () => {
   it("maps system/developer instructions and native image/PDF inputs", async () => {
     const { generateText } = await import("../src/llm.js");
     await generateText({
-      model: "claude-haiku-5-5",
+      model: "haiku-5-5",
       instructions: "Top level",
       responseMimeType: "application/json",
       input: [
@@ -137,7 +139,7 @@ describe("Anthropic text and JSON streams", () => {
   it("reports Anthropic refusals as blocked", async () => {
     stopReason = "refusal";
     const { generateText } = await import("../src/llm.js");
-    expect((await generateText({ model: "claude-opus-5-5", input: "Hi" })).blocked).toBe(true);
+    expect((await generateText({ model: "opus-5-5", input: "Hi" })).blocked).toBe(true);
   });
 
   it.each([
@@ -153,7 +155,7 @@ describe("Anthropic text and JSON streams", () => {
   ])("rejects unsupported Anthropic features before inference: %j", async (override) => {
     const { generateText } = await import("../src/llm.js");
     await expect(
-      generateText({ model: "claude-haiku-5-5", input: "Hi", ...override } as any),
+      generateText({ model: "haiku-5-5", input: "Hi", ...override } as any),
     ).rejects.toThrow("Anthropic");
     expect(requests).toHaveLength(0);
   });

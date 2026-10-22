@@ -347,5 +347,12 @@ export {
 } from "./fireworks/fireworks.js";
 export type { FireworksModelId } from "./fireworks/fireworks.js";
 
-export { ANTHROPIC_MODEL_IDS, isAnthropicModelId } from "./anthropic/models.js";
-export type { AnthropicModelId } from "./anthropic/models.js";
+export {
+  ANTHROPIC_MODEL_IDS,
+  isAnthropicModelId,
+  resolveAnthropicProviderModel,
+} from "./anthropic/models.js";
+export type { AnthropicModelId, AnthropicProviderModelId } from "./anthropic/models.js";
+
+export { CLAUDE_MODEL_IDS, isClaudeModelId, resolveClaudeProviderModel } from "./claude/models.js";
+export type { ClaudeModelId } from "./claude/models.js";

@@ -57,10 +57,10 @@ describe("Anthropic tool loops", () => {
   });
 
   it.each([
-    "claude-haiku-5-5",
-    "claude-sonnet-5-5",
-    "claude-opus-5-5",
-    "claude-fable-5-1",
+    "haiku-5-5",
+    "sonnet-5-5",
+    "opus-5-5",
+    "fable-5-1",
   ] as const)("executes and preserves signed thinking for %s", async (model) => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     const events: any[] = [];
@@ -80,6 +80,7 @@ describe("Anthropic tool loops", () => {
     expect(result.text).toBe("6");
     expect(result.thoughts).toBe("The tool returned six.");
     expect(result.steps).toHaveLength(2);
+    expect(result.steps.every((step) => step.modelVersion === `claude-${model}`)).toBe(true);
     expect(result.steps[0]?.toolCalls[0]?.output).toEqual({ value: 6 });
     expect(result.steps[0]?.finishReason).toBe("tool_use");
     expect(result.totalCostUsd).toBeGreaterThan(0);
@@ -98,6 +99,7 @@ describe("Anthropic tool loops", () => {
       },
     ]);
     expect(requests.every((request) => request.max_tokens === 1000)).toBe(true);
+    expect(requests.every((request) => request.model === `claude-${model}`)).toBe(true);
     expect(requests[0].output_config.effort).toBe("low");
     expect(
       events.filter((event) => event.type === "tool_call").map((event) => event.phase),
@@ -109,7 +111,7 @@ describe("Anthropic tool loops", () => {
     const execute = vi.fn();
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "claude-haiku-5-5",
+      model: "haiku-5-5",
       input: "Multiply",
       tools: {
         multiply: tool({ inputSchema: z.object({ a: z.number(), b: z.number() }), execute }),
@@ -123,7 +125,7 @@ describe("Anthropic tool loops", () => {
   it("supports terminal tools", async () => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "claude-haiku-5-5",
+      model: "haiku-5-5",
       input: "Multiply",
       tools: {
         multiply: tool({
@@ -141,7 +143,7 @@ describe("Anthropic tool loops", () => {
     const text = "A large tool result.\n".repeat(60_000);
     const { runToolLoop, tool } = await import("../src/llm.js");
     await runToolLoop({
-      model: "claude-haiku-5-5",
+      model: "haiku-5-5",
       input: "Multiply",
       tools: {
         multiply: tool({
@@ -162,7 +164,7 @@ describe("Anthropic tool loops", () => {
   it("passes image tool outputs through native content blocks", async () => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     await runToolLoop({
-      model: "claude-haiku-5-5",
+      model: "haiku-5-5",
       input: "Multiply",
       tools: {
         multiply: tool({
@@ -180,7 +182,7 @@ describe("Anthropic tool loops", () => {
     finishReason = "max_tokens";
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
-      model: "claude-opus-5-5",
+      model: "opus-5-5",
       input: "Multiply",
       tools: { multiply: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
     });
@@ -193,14 +195,14 @@ describe("Anthropic tool loops", () => {
     const { runToolLoop, tool, customTool } = await import("../src/llm.js");
     await expect(
       runToolLoop({
-        model: "claude-haiku-5-5",
+        model: "haiku-5-5",
         input: "Hi",
         tools: { custom: customTool({ execute: (input) => input }) },
       }),
     ).rejects.toThrow("does not support custom/freeform");
     await expect(
       runToolLoop({
-        model: "claude-haiku-5-5",
+        model: "haiku-5-5",
         input: "Hi",
         modelTools: [{ type: "web-search" }],
         tools: { multiply: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
