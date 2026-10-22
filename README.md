@@ -9,7 +9,7 @@ Unified TypeScript wrapper over:
 
 - **OpenAI Responses API** (`openai`)
 - **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`@google/genai`)
-- **Fireworks chat-completions models** (`kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`)
+- **Fireworks direct serverless models** (DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3)
 - **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
 - **Agentic orchestration with subagents** via `runAgentLoop()` + built-in delegation control tools
 
@@ -647,13 +647,23 @@ console.log(result.text);
 
 ### Fireworks
 
-Use Fireworks model ids directly (for example `kimi-k2.5`, `glm-5`, `minimax-m2.1`, `gpt-oss-120b`):
+Use the short library model IDs below; they resolve to the exact direct Fireworks model paths. These direct serverless models and pricing were checked on October 22, 2026 against the [Fireworks catalogue](https://app.fireworks.ai/models?type=llm&capability=serverless) and authenticated inference `/models` endpoint. Routers and embedding/reranking models are excluded.
+
+| Library model ID | Fireworks model suffix | Input / cached / output USD per million tokens |
+| --- | --- | --- |
+| `deepseek-v4.1-flash-1017` | `deepseek-v4p1-flash-1017` | $0.3 / $0.006 / $1.2 |
+| `glm-5.3` | `glm-5p3` | $1.4 / $0.26 / $4.4 |
+| `kimi-k3` | `kimi-k3` | $3 / $0.3 / $15 |
+
+Version 10 removes retired `kimi-k2.5`, `glm-5`, and `minimax-m2.1`; use `kimi-k3`, `glm-5.3`, or `deepseek-v4.1-flash-1017` for current research runs. The Fireworks allowlist is intentionally limited to these three models; obsolete default exports are removed.
+
+Fireworks `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
 
 ```ts
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "kimi-k2.5",
+  model: "kimi-k3",
   input: "Return exactly: OK",
 });
 

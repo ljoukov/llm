@@ -79,76 +79,18 @@ describe("estimateCallCostUsd", () => {
     ).toBeCloseTo(0.008, 10);
   });
 
-  it("estimates Fireworks kimi-k2.5 costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "kimi-k2.5",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (0.60/1M) = 0.00054
-    // cached: 100 * (0.10/1M) = 0.00001
-    // output: 600 * (3.00/1M) = 0.0018
-    expect(cost).toBeCloseTo(0.00235, 8);
-  });
-
-  it("estimates Fireworks glm-5 costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "glm-5",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (1.00/1M) = 0.0009
-    // cached: 100 * (0.20/1M) = 0.00002
-    // output: 600 * (3.20/1M) = 0.00192
-    expect(cost).toBeCloseTo(0.00284, 8);
-  });
-
-  it("estimates Fireworks minimax-m2.1 costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "minimax-m2.1",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (0.30/1M) = 0.00027
-    // cached: 100 * (0.03/1M) = 0.000003
-    // output: 600 * (1.20/1M) = 0.00072
-    expect(cost).toBeCloseTo(0.000993, 8);
-  });
-
-  it("estimates Fireworks gpt-oss-120b costs", () => {
-    const cost = estimateCallCostUsd({
-      modelId: "gpt-oss-120b",
-      tokens: {
-        promptTokens: 1000,
-        cachedTokens: 100,
-        responseTokens: 500,
-        thinkingTokens: 100,
-      },
-      responseImages: 0,
-    });
-
-    // non-cached prompt: 900 * (0.15/1M) = 0.000135
-    // cached: 100 * (0.075/1M) = 0.0000075
-    // output: 600 * (0.60/1M) = 0.00036
-    expect(cost).toBeCloseTo(0.0005025, 8);
+  it.each([
+    ["deepseek-v4.1-flash-1017", 0.0009906000000000001],
+    ["glm-5.3", 0.003926],
+    ["kimi-k3", 0.01173],
+  ] as const)("estimates current Fireworks %s costs", (modelId, expectedCost) => {
+    expect(
+      estimateCallCostUsd({
+        modelId,
+        tokens: { promptTokens: 1000, cachedTokens: 100, responseTokens: 500, thinkingTokens: 100 },
+        responseImages: 0,
+      }),
+    ).toBeCloseTo(expectedCost, 10);
   });
 
   it("estimates Gemini Pro costs (known model, low tier)", () => {

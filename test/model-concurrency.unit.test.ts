@@ -61,7 +61,7 @@ describe("model concurrency config", () => {
     expect(
       resolveModelConcurrencyCap({
         provider: "fireworks",
-        modelId: "kimi-k2.5",
+        modelId: "kimi-k3",
       }),
     ).toBe(64);
   });
