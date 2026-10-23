@@ -5,19 +5,21 @@ Spark-style lesson creation benchmark focused on generation + verification loops
 ## Scope
 
 - Task: `subagent-generation-verification`
-- Model default: `chatgpt-gpt-6-luna`
+- Model default: `openai:subscription:gpt-6-luna`
 - Variant default: `subagents`
-- Rubrics: schema validation + tool trace + 4-pass `chatgpt-gpt-6-luna` grading
+- Rubrics: schema validation + tool trace + 4-pass `openai:subscription:gpt-6-luna` grading
 - Extra artifacts:
   - `artifacts/logs/llm-call-trace.json`
   - `artifacts/logs/stale-diagnostic.json`
+
+Model arguments accept known native IDs or explicit `provider:access:model` selections, such as `vercel:api:reflection/beam-free`. Reports preserve the full selection. Unknown or unavailable costs are recorded as `null` and displayed as `unknown`; totals remain unknown whenever any included call has unknown cost. Projections use API-equivalent rates, including for subscription selections, and do not represent a subscription charge.
 
 ## Run
 
 ```bash
 npx tsx benchmarks/lesson-generation/run.ts \
   --tasks subagent-generation-verification \
-  --models chatgpt-gpt-6-luna \
+  --models openai:subscription:gpt-6-luna \
   --variants subagents \
   --runs 1
 ```

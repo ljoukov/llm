@@ -559,11 +559,13 @@ describe("LLM telemetry", () => {
     expect(openAiImageRequests[0]?.request?.prompt).toContain("attached reference image");
   });
 
-  it("calls the direct ChatGPT Codex Images API for chatgpt-gpt-image-2", async () => {
+  it("calls the direct ChatGPT Codex Images API for gpt-image-2", async () => {
     const { generateImages } = await import("../src/llm.js");
 
     const images = await generateImages({
-      model: "chatgpt-gpt-image-2",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-image-2",
       stylePrompt: "Clean icon style.",
       imagePrompts: ["A blue square"],
       background: "opaque",

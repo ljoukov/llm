@@ -51,11 +51,21 @@ describe("Claude subscription text and JSON streams", () => {
     "claude-fable-5-1",
   ] as const)("routes %s through Claude Code with stream deltas and usage", async (model) => {
     const { streamText } = await import("../src/llm.js");
-    const call = streamText({ model, input: "Hi", instructions: "System", thinkingLevel: "ultra" });
+    const call = streamText({
+      provider: "anthropic",
+      access: "subscription",
+      model,
+      input: "Hi",
+      instructions: "System",
+      thinkingLevel: "ultra",
+    });
     const events = [];
     for await (const event of call.events) events.push(event);
     const result = await call.result;
-    expect(result.provider).toBe("claude");
+    expect(result.provider).toBe("anthropic");
+    expect(result.access).toBe("subscription");
+    expect(result.costUsd).toBeNull();
+    expect(result.costSource).toBe("subscription");
     expect(result.model).toBe(model);
     expect(result.modelVersion).toBe(model);
     expect(result.text).toBe("Hello");
@@ -69,7 +79,7 @@ describe("Claude subscription text and JSON streams", () => {
       anthropicCacheCreation5mInputTokens: 2,
       anthropicCacheCreation1hInputTokens: 3,
     });
-    expect(result.costUsd).toBeGreaterThan(0);
+    expect(result.apiEquivalentCostUsd).toBeGreaterThan(0);
     expect(
       events.filter((event) => event.type === "delta" && event.channel === "response"),
     ).toHaveLength(2);
@@ -84,6 +94,8 @@ describe("Claude subscription text and JSON streams", () => {
     responseText = '{"count":4}';
     const { generateJson } = await import("../src/llm.js");
     const result = await generateJson({
+      provider: "anthropic",
+      access: "subscription",
       model: "claude-sonnet-5-5",
       input: "Return count",
       schema: z.object({ count: z.number().min(3) }),
@@ -99,6 +111,8 @@ describe("Claude subscription text and JSON streams", () => {
     responseText = '{"count":1}';
     await expect(
       generateJson({
+        provider: "anthropic",
+        access: "subscription",
         model: "claude-sonnet-5-5",
         input: "Return count",
         schema: z.object({ count: z.number().min(3) }),
@@ -110,6 +124,8 @@ describe("Claude subscription text and JSON streams", () => {
   it("maps developer instructions and native image/PDF inputs", async () => {
     const { generateText } = await import("../src/llm.js");
     await generateText({
+      provider: "anthropic",
+      access: "subscription",
       model: "claude-haiku-5-5",
       instructions: "Top level",
       responseMimeType: "application/json",
@@ -135,13 +151,27 @@ describe("Claude subscription text and JSON streams", () => {
   it("reports refusals as blocked", async () => {
     finishReason = "refusal";
     const { generateText } = await import("../src/llm.js");
-    expect((await generateText({ model: "claude-opus-5-5", input: "Hi" })).blocked).toBe(true);
+    expect(
+      (
+        await generateText({
+          provider: "anthropic",
+          access: "subscription",
+          model: "claude-opus-5-5",
+          input: "Hi",
+        })
+      ).blocked,
+    ).toBe(true);
   });
 
   it("aborts an active subscription stream", async () => {
     waitForAbort = true;
     const { streamText } = await import("../src/llm.js");
-    const call = streamText({ model: "claude-haiku-5-5", input: "Hi" });
+    const call = streamText({
+      provider: "anthropic",
+      access: "subscription",
+      model: "claude-haiku-5-5",
+      input: "Hi",
+    });
     const result = expect(call.result).rejects.toThrow("aborted");
     const events = expect(
       (async () => {
@@ -169,7 +199,13 @@ describe("Claude subscription text and JSON streams", () => {
   ])("rejects unsupported subscription features before inference: %j", async (override) => {
     const { generateText } = await import("../src/llm.js");
     await expect(
-      generateText({ model: "claude-haiku-5-5", input: "Hi", ...override } as any),
+      generateText({
+        provider: "anthropic",
+        access: "subscription",
+        model: "claude-haiku-5-5",
+        input: "Hi",
+        ...override,
+      } as any),
     ).rejects.toThrow();
     expect(requests).toHaveLength(0);
   });

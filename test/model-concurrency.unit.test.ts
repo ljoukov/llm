@@ -67,32 +67,48 @@ describe("model concurrency config", () => {
   });
 
   it("supports Anthropic defaults and provider/model overrides", () => {
-    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "sonnet-5-5" })).toBe(4);
+    expect(
+      resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-sonnet-5-5" }),
+    ).toBe(4);
 
     configureModelConcurrency({
       providerCaps: { anthropic: 5 },
-      providerModelCaps: { anthropic: { " SONNET-5-5 ": 7 } },
+      providerModelCaps: { anthropic: { " CLAUDE-SONNET-5-5 ": 7 } },
     });
-    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "sonnet-5-5" })).toBe(7);
-    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "haiku-5-5" })).toBe(5);
+    expect(
+      resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-sonnet-5-5" }),
+    ).toBe(7);
+    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-haiku-5-5" })).toBe(
+      5,
+    );
 
     resetModelConcurrencyConfig();
-    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "sonnet-5-5" })).toBe(4);
+    expect(
+      resolveModelConcurrencyCap({ provider: "anthropic", modelId: "claude-sonnet-5-5" }),
+    ).toBe(4);
   });
 
-  it("keeps Claude subscription concurrency separate from the API", () => {
-    expect(resolveModelConcurrencyCap({ provider: "claude", modelId: "claude-sonnet-5-5" })).toBe(
-      2,
-    );
-    configureModelConcurrency({
-      providerCaps: { claude: 3, anthropic: 5 },
-      providerModelCaps: { claude: { " CLAUDE-SONNET-5-5 ": 1 } },
-    });
-    expect(resolveModelConcurrencyCap({ provider: "claude", modelId: "claude-sonnet-5-5" })).toBe(
-      1,
-    );
-    expect(resolveModelConcurrencyCap({ provider: "claude", modelId: "claude-haiku-5-5" })).toBe(3);
-    expect(resolveModelConcurrencyCap({ provider: "anthropic", modelId: "sonnet-5-5" })).toBe(5);
+  it("uses subscription defaults and honors canonical provider overrides", () => {
+    expect(
+      resolveModelConcurrencyCap({
+        provider: "anthropic",
+        access: "subscription",
+        modelId: "claude-sonnet-5-5",
+      }),
+    ).toBe(2);
+    expect(
+      resolveModelConcurrencyCap({
+        provider: "anthropic",
+        access: "api",
+        modelId: "claude-sonnet-5-5",
+      }),
+    ).toBe(4);
+    configureModelConcurrency({ providerCaps: { anthropic: 5 } });
+    for (const access of ["api", "subscription"] as const) {
+      expect(
+        resolveModelConcurrencyCap({ provider: "anthropic", access, modelId: "claude-sonnet-5-5" }),
+      ).toBe(5);
+    }
   });
 
   it("supports resetting configured caps", () => {

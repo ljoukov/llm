@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
 
 const state = vi.hoisted(() => ({
   requests: [] as Array<{ provider: string; request: Record<string, any> }>,
@@ -85,6 +86,13 @@ vi.mock("../src/fireworks/calls.js", () => ({
 
 describe("Vercel shared-model routing", () => {
   beforeEach(() => {
+    resetRuntimeSingletonsForTesting();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("Unit test catalogue offline");
+      }),
+    );
     state.requests = [];
     state.toolLoop = false;
     state.usage = {
@@ -97,7 +105,11 @@ describe("Vercel shared-model routing", () => {
     vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "unit-gateway-key");
     vi.stubEnv("LLM_PROVIDER", "");
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    resetRuntimeSingletonsForTesting();
+  });
 
   it.each([
     ["deepseek-v4.1-flash-1017", "deepseek/deepseek-v4.1-flash-1017"],
@@ -125,6 +137,50 @@ describe("Vercel shared-model routing", () => {
         stream_options: { include_usage: true },
       },
     });
+  });
+
+  it.each([
+    "reflection/beam-free",
+    "nvidia/nemotron-3.5-lightning-free",
+    "moonshotai/kimi-k3.1-pro",
+    "minimax/minimax-m3",
+    "publisher/future-model:reasoning",
+  ] as const)("passes explicit Vercel model %s through unchanged", async (model) => {
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({ provider: "vercel", model, input: "hello" });
+    expect(state.requests[0]).toMatchObject({ provider: "vercel", request: { model } });
+    expect(result).toMatchObject({ provider: "vercel", access: "api", modelVersion: model });
+  });
+
+  it("keeps an unavailable passthrough price unknown instead of free", async () => {
+    delete state.usage.cost;
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({
+      provider: "vercel",
+      model: "publisher/new-model",
+      input: "hello",
+    });
+    expect(result).toMatchObject({ costUsd: null, costSource: "unknown" });
+  });
+
+  it("keeps a loop total unknown when a step has no available price", async () => {
+    delete state.usage.cost;
+    state.toolLoop = true;
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    const result = await runToolLoop({
+      provider: "vercel",
+      model: "publisher/new-model",
+      input: "multiply",
+      tools: {
+        multiply: tool({
+          inputSchema: z.object({ a: z.number(), b: z.number() }),
+          execute: ({ a, b }) => a * b,
+        }),
+      },
+    });
+    expect(result.steps).toHaveLength(2);
+    expect(result.steps.every((step) => step.costUsd === null)).toBe(true);
+    expect(result.totalCostUsd).toBeNull();
   });
 
   it("allows an explicit Fireworks request to override key preference and environment", async () => {
@@ -164,8 +220,8 @@ describe("Vercel shared-model routing", () => {
   it("does not allow provider overrides to reroute direct models", async () => {
     const { generateText } = await import("../src/llm.js");
     await expect(
-      generateText({ model: "gpt-6.1-sol", provider: "vercel", input: "hello" }),
-    ).rejects.toThrow("provider is only configurable");
+      generateText({ model: "gpt-6.1-sol", provider: "vercel", input: "hello" } as never),
+    ).rejects.toThrow("Unsupported model/access combination");
     expect(state.requests).toHaveLength(0);
   });
 

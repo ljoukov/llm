@@ -1,6 +1,7 @@
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
-import type { LlmUsageTokens } from "./utils/cost.js";
+import type { LlmCostSource, LlmUsageTokens } from "./utils/cost.js";
 import type { LlmModelId, LlmProvider, LlmStreamEvent } from "./llm.js";
+import type { LlmAccess } from "./model-selection.js";
 
 export type LlmTelemetryOperation =
   | "generateText"
@@ -14,6 +15,7 @@ type LlmTelemetryBaseEvent = {
   readonly callId: string;
   readonly operation: LlmTelemetryOperation;
   readonly provider: LlmProvider;
+  readonly access: LlmAccess;
   readonly model: LlmModelId;
 };
 
@@ -41,7 +43,9 @@ export type LlmCallCompletedTelemetryEvent = LlmTelemetryBaseEvent & {
   readonly modelVersion?: string;
   readonly blocked?: boolean;
   readonly usage?: LlmUsageTokens;
-  readonly costUsd?: number;
+  readonly costUsd?: number | null;
+  readonly costSource?: LlmCostSource;
+  readonly apiEquivalentCostUsd?: number | null;
   readonly outputTextChars?: number;
   readonly thoughtChars?: number;
   readonly responseImages?: number;
@@ -59,6 +63,8 @@ type AgentTelemetryBaseEvent = {
   readonly runId: string;
   readonly parentRunId?: string;
   readonly depth: number;
+  readonly provider: LlmProvider;
+  readonly access: LlmAccess;
   readonly model: LlmModelId;
 };
 
@@ -82,7 +88,7 @@ export type AgentRunCompletedTelemetryEvent = AgentTelemetryBaseEvent & {
   readonly durationMs: number;
   readonly stepCount?: number;
   readonly toolCallCount?: number;
-  readonly totalCostUsd?: number;
+  readonly totalCostUsd?: number | null;
   readonly usage?: LlmUsageTokens;
   readonly uploadCount?: number;
   readonly uploadBytes?: number;

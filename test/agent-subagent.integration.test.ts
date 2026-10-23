@@ -4,6 +4,7 @@ import { z } from "zod";
 import { runAgentLoop } from "../src/index.js";
 import {
   assertIntegrationCredentialsForModels,
+  integrationModelLabel,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
 
@@ -13,9 +14,9 @@ assertIntegrationCredentialsForModels(requestedModels);
 
 describe(`integration: runAgentLoop subagent tools (${runtime})`, () => {
   for (const model of requestedModels) {
-    it(`runs with subagent tools enabled for ${model}`, async () => {
+    it(`runs with subagent tools enabled for ${integrationModelLabel(model)}`, async () => {
       const result = await runAgentLoop({
-        model,
+        ...model,
         input: [
           {
             role: "system",

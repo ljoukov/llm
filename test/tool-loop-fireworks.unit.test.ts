@@ -390,7 +390,6 @@ describe("runToolLoop (Fireworks)", () => {
 
   it.each([
     "gpt-6-luna",
-    "chatgpt-gpt-6-luna",
     "gemini-3.1-pro-preview",
   ] as const)("rejects maxOutputTokens for unsupported route %s before inference", async (model) => {
     const { runToolLoop, tool } = await import("../src/llm.js");

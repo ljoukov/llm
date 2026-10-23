@@ -4,6 +4,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { LlmStreamEvent } from "./llm.js";
+import type { LlmAccess, LlmProvider } from "./model-selection.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export type AgentLogLineSink = {
@@ -34,7 +35,8 @@ export type AgentLlmCallCompletion = {
 };
 
 export type AgentLlmCallStartInput = {
-  readonly provider: string;
+  readonly provider: LlmProvider;
+  readonly access?: LlmAccess;
   readonly modelId: string;
   readonly requestText: string;
   readonly requestMetadata?: Record<string, unknown>;
@@ -62,6 +64,18 @@ export type AgentStreamEventLogger = {
   readonly appendEvent: (event: LlmStreamEvent) => void;
   readonly flush: () => void;
 };
+
+function applyCallRouteMetadata(
+  payload: Record<string, unknown>,
+  input: AgentLlmCallStartInput,
+): void {
+  if (typeof payload.provider === "string" && payload.provider !== input.provider) {
+    payload.transportProvider = payload.provider;
+  }
+  payload.provider = input.provider;
+  payload.access = input.access ?? "api";
+  payload.modelId = input.modelId;
+}
 
 const DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS = 5_000;
 const CALL_DELTA_PERSIST_THROTTLE_MS = 5_000;
@@ -221,9 +235,10 @@ function formatToolLogSnippet(value: unknown): string {
   return `${compact.slice(0, max)}...`;
 }
 
-function formatUsd(value: number | undefined): string {
-  const amount = typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
-  return amount.toFixed(6);
+function formatUsd(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, value).toFixed(6)
+    : "unknown";
 }
 
 export function appendToolCallStreamLog(options: {
@@ -283,6 +298,10 @@ export function appendAgentStreamEventLog(options: {
           "usage:",
           `modelVersion=${event.modelVersion}`,
           `costUsd=${formatUsd(event.costUsd)}`,
+          ...(event.costSource ? [`costSource=${event.costSource}`] : []),
+          ...(event.apiEquivalentCostUsd !== undefined
+            ? [`apiEquivalentCostUsd=${formatUsd(event.apiEquivalentCostUsd)}`]
+            : []),
           `tokens=${formatToolLogSnippet(sanitiseLogValue(event.usage))}`,
         ].join(" "),
       );
@@ -490,6 +509,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
         const requestMetadata = {
           capturedAt: toIsoNow(),
           provider: input.provider,
+          access: input.access ?? "api",
           modelId: input.modelId,
           ...(input.requestMetadata ? { request: sanitiseLogValue(input.requestMetadata) } : {}),
         };
@@ -608,6 +628,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
               payload.metadata = sanitised;
             }
           }
+          applyCallRouteMetadata(payload, input);
           await writeFile(responseMetadataPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
         });
       },
@@ -642,6 +663,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
               payload.metadata = sanitised;
             }
           }
+          applyCallRouteMetadata(payload, input);
           await writeFile(responseMetadataPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
         });
       },

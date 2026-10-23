@@ -46,7 +46,7 @@ export type {
   JsonSchema,
   LlmBaseRequest,
   LlmBlockedEvent,
-  LlmChatGptGenerateImagesRequest,
+  LlmSubscriptionGenerateImagesRequest,
   LlmChatGptImageBackground,
   LlmContent,
   LlmContentPart,
@@ -174,7 +174,7 @@ export type {
   AgentLogLineSink,
   AgentFilesystemToolConfig,
   AgentFilesystemToolSelection,
-  AgentChatGptImageGenerationToolConfig,
+  AgentSubscriptionImageGenerationToolConfig,
   AgentImageGenerationToolConfig,
   AgentImageGenerationToolSelection,
   AgentOpenAiImageGenerationToolConfig,
@@ -279,8 +279,6 @@ export {
 export type { ChatGptAuthProfile } from "./openai/chatgpt-auth.js";
 
 export {
-  CHATGPT_IMAGE_MODEL_IDS,
-  CHATGPT_MODEL_IDS,
   EXPERIMENTAL_CHATGPT_MODEL_PREFIX,
   OPENAI_GPT_IMAGE_2_AUTO_RESOLUTION,
   OPENAI_GPT_IMAGE_2_BACKGROUNDS,
@@ -296,20 +294,18 @@ export {
   OPENAI_GPT_IMAGE_2_SIZE_CONSTRAINTS,
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
-  isChatGptImageModelId,
-  isChatGptModelId,
+  OPENAI_SUBSCRIPTION_MODEL_IDS,
+  OPENAI_SUBSCRIPTION_IMAGE_MODEL_IDS,
+  isOpenAiSubscriptionModelId,
+  isOpenAiSubscriptionImageModelId,
   isExperimentalChatGptModelId,
   isOpenAiImageModelId,
   isOpenAiModelId,
-  resolveChatGptImageProviderModel,
   resolveOpenAiGptImage2Size,
   validateOpenAiGptImage2Resolution,
 } from "./openai/models.js";
 export type {
-  ChatGptImageModelId,
-  ChatGptModelId,
   ExperimentalChatGptModelId,
-  ListedChatGptModelId,
   OpenAiGptImage2Background,
   OpenAiGptImage2CustomResolution,
   OpenAiGptImage2ListedResolution,
@@ -325,6 +321,7 @@ export type {
   OpenAiGptImage2Size,
   OpenAiImageModelId,
   OpenAiModelId,
+  OpenAiSubscriptionModelId,
 } from "./openai/models.js";
 
 export {
@@ -355,8 +352,35 @@ export {
 } from "./anthropic/models.js";
 export type { AnthropicModelId, AnthropicProviderModelId } from "./anthropic/models.js";
 
-export { CLAUDE_MODEL_IDS, isClaudeModelId, resolveClaudeProviderModel } from "./claude/models.js";
-export type { ClaudeModelId } from "./claude/models.js";
-
 export { VERCEL_MODEL_IDS, isVercelModelId, resolveVercelModelId } from "./vercel/models.js";
 export type { VercelModelId } from "./vercel/models.js";
+
+export {
+  LLM_PROVIDERS,
+  parseModelRef,
+  resolveModelRef,
+  isQualifiedVercelModelId,
+} from "./model-selection.js";
+export type {
+  LlmAccess,
+  LlmModelRef,
+  ModelRef,
+  LlmTextModelRef,
+  LlmImageModelRef,
+  LlmModelSelection,
+  LlmTextModelSelection,
+  ResolvedModelRef,
+  QualifiedVercelModelId,
+  ParsedModelRef,
+} from "./model-selection.js";
+export { listModels } from "./model-catalog.js";
+export type { LlmModelInfo, ListModelsOptions, ModelTokenPricing } from "./model-catalog.js";
+export { resolveCallCostUsd } from "./utils/cost.js";
+export type {
+  EstimateCallCostOptions,
+  LlmCallCostResolution,
+  LlmCostSource,
+} from "./utils/cost.js";
+
+export { XAI_MODEL_IDS, isXaiModelId, resolveXaiModelId } from "./xai/models.js";
+export type { XaiModelId, XaiAccess } from "./xai/models.js";

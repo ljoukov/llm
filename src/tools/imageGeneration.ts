@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   generateImages,
   tool,
-  type LlmChatGptGenerateImagesRequest,
+  type LlmSubscriptionGenerateImagesRequest,
   type LlmFunctionTool,
   type LlmOpenAiGenerateImagesRequest,
   type LlmToolOutputContentItem,
@@ -15,7 +15,7 @@ export type LlmImageGenerationToolOptions =
   | (Omit<LlmOpenAiGenerateImagesRequest, RuntimeImageToolRequestKeys> & {
       readonly stylePrompt?: string;
     })
-  | (Omit<LlmChatGptGenerateImagesRequest, RuntimeImageToolRequestKeys> & {
+  | (Omit<LlmSubscriptionGenerateImagesRequest, RuntimeImageToolRequestKeys> & {
       readonly stylePrompt?: string;
     });
 
@@ -58,7 +58,7 @@ export function createImageGenerationTool(
         ...options,
         stylePrompt: options.stylePrompt ?? "",
         imagePrompts: [prompt],
-      } as LlmOpenAiGenerateImagesRequest | LlmChatGptGenerateImagesRequest);
+      } as LlmOpenAiGenerateImagesRequest | LlmSubscriptionGenerateImagesRequest);
 
       return images.map((image, index) => {
         const mimeType = image.mimeType ?? "image/png";

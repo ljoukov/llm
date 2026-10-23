@@ -1135,12 +1135,7 @@ function isCodexModel(model: string): boolean {
   if (model.startsWith("experimental-chatgpt-")) {
     return true;
   }
-  const normalized = model.startsWith("chatgpt-") ? model.slice("chatgpt-".length) : model;
-  return (
-    normalized.includes("codex") ||
-    normalized.startsWith("gpt-6") ||
-    normalized.startsWith("gpt-5.6")
-  );
+  return model.includes("codex") || model.startsWith("gpt-6") || model.startsWith("gpt-5.6");
 }
 
 function isGeminiModel(model: string): boolean {

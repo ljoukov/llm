@@ -9,7 +9,8 @@ export const DEFAULT_GOOGLE_PREVIEW_MODEL_CONCURRENCY_CAP = 2;
 export const DEFAULT_FIREWORKS_MODEL_CONCURRENCY_CAP = 6;
 export const DEFAULT_VERCEL_MODEL_CONCURRENCY_CAP = 6;
 export const DEFAULT_ANTHROPIC_MODEL_CONCURRENCY_CAP = 4;
-export const DEFAULT_CLAUDE_MODEL_CONCURRENCY_CAP = 2;
+export const DEFAULT_ANTHROPIC_SUBSCRIPTION_MODEL_CONCURRENCY_CAP = 2;
+export const DEFAULT_XAI_MODEL_CONCURRENCY_CAP = 3;
 
 export type ModelConcurrencyProvider =
   | "openai"
@@ -17,7 +18,7 @@ export type ModelConcurrencyProvider =
   | "fireworks"
   | "vercel"
   | "anthropic"
-  | "claude";
+  | "xai";
 
 export type ModelConcurrencyConfig = {
   readonly globalCap?: number;
@@ -41,7 +42,7 @@ const MODEL_CONCURRENCY_PROVIDERS: readonly ModelConcurrencyProvider[] = [
   "fireworks",
   "vercel",
   "anthropic",
-  "claude",
+  "xai",
 ];
 
 const modelConcurrencyState = getRuntimeSingleton(
@@ -107,7 +108,7 @@ function normalizeModelConcurrencyConfig(
     fireworks: new Map<string, number>(),
     vercel: new Map<string, number>(),
     anthropic: new Map<string, number>(),
-    claude: new Map<string, number>(),
+    xai: new Map<string, number>(),
   };
   for (const provider of MODEL_CONCURRENCY_PROVIDERS) {
     const providerCap = normalizeCap(config.providerCaps?.[provider]);
@@ -129,6 +130,7 @@ function normalizeModelConcurrencyConfig(
 function resolveDefaultProviderCap(
   provider: ModelConcurrencyProvider,
   modelId: string | undefined,
+  access?: "api" | "subscription",
 ): number {
   if (provider === "openai") {
     return DEFAULT_OPENAI_MODEL_CONCURRENCY_CAP;
@@ -139,10 +141,12 @@ function resolveDefaultProviderCap(
       : DEFAULT_GOOGLE_MODEL_CONCURRENCY_CAP;
   }
   if (provider === "anthropic") {
-    return DEFAULT_ANTHROPIC_MODEL_CONCURRENCY_CAP;
+    return access === "subscription"
+      ? DEFAULT_ANTHROPIC_SUBSCRIPTION_MODEL_CONCURRENCY_CAP
+      : DEFAULT_ANTHROPIC_MODEL_CONCURRENCY_CAP;
   }
-  if (provider === "claude") {
-    return DEFAULT_CLAUDE_MODEL_CONCURRENCY_CAP;
+  if (provider === "xai") {
+    return DEFAULT_XAI_MODEL_CONCURRENCY_CAP;
   }
   if (provider === "vercel") {
     return DEFAULT_VERCEL_MODEL_CONCURRENCY_CAP;
@@ -160,6 +164,7 @@ export function resetModelConcurrencyConfig(): void {
 
 type ResolveModelConcurrencyCapOptions = {
   readonly provider: ModelConcurrencyProvider;
+  readonly access?: "api" | "subscription";
   readonly modelId?: string | null;
   readonly defaultCap?: number;
   readonly config?: ModelConcurrencyConfig;
@@ -191,5 +196,5 @@ export function resolveModelConcurrencyCap(options: ResolveModelConcurrencyCapOp
   if (defaultCap !== undefined) {
     return defaultCap;
   }
-  return resolveDefaultProviderCap(options.provider, modelId);
+  return resolveDefaultProviderCap(options.provider, modelId, options.access);
 }

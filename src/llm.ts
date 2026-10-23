@@ -24,7 +24,7 @@ import { toFile } from "openai";
 import type { ResponseTextConfig } from "openai/resources/responses/responses";
 
 import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
-import { estimateCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
+import { estimateCallCostUsd, resolveCallCostUsd, type LlmUsageTokens } from "./utils/cost.js";
 import type { CallSchedulerRunMetrics } from "./utils/scheduler.js";
 import {
   collectChatGptCodexResponse,
@@ -34,26 +34,17 @@ import {
 } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
 import { runVercelCall } from "./vercel/calls.js";
-import {
-  resolveOpenModelProvider,
-  resolveVercelModelId,
-  type LlmOpenModelProvider,
-} from "./vercel/models.js";
+import { resolveVercelModelId, type LlmOpenModelProvider } from "./vercel/models.js";
 import { streamFireworksChatCompletion } from "./fireworks/stream.js";
 import { runAnthropicCall } from "./anthropic/calls.js";
 import { runClaudeQuery } from "./claude/calls.js";
-import { CLAUDE_MODEL_IDS, isClaudeModelId } from "./claude/models.js";
 import type {
   AnthropicContentBlock,
   AnthropicMessage,
   AnthropicMessageParam,
   AnthropicMessageRequest,
 } from "./anthropic/client.js";
-import {
-  ANTHROPIC_MODEL_IDS,
-  isAnthropicModelId,
-  resolveAnthropicProviderModel,
-} from "./anthropic/models.js";
+import { ANTHROPIC_MODEL_IDS, isAnthropicModelId } from "./anthropic/models.js";
 import {
   FIREWORKS_MODEL_IDS,
   isFireworksModelId,
@@ -74,24 +65,18 @@ import {
   DEFAULT_OPENAI_REASONING_EFFORT,
 } from "./openai/calls.js";
 import {
-  CHATGPT_MODEL_IDS,
-  CHATGPT_IMAGE_MODEL_IDS,
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
-  isChatGptImageModelId,
   isOpenAiImageModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
   isOpenAiModelId,
-  resolveChatGptImageProviderModel,
   resolveChatGptProviderModel,
   resolveChatGptServiceTier,
   resolveOpenAiProviderModel,
   resolveOpenAiServiceTier,
   resolveOpenAiGptImage2Size,
   validateOpenAiGptImage2Resolution,
-  type ExperimentalChatGptModelId,
-  type ChatGptImageModelId,
   type OpenAiImageModelId,
   type OpenAiGptImage2Background,
   type OpenAiGptImage2Moderation,
@@ -130,6 +115,18 @@ import {
   type TelemetrySelection,
 } from "./telemetry.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
+
+import {
+  resolveModelRef,
+  isQualifiedVercelModelId,
+  type LlmProvider,
+  type LlmAccess,
+  type LlmModelSelection,
+  type LlmTextModelSelection,
+  type ModelSelectionId,
+} from "./model-selection.js";
+import { runXaiCall } from "./xai/calls.js";
+import { XAI_MODEL_IDS, isXaiModelId } from "./xai/models.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
 export { estimateCallCostUsd } from "./utils/cost.js";
@@ -276,7 +273,9 @@ export type LlmTextDeltaEvent =
 export type LlmUsageEvent = {
   readonly type: "usage";
   readonly usage: LlmUsageTokens;
-  readonly costUsd: number;
+  readonly costUsd: number | null;
+  readonly costSource?: import("./utils/cost.js").LlmCostSource;
+  readonly apiEquivalentCostUsd?: number | null;
   readonly modelVersion: string;
 };
 
@@ -328,47 +327,51 @@ export type LlmStreamEvent =
   | LlmToolCallStreamEvent;
 
 export type { LlmOpenModelProvider } from "./vercel/models.js";
-export type LlmProvider =
+export type {
+  LlmProvider,
+  LlmAccess,
+  LlmModelRef,
+  ModelRef,
+  ResolvedModelRef,
+} from "./model-selection.js";
+type LlmTransportProvider =
   | "openai"
   | "chatgpt"
   | "gemini"
   | "fireworks"
   | "vercel"
   | "anthropic"
-  | "claude";
+  | "claude"
+  | "xai";
 export const LLM_TEXT_MODEL_IDS = [
   ...OPENAI_MODEL_IDS,
-  ...CHATGPT_MODEL_IDS,
   ...FIREWORKS_MODEL_IDS,
   ...GEMINI_TEXT_MODEL_IDS,
   ...ANTHROPIC_MODEL_IDS,
-  ...CLAUDE_MODEL_IDS,
+  ...XAI_MODEL_IDS,
 ] as const;
-export type LlmTextModelId = (typeof LLM_TEXT_MODEL_IDS)[number] | ExperimentalChatGptModelId;
+export type LlmTextModelId = LlmTextModelSelection["model"];
 
-export const LLM_IMAGE_MODEL_IDS = [
-  ...OPENAI_IMAGE_MODEL_IDS,
-  ...CHATGPT_IMAGE_MODEL_IDS,
-  ...GEMINI_IMAGE_MODEL_IDS,
-] as const;
+export const LLM_IMAGE_MODEL_IDS = [...OPENAI_IMAGE_MODEL_IDS, ...GEMINI_IMAGE_MODEL_IDS] as const;
 export type LlmImageModelId = (typeof LLM_IMAGE_MODEL_IDS)[number];
 
 export const LLM_MODEL_IDS = [...LLM_TEXT_MODEL_IDS, ...LLM_IMAGE_MODEL_IDS] as const;
-export type LlmModelId = LlmTextModelId | LlmImageModelId;
+export type LlmModelId = ModelSelectionId;
 
 export function isLlmTextModelId(value: string): value is LlmTextModelId {
   return (
     isOpenAiModelId(value) ||
-    isChatGptModelId(value) ||
     isFireworksModelId(value) ||
     isAnthropicModelId(value) ||
-    isClaudeModelId(value) ||
-    isGeminiTextModelId(value)
+    isGeminiTextModelId(value) ||
+    isXaiModelId(value) ||
+    isExperimentalChatGptModelId(value) ||
+    isQualifiedVercelModelId(value)
   );
 }
 
 export function isLlmImageModelId(value: string): value is LlmImageModelId {
-  return isOpenAiImageModelId(value) || isChatGptImageModelId(value) || isGeminiImageModelId(value);
+  return isOpenAiImageModelId(value) || isGeminiImageModelId(value);
 }
 
 export function isLlmModelId(value: string): value is LlmModelId {
@@ -377,6 +380,7 @@ export function isLlmModelId(value: string): value is LlmModelId {
 
 export type LlmTextResult = {
   readonly provider: LlmProvider;
+  readonly access: LlmAccess;
   readonly model: LlmModelId;
   readonly modelVersion: string;
   readonly content?: LlmContent;
@@ -384,7 +388,9 @@ export type LlmTextResult = {
   readonly thoughts: string;
   readonly blocked: boolean;
   readonly usage?: LlmUsageTokens;
-  readonly costUsd: number;
+  readonly costUsd: number | null;
+  readonly costSource?: import("./utils/cost.js").LlmCostSource;
+  readonly apiEquivalentCostUsd?: number | null;
   readonly grounding?: GroundingMetadata;
   readonly openAi?: LlmOpenAiResponseMetadata;
 };
@@ -459,10 +465,7 @@ export type LlmInput = {
   readonly instructions?: string;
 };
 
-export type LlmBaseRequest = {
-  readonly model: LlmModelId;
-  /** Override routing for shared DeepSeek, GLM, and Kimi models. */
-  readonly provider?: LlmOpenModelProvider;
+export type LlmBaseRequest = LlmModelSelection & {
   readonly tools?: readonly LlmToolConfig[];
   readonly responseMimeType?: string;
   readonly responseJsonSchema?: JsonSchema;
@@ -478,9 +481,8 @@ export type LlmBaseRequest = {
 
 export type LlmTextRequest = LlmInput & LlmBaseRequest;
 
-type LlmStructuredRequestBase = Omit<LlmBaseRequest, "model"> & {
-  readonly model: LlmTextModelId;
-};
+type LlmStructuredRequestBase = LlmTextModelSelection &
+  Omit<LlmBaseRequest, "model" | "provider" | "access">;
 
 export type LlmJsonRequest<T> = LlmInput &
   LlmStructuredRequestBase & {
@@ -551,6 +553,8 @@ type LlmGenerateImagesRequestBase = {
 };
 
 export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
+  readonly provider?: "openai";
+  readonly access?: "api";
   readonly model: OpenAiImageModelId;
   readonly imageResolution?: LlmOpenAiImageResolution;
   readonly imageSize?: LlmOpenAiImageSize;
@@ -563,12 +567,16 @@ export type LlmOpenAiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
   readonly numImages?: LlmOpenAiImageNumImages;
 };
 
-export type LlmChatGptGenerateImagesRequest = LlmGenerateImagesRequestBase & {
-  readonly model: ChatGptImageModelId;
+export type LlmSubscriptionGenerateImagesRequest = LlmGenerateImagesRequestBase & {
+  readonly provider: "openai";
+  readonly access: "subscription";
+  readonly model: OpenAiImageModelId;
   readonly background?: LlmChatGptImageBackground;
 };
 
 export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
+  readonly provider?: "google";
+  readonly access?: "api";
   readonly model: GeminiImageModelId;
   readonly imageGradingPrompt: string;
   readonly maxAttempts?: number;
@@ -578,19 +586,19 @@ export type LlmGeminiGenerateImagesRequest = LlmGenerateImagesRequestBase & {
 
 export type LlmGenerateImagesRequest =
   | LlmOpenAiGenerateImagesRequest
-  | LlmChatGptGenerateImagesRequest
+  | LlmSubscriptionGenerateImagesRequest
   | LlmGeminiGenerateImagesRequest;
 
 function isOpenAiGenerateImagesRequest(
   request: LlmGenerateImagesRequest,
 ): request is LlmOpenAiGenerateImagesRequest {
-  return isOpenAiImageModelId(request.model);
+  return isOpenAiImageModelId(request.model) && request.access !== "subscription";
 }
 
 function isChatGptGenerateImagesRequest(
   request: LlmGenerateImagesRequest,
-): request is LlmChatGptGenerateImagesRequest {
-  return isChatGptImageModelId(request.model);
+): request is LlmSubscriptionGenerateImagesRequest {
+  return isOpenAiImageModelId(request.model) && request.access === "subscription";
 }
 
 export type LlmFunctionTool<Schema extends z.ZodType, Output> = {
@@ -683,7 +691,9 @@ export type LlmToolLoopStep = {
   readonly content?: LlmContent;
   readonly toolCalls: readonly LlmToolCallResult[];
   readonly usage?: LlmUsageTokens;
-  readonly costUsd: number;
+  readonly costUsd: number | null;
+  readonly costSource?: import("./utils/cost.js").LlmCostSource;
+  readonly apiEquivalentCostUsd?: number | null;
   readonly timing?: LlmToolLoopStepTiming;
 };
 
@@ -692,7 +702,7 @@ export type LlmToolLoopResult = {
   readonly thoughts: string;
   readonly content?: LlmContent;
   readonly steps: readonly LlmToolLoopStep[];
-  readonly totalCostUsd: number;
+  readonly totalCostUsd: number | null;
 };
 
 export type LlmToolLoopSteeringMessage = {
@@ -717,23 +727,21 @@ export type LlmToolLoopSteeringChannel = {
   readonly close: () => void;
 };
 
-export type LlmToolLoopRequest = LlmInput & {
-  readonly model: LlmTextModelId;
-  /** Override routing for shared DeepSeek, GLM, and Kimi models. */
-  readonly provider?: LlmOpenModelProvider;
-  readonly tools: LlmToolSet;
-  readonly modelTools?: readonly LlmToolConfig[];
-  readonly maxSteps?: number;
-  /** Maximum generated tokens per Fireworks, Vercel, Anthropic, or Claude completion, including reasoning.
-   * Omit to retain the Fireworks default or Anthropic's 32,000 token limit.
-   */
-  readonly maxOutputTokens?: number;
-  readonly thinkingLevel?: LlmThinkingLevel;
-  readonly mediaResolution?: LlmMediaResolution;
-  readonly steering?: LlmToolLoopSteeringChannel;
-  readonly onEvent?: (event: LlmStreamEvent) => void;
-  readonly signal?: AbortSignal;
-};
+export type LlmToolLoopRequest = LlmInput &
+  LlmTextModelSelection & {
+    readonly tools: LlmToolSet;
+    readonly modelTools?: readonly LlmToolConfig[];
+    readonly maxSteps?: number;
+    /** Maximum generated tokens per Fireworks, Vercel, Anthropic, or Claude completion, including reasoning.
+     * Omit to retain the Fireworks default or Anthropic's 32,000 token limit.
+     */
+    readonly maxOutputTokens?: number;
+    readonly thinkingLevel?: LlmThinkingLevel;
+    readonly mediaResolution?: LlmMediaResolution;
+    readonly steering?: LlmToolLoopSteeringChannel;
+    readonly onEvent?: (event: LlmStreamEvent) => void;
+    readonly signal?: AbortSignal;
+  };
 
 export type LlmToolLoopStream = {
   readonly events: AsyncIterable<LlmStreamEvent>;
@@ -1394,60 +1402,47 @@ function convertLlmContentToGeminiContent(
 
 function resolveProvider(
   model: LlmModelId,
-  provider?: LlmOpenModelProvider,
+  provider?: LlmProvider,
+  access?: LlmAccess,
 ): {
-  provider: LlmProvider;
+  provider: LlmTransportProvider;
+  publicProvider: LlmProvider;
+  access: LlmAccess;
   model: string;
   serviceTier?: "priority";
 } {
-  if (provider && !isFireworksModelId(model)) {
-    throw new Error(
-      `provider is only configurable for DeepSeek, GLM, and Kimi models; received ${model}.`,
-    );
-  }
-  if (isChatGptModelId(model)) {
-    return {
-      provider: "chatgpt",
-      model: resolveChatGptProviderModel(model),
-      serviceTier: resolveChatGptServiceTier(model),
-    };
-  }
-  if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {
-    return { provider: "gemini", model };
-  }
-  if (isAnthropicModelId(model)) {
-    return { provider: "anthropic", model: resolveAnthropicProviderModel(model) };
-  }
-  if (isClaudeModelId(model)) {
-    return { provider: "claude", model };
-  }
-  if (isFireworksModelId(model)) {
-    if (resolveOpenModelProvider(provider) === "vercel") {
-      const vercelModel = resolveVercelModelId(model);
-      if (vercelModel) return { provider: "vercel", model: vercelModel };
+  const route = resolveModelRef({ model, provider, access });
+  const base = { publicProvider: route.provider, access: route.access };
+  if (route.provider === "openai") {
+    if (route.access === "subscription") {
+      return {
+        ...base,
+        provider: "chatgpt",
+        model: isOpenAiImageModelId(model)
+          ? model
+          : resolveChatGptProviderModel(model as Parameters<typeof resolveChatGptProviderModel>[0]),
+        serviceTier: isOpenAiImageModelId(model)
+          ? undefined
+          : resolveChatGptServiceTier(model as Parameters<typeof resolveChatGptServiceTier>[0]),
+      };
     }
-    const fireworksModel = resolveFireworksModelId(model);
-    if (fireworksModel) {
-      return { provider: "fireworks", model: fireworksModel };
-    }
-  }
-  if (isOpenAiImageModelId(model)) {
-    return { provider: "openai", model };
-  }
-  if (isChatGptImageModelId(model)) {
     return {
-      provider: "chatgpt",
-      model: resolveChatGptImageProviderModel(model),
-    };
-  }
-  if (isOpenAiModelId(model)) {
-    return {
+      ...base,
       provider: "openai",
-      model: resolveOpenAiProviderModel(model),
-      serviceTier: resolveOpenAiServiceTier(model),
+      model: isOpenAiImageModelId(model)
+        ? model
+        : resolveOpenAiProviderModel(model as Parameters<typeof resolveOpenAiProviderModel>[0]),
+      serviceTier: isOpenAiModelId(model) ? resolveOpenAiServiceTier(model) : undefined,
     };
   }
-  throw new Error(`Unsupported model: ${model}`);
+  if (route.provider === "anthropic")
+    return { ...base, provider: route.access === "subscription" ? "claude" : "anthropic", model };
+  if (route.provider === "google") return { ...base, provider: "gemini", model };
+  if (route.provider === "vercel")
+    return { ...base, provider: "vercel", model: resolveVercelModelId(model) ?? model };
+  if (route.provider === "fireworks")
+    return { ...base, provider: "fireworks", model: resolveFireworksModelId(model) ?? model };
+  return { ...base, provider: "xai", model };
 }
 
 function isOpenAiCodexModel(modelId: string): boolean {
@@ -3093,7 +3088,7 @@ function toOpenAiTools(
       case "image-generation": {
         if (options.provider !== "openai") {
           throw new Error(
-            'The hosted image_generation tool is only supported for OpenAI API models. For ChatGPT-authenticated models, use createImageGenerationTool({ model: "chatgpt-gpt-image-2" }) as a runtime tool.',
+            'The hosted image_generation tool is only supported for OpenAI API models. For ChatGPT-authenticated models, use createImageGenerationTool({ provider: "openai", model: "gpt-image-2", access: "subscription" }) as a runtime tool.',
           );
         }
         if (tool.imageResolution !== undefined && tool.imageSize !== undefined) {
@@ -3304,18 +3299,38 @@ function countInlineImagesInContent(content: LlmContent | undefined): number {
   return count;
 }
 
+function canonicalProvider(provider: LlmTransportProvider): LlmProvider {
+  return provider === "chatgpt"
+    ? "openai"
+    : provider === "claude"
+      ? "anthropic"
+      : provider === "gemini"
+        ? "google"
+        : provider;
+}
+function transportAccess(provider: LlmTransportProvider): LlmAccess {
+  return provider === "chatgpt" || provider === "claude" ? "subscription" : "api";
+}
+
 type LlmTelemetryEventPayload =
-  | Omit<LlmCallStartedTelemetryEvent, "timestamp" | "callId" | "operation" | "provider" | "model">
-  | Omit<LlmCallStreamTelemetryEvent, "timestamp" | "callId" | "operation" | "provider" | "model">
+  | Omit<
+      LlmCallStartedTelemetryEvent,
+      "timestamp" | "callId" | "operation" | "provider" | "access" | "model"
+    >
+  | Omit<
+      LlmCallStreamTelemetryEvent,
+      "timestamp" | "callId" | "operation" | "provider" | "access" | "model"
+    >
   | Omit<
       LlmCallCompletedTelemetryEvent,
-      "timestamp" | "callId" | "operation" | "provider" | "model"
+      "timestamp" | "callId" | "operation" | "provider" | "access" | "model"
     >;
 
 function createLlmTelemetryEmitter(params: {
   telemetry: TelemetrySelection | undefined;
   operation: LlmTelemetryOperation;
-  provider: LlmProvider;
+  provider: LlmTransportProvider;
+  access?: LlmAccess;
   model: LlmModelId;
 }): {
   readonly includeStreamEvents: boolean;
@@ -3335,7 +3350,8 @@ function createLlmTelemetryEmitter(params: {
         timestamp: new Date().toISOString(),
         callId,
         operation: params.operation,
-        provider: params.provider,
+        provider: canonicalProvider(params.provider),
+        access: params.access ?? transportAccess(params.provider),
         model: params.model,
       });
     },
@@ -3534,7 +3550,7 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
 
 function extractFireworksUsageTokens(
   usage: unknown,
-  provider?: LlmOpenModelProvider,
+  provider?: LlmOpenModelProvider | "xai",
 ): LlmUsageTokens | undefined {
   if (!usage || typeof usage !== "object") {
     return undefined;
@@ -3910,7 +3926,7 @@ async function maybeSpillToolOutput(
   toolName: string,
   options?: {
     readonly force?: boolean;
-    readonly provider?: LlmProvider;
+    readonly provider?: LlmTransportProvider;
   },
 ): Promise<unknown> {
   if (typeof value === "string") {
@@ -3986,7 +4002,7 @@ async function maybeSpillCombinedToolCallOutputs<
 >(
   callResults: readonly T[],
   options?: {
-    readonly provider?: LlmProvider;
+    readonly provider?: LlmTransportProvider;
   },
 ): Promise<T[]> {
   const totalBytes = callResults.reduce(
@@ -4316,7 +4332,7 @@ async function executeToolCall(params: {
   tool: LlmExecutableTool<z.ZodType, unknown> | undefined;
   rawInput: unknown;
   parseError?: string;
-  provider?: LlmProvider;
+  provider?: LlmTransportProvider;
 }): Promise<{ result: LlmToolCallResult; outputPayload: unknown }> {
   const { callKind, toolName, tool, rawInput, parseError, provider } = params;
   const startedAtMs = Date.now();
@@ -4589,10 +4605,16 @@ function resolveOpenAiImageToolOutputMimeType(tools: readonly LlmToolConfig[] | 
   return resolveOpenAiImageMimeType(imageTool?.outputFormat);
 }
 
+function addCosts(...costs: readonly (number | null)[]): number | null {
+  return costs.some((cost) => cost === null)
+    ? null
+    : costs.reduce<number>((sum, cost) => sum + (cost ?? 0), 0);
+}
+
 function estimateHostedImageGenerationCostUsd(
   tools: readonly LlmToolConfig[] | undefined,
   responseImages: number,
-): number {
+): number | null {
   const imageTool = tools?.find(
     (tool): tool is LlmOpenAiImageGenerationToolConfig => tool.type === "image-generation",
   );
@@ -4739,10 +4761,10 @@ function extractVercelCostUsd(response: {
 
 function assistantReasoningFields(
   message: unknown,
-  provider: LlmOpenModelProvider,
+  provider: LlmOpenModelProvider | "xai",
   reasoning: string | undefined,
 ): Record<string, unknown> {
-  if (provider === "fireworks") {
+  if (provider === "fireworks" || provider === "xai") {
     return reasoning !== undefined ? { reasoning_content: reasoning } : {};
   }
   const details =
@@ -5257,7 +5279,7 @@ function toLoggedGeminiToolCalls(
 }
 
 function startLlmCallLoggerFromContents(options: {
-  readonly provider: LlmProvider;
+  readonly provider: LlmTransportProvider;
   readonly request: LlmTextRequest;
   readonly contents: readonly LlmContent[];
 }): AgentLlmCallLogger | undefined {
@@ -5295,7 +5317,8 @@ function startLlmCallLoggerFromContents(options: {
   }
 
   return session.startLlmCall({
-    provider: options.provider,
+    provider: canonicalProvider(options.provider),
+    access: options.request.access ?? transportAccess(options.provider),
     modelId: options.request.model,
     requestText: sections.join("\n").trim(),
     requestMetadata: {
@@ -5341,7 +5364,8 @@ function startLlmCallLoggerFromContents(options: {
 }
 
 function startLlmCallLoggerFromPayload(options: {
-  readonly provider: LlmProvider;
+  readonly provider: LlmTransportProvider;
+  readonly access?: LlmAccess;
   readonly modelId: string;
   readonly requestPayload: unknown;
   readonly step: number;
@@ -5368,7 +5392,9 @@ function startLlmCallLoggerFromPayload(options: {
               (options.requestPayload as { messages?: unknown }).messages,
             ),
           )
-        : options.provider === "fireworks" || options.provider === "vercel"
+        : options.provider === "fireworks" ||
+            options.provider === "vercel" ||
+            options.provider === "xai"
           ? extractToolCallResponseTextFromFireworksMessages(
               (options.requestPayload as { messages?: unknown }).messages,
             )
@@ -5384,7 +5410,9 @@ function startLlmCallLoggerFromPayload(options: {
         ? extractToolCallResponsePayloadFromAnthropicMessages(
             (options.requestPayload as { messages?: unknown }).messages,
           )
-        : options.provider === "fireworks" || options.provider === "vercel"
+        : options.provider === "fireworks" ||
+            options.provider === "vercel" ||
+            options.provider === "xai"
           ? extractToolCallResponsePayloadFromFireworksMessages(
               (options.requestPayload as { messages?: unknown }).messages,
             )
@@ -5392,7 +5420,8 @@ function startLlmCallLoggerFromPayload(options: {
               (options.requestPayload as { contents?: unknown }).contents,
             );
   return session.startLlmCall({
-    provider: options.provider,
+    provider: canonicalProvider(options.provider),
+    access: options.access ?? transportAccess(options.provider),
     modelId: options.modelId,
     requestText: serialiseRequestPayloadForLogging(options.requestPayload),
     requestMetadata: {
@@ -5412,7 +5441,7 @@ async function runTextCall(params: {
   onEvent?: (event: LlmStreamEvent) => void;
 }): Promise<LlmTextResult> {
   const { request, queue, abortController } = params;
-  const providerInfo = resolveProvider(request.model, request.provider);
+  const providerInfo = resolveProvider(request.model, request.provider, request.access);
   const provider = providerInfo.provider;
   const modelForProvider = providerInfo.model;
   const contents = resolveTextContents(request);
@@ -5596,10 +5625,8 @@ async function runTextCall(params: {
           }
         }, modelForProvider);
       } else if (provider === "chatgpt") {
-        if (isChatGptImageModelId(request.model)) {
-          throw new Error(
-            "chatgpt-gpt-image-2 is an image generation model; use generateImages().",
-          );
+        if (isOpenAiImageModelId(request.model)) {
+          throw new Error("gpt-image-2 is an image generation model; use generateImages().");
         }
         const chatGptInput = toChatGptInput(contents, {
           defaultMediaResolution: request.mediaResolution,
@@ -5655,7 +5682,7 @@ async function runTextCall(params: {
           modelVersion =
             providerInfo.serviceTier || isExperimentalChatGptModelId(request.model)
               ? request.model
-              : `chatgpt-${result.model}`;
+              : result.model;
           pushEvent({ type: "model", modelVersion });
         }
         latestUsage = extractChatGptUsageTokens(result.usage);
@@ -5745,10 +5772,10 @@ async function runTextCall(params: {
         if (!sawResponseDelta) pushDelta("response", fallback.text);
         if (!sawThoughtDelta) pushDelta("thought", fallback.thoughts);
         latestUsage = extractAnthropicUsageTokens(response.usage);
-      } else if (provider === "fireworks" || provider === "vercel") {
+      } else if (provider === "fireworks" || provider === "vercel" || provider === "xai") {
         if (request.tools && request.tools.length > 0) {
           throw new Error(
-            `${provider === "vercel" ? "Vercel" : "Fireworks"} provider does not support provider-native tools in generateText; use runToolLoop for function tools.`,
+            `${provider === "vercel" ? "Vercel" : provider === "xai" ? "xAI" : "Fireworks"} provider does not support provider-native tools in generateText; use runToolLoop for function tools.`,
           );
         }
 
@@ -5757,7 +5784,13 @@ async function runTextCall(params: {
           responseJsonSchema: request.responseJsonSchema,
         });
 
-        const runCall = provider === "vercel" ? runVercelCall : runFireworksCall;
+        const runCall: typeof runFireworksCall =
+          provider === "vercel"
+            ? runVercelCall
+            : provider === "xai"
+              ? (fn, modelId, options) =>
+                  runXaiCall(fn, modelId ?? modelForProvider, providerInfo.access, options)
+              : runFireworksCall;
         await runCall(async (client) => {
           const responseFormat = request.responseJsonSchema
             ? {
@@ -5894,19 +5927,27 @@ async function runTextCall(params: {
       const { text, thoughts } = extractTextByChannel(content);
       const outputAttachments = collectLoggedAttachmentsFromLlmParts(mergedParts, "output");
 
+      const costResolution = await resolveCallCostUsd({
+        provider: providerInfo.publicProvider,
+        access: providerInfo.access,
+        reportedCostUsd,
+        modelId: modelVersion,
+        pricingModelId:
+          provider === "openai" || provider === "chatgpt" ? request.model : modelForProvider,
+        tokens: latestUsage,
+        responseImages,
+        imageSize: request.imageSize,
+      });
       const costUsd =
-        (reportedCostUsd ??
-          estimateCallCostUsd({
-            provider,
-            modelId: modelVersion,
-            pricingModelId: request.model,
-            tokens: latestUsage,
-            responseImages,
-            imageSize: request.imageSize,
-          })) + estimateHostedImageGenerationCostUsd(request.tools, responseImages);
+        providerInfo.access === "subscription"
+          ? null
+          : addCosts(
+              costResolution.costUsd,
+              estimateHostedImageGenerationCostUsd(request.tools, responseImages),
+            );
 
       if (latestUsage) {
-        pushEvent({ type: "usage", usage: latestUsage, costUsd, modelVersion });
+        pushEvent({ type: "usage", usage: latestUsage, ...costResolution, costUsd, modelVersion });
       }
 
       callLogger?.complete({
@@ -5929,7 +5970,8 @@ async function runTextCall(params: {
       });
 
       return {
-        provider,
+        provider: providerInfo.publicProvider,
+        access: providerInfo.access,
         model: request.model,
         modelVersion,
         content,
@@ -5937,6 +5979,7 @@ async function runTextCall(params: {
         thoughts,
         blocked,
         usage: latestUsage,
+        ...costResolution,
         costUsd,
         grounding,
         openAi,
@@ -5975,9 +6018,10 @@ function startTextStream(
 ): LlmTextStream {
   const queue = createAsyncQueue<LlmStreamEvent>();
   const abortController = new AbortController();
-  const provider = resolveProvider(request.model, request.provider).provider;
+  const provider = resolveProvider(request.model, request.provider, request.access).provider;
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
+    access: request.access,
     operation,
     provider,
     model: request.model,
@@ -6022,6 +6066,8 @@ function startTextStream(
         blocked: output.blocked,
         usage: output.usage,
         costUsd: output.costUsd,
+        costSource: output.costSource,
+        apiEquivalentCostUsd: output.apiEquivalentCostUsd,
         outputTextChars: output.text.length,
         thoughtChars: output.thoughts.length,
         responseImages: countInlineImagesInContent(output.content),
@@ -6073,12 +6119,12 @@ export async function generateText(request: LlmTextRequest): Promise<LlmTextResu
 }
 
 function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
-  providerInfo: { provider: LlmProvider; model: string };
+  providerInfo: { provider: LlmTransportProvider; model: string };
   responseJsonSchema: JsonSchema;
   openAiTextFormat?: ResponseTextConfig["format"];
 } {
   const schemaName = (request.openAiSchemaName ?? "llm-response").trim() || "llm-response";
-  const providerInfo = resolveProvider(request.model, request.provider);
+  const providerInfo = resolveProvider(request.model, request.provider, request.access);
   const isOpenAiVariant = providerInfo.provider === "openai" || providerInfo.provider === "chatgpt";
   const isGeminiVariant = providerInfo.provider === "gemini";
   const baseJsonSchema = zodToJsonSchema(request.schema, {
@@ -6114,9 +6160,10 @@ function startJsonStream<T>(
 ): LlmJsonStream<T> {
   const queue = createAsyncQueue<LlmJsonStreamEvent<T>>();
   const abortController = new AbortController();
-  const provider = resolveProvider(request.model, request.provider).provider;
+  const provider = resolveProvider(request.model, request.provider, request.access).provider;
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
+    access: request.access,
     operation,
     provider,
     model: request.model,
@@ -6180,6 +6227,7 @@ function startJsonStream<T>(
               const call = streamText({
                 model: request.model,
                 provider: request.provider,
+                access: request.access,
                 input: request.input,
                 instructions: request.instructions,
                 tools: request.tools,
@@ -6191,7 +6239,7 @@ function startJsonStream<T>(
                   : {}),
                 telemetry: false,
                 signal,
-              });
+              } as LlmTextRequest);
 
               try {
                 for await (const event of call.events) {
@@ -6268,6 +6316,8 @@ function startJsonStream<T>(
         blocked: output.result.blocked,
         usage: output.result.usage,
         costUsd: output.result.costUsd,
+        costSource: output.result.costSource,
+        apiEquivalentCostUsd: output.result.apiEquivalentCostUsd,
         rawTextChars: output.rawText.length,
         attempts: attemptsUsed,
         uploadCount: uploadMetrics.count,
@@ -6492,13 +6542,13 @@ function buildOpenAiToolsFromToolSet(tools: LlmToolSet): unknown[] {
 
 function buildFireworksToolsFromToolSet(
   tools: LlmToolSet,
-  provider: LlmOpenModelProvider = "fireworks",
+  provider: LlmOpenModelProvider | "xai" = "fireworks",
 ): unknown[] {
   const toolEntries = Object.entries(tools);
   return toolEntries.map(([name, toolDef]) => {
     if (isCustomTool(toolDef)) {
       throw new Error(
-        `${provider === "vercel" ? "Vercel" : "Fireworks"} provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
+        `${provider === "vercel" ? "Vercel" : provider === "xai" ? "xAI" : "Fireworks"} provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
       );
     }
     return {
@@ -6593,7 +6643,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   }
 
   const maxSteps = Math.max(1, Math.floor(request.maxSteps ?? DEFAULT_TOOL_LOOP_MAX_STEPS));
-  const providerInfo = resolveProvider(request.model, request.provider);
+  const providerInfo = resolveProvider(request.model, request.provider, request.access);
   if (request.maxOutputTokens !== undefined) {
     if (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0) {
       throw new Error("maxOutputTokens must be a positive safe integer.");
@@ -6601,6 +6651,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
     if (
       providerInfo.provider !== "fireworks" &&
       providerInfo.provider !== "vercel" &&
+      providerInfo.provider !== "xai" &&
       providerInfo.provider !== "anthropic" &&
       providerInfo.provider !== "claude"
     ) {
@@ -6618,7 +6669,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   const steeringInternal = resolveToolLoopSteeringInternal(request.steering);
 
   const steps: LlmToolLoopStep[] = [];
-  let totalCostUsd = 0;
+  let totalCostUsd: number | null = 0;
   let finalText = "";
   let finalThoughts = "";
 
@@ -6811,17 +6862,28 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           const generatedImageCount = responseContentParts.filter(
             (part) => part.type === "inlineData" && isInlineImageMime(part.mimeType),
           ).length;
-          const stepCostUsd =
-            estimateCallCostUsd({
-              modelId: modelVersion,
-              pricingModelId: request.model,
-              tokens: usageTokens,
-              responseImages: 0,
-            }) + estimateHostedImageGenerationCostUsd(request.modelTools, generatedImageCount);
-          totalCostUsd += stepCostUsd;
+          const stepCostResolution = await resolveCallCostUsd({
+            provider: providerInfo.publicProvider,
+            access: providerInfo.access,
+            modelId: modelVersion,
+            pricingModelId: request.model,
+            tokens: usageTokens,
+            responseImages: 0,
+          });
+          const stepCostUsd = addCosts(
+            stepCostResolution.costUsd,
+            estimateHostedImageGenerationCostUsd(request.modelTools, generatedImageCount),
+          );
+          totalCostUsd = addCosts(totalCostUsd, stepCostUsd);
 
           if (usageTokens) {
-            emitEvent({ type: "usage", usage: usageTokens, costUsd: stepCostUsd, modelVersion });
+            emitEvent({
+              type: "usage",
+              usage: usageTokens,
+              ...stepCostResolution,
+              costUsd: stepCostUsd,
+              modelVersion,
+            });
           }
 
           const responseToolCalls = extractOpenAiToolCalls((finalResponse as any).output);
@@ -6876,6 +6938,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               ...(responseContent ? { content: responseContent } : {}),
               toolCalls: [],
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               timing,
             });
@@ -6887,6 +6950,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 modelVersion,
                 step: turn,
                 usage: usageTokens,
+                ...stepCostResolution,
                 costUsd: stepCostUsd,
                 blocked,
                 responseChars: responseText.length,
@@ -7032,6 +7096,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             ...(responseContent ? { content: responseContent } : {}),
             toolCalls: stepToolCalls,
             usage: usageTokens,
+            ...stepCostResolution,
             costUsd: stepCostUsd,
             timing,
           });
@@ -7055,6 +7120,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               modelVersion,
               step: turn,
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               blocked,
               responseChars: responseText.length,
@@ -7179,16 +7245,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             response.model &&
             !providerInfo.serviceTier &&
             !isExperimentalChatGptModelId(request.model)
-              ? `chatgpt-${response.model}`
+              ? response.model
               : request.model;
           usageTokens = extractChatGptUsageTokens(response.usage);
-          const stepCostUsd = estimateCallCostUsd({
+          const stepCostResolution = await resolveCallCostUsd({
+            provider: providerInfo.publicProvider,
+            access: providerInfo.access,
             modelId: modelVersion,
             pricingModelId: request.model,
             tokens: usageTokens,
             responseImages: 0,
           });
-          totalCostUsd += stepCostUsd;
+          const stepCostUsd = stepCostResolution.costUsd;
+          totalCostUsd = addCosts(totalCostUsd, stepCostUsd);
 
           responseText = (response.text ?? "").trim();
           reasoningSummaryText = (response.reasoningSummaryText ?? "").trim();
@@ -7248,6 +7317,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               thoughts: reasoningSummaryText || undefined,
               toolCalls: [],
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               timing,
             });
@@ -7259,6 +7329,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 modelVersion,
                 step: turn,
                 usage: usageTokens,
+                ...stepCostResolution,
                 costUsd: stepCostUsd,
                 responseChars: responseText.length,
                 thoughtChars: reasoningSummaryText.length,
@@ -7411,6 +7482,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             thoughts: reasoningSummaryText || undefined,
             toolCalls,
             usage: usageTokens,
+            ...stepCostResolution,
             costUsd: stepCostUsd,
             timing,
           });
@@ -7434,6 +7506,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               modelVersion,
               step: turn,
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               responseChars: responseText.length,
               thoughtChars: reasoningSummaryText.length,
@@ -7470,15 +7543,25 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
     }
 
-    if (providerInfo.provider === "fireworks" || providerInfo.provider === "vercel") {
+    if (
+      providerInfo.provider === "fireworks" ||
+      providerInfo.provider === "vercel" ||
+      providerInfo.provider === "xai"
+    ) {
       if (request.modelTools && request.modelTools.length > 0) {
         throw new Error(
-          `${providerInfo.provider === "vercel" ? "Vercel" : "Fireworks"} provider does not support provider-native modelTools in runToolLoop.`,
+          `${providerInfo.provider === "vercel" ? "Vercel" : providerInfo.provider === "xai" ? "xAI" : "Fireworks"} provider does not support provider-native modelTools in runToolLoop.`,
         );
       }
 
       const provider = providerInfo.provider;
-      const runCall = provider === "vercel" ? runVercelCall : runFireworksCall;
+      const runCall: typeof runFireworksCall =
+        provider === "vercel"
+          ? runVercelCall
+          : provider === "xai"
+            ? (fn, modelId, options) =>
+                runXaiCall(fn, modelId ?? providerInfo.model, providerInfo.access, options)
+            : runFireworksCall;
       const fireworksTools = buildFireworksToolsFromToolSet(request.tools, provider);
       const messages: Array<Record<string, unknown>> = toFireworksMessages(contents);
 
@@ -7512,6 +7595,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         };
         const stepCallLogger = startLlmCallLoggerFromPayload({
           provider,
+          access: providerInfo.access,
           modelId: request.model,
           requestPayload: stepRequestPayload,
           step: turn,
@@ -7557,21 +7641,23 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           responseText = extractFireworksMessageText(message).trim();
 
           usageTokens = extractFireworksUsageTokens(response.usage, provider);
-          const stepCostUsd =
-            (provider === "vercel" ? extractVercelCostUsd(response) : undefined) ??
-            estimateCallCostUsd({
-              provider,
-              modelId: modelVersion,
-              pricingModelId: request.model,
-              tokens: usageTokens,
-              responseImages: 0,
-            });
-          totalCostUsd += stepCostUsd;
+          const stepCostResolution = await resolveCallCostUsd({
+            provider: providerInfo.publicProvider,
+            access: providerInfo.access,
+            reportedCostUsd: provider === "vercel" ? extractVercelCostUsd(response) : undefined,
+            modelId: modelVersion,
+            pricingModelId: providerInfo.model,
+            tokens: usageTokens,
+            responseImages: 0,
+          });
+          const stepCostUsd = stepCostResolution.costUsd;
+          totalCostUsd = addCosts(totalCostUsd, stepCostUsd);
 
           if (usageTokens) {
             request.onEvent?.({
               type: "usage",
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               modelVersion,
             });
@@ -7610,6 +7696,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               thoughts: reasoningContent || undefined,
               toolCalls: [],
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               timing,
             });
@@ -7622,6 +7709,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 finishReason,
                 step: turn,
                 usage: usageTokens,
+                ...stepCostResolution,
                 costUsd: stepCostUsd,
                 blocked,
                 responseChars: responseText.length,
@@ -7750,6 +7838,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             thoughts: reasoningContent || undefined,
             toolCalls: stepToolCalls,
             usage: usageTokens,
+            ...stepCostResolution,
             costUsd: stepCostUsd,
             timing,
           });
@@ -7765,6 +7854,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               finishReason,
               step: turn,
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               blocked,
               responseChars: responseText.length,
@@ -7992,13 +8082,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             for (const [key, value] of Object.entries(usage ?? {})) {
               if (typeof value === "number") priorUsage[key] = (priorUsage[key] ?? 0) + value;
             }
-            const costUsd = estimateCallCostUsd({
+            const costResolution = await resolveCallCostUsd({
+              provider: providerInfo.publicProvider,
+              access: providerInfo.access,
               modelId: state.message?.model || outcome.model,
               pricingModelId: request.model,
               tokens: usage,
               responseImages: 0,
             });
-            totalCostUsd += costUsd;
+            const costUsd = costResolution.costUsd;
+            totalCostUsd = addCosts(totalCostUsd, costUsd);
             const modelVersion = state.message?.model || outcome.model || request.model;
             const completedAtMs = last
               ? Date.now()
@@ -8016,6 +8109,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               thoughts: extracted.thoughts || (last ? outcome.thoughts : "") || undefined,
               toolCalls: state.toolCalls,
               usage,
+              ...costResolution,
               costUsd,
               timing: buildStepTiming({
                 stepStartedAtMs: previousCompletedAtMs,
@@ -8026,7 +8120,8 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               }),
             });
             previousCompletedAtMs = completedAtMs;
-            if (usage) request.onEvent?.({ type: "usage", usage, costUsd, modelVersion });
+            if (usage)
+              request.onEvent?.({ type: "usage", usage, ...costResolution, costUsd, modelVersion });
           }
           const lastStep = steps[steps.length - 1];
           finalText = terminalCall
@@ -8040,7 +8135,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               model: request.model,
               modelVersion: outcome.model,
               usage: reportedUsage,
-              costUsd: steps.slice(offset).reduce((sum, step) => sum + step.costUsd, 0),
+              costUsd: addCosts(...steps.slice(offset).map((step) => step.costUsd)),
               steps: steps.length - offset,
               finalStep: true,
             },
@@ -8159,17 +8254,21 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           if (!sawResponseDelta) pushDelta("response", fallback.text);
           if (!sawThoughtDelta) pushDelta("thought", fallback.thoughts);
           usageTokens = extractAnthropicUsageTokens(response.usage);
-          const stepCostUsd = estimateCallCostUsd({
+          const stepCostResolution = await resolveCallCostUsd({
+            provider: providerInfo.publicProvider,
+            access: providerInfo.access,
             modelId: modelVersion,
             pricingModelId: request.model,
             tokens: usageTokens,
             responseImages: 0,
           });
-          totalCostUsd += stepCostUsd;
+          const stepCostUsd = stepCostResolution.costUsd;
+          totalCostUsd = addCosts(totalCostUsd, stepCostUsd);
           if (usageTokens)
             request.onEvent?.({
               type: "usage",
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               modelVersion,
             });
@@ -8276,6 +8375,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             thoughts: thoughts || undefined,
             toolCalls,
             usage: usageTokens,
+            ...stepCostResolution,
             costUsd: stepCostUsd,
             timing,
           });
@@ -8296,6 +8396,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               finishReason,
               step: turn,
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               blocked,
               responseChars: responseText.length,
@@ -8491,13 +8592,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           response.modelParts,
           "output",
         );
-        const stepCostUsd = estimateCallCostUsd({
+        const stepCostResolution = await resolveCallCostUsd({
+          provider: providerInfo.publicProvider,
+          access: providerInfo.access,
           modelId: modelVersion,
           pricingModelId: request.model,
           tokens: usageTokens,
           responseImages: 0,
         });
-        totalCostUsd += stepCostUsd;
+        const stepCostUsd = stepCostResolution.costUsd;
+        totalCostUsd = addCosts(totalCostUsd, stepCostUsd);
 
         stepToolCallPayload = toLoggedGeminiToolCalls(response.functionCalls);
         stepToolCallText = serialiseLogArtifactText(stepToolCallPayload);
@@ -8522,6 +8626,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             thoughts: finalThoughts || undefined,
             toolCalls: [],
             usage: usageTokens,
+            ...stepCostResolution,
             costUsd: stepCostUsd,
             timing,
           });
@@ -8534,6 +8639,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               modelVersion,
               step: turn,
               usage: usageTokens,
+              ...stepCostResolution,
               costUsd: stepCostUsd,
               responseChars: responseText.length,
               thoughtChars: thoughtsText.length,
@@ -8679,6 +8785,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           thoughts: thoughtsText || undefined,
           toolCalls,
           usage: usageTokens,
+          ...stepCostResolution,
           costUsd: stepCostUsd,
           timing,
         });
@@ -8694,6 +8801,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             modelVersion,
             step: turn,
             usage: usageTokens,
+            ...stepCostResolution,
             costUsd: stepCostUsd,
             responseChars: responseText.length,
             thoughtChars: thoughtsText.length,
@@ -8848,7 +8956,7 @@ async function gradeGeneratedImage(params: {
     input: [{ role: "user", content: parts }],
     schema: IMAGE_GRADE_SCHEMA,
     telemetry: false,
-  });
+  } as LlmJsonRequest<z.infer<typeof IMAGE_GRADE_SCHEMA>>);
   return { grade: value.grade, result };
 }
 
@@ -8982,9 +9090,10 @@ async function generateImagesWithOpenAiImageApi(
     return [];
   }
 
-  const provider = resolveProvider(request.model).provider;
+  const provider = resolveProvider(request.model, request.provider, request.access).provider;
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
+    access: request.access,
     operation: "generateImages",
     provider,
     model: request.model,
@@ -8995,7 +9104,7 @@ async function generateImagesWithOpenAiImageApi(
   const hasStyleImages = Boolean(styleImages && styleImages.length > 0);
   const outputMimeType = resolveOpenAiImageMimeType(params.outputFormat);
   let totalUsage: LlmUsageTokens | undefined;
-  let costUsd = 0;
+  let costUsd: number | null = 0;
   let outputImages = 0;
 
   telemetry.emit({
@@ -9054,13 +9163,16 @@ async function generateImagesWithOpenAiImageApi(
       outputImages = images.length;
       const usage = extractOpenAiUsageTokens((response as { usage?: unknown }).usage);
       totalUsage = sumUsageTokens(totalUsage, usage);
-      costUsd += estimateCallCostUsd({
-        modelId: request.model,
-        tokens: usage,
-        responseImages: data.length,
-        imageSize: params.size,
-        imageQuality: params.quality,
-      });
+      costUsd = addCosts(
+        costUsd,
+        estimateCallCostUsd({
+          modelId: request.model,
+          tokens: usage,
+          responseImages: data.length,
+          imageSize: params.size,
+          imageQuality: params.quality,
+        }),
+      );
     }
 
     telemetry.emit({
@@ -9091,7 +9203,7 @@ async function generateImagesWithOpenAiImageApi(
 }
 
 async function generateImagesWithChatGptImageApi(
-  request: LlmChatGptGenerateImagesRequest,
+  request: LlmSubscriptionGenerateImagesRequest,
 ): Promise<LlmImageData[]> {
   const promptEntries = Array.from(request.imagePrompts, (rawPrompt, index) => {
     const prompt = rawPrompt.trim();
@@ -9122,9 +9234,10 @@ async function generateImagesWithChatGptImageApi(
     );
   }
 
-  const providerInfo = resolveProvider(request.model);
+  const providerInfo = resolveProvider(request.model, request.provider, request.access);
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
+    access: request.access,
     operation: "generateImages",
     provider: providerInfo.provider,
     model: request.model,
@@ -9138,7 +9251,8 @@ async function generateImagesWithChatGptImageApi(
     throw new Error("ChatGPT image edits support at most 5 style images.");
   }
   let totalUsage: LlmUsageTokens | undefined;
-  let costUsd = 0;
+  const costUsd = null;
+  let apiEquivalentCostUsd: number | null = 0;
   let outputImages = 0;
 
   telemetry.emit({
@@ -9185,13 +9299,16 @@ async function generateImagesWithChatGptImageApi(
       outputImages = images.length;
       const usage = extractOpenAiUsageTokens(response.usage);
       totalUsage = sumUsageTokens(totalUsage, usage);
-      costUsd += estimateCallCostUsd({
-        modelId: request.model,
-        tokens: usage,
-        responseImages: response.data.length,
-        imageSize: response.size ?? "auto",
-        imageQuality: response.quality ?? "auto",
-      });
+      apiEquivalentCostUsd = addCosts(
+        apiEquivalentCostUsd,
+        estimateCallCostUsd({
+          modelId: request.model,
+          tokens: usage,
+          responseImages: response.data.length,
+          imageSize: response.size ?? "auto",
+          imageQuality: response.quality ?? "auto",
+        }),
+      );
     }
 
     telemetry.emit({
@@ -9201,6 +9318,8 @@ async function generateImagesWithChatGptImageApi(
       modelVersion: request.model,
       usage: totalUsage,
       costUsd,
+      costSource: "subscription",
+      apiEquivalentCostUsd,
       imageCount: images.length,
       attempts: promptEntries.length,
     });
@@ -9213,6 +9332,8 @@ async function generateImagesWithChatGptImageApi(
       durationMs: Math.max(0, Date.now() - startedAtMs),
       usage: totalUsage,
       costUsd,
+      costSource: "subscription",
+      apiEquivalentCostUsd,
       imageCount: outputImages,
       error: err.message,
     });
@@ -9223,6 +9344,7 @@ async function generateImagesWithChatGptImageApi(
 }
 
 export async function generateImages(request: LlmGenerateImagesRequest): Promise<LlmImageData[]> {
+  resolveModelRef(request);
   if (isOpenAiGenerateImagesRequest(request)) {
     return await generateImagesWithOpenAiImageApi(request);
   }
@@ -9253,8 +9375,9 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
 
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
+    access: request.access,
     operation: "generateImages",
-    provider: resolveProvider(request.model).provider,
+    provider: resolveProvider(request.model, request.provider, request.access).provider,
     model: request.model,
   });
   const startedAtMs = Date.now();
@@ -9327,7 +9450,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
 
   const orderedEntries = [...promptEntries];
   const resolvedImages = new Map<number, LlmImageData>();
-  let totalCostUsd = 0;
+  let totalCostUsd: number | null = 0;
   let totalUsage: LlmUsageTokens | undefined;
   let attemptsUsed = 0;
 
@@ -9360,7 +9483,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
             imageSize: request.imageSize ?? "2K",
             telemetry: false,
           });
-          totalCostUsd += result.costUsd;
+          totalCostUsd = addCosts(totalCostUsd, result.costUsd);
           totalUsage = sumUsageTokens(totalUsage, result.usage);
           if (result.blocked || !result.content) {
             continue;
@@ -9394,7 +9517,7 @@ export async function generateImages(request: LlmGenerateImagesRequest): Promise
               if (!gradeResult || !entry || !image) {
                 continue;
               }
-              totalCostUsd += gradeResult.result.costUsd;
+              totalCostUsd = addCosts(totalCostUsd, gradeResult.result.costUsd);
               totalUsage = sumUsageTokens(totalUsage, gradeResult.result.usage);
               if (gradeResult.grade === "pass") {
                 resolvedImages.set(entry.index, image as LlmImageData);

@@ -8,6 +8,7 @@ import {
   streamText,
   tool,
   type LlmTextModelId,
+  type LlmTextModelRef,
   type LlmTextResult,
   type LlmUsageTokens,
 } from "../src/index.js";
@@ -19,25 +20,34 @@ import {
 const newModels = [
   "gemini-4-argon",
   "gemini-3.8-flash",
-  "haiku-5-5",
-  "sonnet-5-5",
-  "opus-5-5",
-  "fable-5-1",
+  "claude-haiku-5-5",
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+  "claude-fable-5-1",
 ] as const satisfies readonly LlmTextModelId[];
 type NewModel = (typeof newModels)[number];
 
 const requestedModels = process.env.LLM_INTEGRATION_MODELS?.trim()
   ? resolveIntegrationRequestedModels()
-  : newModels;
+  : newModels.map((model) =>
+      isAnthropicModelId(model)
+        ? { provider: "anthropic" as const, access: "api" as const, model }
+        : { provider: "google" as const, access: "api" as const, model },
+    );
 if (
   requestedModels.length === 0 ||
-  requestedModels.some((model) => !(newModels as readonly string[]).includes(model))
+  requestedModels.some(
+    (ref) =>
+      ref.access === "subscription" ||
+      !(newModels as readonly string[]).includes(ref.model) ||
+      (ref.provider !== "anthropic" && ref.provider !== "google"),
+  )
 ) {
   throw new Error(
     `LLM_INTEGRATION_MODELS must select models in the new Gemini/Claude matrix: ${newModels.join(", ")}`,
   );
 }
-const models = requestedModels as readonly NewModel[];
+const models = requestedModels as readonly (LlmTextModelRef & { model: NewModel })[];
 assertIntegrationCredentialsForModels(models);
 
 // Independent Standard API price fixtures, USD per million tokens, verified October 22, 2026:
@@ -54,15 +64,15 @@ function ratesFor(model: NewModel, promptTokens: number) {
       return Date.now() < Date.parse("2027-01-01T00:00:00Z")
         ? { input: 0.75, output: 3.75, cached: 0.075, write5m: 0, write1h: 0 }
         : { input: 1.5, output: 7.5, cached: 0.15, write5m: 0, write1h: 0 };
-    case "haiku-5-5":
+    case "claude-haiku-5-5":
       return promptTokens <= 100_000
         ? { input: 0.1, output: 0.5, cached: 0.01, write5m: 0.125, write1h: 0.2 }
         : { input: 0.5, output: 2.5, cached: 0.05, write5m: 0.625, write1h: 1 };
-    case "sonnet-5-5":
+    case "claude-sonnet-5-5":
       return { input: 2, output: 10, cached: 0.1, write5m: 2.5, write1h: 4 };
-    case "opus-5-5":
+    case "claude-opus-5-5":
       return { input: 4, output: 20, cached: 0.2, write5m: 5, write1h: 8 };
-    case "fable-5-1":
+    case "claude-fable-5-1":
       return { input: 10, output: 50, cached: 0.25, write5m: 12.5, write1h: 20 };
   }
 }
@@ -85,7 +95,11 @@ function expectedCostUsd(model: NewModel, usage: LlmUsageTokens): number {
   );
 }
 
-function expectUsageAndCost(model: NewModel, usage: LlmUsageTokens | undefined, costUsd: number) {
+function expectUsageAndCost(
+  model: NewModel,
+  usage: LlmUsageTokens | undefined,
+  costUsd: number | null,
+) {
   expect(usage?.promptTokens).toBeGreaterThan(0);
   expect(usage?.responseTokens).toBeGreaterThan(0);
   expect(usage?.totalTokens).toBeGreaterThan(0);
@@ -95,7 +109,7 @@ function expectUsageAndCost(model: NewModel, usage: LlmUsageTokens | undefined, 
 }
 
 function expectProvider(model: NewModel, result: LlmTextResult) {
-  expect(result.provider).toBe(isAnthropicModelId(model) ? "anthropic" : "gemini");
+  expect(result.provider).toBe(isAnthropicModelId(model) ? "anthropic" : "google");
   expect(result.model).toBe(model);
   expect(result.modelVersion.length).toBeGreaterThan(0);
   expect(result.blocked).toBe(false);
@@ -103,14 +117,15 @@ function expectProvider(model: NewModel, result: LlmTextResult) {
 }
 
 describe.concurrent("integration: new Gemini and Claude models", () => {
-  for (const model of models) {
+  for (const ref of models) {
+    const { model } = ref;
     it(`${model}: streams response deltas with usage and verified cost`, async () => {
-      const call = streamText({ model, input: "Return exactly: OK", thinkingLevel: "low" });
+      const call = streamText({ ...ref, input: "Return exactly: OK", thinkingLevel: "low" });
       const streamed = (async () => {
         let response = "";
         let deltas = 0;
         let usage: LlmUsageTokens | undefined;
-        let costUsd: number | undefined;
+        let costUsd: number | null | undefined;
         for await (const event of call.events) {
           if (event.type === "delta" && event.channel === "response") {
             response += event.text;
@@ -139,7 +154,7 @@ describe.concurrent("integration: new Gemini and Claude models", () => {
         .object({ ok: z.boolean(), count: z.number().int(), message: z.string() })
         .strict();
       const { value, result } = await generateJson({
-        model,
+        ...ref,
         input: 'Return exactly this JSON object: {"ok":true,"count":3,"message":"hello"}.',
         schema,
         thinkingLevel: "low",
@@ -154,7 +169,7 @@ describe.concurrent("integration: new Gemini and Claude models", () => {
       const invocations: { index: number }[] = [];
       const code = "TOOL_RESULT_87319";
       const result = await runToolLoop({
-        model,
+        ...ref,
         input: [
           {
             role: "system",
@@ -196,7 +211,7 @@ describe.concurrent("integration: new Gemini and Claude models", () => {
       }
       expect(result.totalCostUsd).toBeGreaterThan(0);
       expect(result.totalCostUsd).toBeCloseTo(
-        result.steps.reduce((sum, step) => sum + step.costUsd, 0),
+        result.steps.reduce((sum, step) => sum + (step.costUsd ?? Number.NaN), 0),
         12,
       );
     }, 180_000);

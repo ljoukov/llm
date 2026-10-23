@@ -163,7 +163,9 @@ describe("streamToolLoop steering", () => {
 
     const { streamToolLoop, tool } = await import("../src/llm.js");
     const call = streamToolLoop({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: "start",
       tools: {
         noop: tool({

@@ -87,11 +87,16 @@ export async function streamFireworksChatCompletion(
   options: {
     readonly signal?: AbortSignal;
     readonly onDelta?: (channel: "thought" | "response", text: string) => void;
-    readonly provider?: "fireworks" | "vercel";
+    readonly provider?: "fireworks" | "vercel" | "xai";
   } = {},
 ): Promise<FireworksChatCompletion> {
   const { signal, onDelta } = options;
-  const providerName = options.provider === "vercel" ? "Vercel AI Gateway" : "Fireworks";
+  const providerName =
+    options.provider === "vercel"
+      ? "Vercel AI Gateway"
+      : options.provider === "xai"
+        ? "xAI"
+        : "Fireworks";
   signal?.throwIfAborted();
 
   let stream: CompletionStream | undefined;

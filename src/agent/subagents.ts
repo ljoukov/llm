@@ -2,13 +2,8 @@ import { randomBytes } from "node:crypto";
 
 import { z } from "zod";
 
-import {
-  tool,
-  type LlmInputMessage,
-  type LlmTextModelId,
-  type LlmToolLoopResult,
-  type LlmToolSet,
-} from "../llm.js";
+import { tool, type LlmInputMessage, type LlmToolLoopResult, type LlmToolSet } from "../llm.js";
+import type { ResolvedModelRef } from "../model-selection.js";
 
 const DEFAULT_SUBAGENT_MAX_AGENTS = 6;
 const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
@@ -100,7 +95,7 @@ export type ResolvedAgentSubagentToolConfig = {
 export type SubagentRunRequest = {
   readonly agentId: string;
   readonly depth: number;
-  readonly model: LlmTextModelId;
+  readonly route: ResolvedModelRef;
   readonly input: readonly LlmInputMessage[];
   readonly instructions?: string;
   readonly maxSteps?: number;
@@ -110,7 +105,7 @@ export type SubagentRunRequest = {
 export type CreateSubagentToolControllerOptions = {
   readonly config: ResolvedAgentSubagentToolConfig;
   readonly parentDepth: number;
-  readonly parentModel: LlmTextModelId;
+  readonly parentRoute: ResolvedModelRef;
   readonly forkContextMessages?: readonly LlmInputMessage[];
   readonly runSubagent: (request: SubagentRunRequest) => Promise<LlmToolLoopResult>;
   readonly onBackgroundMessage?: (message: string) => void;
@@ -143,7 +138,7 @@ type SubagentNotification =
 type ManagedSubagent = {
   id: string;
   depth: number;
-  model: LlmTextModelId;
+  readonly route: ResolvedModelRef;
   nickname?: string;
   agentRole: string;
   status: SubagentStatus;
@@ -392,6 +387,7 @@ export function createSubagentToolController(
     };
   }
 
+  const parentRoute = Object.freeze({ ...options.parentRoute });
   const agents = new Map<string, ManagedSubagent>();
   const roleNicknameCounts = new Map<string, number>();
 
@@ -432,7 +428,7 @@ export function createSubagentToolController(
         const agent: ManagedSubagent = {
           id,
           depth: childDepth,
-          model: options.parentModel,
+          route: parentRoute,
           ...(nickname ? { nickname } : {}),
           agentRole: roleName,
           status: "idle",
@@ -857,7 +853,7 @@ function startRun(
       const result = await options.runSubagent({
         agentId: agent.id,
         depth: agent.depth,
-        model: agent.model,
+        route: agent.route,
         input,
         instructions: agent.instructions,
         maxSteps: agent.maxSteps,
@@ -968,7 +964,9 @@ function buildSnapshot(agent: ManagedSubagent): Record<string, unknown> {
     agent_role: agent.agentRole,
     status: agent.status,
     depth: agent.depth,
-    model: agent.model,
+    provider: agent.route.provider,
+    access: agent.route.access,
+    model: agent.route.model,
     pending_inputs: agent.pendingInputs.length,
     turns: agent.turns,
     created_at: new Date(agent.createdAtMs).toISOString(),

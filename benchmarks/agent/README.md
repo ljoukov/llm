@@ -6,21 +6,22 @@ This benchmark evaluates a filesystem-based agent that must:
 - read JSON schema files from disk,
 - write a required set of JSON outputs that satisfy those schemas,
 - ground claims in report evidence (line refs and quotes), and
-- pass an LLM grader (`chatgpt-gpt-6-luna`) for fidelity and coverage.
+- pass an LLM grader (`openai:subscription:gpt-6-luna`) for fidelity and coverage.
 
 It runs the agent with (default model set):
 
-- ChatGPT Codex (Spark): `chatgpt-gpt-6-luna`
+- ChatGPT Codex (Spark): `openai:subscription:gpt-6-luna`
 - OpenAI Responses: `gpt-6-sol`, `gpt-6-luna`
-- Fireworks: `kimi-k3`, `glm-5.3`, `deepseek-v4.1-flash-1017`
-- Gemini Pro: `gemini-2.5-pro`, `gemini-3.1-pro-preview`
-- Gemini Flash: `gemini-flash-latest`, `gemini-3-flash-preview`
+- Open models (automatic Vercel/Fireworks routing): `kimi-k3`, `glm-5.3`, `deepseek-v4.1-flash-1017`
+- Google Gemini: `gemini-4-argon`, `gemini-3.8-flash`
 
 The tasks are adapted from real science papers and stored under `benchmarks/agent/input/`.
 Default run uses one shared task (`tumor-vaccine-ici`) across all models so Codex vs Gemini is directly comparable.
 Each case runs in one of two variants: `baseline` (subagents disabled) and `subagents` (subagents enabled).
 By default the harness runs both variants for fair side-by-side comparison.
 Runs execute models in parallel and tasks/variants/runs sequentially per model.
+
+Use `provider:access:model` for explicit routing, including arbitrary Vercel publisher/model IDs. For example: `--models vercel:api:reflection/beam-free,vercel:api:nvidia/nemotron-3.5-lightning-free`. Known bare model IDs retain automatic routing. Unavailable prices are reported as `unknown`.
 
 ## Run
 
@@ -51,12 +52,12 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-6-luna,gpt-6-sol,gpt-6-luna,kimi-k3,glm-5.3,deepseek-v4.1-flash-1017,gemini-2.5-pro,gemini-flash-latest,gemini-3.1-pro-preview,gemini-3-flash-preview \
+  --models openai:subscription:gpt-6-luna,gpt-6-sol,gpt-6-luna,kimi-k3,glm-5.3,deepseek-v4.1-flash-1017,gemini-4-argon,gemini-3.8-flash \
   --tasks all \
   --variants baseline,subagents \
   --runs 3 \
   --reasoning medium \
-  --grader-model chatgpt-gpt-6-luna \
+  --grader-model openai:subscription:gpt-6-luna \
   --max-steps 100
 ```
 
@@ -70,7 +71,7 @@ Patch `traces/latest` with only newly rerun cases (keep older model/task results
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models chatgpt-gpt-6-luna,gpt-6-sol \
+  --models openai:subscription:gpt-6-luna,gpt-6-sol \
   --tasks all \
   --merge-latest
 ```
@@ -87,7 +88,7 @@ npx tsx benchmarks/agent/run.ts \
    - at least one successful write call.
    - path policy checks: no absolute paths and no `..` traversal in tool arguments.
    - trace artifacts are written to `filesystem-access-trace.json` and `agent-run.json`.
-4. LLM grading with `chatgpt-gpt-6-luna`:
+4. LLM grading with `openai:subscription:gpt-6-luna`:
    - faithfulness,
    - coverage,
    - practical usefulness.

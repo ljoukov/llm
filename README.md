@@ -7,19 +7,19 @@
 
 Unified TypeScript wrapper over:
 
-- **OpenAI Responses API** (`openai`)
-- **Anthropic Claude API** via short `haiku-*`, `sonnet-*`, `opus-*`, and `fable-*` model ids
-- **Claude Code subscription models** via `claude-*` model ids and the locally authenticated Claude Code runtime
-- **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`@google/genai`)
-- **Vercel AI Gateway or Fireworks** for DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3
-- **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
+- **OpenAI Responses API** and **ChatGPT subscription access** (`provider: "openai"`)
+- **Anthropic Claude API** and **Claude Code subscription access** (`provider: "anthropic"`)
+- **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`provider: "google"`)
+- **Vercel AI Gateway** with namespaced model passthrough (`provider: "vercel"`)
+- **Fireworks** for DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3 (`provider: "fireworks"`)
+- **xAI Grok API** and **Grok CLI subscription access** (`provider: "xai"`)
 - **Agentic orchestration with subagents** via `runAgentLoop()` + built-in delegation control tools
 
 Designed around a single streaming API that yields:
 
 - response text deltas
 - thought (reasoning summary) deltas
-- usage token counts + estimated USD cost
+- usage token counts + reported or estimated USD cost, with unknown prices represented explicitly
 
 ## Install
 
@@ -28,6 +28,87 @@ npm i @ljoukov/llm
 ```
 
 Requires Node.js 22 or newer.
+
+## Model selection
+
+Use a typed provider, a model ID, and an optional access mode on every generation or agent request:
+
+```ts
+import { generateText, parseModelRef, type LlmModelRef } from "@ljoukov/llm";
+
+const model = {
+  provider: "vercel",
+  model: "reflection/beam-free",
+} satisfies LlmModelRef;
+
+const result = await generateText({ ...model, input: "Return exactly: OK" });
+
+const subscriptionResult = await generateText({
+  provider: "openai",
+  model: "gpt-6.1-sol-fast",
+  access: "subscription",
+  input: "Return exactly: OK",
+});
+
+// Configuration and CLI values can use an explicit provider:access:model slug.
+const selection = parseModelRef("openai:subscription:gpt-6.1-sol-fast");
+const configuredResult = await generateText({ ...selection, input: "Return exactly: OK" });
+```
+
+`access` is `"api"` by default. `"subscription"` selects the provider's locally authenticated subscription transport;
+it never falls back to a paid API key. An explicit provider always takes precedence over environment-based selection.
+The discriminated `LlmModelRef` type rejects unsupported provider/model/access combinations.
+
+| Provider | Access | Models |
+| --- | --- | --- |
+| `openai` | API or subscription | Separate closed literal allowlists of native `gpt-*` IDs, including `-fast` variants |
+| `anthropic` | API or subscription | Native `claude-*` IDs on either route |
+| `google` | API | Supported Gemini IDs, authenticated with a Gemini key or Vertex service account |
+| `fireworks` | API | The three listed short IDs below |
+| `vercel` | API | Known short IDs or a namespaced `publisher/model` ID |
+| `xai` | API or subscription | Grok models exposed by the respective route |
+
+Vercel namespaced IDs use the template literal type `` `${string}/${string}` ``. The library accepts future catalog
+entries without a package release and validates nonempty namespace/model segments and whitespace at runtime.
+For example, all of these are valid Vercel selections:
+
+```ts
+const models = [
+  { provider: "vercel", model: "reflection/beam-free" },
+  { provider: "vercel", model: "nvidia/nemotron-3.5-lightning-free" },
+  { provider: "vercel", model: "moonshotai/kimi-k3.1-pro" },
+  { provider: "vercel", model: "minimax/minimax-m3" },
+  { provider: "vercel", model: "zai/glm-5.3" },
+] satisfies LlmModelRef[];
+```
+
+A namespaced ID requires an explicit Vercel provider. Accepting an ID passes the request through; the provider still
+controls availability, credentials, limits, supported modalities, tools, structured outputs, and reasoning options.
+OpenAI IDs remain closed allowlists; selecting another provider does not open the direct OpenAI route to arbitrary strings.
+
+`parseModelRef()` requires all three fields: `"<provider>:<api|subscription>:<model>"`. It splits the first two colons and
+preserves the remaining model ID, including any provider-native colons. Object selections are the canonical API.
+For known short IDs, omitting `provider` retains model-based inference and Vercel/Fireworks preference. Prefer explicit
+objects when storing or sharing model configurations.
+
+### Migrating to version 12
+
+Version 12 removes route-encoding aliases without compatibility fallbacks:
+
+| Previous selection | Version 12 selection |
+| --- | --- |
+| `model: "chatgpt-gpt-6.1-sol"` | `provider: "openai", model: "gpt-6.1-sol", access: "subscription"` |
+| `model: "chatgpt-gpt-6.1-sol-fast"` | `provider: "openai", model: "gpt-6.1-sol-fast", access: "subscription"` |
+| `model: "sonnet-5-5"` | `provider: "anthropic", model: "claude-sonnet-5-5"` |
+| `model: "claude-sonnet-5-5"` for a subscription | `provider: "anthropic", model: "claude-sonnet-5-5", access: "subscription"` |
+| `model: "chatgpt-gpt-image-2"` | `provider: "openai", model: "gpt-image-2", access: "subscription"` |
+| `provider: "claude"` or `provider: "chatgpt"` | `provider: "anthropic"` or `provider: "openai"`, with `access: "subscription"` |
+| Subscription API-equivalent estimate in `costUsd` | `costUsd: null`, `costSource: "subscription"`, separate `apiEquivalentCostUsd` |
+| Unknown model price represented as `0` | `costUsd: null`, `costSource: "unknown"` |
+
+The `CHATGPT_*` environment variables still configure the OpenAI subscription transport and its token-provider/proxy
+services; their names are independent of public model selection. `-fast` remains a typed variant that sends the base
+OpenAI model with priority processing. Subagents inherit the complete resolved selection.
 
 ## Environment variables
 
@@ -103,8 +184,9 @@ Keep provider keys in server-side environment variables or a git-ignored `.env.l
 
 ### Claude Code subscription models
 
-Install Claude Code and sign in with your Claude subscription using `claude auth login`. The `claude-*` models reuse
-that local login through the Claude Agent SDK, which launches Claude Code as a subprocess. They require a local
+Install Claude Code and sign in with your Claude subscription using `claude auth login`. Requests with
+`provider: "anthropic", access: "subscription"` reuse that local login through the Claude Agent SDK, which launches
+Claude Code as a subprocess. They require a local
 Node.js environment where Claude Code can run; the subscription route is unsuitable for edge runtimes.
 The executable defaults to `claude` on `PATH`; set `LLM_CLAUDE_EXECUTABLE` to use a specific installation.
 
@@ -132,12 +214,13 @@ const result = await generateText({
 });
 ```
 
-Provider selection applies only to these shared model IDs. OpenAI, ChatGPT, Anthropic, Claude Code subscription,
-and Gemini model IDs retain their existing routes.
+This automatic preference applies only to the three shared short IDs when `provider` is omitted. An explicit provider
+always wins. Namespaced Vercel IDs require `provider: "vercel"`. Other providers require their own credentials; the
+presence of a Vercel key does not redirect an explicit OpenAI, Anthropic, Google, Fireworks, or xAI request.
 
 ### ChatGPT subscription models
 
-By default, `chatgpt-*` models reuse the ChatGPT OAuth tokens stored by the Codex CLI:
+Requests with `provider: "openai", access: "subscription"` reuse the ChatGPT OAuth tokens stored by the Codex CLI:
 
 - `${CODEX_HOME:-~/.codex}/auth.json`
 
@@ -158,20 +241,44 @@ This repo includes a Cloudflare Workers token provider implementation in `worker
 It also includes a minimal Vercel streaming proxy app in `vercel/codex-proxy/`.
 
 If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` plus `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` (or the legacy
-`CHATGPT_AUTH_API_KEY`) are set, `chatgpt-*` models fetch a newly selected account from the token provider for each
+`CHATGPT_AUTH_API_KEY`) are set, OpenAI subscription requests fetch a newly selected account from the token provider for each
 top-level request and do not read the local Codex auth store. The included Worker rotates atomically across enabled
 subscription accounts and records which named caller received which account. See
 `workers/chatgpt-auth/README.md` for browser-assisted account login and caller-management commands.
 
-If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, `chatgpt-*` text and image requests are sent
+If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, OpenAI subscription text and image requests are sent
 through that proxy and the local process does not need access to the Codex auth store or token provider. The Vercel
 proxy fetches short-lived ChatGPT access tokens from `workers/chatgpt-auth`; it streams Responses traffic and forwards
 Images JSON. These proxy bearer tokens should be server-side environment variables; do not expose them in browser
 bundles.
 
+### xAI Grok
+
+- `XAI_API_KEY` for API access
+- `XAI_BASE_URL` (optional API endpoint override; defaults to `https://api.x.ai/v1`)
+- `XAI_TIMEOUT_MS` (optional request timeout in milliseconds)
+
+For subscription access, install the official Grok CLI and sign in:
+
+```sh
+npm i -g @xai-official/grok
+grok login
+# For a headless login, use: grok login --device-auth
+```
+
+The library reuses the Grok CLI login in `~/.grok/auth.json`; `GROK_HOME` or `GROK_AUTH_PATH` can select the CLI's
+alternate auth location. The official CLI owns token refresh and refresh-token rotation, including its cross-process
+lock. Expired or rejected credentials may invoke `grok --no-auto-update models` to refresh through that CLI.
+
+Subscription inference goes directly to the official CLI chat proxy at `https://cli-chat-proxy.grok.com/v1`, using
+its streaming chat-completions interface as documented in the
+[Grok CLI README](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/README.md#using-authjson-for-api-access). The package retains control of its own tool loop. Subscription traffic does
+not use `XAI_BASE_URL` or fall back to `XAI_API_KEY`. A valid local login and its plan's model access are required;
+authentication failures direct you back to `grok login`.
+
 ### Responses transport
 
-For OpenAI and `chatgpt-*` model paths, this library now tries **Responses WebSocket transport first** and falls back
+For both OpenAI API and subscription requests, this library tries **Responses WebSocket transport first** and falls back
 to HTTP/SSE automatically when needed.
 
 - `auto` (default): try WebSocket first, then fall back to SSE
@@ -197,7 +304,7 @@ configureModelConcurrency({
     vercel: 8,
     fireworks: 8,
     anthropic: 4,
-    claude: 2,
+    xai: 4,
   },
   modelCaps: {
     "gpt-6-luna": 24,
@@ -218,7 +325,8 @@ Default caps (without configuration):
 - Vercel AI Gateway: `6`
 - Fireworks: `6`
 - Anthropic: `4`
-- Claude Code subscription: `2`
+- Anthropic subscription access: `2`
+- xAI: `3`
 
 ## Usage
 
@@ -234,23 +342,24 @@ Use OpenAI-style request fields:
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Write one sentence about TypeScript.",
 });
 
 console.log(result.text);
-console.log(result.usage, result.costUsd);
+console.log(result.usage, result.costUsd, result.costSource);
 ```
 
 ### Image Generation
 
-`generateImages()` is the low-level, direct image API. Its `model` selects both the credential
-route and the image endpoint; no GPT text model is involved:
+`generateImages()` is the low-level, direct image API. Set `provider: "openai"`, `model: "gpt-image-2"`, and the
+credential route; no GPT text model is involved:
 
-| Library model | Authentication and billing | Endpoint |
+| Access | Authentication and billing | Endpoint |
 | --- | --- | --- |
-| `gpt-image-2` | `OPENAI_API_KEY` / public API billing | OpenAI Images API `/v1/images/generations` or `/v1/images/edits` |
-| `chatgpt-gpt-image-2` | ChatGPT/Codex login / subscription allowance | ChatGPT Codex `/backend-api/codex/images/generations` or `/backend-api/codex/images/edits` |
+| `"api"` (default) | `OPENAI_API_KEY` / public API billing | OpenAI Images API `/v1/images/generations` or `/v1/images/edits` |
+| `"subscription"` | ChatGPT/Codex login / subscription allowance | ChatGPT Codex `/backend-api/codex/images/generations` or `/backend-api/codex/images/edits` |
 
 Providing `styleImages` selects the corresponding edit endpoint. Otherwise, the generation
 endpoint is used. The subscription path calls GPT Image 2 directly; it does not send the prompt
@@ -271,6 +380,7 @@ import {
 const customResolution = "1440x960" satisfies LlmOpenAiImageResolution;
 
 const images = await generateImages({
+  provider: "openai",
   model: "gpt-image-2",
   stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
   imagePrompts: ["A compact lab bench still life with glassware and an open notebook"],
@@ -286,6 +396,7 @@ console.log(images[0]?.mimeType, images[0]?.data.byteLength);
 
 // Use imageResolution instead when exact/custom dimensions are required.
 const exactImages = await generateImages({
+  provider: "openai",
   model: "gpt-image-2",
   stylePrompt: "Technical product illustration.",
   imagePrompts: ["An exploded view of a mechanical keyboard switch"],
@@ -334,12 +445,14 @@ before relying on a snapshot.
 
 #### Direct ChatGPT subscription API
 
-To use ChatGPT/Codex subscription-backed image generation instead of the public Images API, use
-`chatgpt-gpt-image-2`:
+To use ChatGPT/Codex subscription-backed image generation, select `provider: "openai", access: "subscription"`
+with the same `gpt-image-2` model ID:
 
 ```ts
 const images = await generateImages({
-  model: "chatgpt-gpt-image-2",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-image-2",
   stylePrompt: "Warm amber desk light, deep blue night, cinematic laboratory mood.",
   imagePrompts: [
     "Create a tall upright 2:3 portrait canvas showing a compact lab bench with glassware and an open notebook. The final image must be taller than it is wide.",
@@ -348,15 +461,15 @@ const images = await generateImages({
 });
 ```
 
-This route reuses the same ChatGPT auth setup as other `chatgpt-*` models. It supports
+This route reuses the same ChatGPT auth setup as OpenAI subscription text requests. It supports
 `background`; up to five `styleImages` can be supplied for an edit. It returns one image per
 `imagePrompts` entry, so repeat or vary entries when multiple images are needed. The library always
 sends `n: 1`, `size: "auto"`, and `quality: "auto"`, and therefore does not expose structured image
-count, size, resolution, or quality properties on `LlmChatGptGenerateImagesRequest`. The current
+count, size, resolution, or quality properties on `LlmSubscriptionGenerateImagesRequest`. The current
 subscription endpoint returns PNG and does not expose request controls for `outputFormat`,
-`outputCompression`, `moderation`, or `action`. Telemetry records an API-equivalent `costUsd`
-estimate from returned usage, or the service's returned quality/size when usage is absent. These
-estimates are for comparison; they are not subscription charges or remaining plan allowance.
+`outputCompression`, `moderation`, or `action`. Telemetry sets `costUsd` to `null` and records an
+`apiEquivalentCostUsd` estimate from returned usage, or the service's returned quality/size when usage is absent.
+These estimates are for comparison; they are not subscription charges or remaining plan allowance.
 
 Put the desired canvas orientation or aspect ratio directly in `imagePrompts`. In a live check on
 July 13, 2026, prompt instructions selected all three canvas shapes while the request kept size,
@@ -382,7 +495,9 @@ always the text/reasoning model that decides whether to invoke image generation:
 import { runAgentLoop } from "@ljoukov/llm";
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-5.6-sol",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-5.6-sol",
   input:
     "Create a very wide panoramic 3:1 landscape canvas illustrating a moonlit paper-cut forest. The final image must be much wider than it is tall.",
   imageGenerationTool: true,
@@ -398,8 +513,8 @@ By default, the convenience option follows the outer model's credential route:
 - A ChatGPT-authenticated text model receives a runtime `image_generation` function tool that
   directly calls the subscription Images endpoint with `model: "gpt-image-2"`.
 
-Set `imageGenerationTool.model` to override that default and choose the other credential route.
-Structured size and quality options require an explicit public `model: "gpt-image-2"`; subscription
+Set `imageGenerationTool` to an explicit `{ provider: "openai", model: "gpt-image-2", access }` object to override that default.
+Structured size and quality options require API access; subscription
 tools derive aspect ratio from the prompt and let the service select quality automatically.
 
 For advanced routing, wire the tool explicitly. This example deliberately uses a public OpenAI
@@ -409,12 +524,15 @@ text model for orchestration and the ChatGPT subscription for rendering:
 import { createImageGenerationTool, runToolLoop } from "@ljoukov/llm";
 
 const result = await runToolLoop({
+  provider: "openai",
   model: "gpt-5.6",
   input:
     "Generate a tall upright 2:3 portrait poster canvas of a glass observatory above the clouds. The final image must be taller than it is wide.",
   tools: {
     image_generation: createImageGenerationTool({
-      model: "chatgpt-gpt-image-2",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-image-2",
     }),
   },
 });
@@ -425,6 +543,7 @@ returned as an `inlineData` part in `result.content`:
 
 ```ts
 const result = await runToolLoop({
+  provider: "openai",
   model: "gpt-5.6",
   input: "Generate a wide watercolor panorama of a coastal village.",
   tools: {},
@@ -456,6 +575,7 @@ surface those intermediate images as events.
 import { streamText } from "@ljoukov/llm";
 
 const call = streamText({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Explain what a hash function is in one paragraph.",
 });
@@ -502,7 +622,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-6-luna", input });
+const result = await generateText({ provider: "openai", model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -530,7 +650,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-6-luna", input });
+const result = await generateText({ provider: "openai", model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -588,7 +708,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-6-luna", input });
+const result = await generateText({ provider: "openai", model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -605,6 +725,7 @@ You can also control image analysis fidelity with request-level `mediaResolution
 
 ```ts
 const result = await generateText({
+  provider: "openai",
   model: "gpt-6-sol",
   mediaResolution: "original",
   input,
@@ -630,7 +751,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gemini-2.5-pro", input });
+const result = await generateText({ provider: "google", model: "gemini-2.5-pro", input });
 console.log(result.text);
 ```
 
@@ -652,7 +773,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-6-luna", input });
+const result = await generateText({ provider: "openai", model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -678,7 +799,7 @@ const input: LlmInputMessage[] = [
   },
 ];
 
-const result = await generateText({ model: "gpt-6-luna", input });
+const result = await generateText({ provider: "openai", model: "gpt-6-luna", input });
 console.log(result.text);
 ```
 
@@ -688,6 +809,7 @@ console.log(result.text);
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
+  provider: "google",
   model: "gemini-4-argon",
   thinkingLevel: "low",
   input: "Return exactly: OK",
@@ -705,62 +827,58 @@ structured JSON, function tools, and `low`, `medium`, or `high` thinking (`xhigh
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "sonnet-5-5",
-  thinkingLevel: "low",
-  input: "Return exactly: OK",
-});
-
-console.log(result.text, result.usage, result.costUsd);
-```
-
-Supported API IDs are `haiku-5-5`, `sonnet-5-5`, `opus-5-5`, and `fable-5-1`. They resolve to Anthropic's native
-`claude-*` names on the wire. The API route uses the native Messages API with response/thought streaming, validated
-JSON outputs, and JSON function tools.
-Tool loops accept `maxOutputTokens` (default `32_000`, maximum `128_000`), including reasoning. Unsupported hosted
-tools and freeform tools return explicit errors.
-
-### Claude Code subscription models
-
-```ts
-import { generateText } from "@ljoukov/llm";
-
-const result = await generateText({
+  provider: "anthropic",
   model: "claude-sonnet-5-5",
   thinkingLevel: "low",
   input: "Return exactly: OK",
 });
 
-console.log(result.provider); // "claude"
+console.log(result.provider, result.access); // "anthropic", "api"
 console.log(result.text, result.usage, result.costUsd);
 ```
 
-Supported subscription IDs are `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-fable-5-1`.
-Each call launches the Claude Code runtime through the Agent SDK and uses its existing local subscription login.
-The subscription and API routes have separate provider names and concurrency settings.
+Supported native IDs are `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-fable-5-1`.
+The API route uses the native Messages API with response/thought streaming, validated JSON outputs, and JSON function
+tools. Tool loops accept `maxOutputTokens` (default `32_000`, maximum `128_000`), including reasoning. Unsupported
+hosted tools and freeform tools return explicit errors.
 
+### Claude Code subscription access
+
+Select the same native model with `access: "subscription"`:
+
+```ts
+const result = await generateText({
+  provider: "anthropic",
+  model: "claude-sonnet-5-5",
+  access: "subscription",
+  thinkingLevel: "low",
+  input: "Return exactly: OK",
+});
+
+console.log(result.provider, result.access); // "anthropic", "subscription"
+```
+
+Each call launches the Claude Code runtime through the Agent SDK and uses its existing local subscription login.
 The subscription route supports text/thought streaming, schema-validated JSON, application function tools, terminal
 tools, cancellation, steering, and inherited subagent models. Only the caller's tools are enabled; Claude Code's
 built-in tools and local project customizations are disabled. Previous messages are supplied as a role-labeled
 transcript because the Agent SDK accepts a user prompt rather than a Messages API history; user images and PDFs
 remain native media blocks. Tool schemas must describe a Zod object. The Claude concurrency cap limits top-level
-sessions; nested calls with the inherited model share their ancestor's slot to avoid waiting on themselves.
+sessions; nested calls with the inherited selection share their ancestor's slot to avoid waiting on themselves.
 
-Version 11 changes the earlier API naming: migrate an API call from `claude-sonnet-5-5` to `sonnet-5-5` (likewise Haiku,
-Opus, and Fable). Keeping the `claude-` prefix selects the subscription route. The old API route has no alias.
-
-Subscription `costUsd` values are API-equivalent token estimates for comparison; they are not subscription charges or
-remaining plan allowance. To run integration tests against the local subscription, opt in explicitly:
+Subscription results use `costUsd: null` and `costSource: "subscription"`. The separate `apiEquivalentCostUsd` field
+provides a token-value estimate where pricing is known; it is not a subscription charge or remaining plan allowance.
+To run integration tests against the local subscription, opt in explicitly:
 
 ```sh
-LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1 LLM_INTEGRATION_MODELS=claude-sonnet-5-5 npm run test:integration:claude-subscription
+LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1 npm run test:integration:claude-subscription
 ```
 
 ### Gemini and Claude token costs
 
-All 48 listed text IDs and 4 image IDs have cost data. Tests check input, output, and cached-input
-rates independently, plus cache writes where supported and image fallback estimates when usage
-is absent. Private `experimental-chatgpt-*` IDs have unknown prices unless a known `pricingModelId`
-is supplied explicitly. ChatGPT and Claude subscription estimates use API-equivalent rates.
+Known models include input, output, cached-input, and supported cache-write rates. Subscription estimates use the
+corresponding API rates where available. A model without known prices has an unknown cost; it is never reported as
+free solely because the library has no pricing data.
 
 Standard global API rates checked October 22, 2026 against the official
 [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and
@@ -773,11 +891,11 @@ Prices below are USD per million tokens. Output rates include billed reasoning t
 | `gemini-4-argon`, from Dec 1, 2026 | $4 | $0.20 | $20 | — |
 | `gemini-3.8-flash`, through Dec 31, 2026 | $0.75 | $0.075 | $3.75 | — |
 | `gemini-3.8-flash`, from Jan 1, 2027 | $1.50 | $0.15 | $7.50 | — |
-| `haiku-5-5`, prompt ≤100,000 tokens | $0.10 | $0.01 | $0.50 | $0.125 / $0.20 |
-| `haiku-5-5`, prompt >100,000 tokens | $0.50 | $0.05 | $2.50 | $0.625 / $1 |
-| `sonnet-5-5` | $2 | $0.10 | $10 | $2.50 / $4 |
-| `opus-5-5` | $4 | $0.20 | $20 | $5 / $8 |
-| `fable-5-1` | $10 | $0.25 | $50 | $12.50 / $20 |
+| `claude-haiku-5-5`, prompt ≤100,000 tokens | $0.10 | $0.01 | $0.50 | $0.125 / $0.20 |
+| `claude-haiku-5-5`, prompt >100,000 tokens | $0.50 | $0.05 | $2.50 | $0.625 / $1 |
+| `claude-sonnet-5-5` | $2 | $0.10 | $10 | $2.50 / $4 |
+| `claude-opus-5-5` | $4 | $0.20 | $20 | $5 / $8 |
+| `claude-fable-5-1` | $10 | $0.25 | $50 | $12.50 / $20 |
 
 The estimator automatically switches Gemini rates at the published UTC dates. Gemini Argon supports implicit caching
 only. Haiku's threshold includes uncached input, cache reads, and cache writes; the higher rates apply to the whole
@@ -792,7 +910,7 @@ and published output-token counts by image size otherwise.
 
 ### Vercel AI Gateway and Fireworks
 
-The same short model IDs work with either provider. Vercel requests use the
+The three shared short model IDs work with either provider. Vercel also accepts namespaced IDs directly. Requests use the
 [OpenAI-compatible AI Gateway API](https://vercel.com/docs/ai-gateway/openai-compat) at
 `https://ai-gateway.vercel.sh/v1` with these model IDs:
 
@@ -808,8 +926,8 @@ Vercel requests set `providerOptions.gateway.sort` to `"cost"` for cost-sorted u
 Gateway settings, including stored provider credentials (BYOK), can affect the selected upstream and its price.
 `costUsd` uses the Gateway's reported charge when available. For BYOK requests, it also adds any separately
 reported upstream inference cost; that upstream value is an estimate and can differ from your provider contract.
-When reported cost is unavailable, the library falls back to the Gateway catalog's default-route token rates,
-which can differ from the selected upstream's rates.
+When reported cost is unavailable, the library uses the public Gateway catalog's default-route token rates,
+which can differ from the selected upstream's rates. Catalog data is cached in RAM; see model discovery and costs below.
 
 #### Fireworks pricing
 
@@ -821,7 +939,7 @@ Use the short library model IDs below; they resolve to the exact direct Firework
 | `glm-5.3` | `glm-5p3` | $1.4 / $0.26 / $4.4 |
 | `kimi-k3` | `kimi-k3` | $3 / $0.3 / $15 |
 
-Version 10 removes retired `kimi-k2.5`, `glm-5`, and `minimax-m2.1`; use `kimi-k3`, `glm-5.3`, or `deepseek-v4.1-flash-1017` for current research runs. The Fireworks allowlist is intentionally limited to these three models; obsolete default exports are removed.
+The Fireworks allowlist is limited to these three models. Use Vercel's explicit namespaced route for other Gateway models.
 
 #### Shared streaming and tool-loop behavior
 
@@ -830,7 +948,7 @@ For both providers, `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` 
 Vercel and Fireworks text generation and tool loops request streaming completions, including when you await `generateText()` or `runToolLoop()`. Thought and response deltas arrive while inference is running. Fragmented tool calls are assembled before execution, and usage is collected from the final stream chunk.
 
 
-Vercel and Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer. Anthropic and Claude subscription tool loops also accept this option; other providers explicitly reject it. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
+Vercel and Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer. xAI and Anthropic tool loops, including subscription access, also accept this option; OpenAI and Google tool loops reject it. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
 
 Vercel and Fireworks tool-loop steps and `model` events expose the raw optional `finishReason`. In particular, `"length"` indicates an output or context budget limit, including completions containing only reasoning and no final text. It must not be interpreted as a completed mathematical answer. `"stop"` and `"tool_calls"` retain their provider meanings; unknown reasons are preserved. The library does not automatically retry or add a continuation when a limit is reached. See [Fireworks completion limits](https://docs.fireworks.ai/api-reference/post-chatcompletions#body-max-tokens).
 
@@ -845,15 +963,43 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-### ChatGPT subscription models
-
-Use an explicitly supported `chatgpt-` model id. These calls reuse ChatGPT/Codex subscription authentication, without OpenRouter or an OpenAI API key:
+### xAI Grok API and subscription access
 
 ```ts
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
-  model: "chatgpt-gpt-6-astra",
+  provider: "xai",
+  model: "grok-4.7",
+  access: "subscription",
+  input: "Return exactly: OK",
+});
+
+console.log(result.text, result.usage);
+```
+
+Omit `access` or use `access: "api"` for API-key billing. Native `grok-*` IDs are accepted, with runtime validation of
+the model name. API and subscription catalogs can expose different models; discover the selected route's available
+models with `listModels({ provider: "xai", access: "subscription" })`. Passing an accepted model name does not grant
+account access to that model. The same streaming and application function-tool loop are used on both routes.
+
+This release uses Chat Completions for both xAI routes. Live subscription checks with `grok-4.7` passed text
+streaming, validated JSON, and a two-turn function-tool round trip. xAI's
+[best-practices guide](https://docs.x.ai/developers/model-capabilities/text/best-practices) recommends the Responses API
+and replaying encrypted reasoning items across turns. This transport does not preserve those Responses encrypted
+reasoning items, which can affect reasoning continuity in longer conversations and agent loops.
+
+### OpenAI subscription access
+
+Use the same native text model IDs with explicit subscription access. These calls reuse ChatGPT/Codex authentication:
+
+```ts
+import { generateText } from "@ljoukov/llm";
+
+const result = await generateText({
+  provider: "openai",
+  model: "gpt-6-astra",
+  access: "subscription",
   thinkingLevel: "high",
   input: "Return exactly: OK",
 });
@@ -861,19 +1007,87 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-`chatgpt-gpt-6-astra` supports `low`, `medium` (default), `high`, `xhigh`, and `max`; `ultra` maps to `max`. `none` and `minimal` are not accepted by the public `thinkingLevel` type. Astra uses the existing ChatGPT streaming, JSON, and tool-loop transport.
+`gpt-6-astra` supports `low`, `medium` (default), `high`, `xhigh`, and `max`; `ultra` maps to `max`. `none` and
+`minimal` are not accepted by the public `thinkingLevel` type. Both access routes use the Responses streaming, JSON,
+and tool-loop transport. An OpenAI subscription selection never falls back to `OPENAI_API_KEY`.
 
-For ChatGPT text calls, `costUsd` is an API-equivalent estimate, not a billed subscription charge. [Astra API-equivalent rates](https://developers.openai.com/api/docs/models/gpt-6-astra) use $10 input, $1 cached input, $12.50 cache writes, and $50 output per million tokens; requests above 272,000 input tokens apply 2× input/cache rates and 1.5× output rates. `usage.cacheWriteTokens` is populated only when the provider reports it; unreported cache writes are not inferred.
+For subscription calls, estimated costs describe equivalent API usage. They are not subscription charges.
+[Astra API-equivalent rates](https://developers.openai.com/api/docs/models/gpt-6-astra) use $10 input, $1 cached input,
+$12.50 cache writes, and $50 output per million tokens; requests above 272,000 input tokens apply 2× input/cache rates
+and 1.5× output rates. `usage.cacheWriteTokens` is populated only when reported.
 
-Every supported text variant has a `-fast` convenience alias that sends the same provider model with priority processing enabled (`service_tier="priority"`). Priority rates are twice standard rates. [Official pricing](https://developers.openai.com/api/docs/pricing) includes cache writes and the long-input rate above 272,000 tokens. Private experimental model pricing is unknown (zero estimate). To calculate an explicit API-equivalent estimate, pass a supported `pricingModelId` to `estimateCallCostUsd()`.
+Every supported text variant has a `-fast` form that sends the same base model with priority processing enabled
+(`service_tier="priority"`). Priority rates are twice standard rates.
+[Official pricing](https://developers.openai.com/api/docs/pricing) includes cache writes and the long-input rates.
 
-Supported OpenAI and ChatGPT model ids are fixed literal unions in code:
+Supported OpenAI IDs are fixed literal unions in code:
 
-- OpenAI API text: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6` (Sol alias), `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each.
-- ChatGPT subscription text: the same named variants with a `chatgpt-` prefix, including their `-fast` forms; the generic `chatgpt-gpt-5.6` alias is not supported.
-- OpenAI API image: `gpt-image-2`; ChatGPT subscription image: `chatgpt-gpt-image-2`.
+- API text: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6` (Sol alias), `gpt-5.6-sol`,
+  `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each.
+- Subscription text: the same named variants and `-fast` forms, except the generic `gpt-5.6` and `gpt-5.6-fast` aliases.
+- Images: `gpt-image-2` on either route; select `access: "subscription"` explicitly for ChatGPT/Codex.
 
-Version 9 removes GPT-5.5 and earlier text IDs. Migrate smaller-model calls to `gpt-6-luna` or `chatgpt-gpt-6-luna`, and general calls to `gpt-6.1-sol` or `chatgpt-gpt-6.1-sol`. Image IDs are unchanged. Standard text API estimates per million tokens are $2 / $0.10 / $10 (input / cached input / output) for GPT-6.1 Sol and $0.10 / $0.01 / $0.50 for GPT-6 Luna. Subscription estimates describe equivalent API usage, not a charge against the subscription.
+The explicit OpenAI subscription route also accepts the existing `experimental-chatgpt-*` prefix for private model
+suffixes. This experimental exception does not enable arbitrary direct OpenAI API models. Experimental prices remain
+unknown unless a supported `pricingModelId` is supplied to the estimator.
+
+Standard API estimates per million tokens are $2 / $0.10 / $10 (input / cached input / output) for GPT-6.1 Sol and
+$0.10 / $0.01 / $0.50 for GPT-6 Luna. The catalog and cost metadata distinguish reported charges, estimates, and unknown
+prices.
+
+## Model discovery and costs
+
+```ts
+import { listModels, generateText } from "@ljoukov/llm";
+
+const models = await listModels({ provider: "vercel" });
+const freshModels = await listModels({ provider: "vercel", refresh: true });
+const subscriptionModels = await listModels({ provider: "xai", access: "subscription" });
+
+for (const model of models) {
+  console.log(model.model, model.contextWindow, model.pricing, model.pricingSource);
+}
+
+const result = await generateText({
+  provider: "vercel",
+  model: "reflection/beam-free",
+  input: "Return exactly: OK",
+});
+console.log(result.costUsd, result.costSource);
+```
+
+`listModels()` returns model selections plus available names, descriptions, context/output limits, capabilities, and
+pricing. Vercel reads its [public `/v1/models` API](https://ai-gateway.vercel.sh/v1/models); no credential is sent to that catalog. xAI queries the authenticated
+API or subscription catalog. Other providers return the package's supported local allowlist. Discovery does not
+expand OpenAI's closed model types.
+
+Vercel catalog prices are cached in RAM for five minutes and shared across concurrent calls. `refresh: true` bypasses
+the cached age. Catalog fetches have a 1.5-second timeout. Failed refreshes retain the last successful catalog and wait 30 seconds before retrying. A first-time
+catalog failure makes `listModels()` reject; generation can still use static fallback prices for known models or
+report an unknown cost. No browser scraping or disk price cache is involved.
+
+Generation results and usage events distinguish cost provenance:
+
+| `costSource` | Meaning of `costUsd` |
+| --- | --- |
+| `"reported"` | Charge reported by the provider, including a reported zero |
+| `"catalog"` | Token estimate from the fetched Vercel catalog |
+| `"estimate"` | Token estimate from the package's static price table |
+| `"unknown"` | `null`; insufficient pricing or usage data |
+| `"subscription"` | `null`; the call uses subscription access |
+
+Subscription results may include `apiEquivalentCostUsd`, a separate comparison estimate rather than a billed charge.
+Missing prices stay unknown. A zero is only reported when the available price or provider-reported charge establishes
+zero; a model's `-free` name alone is insufficient.
+
+Catalog `pricing` uses USD per token (`inputRate`, `outputRate`, optional `cachedRate` and `cacheWriteRate`), with
+`pricingSource` set to `"catalog"` or `"estimate"`. Multiply by one million to display rates per million tokens.
+Catalog estimates can differ from the selected upstream route or account-specific rate. Call results prefer reported
+charges over estimates. Other providers retain static rates until a suitable pricing API is available.
+
+For an explicit synchronous estimate, use `estimateCallCostUsd({ modelId, provider, tokens, responseImages: 0 })`.
+It reads already-cached Vercel prices or static rates and returns `number | null`; it does not fetch. Use
+`resolveCallCostUsd()` for the asynchronous route-aware resolver, including catalog refresh and subscription metadata.
 
 ## JSON outputs
 
@@ -883,7 +1097,7 @@ Version 9 removes GPT-5.5 and earlier text IDs. Migrate smaller-model calls to `
 - Gemini uses `responseJsonSchema`.
 - The Anthropic API uses native JSON schema outputs; Claude Code subscription calls use the SDK's structured output.
   Both validate the result with Zod.
-- `chatgpt-*` models try to use structured outputs too; if the endpoint/account/model rejects `json_schema`, the call
+- OpenAI subscription requests try to use structured outputs too; if the endpoint/account/model rejects `json_schema`, the call
   retries with best-effort JSON parsing.
 
 ```ts
@@ -896,6 +1110,7 @@ const schema = z.object({
 });
 
 const { value } = await generateJson({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
@@ -908,6 +1123,7 @@ For calls that should use a smaller reasoning budget, pass the cross-model `thin
 
 ```ts
 const { value } = await generateJson({
+  provider: "google",
   model: "gemini-flash-latest",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
@@ -932,6 +1148,7 @@ const schema = z.object({
 });
 
 const call = streamJson({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
@@ -954,6 +1171,7 @@ If you only want thought deltas (no partial JSON), set `streamMode: "final"`.
 
 ```ts
 const call = streamJson({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
@@ -965,6 +1183,7 @@ If you want to keep `generateJson()` but still stream thoughts, pass an `onEvent
 
 ```ts
 const { value } = await generateJson({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Return a JSON object with ok=true and message='hello'.",
   schema,
@@ -1002,12 +1221,14 @@ configureTelemetry({
 });
 
 const { value } = await generateJson({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Return { ok: true }.",
   schema: z.object({ ok: z.boolean() }),
 });
 
 await runAgentLoop({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Inspect the repo and update the file.",
   filesystemTool: true,
@@ -1018,6 +1239,7 @@ Per-call opt-out:
 
 ```ts
 await generateJson({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "Return { ok: true }.",
   schema: z.object({ ok: z.boolean() }),
@@ -1049,6 +1271,7 @@ Use this when the model provider executes the tool remotely (for example search/
 import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
+  provider: "openai",
   model: "gpt-5.6-sol",
   input: "Run python --version in a hosted shell and summarize the result.",
   tools: [{ type: "shell" }],
@@ -1066,6 +1289,7 @@ OpenAI container reference and the library can retrieve the resulting files:
 import { downloadOpenAiContainerFile, generateText, listOpenAiContainerFiles } from "@ljoukov/llm";
 
 const result = await generateText({
+  provider: "openai",
   model: "gpt-5.6-sol",
   input:
     "Use the shell to write /mnt/data/report.txt containing 'hello'. Reply only when done.",
@@ -1104,6 +1328,7 @@ const cover = await uploadOpenAiContainerFile({
 });
 
 await generateText({
+  provider: "openai",
   model: "gpt-5.6-sol",
   input: `Use ${cover.path}, write LaTeX, run xelatex, and save /mnt/data/article.pdf.`,
   tools: [{ type: "shell", environment: { type: "container-reference", containerId: container.id } }],
@@ -1119,6 +1344,7 @@ import { runToolLoop, tool } from "@ljoukov/llm";
 import { z } from "zod";
 
 const result = await runToolLoop({
+  provider: "openai",
   model: "gpt-6-luna",
   input: "What is 12 * 9? Use the tool.",
   tools: {
@@ -1145,7 +1371,9 @@ import { streamToolLoop, tool } from "@ljoukov/llm";
 import { z } from "zod";
 
 const call = streamToolLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Start implementing the feature.",
   tools: {
     echo: tool({
@@ -1169,7 +1397,9 @@ import { createToolLoopSteeringChannel, runAgentLoop } from "@ljoukov/llm";
 
 const steering = createToolLoopSteeringChannel();
 const run = runAgentLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Implement the task.",
   filesystemTool: true,
   steering,
@@ -1187,7 +1417,7 @@ const result = await run;
 - built-in subagent orchestration (delegate work across spawned agents),
 - your own custom runtime tools.
 
-Subagents always inherit the parent run model. The subagent control tools do not expose a model override.
+Subagents inherit the parent run's resolved provider, model, and access mode. The subagent control tools do not expose a model override.
 
 For interactive runs where you want to stream events and inject steering mid-run, use `streamAgentLoop()`:
 
@@ -1195,7 +1425,9 @@ For interactive runs where you want to stream events and inject steering mid-run
 import { streamAgentLoop } from "@ljoukov/llm";
 
 const call = streamAgentLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Start implementation.",
   filesystemTool: true,
 });
@@ -1210,7 +1442,7 @@ console.log(result.text);
 For read/search/write tasks in a workspace, enable `filesystemTool`. The library auto-selects a tool profile by model
 when `profile: "auto"`:
 
-- Codex-like models (`chatgpt-gpt-6-astra`, the GPT-5.6 family, `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `chatgpt-gpt-6.1-sol`, `chatgpt-gpt-6.1-sol-fast`, `gpt-6-sol`, `chatgpt-gpt-6-sol`, `chatgpt-gpt-6-sol-fast`, and `chatgpt-gpt-6-luna`): Codex-compatible filesystem tool shape.
+- OpenAI text models, for either API or subscription access: Codex-compatible filesystem tool shape.
 - Gemini models: Gemini-compatible filesystem tool shape.
 - Other models: model-agnostic profile (currently Gemini-style).
 
@@ -1234,7 +1466,9 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -1262,7 +1496,9 @@ Enable `subagentTool` to allow delegation via Codex-style control tools:
 import { runAgentLoop } from "@ljoukov/llm";
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Plan the work, delegate in parallel where useful, and return a final merged result.",
   subagentTool: {
     enabled: true,
@@ -1284,7 +1520,9 @@ const fs = createInMemoryAgentFilesystem({
 });
 
 const result = await runAgentLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Change value from 1 to 2 using filesystem tools.",
   filesystemTool: {
     profile: "auto",
@@ -1330,7 +1568,9 @@ import path from "node:path";
 import { runAgentLoop } from "@ljoukov/llm";
 
 await runAgentLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Do the task",
   filesystemTool: true,
   logging: {
@@ -1359,13 +1599,15 @@ import {
 } from "@ljoukov/llm";
 
 const fs = createInMemoryAgentFilesystem({ "/repo/a.ts": "export const n = 1;\n" });
-const tools = createFilesystemToolSetForModel("chatgpt-gpt-6-luna", {
+const tools = createFilesystemToolSetForModel("gpt-6-luna", {
   cwd: "/repo",
   fs,
 });
 
 const result = await runToolLoop({
-  model: "chatgpt-gpt-6-luna",
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6-luna",
   input: "Update n to 2.",
   tools,
 });
@@ -1422,7 +1664,13 @@ Run only the six Gemini/Claude models added in 10.2 (streams, JSON schemas, and 
 npm run test:integration:new-models
 ```
 
-`LLM_INTEGRATION_MODELS` can narrow this matrix to a comma-separated subset. To test the Gemini Developer API
+`LLM_INTEGRATION_MODELS` can narrow a matrix to a comma-separated list of canonical `provider:access:model` selections:
+
+```sh
+LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.1-sol-fast npm run test:integration:openai-models
+```
+
+The OpenAI matrix runs selected models in parallel. To test the Gemini Developer API
 when a Vertex service account is configured in `.env.local`, use `GOOGLE_SERVICE_ACCOUNT_JSON= npm run test:integration:new-models`.
 
 Large-file live integration tests are opt-in because they upload multi-megabyte fixtures to real canonical/provider

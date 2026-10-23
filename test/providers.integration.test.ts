@@ -1,20 +1,10 @@
-import { resolveOpenModelProvider } from "../src/vercel/models.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import {
-  generateImages,
-  generateJson,
-  isAnthropicModelId,
-  isClaudeModelId,
-  isChatGptImageModelId,
-  isChatGptModelId,
-  isOpenAiImageModelId,
-  isOpenAiModelId,
-  streamText,
-} from "../src/index.js";
+import { generateImages, generateJson, streamText } from "../src/index.js";
 import {
   assertIntegrationCredentialsForModels,
+  integrationModelLabel,
   resolveIntegrationRequestedImageModels,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
@@ -58,13 +48,11 @@ function readPngDimensions(data: Buffer): { width: number; height: number } | un
 
 describe("integration: text model matrix", () => {
   for (const model of requestedTextModels) {
-    it(`${model}: streams and returns result`, async () => {
+    it(`${integrationModelLabel(model)}: streams and returns result`, async () => {
       const call = streamText({
-        model,
+        ...model,
         input: "Return exactly: OK",
-        ...(isOpenAiModelId(model) || isChatGptModelId(model)
-          ? { thinkingLevel: "low" as const }
-          : {}),
+        ...(model.provider === "openai" ? { thinkingLevel: "low" as const } : {}),
       });
       const streamed = await streamToStrings(call);
       const result = await call.result;
@@ -73,26 +61,24 @@ describe("integration: text model matrix", () => {
       expect(streamed.response.toUpperCase()).toContain("OK");
       expect(streamed.sawUsage).toBe(true);
       expect(result.usage?.totalTokens).toBeTypeOf("number");
-      expect(Number.isFinite(result.costUsd)).toBe(true);
-      if (isOpenAiModelId(model)) {
-        expect(result.provider).toBe("openai");
-      } else if (isChatGptModelId(model)) {
-        expect(result.provider).toBe("chatgpt");
-      } else if (model.startsWith("gemini-")) {
-        expect(result.provider).toBe("gemini");
-      } else if (isAnthropicModelId(model)) {
-        expect(result.provider).toBe("anthropic");
-      } else if (isClaudeModelId(model)) {
-        expect(result.provider).toBe("claude");
+      if (model.access === "subscription") {
+        expect(result.costUsd).toBeNull();
+        expect(result.costSource).toBe("subscription");
+      } else if (result.costUsd === null) {
+        expect(result.costSource).toBe("unknown");
       } else {
-        expect(result.provider).toBe(resolveOpenModelProvider());
+        expect(Number.isFinite(result.costUsd)).toBe(true);
       }
+      expect(result.provider).toBe(model.provider);
+      expect(result.access).toBe(model.access ?? "api");
     }, 180_000);
   }
 });
 
 describe("integration: structured output", () => {
-  const chatGptModel = requestedTextModels.find((model) => isChatGptModelId(model));
+  const chatGptModel = requestedTextModels.find(
+    (ref) => ref.provider === "openai" && ref.access === "subscription",
+  );
   const chatGptIt = chatGptModel ? it : it.skip;
 
   chatGptIt("ChatGPT: generateJson returns validated JSON", async () => {
@@ -101,7 +87,7 @@ describe("integration: structured output", () => {
     }
     const schema = z.object({ ok: z.boolean(), message: z.string() });
     const { value } = await generateJson({
-      model: chatGptModel,
+      ...chatGptModel,
       input: 'Return exactly this JSON object: {"ok":true,"message":"hello"}. Return only JSON.',
       schema,
       thinkingLevel: "low",
@@ -114,10 +100,10 @@ describe("integration: structured output", () => {
 
 describe("integration: image model matrix", () => {
   for (const model of requestedImageModels) {
-    it(`${model}: returns image content`, async () => {
-      if (isOpenAiImageModelId(model)) {
+    it(`${integrationModelLabel(model)}: returns image content`, async () => {
+      if (model.provider === "openai" && model.access !== "subscription") {
         const images = await generateImages({
-          model,
+          ...model,
           stylePrompt: "Simple icon style. White background, clean edges, no text.",
           imagePrompts: ["A single blue square centered in the frame"],
           imageResolution: "1024x1024",
@@ -130,9 +116,9 @@ describe("integration: image model matrix", () => {
         return;
       }
 
-      if (isChatGptImageModelId(model)) {
+      if (model.provider === "openai" && model.access === "subscription") {
         const images = await generateImages({
-          model,
+          ...model,
           stylePrompt: "Simple portrait poster style. White background, clean edges, no text.",
           imagePrompts: [
             "A single blue square centered on a tall upright 2:3 portrait canvas. The final image must be taller than it is wide.",
@@ -155,7 +141,7 @@ describe("integration: image model matrix", () => {
       }
 
       const call = streamText({
-        model,
+        ...model,
         input:
           "Generate a single simple 1:1 icon of a blue square on a white background. Include no text in the image.",
         responseModalities: ["IMAGE", "TEXT"],
@@ -165,7 +151,7 @@ describe("integration: image model matrix", () => {
       const streamed = await streamToStrings(call);
       const result = await call.result;
 
-      expect(result.provider).toBe("gemini");
+      expect(result.provider).toBe("google");
       expect(streamed.sawUsage).toBe(true);
       expect(result.usage?.totalTokens).toBeTypeOf("number");
       expect(Number.isFinite(result.costUsd)).toBe(true);

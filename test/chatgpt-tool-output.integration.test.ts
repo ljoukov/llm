@@ -5,18 +5,23 @@ import zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { isChatGptModelId, runAgentLoop } from "../src/index.js";
+import { runAgentLoop } from "../src/index.js";
 import {
   assertIntegrationCredentialsForModels,
+  integrationModelLabel,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
 
 const requestedModels = resolveIntegrationRequestedModels();
-const requestedChatGptModel = requestedModels.find((model) => isChatGptModelId(model));
-const chatGptModel = requestedChatGptModel ?? "chatgpt-gpt-6-sol";
+const requestedChatGptModel = requestedModels.find(
+  (ref) => ref.provider === "openai" && ref.access === "subscription",
+);
+const chatGptModel =
+  requestedChatGptModel ??
+  ({ provider: "openai", access: "subscription", model: "gpt-6-sol" } as const);
 const chatGptToolOutputIt = requestedChatGptModel ? it : it.skip;
 
-assertIntegrationCredentialsForModels([chatGptModel]);
+if (requestedChatGptModel) assertIntegrationCredentialsForModels([chatGptModel]);
 
 const FIXTURE_IMAGE_BASE64 = fs
   .readFileSync(path.join(import.meta.dirname, "../benchmarks/view_image/input/rome-colosseum.jpg"))
@@ -62,12 +67,12 @@ const LARGE_FIXTURE_IMAGE_DATA_URL = createLargePngDataUrl();
 
 describe("integration: ChatGPT tool outputs", () => {
   chatGptToolOutputIt(
-    `${chatGptModel}: runAgentLoop accepts image tool outputs with filenames`,
+    `${integrationModelLabel(chatGptModel)}: runAgentLoop accepts image tool outputs with filenames`,
     async () => {
       let toolCalls = 0;
 
       const result = await runAgentLoop({
-        model: chatGptModel,
+        ...chatGptModel,
         input: [
           {
             role: "system",
@@ -112,7 +117,7 @@ describe("integration: ChatGPT tool outputs", () => {
   );
 
   chatGptToolOutputIt(
-    `${chatGptModel}: runAgentLoop accepts large image tool outputs without Files API spill`,
+    `${integrationModelLabel(chatGptModel)}: runAgentLoop accepts large image tool outputs without Files API spill`,
     async () => {
       let toolCalls = 0;
 
@@ -121,7 +126,7 @@ describe("integration: ChatGPT tool outputs", () => {
       );
 
       const result = await runAgentLoop({
-        model: chatGptModel,
+        ...chatGptModel,
         input: [
           {
             role: "system",

@@ -42,7 +42,7 @@ describe("fireworks model ids", () => {
     "constructor",
   ])("rejects retired, routed, non-text, and unknown model %s", (model) => {
     expect(isFireworksModelId(model)).toBe(false);
-    expect(isLlmTextModelId(model)).toBe(false);
+    expect(isLlmTextModelId(model)).toBe(model.includes("/"));
     expect(resolveFireworksModelId(model)).toBeUndefined();
     expect(getFireworksPricing(model)).toBeUndefined();
   });

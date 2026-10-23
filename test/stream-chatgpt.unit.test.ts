@@ -84,35 +84,51 @@ describe("streamText (ChatGPT)", () => {
     ["ultra", "max"],
   ] as const)("routes Astra thinkingLevel=%s through ChatGPT with effort=%s", async (thinkingLevel, effort) => {
     const { generateText } = await import("../src/llm.js");
-    const result = await generateText({ model: "chatgpt-gpt-6-astra", input: "hi", thinkingLevel });
-    expect(result.provider).toBe("chatgpt");
-    expect(result.modelVersion).toBe("chatgpt-gpt-6-astra");
+    const result = await generateText({
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-astra",
+      input: "hi",
+      thinkingLevel,
+    });
+    expect(result.provider).toBe("openai");
+    expect(result.access).toBe("subscription");
+    expect(result.costUsd).toBeNull();
+    expect(result.costSource).toBe("subscription");
+    expect(result.modelVersion).toBe("gpt-6-astra");
     expect(capturedRequest.model).toBe("gpt-6-astra");
     expect(capturedRequest.reasoning.effort).toBe(effort);
     expect(capturedRequest.service_tier).toBeUndefined();
     expect(capturedRequest.temperature).toBeUndefined();
     expect(capturedRequest.top_p).toBeUndefined();
     expect(result.usage?.cacheWriteTokens).toBeUndefined();
-    expect(result.costUsd).toBeCloseTo(0.0004, 10);
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.0004, 10);
   });
 
   it("preserves reported Astra cache writes without charging ordinary input twice", async () => {
     inputTokenDetails = { cached_tokens: 2, cache_write_tokens: 3 };
     const { generateText } = await import("../src/llm.js");
     const result = await generateText({
-      model: "chatgpt-gpt-6-astra",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-astra",
       input: "hi",
       thinkingLevel: "high",
     });
     expect(result.usage?.cachedTokens).toBe(2);
     expect(result.usage?.cacheWriteTokens).toBe(3);
-    expect(result.costUsd).toBeCloseTo(0.0003895, 10);
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.0003895, 10);
   });
 
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "chatgpt-gpt-6-luna", input: "hi" });
+    const call = streamText({
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
+      input: "hi",
+    });
 
     const events: any[] = [];
     for await (const ev of call.events) {
@@ -120,11 +136,11 @@ describe("streamText (ChatGPT)", () => {
     }
     const result = await call.result;
 
-    expect(result.provider).toBe("chatgpt");
+    expect(result.provider).toBe("openai");
     expect(result.text).toBe("Hello");
     expect(result.thoughts).toBe("Thinking");
     expect(result.usage?.totalTokens).toBe(16);
-    expect(result.costUsd).toBeGreaterThan(0);
+    expect(result.apiEquivalentCostUsd).toBeGreaterThan(0);
 
     expect(events.some((e) => e.type === "delta" && e.channel === "response")).toBe(true);
     expect(events.some((e) => e.type === "delta" && e.channel === "thought")).toBe(true);
@@ -136,7 +152,9 @@ describe("streamText (ChatGPT)", () => {
 
     const pdfB64 = Buffer.from("%PDF-1.4\\nhello").toString("base64");
     await generateText({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: [
         {
           role: "user",
@@ -165,7 +183,9 @@ describe("streamText (ChatGPT)", () => {
     const largePdfB64 = Buffer.alloc(16 * 1024 * 1024, 0x61).toString("base64");
     const beforeCallMs = Date.now();
     await generateText({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: [
         {
           role: "user",
@@ -207,7 +227,9 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: "hi",
     });
 
@@ -220,7 +242,9 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: "hi",
     });
 
@@ -228,24 +252,28 @@ describe("streamText (ChatGPT)", () => {
     expect(chatGptCallCount).toBe(2);
   });
 
-  it("maps chatgpt-gpt-6-sol-fast to gpt-6-sol with priority service tier", async () => {
+  it("maps gpt-6-sol-fast to gpt-6-sol with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-6-sol-fast",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-sol-fast",
       input: "hi",
     });
 
     expect(capturedRequest?.model).toBe("gpt-6-sol");
     expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("chatgpt-gpt-6-sol-fast");
+    expect(result.modelVersion).toBe("gpt-6-sol-fast");
   });
 
   it("maps thinkingLevel=max to ChatGPT max reasoning effort", async () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "chatgpt-gpt-5.6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-5.6-sol",
       input: "hi",
       thinkingLevel: "max",
     });
@@ -257,7 +285,9 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "chatgpt-gpt-5.6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-5.6-sol",
       input: "hi",
       thinkingLevel: "ultra",
     });
@@ -266,40 +296,44 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it.each([
-    ["chatgpt-gpt-6.1-sol-fast", "gpt-6.1-sol"],
-    ["chatgpt-gpt-6-astra-fast", "gpt-6-astra"],
-    ["chatgpt-gpt-6-sol-fast", "gpt-6-sol"],
-    ["chatgpt-gpt-6-luna-fast", "gpt-6-luna"],
-    ["chatgpt-gpt-5.6-sol-fast", "gpt-5.6-sol"],
-    ["chatgpt-gpt-5.6-terra-fast", "gpt-5.6-terra"],
-    ["chatgpt-gpt-5.6-luna-fast", "gpt-5.6-luna"],
+    ["gpt-6.1-sol-fast", "gpt-6.1-sol"],
+    ["gpt-6-astra-fast", "gpt-6-astra"],
+    ["gpt-6-sol-fast", "gpt-6-sol"],
+    ["gpt-6-luna-fast", "gpt-6-luna"],
+    ["gpt-5.6-sol-fast", "gpt-5.6-sol"],
+    ["gpt-5.6-terra-fast", "gpt-5.6-terra"],
+    ["gpt-5.6-luna-fast", "gpt-5.6-luna"],
   ] as const)("maps %s to %s with priority service tier", async (model, providerModel) => {
     const { generateText } = await import("../src/llm.js");
 
-    await generateText({ model, input: "hi" });
+    await generateText({ provider: "openai", access: "subscription", model, input: "hi" });
 
     expect(capturedRequest?.model).toBe(providerModel);
     expect(capturedRequest?.service_tier).toBe("priority");
   });
 
-  it("maps chatgpt-gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {
+  it("maps gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "chatgpt-gpt-6.1-sol-fast",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6.1-sol-fast",
       input: "hi",
     });
 
     expect(capturedRequest?.model).toBe("gpt-6.1-sol");
     expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("chatgpt-gpt-6.1-sol-fast");
+    expect(result.modelVersion).toBe("gpt-6.1-sol-fast");
   });
 
   it("rejects the OpenAI shell tool for ChatGPT-authenticated models", async () => {
     const { streamText } = await import("../src/llm.js");
 
     const call = streamText({
-      model: "chatgpt-gpt-6.1-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6.1-sol",
       input: "Use shell.",
       tools: [{ type: "shell" }],
     });
@@ -321,6 +355,8 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
+      provider: "openai",
+      access: "subscription",
       model: "experimental-chatgpt-private-model",
       input: "hi",
     });
@@ -334,7 +370,9 @@ describe("streamText (ChatGPT)", () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "chatgpt-gpt-6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-sol",
       mediaResolution: "original",
       input: [
         {
@@ -372,7 +410,9 @@ describe("streamText (ChatGPT)", () => {
 
       const result = await runWithAgentLoggingSession(session, async () => {
         return await generateText({
-          model: "chatgpt-gpt-6-luna",
+          provider: "openai",
+          access: "subscription",
+          model: "gpt-6-luna",
           input: "hi",
         });
       });

@@ -13,13 +13,12 @@ import {
   type AgentFilesystemToolAccessContext,
   estimateCallCostUsd,
   generateJson,
-  isLlmTextModelId,
   LLM_TEXT_MODEL_IDS,
   runAgentLoop,
   type LlmThinkingLevel,
-  type LlmTextModelId,
   type LlmToolLoopStep,
 } from "../../src/index.js";
+import { benchmarkModelSelection } from "../model-selection.js";
 import {
   DEFAULT_BENCHMARK_MODELS,
   type OutputFileSpec,
@@ -104,7 +103,7 @@ type GraderAspectRun = {
   readonly criteria: string;
   readonly value?: GraderVerdict;
   readonly error?: string;
-  readonly costUsd: number;
+  readonly costUsd: number | null;
   readonly usage: UsageSummary;
   readonly startedAt: string;
   readonly completedAt: string;
@@ -177,9 +176,9 @@ type CaseResult = {
   readonly toolTracePass: boolean;
   readonly graderPass: boolean;
   readonly durationMs: number;
-  readonly agentCostUsd: number;
-  readonly graderCostUsd: number;
-  readonly totalCostUsd: number;
+  readonly agentCostUsd: number | null;
+  readonly graderCostUsd: number | null;
+  readonly totalCostUsd: number | null;
   readonly agentUsage: UsageSummary;
   readonly graderUsage: UsageSummary;
   readonly totalUsage: UsageSummary;
@@ -205,9 +204,9 @@ type CaseResult = {
 
 type Projection = {
   readonly totalCases: number;
-  readonly estimatedAgentCostUsd: number;
-  readonly estimatedGraderCostUsd: number;
-  readonly estimatedTotalCostUsd: number;
+  readonly estimatedAgentCostUsd: number | null;
+  readonly estimatedGraderCostUsd: number | null;
+  readonly estimatedTotalCostUsd: number | null;
   readonly agentPromptTokens: number;
   readonly agentResponseTokens: number;
   readonly graderPromptTokens: number;
@@ -234,8 +233,8 @@ type ModelTaskRunSummary = {
   readonly bestSuccess: boolean;
   readonly avgDurationMs: number;
   readonly bestDurationMs: number;
-  readonly avgCostUsd: number;
-  readonly bestCostUsd: number;
+  readonly avgCostUsd: number | null;
+  readonly bestCostUsd: number | null;
   readonly avgToolCalls: number;
   readonly bestToolCalls: number;
   readonly avgSubagentCalls: number;
@@ -277,7 +276,7 @@ type PromptTemplates = {
   readonly graderPrompt: string;
 };
 
-const DEFAULT_GRADER_MODEL: LlmTextModelId = "chatgpt-gpt-6-luna";
+const DEFAULT_GRADER_MODEL = "openai:subscription:gpt-6-luna";
 const DEFAULT_MAX_STEPS = 100;
 const DEFAULT_REPAIR_MAX_STEPS = 100;
 const DEFAULT_AGENT_TIMEOUT_MS = 2 * 60 * 60_000;
@@ -408,16 +407,19 @@ function parseCsvList(raw: string): readonly string[] {
   return deduped;
 }
 
-function parseModelId(raw: string, optionName: string): LlmTextModelId {
-  if (isLlmTextModelId(raw)) {
+function parseModelId(raw: string, optionName: string): string {
+  try {
+    benchmarkModelSelection(raw);
     return raw;
+  } catch (error) {
+    throw new Error(
+      `Invalid ${optionName} value: ${raw}. Use provider:access:model or a known model: ${LLM_TEXT_MODEL_IDS.join(", ")}`,
+      { cause: error },
+    );
   }
-  throw new Error(
-    `Invalid ${optionName} value: ${raw}. Supported models: ${LLM_TEXT_MODEL_IDS.join(", ")}`,
-  );
 }
 
-function parseModelList(raw: string): readonly LlmTextModelId[] {
+function parseModelList(raw: string): readonly string[] {
   return parseCsvList(raw).map((entry) => parseModelId(entry, "--models"));
 }
 
@@ -573,8 +575,23 @@ async function resolveTaskPromptTemplates(params: {
   return { agentPrompt, taskTemplate, graderPrompt };
 }
 
-function formatUsd(value: number): string {
-  return value.toFixed(6);
+function formatUsd(value: number | null, currency = false): string {
+  return value === null ? "unknown" : `${currency ? "$" : ""}${value.toFixed(6)}`;
+}
+
+function sumCosts(values: readonly (number | null)[]): number | null {
+  let total = 0;
+  for (const value of values) {
+    if (value === null) {
+      return null;
+    }
+    total += value;
+  }
+  return total;
+}
+
+function parseCost(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function formatInt(value: number): string {
@@ -3708,7 +3725,7 @@ function resolveGraderMaxAttempts(reasoning: ReasoningEffort): number {
 }
 
 async function gradeOutputs(params: {
-  graderModel: LlmTextModelId;
+  graderModel: string;
   task: AgentBenchmarkTask;
   layout: WorkspaceLayout;
   validations: readonly OutputValidation[];
@@ -3717,7 +3734,7 @@ async function gradeOutputs(params: {
 }): Promise<{
   readonly value?: GraderVerdict;
   readonly error?: string;
-  readonly costUsd: number;
+  readonly costUsd: number | null;
   readonly usage: UsageSummary;
   readonly aspects: readonly GraderAspectRun[];
 }> {
@@ -3741,8 +3758,8 @@ async function gradeOutputs(params: {
     }, graderTimeoutMs);
 
     try {
-      const response = await generateJson({
-        model: params.graderModel,
+      const response = await generateJson<GraderVerdict>({
+        ...benchmarkModelSelection(params.graderModel),
         input: aspectPrompt,
         schema: GraderSchema,
         instructions:
@@ -3785,7 +3802,7 @@ async function gradeOutputs(params: {
         aspectName: aspect.name,
         criteria: aspect.criteria,
         error: message,
-        costUsd: 0,
+        costUsd: null,
         usage: emptyUsageSummary(),
         startedAt: new Date(aspectStartedAtMs).toISOString(),
         completedAt: new Date(aspectCompletedAtMs).toISOString(),
@@ -3804,7 +3821,7 @@ async function gradeOutputs(params: {
     }
   }
 
-  const totalCost = aspectRuns.reduce((acc, entry) => acc + entry.costUsd, 0);
+  const totalCost = sumCosts(aspectRuns.map((entry) => entry.costUsd));
   const totalUsage = sumUsageSummaries(aspectRuns.map((entry) => entry.usage));
   const normalizedVerdicts = aspectRuns.map((entry) => {
     if (entry.value) {
@@ -3843,7 +3860,7 @@ async function gradeOutputs(params: {
 }
 
 async function runCase(params: {
-  model: LlmTextModelId;
+  model: string;
   variant: BenchmarkVariant;
   agentReasoning: ReasoningEffort;
   task: AgentBenchmarkTask;
@@ -3851,7 +3868,7 @@ async function runCase(params: {
   outRoot: string;
   benchmarkRoot: string;
   reasoning: ReasoningEffort;
-  graderModel: LlmTextModelId;
+  graderModel: string;
   maxSteps: number;
   agentTimeoutMs: number;
   promptTemplates: PromptTemplates;
@@ -3872,7 +3889,7 @@ async function runCase(params: {
 
   let agentError: string | undefined;
   let agentFinalText = "";
-  let agentCostUsd = 0;
+  let agentCostUsd: number | null = null;
   let agentUsage: UsageSummary = emptyUsageSummary();
   let modelVersions: readonly string[] = [];
   let agentSteps: readonly LlmToolLoopStep[] = [];
@@ -3893,7 +3910,7 @@ async function runCase(params: {
   try {
     agentRunStartedAtMs = Date.now();
     const result = await runAgentLoop({
-      model: params.model,
+      ...benchmarkModelSelection(params.model),
       input: buildAgentPrompt(layout, params.promptTemplates.agentPrompt, params.variant),
       filesystemTool: {
         profile: "model-agnostic",
@@ -4072,7 +4089,7 @@ async function runCase(params: {
     },
   });
   const durationMs = Date.now() - startedAt;
-  const totalCostUsd = agentCostUsd + grader.costUsd;
+  const totalCostUsd = sumCosts([agentCostUsd, grader.costUsd]);
   const totalUsage = sumUsageSummaries([agentUsage, grader.usage]);
   const agentLlmCallTraces = buildAgentLlmCallTraces(params.model, agentSteps);
   const graderLlmCallTraces: readonly LlmCallTraceRecord[] = grader.aspects.map((aspect) => ({
@@ -4184,12 +4201,21 @@ function estimateProjection(params: {
   graderPromptTokens: number;
   graderResponseTokens: number;
 }): Projection {
-  let estimatedAgentCostUsd = 0;
-  let estimatedGraderCostUsd = 0;
+  let estimatedAgentCostUsd: number | null = 0;
+  let estimatedGraderCostUsd: number | null = 0;
 
   for (const model of params.models) {
+    let selection: ReturnType<typeof benchmarkModelSelection>;
+    try {
+      selection = benchmarkModelSelection(model);
+    } catch {
+      // Historical result labels remain readable without enabling their retired routes.
+      estimatedAgentCostUsd = null;
+      continue;
+    }
     const perCaseAgent = estimateCallCostUsd({
-      modelId: model,
+      ...selection,
+      modelId: selection.model,
       tokens: {
         promptTokens: params.agentPromptTokens,
         cachedTokens: 0,
@@ -4199,11 +4225,16 @@ function estimateProjection(params: {
       responseImages: 0,
     });
     const casesForModel = params.taskCount * params.variantCount * params.runs;
-    estimatedAgentCostUsd += perCaseAgent * casesForModel;
+    estimatedAgentCostUsd = sumCosts([
+      estimatedAgentCostUsd,
+      perCaseAgent === null ? null : perCaseAgent * casesForModel,
+    ]);
   }
 
+  const graderSelection = benchmarkModelSelection(params.graderModel);
   const perCaseGrader = estimateCallCostUsd({
-    modelId: params.graderModel,
+    ...graderSelection,
+    modelId: graderSelection.model,
     tokens: {
       promptTokens: params.graderPromptTokens,
       cachedTokens: 0,
@@ -4214,13 +4245,13 @@ function estimateProjection(params: {
   });
 
   const totalCases = params.models.length * params.taskCount * params.variantCount * params.runs;
-  estimatedGraderCostUsd = perCaseGrader * totalCases;
+  estimatedGraderCostUsd = perCaseGrader === null ? null : perCaseGrader * totalCases;
 
   return {
     totalCases,
     estimatedAgentCostUsd,
     estimatedGraderCostUsd,
-    estimatedTotalCostUsd: estimatedAgentCostUsd + estimatedGraderCostUsd,
+    estimatedTotalCostUsd: sumCosts([estimatedAgentCostUsd, estimatedGraderCostUsd]),
     agentPromptTokens: params.agentPromptTokens,
     agentResponseTokens: params.agentResponseTokens,
     graderPromptTokens: params.graderPromptTokens,
@@ -4245,7 +4276,7 @@ function summarizeByModelVariant(
   readonly totalToolCalls: number;
   readonly totalSubagentCalls: number;
   readonly runsUsingSubagents: number;
-  readonly totalCostUsd: number;
+  readonly totalCostUsd: number | null;
   readonly totalUsage: UsageSummary;
   readonly totalTiming: CaseTimingBreakdown;
   readonly avgTiming: CaseTimingBreakdown;
@@ -4264,7 +4295,7 @@ function summarizeByModelVariant(
     0,
   );
   const runsUsingSubagents = modelCases.filter((entry) => entry.subagentUsage.usedSubagents).length;
-  const totalCostUsd = modelCases.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+  const totalCostUsd = sumCosts(modelCases.map((entry) => entry.totalCostUsd));
   const totalUsage = sumUsageSummaries(modelCases.map((entry) => entry.totalUsage));
   const totalTiming = sumTimingBreakdowns(modelCases.map((entry) => entry.timing));
   const avgTiming = averageTimingBreakdown(
@@ -4339,7 +4370,11 @@ function isBetterCaseResult(candidate: CaseResult, best: CaseResult): boolean {
   if (candidate.durationMs !== best.durationMs) {
     return candidate.durationMs < best.durationMs;
   }
-  if (candidate.totalCostUsd !== best.totalCostUsd) {
+  if (
+    candidate.totalCostUsd !== null &&
+    best.totalCostUsd !== null &&
+    candidate.totalCostUsd !== best.totalCostUsd
+  ) {
     return candidate.totalCostUsd < best.totalCostUsd;
   }
   return candidate.runIndex < best.runIndex;
@@ -4390,7 +4425,8 @@ function summarizeByModelTaskAcrossRuns(params: {
     const toolPassCount = entries.filter((entry) => entry.toolTracePass).length;
     const graderPassCount = entries.filter((entry) => entry.graderPass).length;
     const avgDurationMs = entries.reduce((acc, entry) => acc + entry.durationMs, 0) / runs;
-    const avgCostUsd = entries.reduce((acc, entry) => acc + entry.totalCostUsd, 0) / runs;
+    const totalCostUsd = sumCosts(entries.map((entry) => entry.totalCostUsd));
+    const avgCostUsd = totalCostUsd === null ? null : totalCostUsd / runs;
     const avgToolCalls = entries.reduce((acc, entry) => acc + entry.toolTrace.totalCalls, 0) / runs;
     const avgSubagentCalls =
       entries.reduce((acc, entry) => acc + entry.subagentUsage.totalSubagentCalls, 0) / runs;
@@ -4520,7 +4556,7 @@ function buildMarkdownReport(params: {
   const schemaPass = params.caseResults.filter((entry) => entry.schemaPass).length;
   const toolPass = params.caseResults.filter((entry) => entry.toolTracePass).length;
   const graderPass = params.caseResults.filter((entry) => entry.graderPass).length;
-  const totalCostUsd = params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+  const totalCostUsd = sumCosts(params.caseResults.map((entry) => entry.totalCostUsd));
   const totalDurationMs = params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0);
   const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
   const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
@@ -4570,7 +4606,7 @@ function buildMarkdownReport(params: {
   lines.push(`- Grader pass: ${graderPass}/${totalCases}`);
   lines.push(`- Observed total latency: ${(totalDurationMs / 1000).toFixed(2)}s`);
   lines.push(`- Observed avg latency/case: ${(avgDurationMs / 1000).toFixed(2)}s`);
-  lines.push(`- Observed total cost: $${formatUsd(totalCostUsd)}`);
+  lines.push(`- Observed total cost: ${formatUsd(totalCostUsd, true)}`);
   lines.push(`- Observed subagent tool calls: ${formatInt(totalSubagentCalls)}`);
   lines.push(`- Cases that used subagents: ${runsUsingSubagents}/${totalCases}`);
   lines.push(`- Cases flagged stale: ${staleCases.length}/${totalCases}`);
@@ -4646,12 +4682,14 @@ function buildMarkdownReport(params: {
   lines.push(`- Grader prompt tokens per call: ${params.projection.graderPromptTokens}`);
   lines.push(`- Grader response tokens per call: ${params.projection.graderResponseTokens}`);
   lines.push(
-    `- Estimated agent cost total: $${formatUsd(params.projection.estimatedAgentCostUsd)}`,
+    `- Estimated API-equivalent agent cost total: ${formatUsd(params.projection.estimatedAgentCostUsd, true)}`,
   );
   lines.push(
-    `- Estimated grader cost total: $${formatUsd(params.projection.estimatedGraderCostUsd)}`,
+    `- Estimated API-equivalent grader cost total: ${formatUsd(params.projection.estimatedGraderCostUsd, true)}`,
   );
-  lines.push(`- Estimated grand total: $${formatUsd(params.projection.estimatedTotalCostUsd)}`);
+  lines.push(
+    `- Estimated API-equivalent grand total: ${formatUsd(params.projection.estimatedTotalCostUsd, true)}`,
+  );
   lines.push("");
 
   lines.push("## Per-Model Summary");
@@ -4783,7 +4821,7 @@ function buildLatestResultsMarkdown(params: {
   const schemaPass = params.caseResults.filter((entry) => entry.schemaPass).length;
   const toolPass = params.caseResults.filter((entry) => entry.toolTracePass).length;
   const graderPass = params.caseResults.filter((entry) => entry.graderPass).length;
-  const totalCostUsd = params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0);
+  const totalCostUsd = sumCosts(params.caseResults.map((entry) => entry.totalCostUsd));
   const totalDurationMs = params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0);
   const avgDurationMs = totalCases === 0 ? 0 : totalDurationMs / totalCases;
   const totalUsage = sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage));
@@ -4835,7 +4873,7 @@ function buildLatestResultsMarkdown(params: {
   );
   lines.push(`- Total latency: ${(totalDurationMs / 1000).toFixed(2)}s`);
   lines.push(`- Avg latency per case: ${(avgDurationMs / 1000).toFixed(2)}s`);
-  lines.push(`- Total cost: $${formatUsd(totalCostUsd)}`);
+  lines.push(`- Total cost: ${formatUsd(totalCostUsd, true)}`);
   lines.push(`- Subagent tool calls: ${formatInt(totalSubagentCalls)}`);
   lines.push(`- Cases that used subagents: ${runsUsingSubagents}/${totalCases}`);
   lines.push(`- Cases flagged stale: ${staleCases.length}/${totalCases}`);
@@ -5058,7 +5096,7 @@ function parseGraderAspectRuns(value: unknown): readonly GraderAspectRun[] {
       criteria,
       ...(parsedVerdict.success ? { value: parsedVerdict.data } : {}),
       ...(typeof record.error === "string" ? { error: record.error } : {}),
-      costUsd: toNonNegativeNumber(record.costUsd),
+      costUsd: parseCost(record.costUsd),
       usage: summarizeUsage(record.usage),
       startedAt:
         typeof record.startedAt === "string" ? record.startedAt : new Date(0).toISOString(),
@@ -5099,6 +5137,9 @@ function parseCaseResults(value: unknown): CaseResult[] {
         variant,
         taskId: entry.taskId,
         runIndex: entry.runIndex,
+        agentCostUsd: parseCost(entry.agentCostUsd),
+        graderCostUsd: parseCost(entry.graderCostUsd),
+        totalCostUsd: parseCost(entry.totalCostUsd),
         subagentUsage: parseSubagentUsageSummary(entry.subagentUsage),
         subagentPolicyPass:
           typeof entry.subagentPolicyPass === "boolean" ? entry.subagentPolicyPass : true,
@@ -5436,9 +5477,15 @@ async function main(): Promise<void> {
   console.log(`Grader model: ${graderModel}`);
   console.log(`Agent timeout (ms): ${agentTimeoutMs}`);
   console.log(`Projected cases: ${projection.totalCases}`);
-  console.log(`Projected agent cost: $${formatUsd(projection.estimatedAgentCostUsd)}`);
-  console.log(`Projected grader cost: $${formatUsd(projection.estimatedGraderCostUsd)}`);
-  console.log(`Projected total cost: $${formatUsd(projection.estimatedTotalCostUsd)}`);
+  console.log(
+    `Projected API-equivalent agent cost: ${formatUsd(projection.estimatedAgentCostUsd, true)}`,
+  );
+  console.log(
+    `Projected API-equivalent grader cost: ${formatUsd(projection.estimatedGraderCostUsd, true)}`,
+  );
+  console.log(
+    `Projected API-equivalent total cost: ${formatUsd(projection.estimatedTotalCostUsd, true)}`,
+  );
   if (values["merge-latest"]) {
     console.log("Merge mode: enabled (patch traces/latest using only this run's cases).");
   }
@@ -5521,7 +5568,7 @@ async function main(): Promise<void> {
                   .join(" | ");
 
             console.log(
-              `[${status}] ${model} / ${variant} / ${task.id} / run ${runIndex} | ${(result.durationMs / 1000).toFixed(2)}s | $${formatUsd(result.totalCostUsd)} | subagents=${result.subagentUsage.totalSubagentCalls}${reason ? ` | ${reason}` : ""}`,
+              `[${status}] ${model} / ${variant} / ${task.id} / run ${runIndex} | ${(result.durationMs / 1000).toFixed(2)}s | ${formatUsd(result.totalCostUsd, true)} | subagents=${result.subagentUsage.totalSubagentCalls}${reason ? ` | ${reason}` : ""}`,
             );
           }
         }
@@ -5595,7 +5642,7 @@ async function main(): Promise<void> {
             ? 0
             : params.caseResults.reduce((acc, entry) => acc + entry.durationMs, 0) /
               params.caseResults.length,
-        totalCostUsd: params.caseResults.reduce((acc, entry) => acc + entry.totalCostUsd, 0),
+        totalCostUsd: sumCosts(params.caseResults.map((entry) => entry.totalCostUsd)),
         usage: sumUsageSummaries(params.caseResults.map((entry) => entry.totalUsage)),
         timing: {
           total: sumTimingBreakdowns(params.caseResults.map((entry) => entry.timing)),
@@ -5682,9 +5729,11 @@ async function main(): Promise<void> {
         existingSnapshot.runs,
         ...latestCaseResults.map((entry) => entry.runIndex),
       );
-      latestGraderModel = isLlmTextModelId(existingSnapshot.graderModel)
-        ? existingSnapshot.graderModel
-        : graderModel;
+      try {
+        latestGraderModel = parseModelId(existingSnapshot.graderModel, "stored grader model");
+      } catch {
+        latestGraderModel = graderModel;
+      }
       latestReasoning = existingSnapshot.reasoning;
       console.log("Merged this run with existing traces/latest summary.");
     } else {

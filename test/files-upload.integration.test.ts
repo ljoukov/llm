@@ -2,15 +2,10 @@ import { Buffer } from "node:buffer";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  files,
-  generateText,
-  isGeminiTextModelId,
-  isOpenAiModelId,
-  loadLocalEnv,
-} from "../src/index.js";
+import { files, generateText, loadLocalEnv } from "../src/index.js";
 import {
   hasIntegrationCredentialsForModel,
+  integrationModelLabel,
   hasCanonicalFilesBackend,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
@@ -22,8 +17,10 @@ const RUN_LARGE_FILE_TESTS = (() => {
 })();
 
 const requestedModels = resolveIntegrationRequestedModels();
-const openAiModel = requestedModels.find((model) => isOpenAiModelId(model));
-const geminiModel = requestedModels.find((model) => isGeminiTextModelId(model));
+const openAiModel = requestedModels.find(
+  (ref) => ref.provider === "openai" && ref.access !== "subscription",
+);
+const geminiModel = requestedModels.find((ref) => ref.provider === "google");
 const hasGeminiApi = Boolean(
   process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim(),
 );
@@ -134,7 +131,7 @@ const crossProviderFileIdIt =
 
 describe("integration: large file uploads", () => {
   openAiLargeFilesIt(
-    `${openAiModel ?? "openai"}: automatically offloads oversized inline PDFs`,
+    `${openAiModel ? integrationModelLabel(openAiModel) : "openai"}: automatically offloads oversized inline PDFs`,
     async () => {
       if (!openAiModel) {
         return;
@@ -143,7 +140,7 @@ describe("integration: large file uploads", () => {
       const tokenA = "PDF_ALPHA_TOKEN";
       const tokenB = "PDF_BETA_TOKEN";
       const result = await generateText({
-        model: openAiModel,
+        ...openAiModel,
         input: [
           {
             role: "user",
@@ -168,7 +165,7 @@ describe("integration: large file uploads", () => {
   );
 
   crossProviderFileIdIt(
-    `${openAiModel ?? "openai"} -> ${geminiModel ?? "gemini"}: reuses canonical file ids across providers`,
+    `${openAiModel ? integrationModelLabel(openAiModel) : "openai"} -> ${geminiModel ? integrationModelLabel(geminiModel) : "google"}: reuses canonical file ids across providers`,
     async () => {
       if (!openAiModel || !geminiModel) {
         return;
@@ -183,7 +180,7 @@ describe("integration: large file uploads", () => {
       });
 
       const openAiResult = await generateText({
-        model: openAiModel,
+        ...openAiModel,
         input: [
           {
             role: "user",
@@ -205,7 +202,7 @@ describe("integration: large file uploads", () => {
       expect(openAiResult.text.toUpperCase()).toContain(token);
 
       const geminiResult = await generateText({
-        model: geminiModel,
+        ...geminiModel,
         input: [
           {
             role: "user",

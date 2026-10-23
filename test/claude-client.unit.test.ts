@@ -723,7 +723,7 @@ describe("Claude subscription Agent SDK transport", () => {
   });
 
   it("allows a same-model query from a tool when subscription concurrency is one", async () => {
-    configureModelConcurrency({ providerCaps: { claude: 1 } });
+    configureModelConcurrency({ providerCaps: { anthropic: 1 } });
     const execute = vi.fn(async () => {
       const nested = await runClaudeQuery({
         ...request,
@@ -762,7 +762,7 @@ describe("Claude subscription Agent SDK transport", () => {
   });
 
   it("cancels a queued subscription query without launching a second CLI process", async () => {
-    configureModelConcurrency({ providerCaps: { claude: 1 } });
+    configureModelConcurrency({ providerCaps: { anthropic: 1 } });
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;

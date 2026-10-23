@@ -30,7 +30,9 @@ export function isOpenAiImageModelId(value: string): value is OpenAiImageModelId
   return (OPENAI_IMAGE_MODEL_IDS as readonly string[]).includes(value);
 }
 
-export const CHATGPT_IMAGE_MODEL_IDS = ["chatgpt-gpt-image-2"] as const;
+export const CHATGPT_IMAGE_MODEL_IDS = ["gpt-image-2"] as const;
+export const OPENAI_SUBSCRIPTION_IMAGE_MODEL_IDS = CHATGPT_IMAGE_MODEL_IDS;
+export const isOpenAiSubscriptionImageModelId = isChatGptImageModelId;
 export type ChatGptImageModelId = (typeof CHATGPT_IMAGE_MODEL_IDS)[number];
 
 export function isChatGptImageModelId(value: string): value is ChatGptImageModelId {
@@ -166,21 +168,25 @@ export const OPENAI_GPT_IMAGE_2_NUM_IMAGES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as 
 export type OpenAiGptImage2NumImages = (typeof OPENAI_GPT_IMAGE_2_NUM_IMAGES)[number];
 
 export const CHATGPT_MODEL_IDS = [
-  "chatgpt-gpt-6.1-sol",
-  "chatgpt-gpt-6.1-sol-fast",
-  "chatgpt-gpt-6-astra",
-  "chatgpt-gpt-6-astra-fast",
-  "chatgpt-gpt-6-sol",
-  "chatgpt-gpt-6-sol-fast",
-  "chatgpt-gpt-6-luna",
-  "chatgpt-gpt-6-luna-fast",
-  "chatgpt-gpt-5.6-sol",
-  "chatgpt-gpt-5.6-sol-fast",
-  "chatgpt-gpt-5.6-terra",
-  "chatgpt-gpt-5.6-terra-fast",
-  "chatgpt-gpt-5.6-luna",
-  "chatgpt-gpt-5.6-luna-fast",
+  "gpt-6.1-sol",
+  "gpt-6.1-sol-fast",
+  "gpt-6-astra",
+  "gpt-6-astra-fast",
+  "gpt-6-sol",
+  "gpt-6-sol-fast",
+  "gpt-6-luna",
+  "gpt-6-luna-fast",
+  "gpt-5.6-sol",
+  "gpt-5.6-sol-fast",
+  "gpt-5.6-terra",
+  "gpt-5.6-terra-fast",
+  "gpt-5.6-luna",
+  "gpt-5.6-luna-fast",
 ] as const;
+
+export const OPENAI_SUBSCRIPTION_MODEL_IDS = CHATGPT_MODEL_IDS;
+export type OpenAiSubscriptionModelId = ChatGptModelId;
+export const isOpenAiSubscriptionModelId = isChatGptModelId;
 
 const FAST_MODEL_SUFFIX = "-fast";
 const OPENAI_PRIORITY_MODEL_IDS = [
@@ -194,13 +200,13 @@ const OPENAI_PRIORITY_MODEL_IDS = [
   "gpt-5.6-luna-fast",
 ] as const;
 const CHATGPT_PRIORITY_MODEL_IDS = [
-  "chatgpt-gpt-6.1-sol-fast",
-  "chatgpt-gpt-6-astra-fast",
-  "chatgpt-gpt-6-sol-fast",
-  "chatgpt-gpt-6-luna-fast",
-  "chatgpt-gpt-5.6-sol-fast",
-  "chatgpt-gpt-5.6-terra-fast",
-  "chatgpt-gpt-5.6-luna-fast",
+  "gpt-6.1-sol-fast",
+  "gpt-6-astra-fast",
+  "gpt-6-sol-fast",
+  "gpt-6-luna-fast",
+  "gpt-5.6-sol-fast",
+  "gpt-5.6-terra-fast",
+  "gpt-5.6-luna-fast",
 ] as const;
 const CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL = "gpt-image-2" as const;
 
@@ -241,7 +247,7 @@ export function stripChatGptPrefix(model: ChatGptModelId): string {
   if (isExperimentalChatGptModelId(model)) {
     return model.slice(EXPERIMENTAL_CHATGPT_MODEL_PREFIX.length);
   }
-  return model.slice("chatgpt-".length);
+  return model;
 }
 
 export function resolveChatGptProviderModel(model: ChatGptModelId): string {

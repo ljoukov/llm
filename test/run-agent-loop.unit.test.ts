@@ -35,7 +35,9 @@ describe("runAgentLoop", () => {
     };
 
     const result = await runAgentLoop({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: "test",
       filesystemTool: true,
       tools: customTools,
@@ -62,7 +64,9 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-sol",
       input: "test",
       filesystemTool: true,
     });
@@ -93,7 +97,9 @@ describe("runAgentLoop", () => {
       );
 
       await runAgentLoop({
-        model: "chatgpt-gpt-6-sol",
+        provider: "openai",
+        access: "subscription",
+        model: "gpt-6-sol",
         input: "test",
         mediaResolution: "original",
         filesystemTool: {
@@ -201,9 +207,12 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-5.6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-5.6-sol",
       input: "Generate a landscape",
       image_generation_tool: {
+        access: "subscription",
         background: "auto",
       },
     });
@@ -222,7 +231,9 @@ describe("runAgentLoop", () => {
 
     await expect(
       runAgentLoop({
-        model: "chatgpt-gpt-5.6-sol",
+        provider: "openai",
+        access: "subscription",
+        model: "gpt-5.6-sol",
         input: "Generate a landscape",
         imageGenerationTool: {
           imageSize: "landscape",
@@ -264,7 +275,9 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-5.6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-5.6-sol",
       input: "investigate independent workstreams",
       thinkingLevel: "ultra",
     });
@@ -290,7 +303,9 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-5.6-sol",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-5.6-sol",
       input: "work locally",
       thinkingLevel: "ultra",
       subagentTool: false,
@@ -342,7 +357,9 @@ describe("runAgentLoop", () => {
 
     await expect(
       runAgentLoop({
-        model: "chatgpt-gpt-6-luna",
+        provider: "openai",
+        access: "subscription",
+        model: "gpt-6-luna",
         input: "test",
         filesystemTool: true,
         tools: {
@@ -399,7 +416,7 @@ describe("runAgentLoop", () => {
         steps: [
           {
             step: 1,
-            modelVersion: "chatgpt-gpt-6-luna",
+            modelVersion: "gpt-6-luna",
             toolCalls: [{ toolName: "list_dir", input: {}, output: {} }],
             usage: {
               promptTokens: 10,
@@ -413,7 +430,7 @@ describe("runAgentLoop", () => {
           },
           {
             step: 2,
-            modelVersion: "chatgpt-gpt-6-astra",
+            modelVersion: "gpt-6-astra",
             toolCalls: [],
             usage: {
               promptTokens: 8,
@@ -434,7 +451,9 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: "test",
       filesystemTool: true,
       onEvent,
@@ -620,6 +639,41 @@ describe("runAgentLoop", () => {
     expect(runToolLoopMock).toHaveBeenCalledTimes(2);
     for (const [call] of runToolLoopMock.mock.calls) {
       expect(call).toMatchObject({ model: "glm-5.3", provider: "fireworks" });
+    }
+  });
+
+  it("resolves automatic provider selection once before scheduling children", async () => {
+    runToolLoopMock.mockClear();
+    vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "unit-vercel-key");
+    vi.stubEnv("LLM_PROVIDER", "");
+    let calls = 0;
+    runToolLoopMock.mockImplementation(async (request: unknown) => {
+      if (calls++ === 0) {
+        vi.stubEnv("LLM_PROVIDER", "fireworks");
+        vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "");
+        const parent = request as {
+          tools: Record<string, { execute: (input: unknown) => Promise<any> }>;
+        };
+        const child = await parent.tools.spawn_agent?.execute({ prompt: "child" });
+        await parent.tools.wait?.execute({ agent_id: child.agent_id, timeout_ms: 10_000 });
+        await parent.tools.close_agent?.execute({ agent_id: child.agent_id });
+      }
+      return { text: "done", thoughts: "", steps: [], totalCostUsd: null };
+    });
+    try {
+      const { runAgentLoop } = await import("../src/agent.js");
+      await runAgentLoop({
+        model: "glm-5.3",
+        input: "delegate",
+        subagentTool: { maxDepth: 2 },
+        logging: false,
+      });
+      expect(runToolLoopMock).toHaveBeenCalledTimes(2);
+      for (const [call] of runToolLoopMock.mock.calls) {
+        expect(call).toMatchObject({ provider: "vercel", access: "api", model: "glm-5.3" });
+      }
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 
