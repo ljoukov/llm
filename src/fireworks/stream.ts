@@ -6,6 +6,17 @@ type FireworksToolCall = {
   function: { name: string; arguments: string };
 };
 
+type ReasoningDetail = {
+  type: string;
+  id?: string;
+  format?: string;
+  index?: number;
+  text?: string;
+  summary?: string;
+  data?: string;
+  signature?: string;
+};
+
 export type FireworksChatCompletion = {
   model: string;
   choices: Array<{
@@ -15,21 +26,29 @@ export type FireworksChatCompletion = {
       role: "assistant";
       content: string | null;
       reasoning_content?: string;
+      reasoning?: string;
+      reasoning_details?: ReasoningDetail[];
+      provider_metadata?: Record<string, unknown>;
       tool_calls?: FireworksToolCall[];
     };
   }>;
   usage?: unknown;
+  provider_metadata?: Record<string, unknown>;
 };
 
 type StreamChunk = {
   model?: string;
   usage?: unknown;
+  provider_metadata?: Record<string, unknown>;
   choices?: Array<{
     index?: number;
     finish_reason?: string | null;
     delta?: {
       content?: string | null;
       reasoning_content?: string | null;
+      reasoning?: string | null;
+      reasoning_details?: ReasoningDetail[];
+      provider_metadata?: Record<string, unknown>;
       tool_calls?: Array<{
         index: number;
         id?: string;
@@ -41,16 +60,38 @@ type StreamChunk = {
 
 type CompletionStream = AsyncIterable<StreamChunk> & { controller?: AbortController };
 
-/** Consume Fireworks SSE without releasing its caller's scheduler slot early. */
+function mergeMetadata(
+  current: Record<string, unknown>,
+  update: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...current };
+  for (const [key, value] of Object.entries(update)) {
+    const previous = result[key];
+    result[key] =
+      previous &&
+      typeof previous === "object" &&
+      !Array.isArray(previous) &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+        ? mergeMetadata(previous as Record<string, unknown>, value as Record<string, unknown>)
+        : value;
+  }
+  return result;
+}
+
+/** Consume OpenAI-compatible SSE without releasing the caller's scheduler slot early. */
 export async function streamFireworksChatCompletion(
   client: OpenAI,
   request: Record<string, unknown>,
   options: {
     readonly signal?: AbortSignal;
     readonly onDelta?: (channel: "thought" | "response", text: string) => void;
+    readonly provider?: "fireworks" | "vercel";
   } = {},
 ): Promise<FireworksChatCompletion> {
   const { signal, onDelta } = options;
+  const providerName = options.provider === "vercel" ? "Vercel AI Gateway" : "Fireworks";
   signal?.throwIfAborted();
 
   let stream: CompletionStream | undefined;
@@ -64,7 +105,7 @@ export async function streamFireworksChatCompletion(
   void aborted.catch(() => undefined);
   const onAbort = (): void => {
     stream?.controller?.abort();
-    rejectAborted?.(signal?.reason ?? new Error("Fireworks request aborted."));
+    rejectAborted?.(signal?.reason ?? new Error(`${providerName} request aborted.`));
   };
   signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -73,6 +114,10 @@ export async function streamFireworksChatCompletion(
   let content = "";
   let reasoning = "";
   let sawReasoning = false;
+  let gatewayReasoning = "";
+  let sawGatewayReasoning = false;
+  const reasoningDetails = new Map<string, ReasoningDetail>();
+  let providerMetadata: Record<string, unknown> | undefined;
   let usage: unknown;
   const tools = new Map<number, FireworksToolCall>();
 
@@ -103,7 +148,7 @@ export async function streamFireworksChatCompletion(
       if (next.done) {
         if (!finishReason) {
           throw new Error(
-            "Fireworks stream ended before the first choice supplied a finish reason.",
+            `${providerName} stream ended before the first choice supplied a finish reason.`,
           );
         }
         completed = true;
@@ -112,14 +157,42 @@ export async function streamFireworksChatCompletion(
       const chunk = next.value;
       if (typeof chunk.model === "string") model = chunk.model;
       if (chunk.usage !== null && chunk.usage !== undefined) usage = chunk.usage;
+      if (chunk.provider_metadata) {
+        providerMetadata = mergeMetadata(providerMetadata ?? {}, chunk.provider_metadata);
+      }
       const choice = chunk.choices?.find((entry) => entry.index === 0) ?? chunk.choices?.[0];
       if (!choice || (choice.index !== undefined && choice.index !== 0)) continue;
       if (typeof choice.finish_reason === "string") finishReason = choice.finish_reason;
       const delta = choice.delta;
+      if (delta?.provider_metadata) {
+        providerMetadata = mergeMetadata(providerMetadata ?? {}, delta.provider_metadata);
+      }
       if (typeof delta?.reasoning_content === "string") {
         sawReasoning = true;
         reasoning += delta.reasoning_content;
-        if (delta.reasoning_content.length > 0) onDelta?.("thought", delta.reasoning_content);
+        if (typeof delta.reasoning !== "string" && delta.reasoning_content.length > 0) {
+          onDelta?.("thought", delta.reasoning_content);
+        }
+      }
+      if (typeof delta?.reasoning === "string") {
+        sawGatewayReasoning = true;
+        gatewayReasoning += delta.reasoning;
+        if (delta.reasoning.length > 0) onDelta?.("thought", delta.reasoning);
+      }
+      for (const [position, fragment] of (delta?.reasoning_details ?? []).entries()) {
+        const key = `${fragment.index ?? fragment.id ?? position}:${fragment.type}`;
+        const existing = reasoningDetails.get(key);
+        if (!existing) {
+          reasoningDetails.set(key, { ...fragment });
+          continue;
+        }
+        for (const field of ["text", "summary", "data", "signature"] as const) {
+          if (typeof fragment[field] === "string") {
+            existing[field] = (existing[field] ?? "") + fragment[field];
+          }
+        }
+        if (fragment.id !== undefined) existing.id = fragment.id;
+        if (fragment.format !== undefined) existing.format = fragment.format;
       }
       if (typeof delta?.content === "string") {
         content += delta.content;
@@ -149,6 +222,11 @@ export async function streamFireworksChatCompletion(
             role: "assistant",
             content: content || null,
             ...(sawReasoning ? { reasoning_content: reasoning } : {}),
+            ...(sawGatewayReasoning ? { reasoning: gatewayReasoning } : {}),
+            ...(reasoningDetails.size > 0
+              ? { reasoning_details: [...reasoningDetails.values()] }
+              : {}),
+            ...(providerMetadata ? { provider_metadata: providerMetadata } : {}),
             ...(tools.size > 0
               ? {
                   tool_calls: [...tools]
@@ -160,6 +238,7 @@ export async function streamFireworksChatCompletion(
         },
       ],
       ...(usage !== undefined ? { usage } : {}),
+      ...(providerMetadata ? { provider_metadata: providerMetadata } : {}),
     };
   } finally {
     signal?.removeEventListener("abort", onAbort);

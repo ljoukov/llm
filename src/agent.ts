@@ -626,6 +626,7 @@ function createSubagentController(params: {
       return await runAgentLoopInternal(
         {
           model: subagentRequest.model,
+          provider: params.toolLoopRequest.provider,
           input: subagentRequest.input,
           instructions: subagentRequest.instructions,
           tools: childCustomTools,

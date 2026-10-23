@@ -7,10 +7,17 @@ export const DEFAULT_OPENAI_MODEL_CONCURRENCY_CAP = 12;
 export const DEFAULT_GOOGLE_MODEL_CONCURRENCY_CAP = 4;
 export const DEFAULT_GOOGLE_PREVIEW_MODEL_CONCURRENCY_CAP = 2;
 export const DEFAULT_FIREWORKS_MODEL_CONCURRENCY_CAP = 6;
+export const DEFAULT_VERCEL_MODEL_CONCURRENCY_CAP = 6;
 export const DEFAULT_ANTHROPIC_MODEL_CONCURRENCY_CAP = 4;
 export const DEFAULT_CLAUDE_MODEL_CONCURRENCY_CAP = 2;
 
-export type ModelConcurrencyProvider = "openai" | "google" | "fireworks" | "anthropic" | "claude";
+export type ModelConcurrencyProvider =
+  | "openai"
+  | "google"
+  | "fireworks"
+  | "vercel"
+  | "anthropic"
+  | "claude";
 
 export type ModelConcurrencyConfig = {
   readonly globalCap?: number;
@@ -32,6 +39,7 @@ const MODEL_CONCURRENCY_PROVIDERS: readonly ModelConcurrencyProvider[] = [
   "openai",
   "google",
   "fireworks",
+  "vercel",
   "anthropic",
   "claude",
 ];
@@ -97,6 +105,7 @@ function normalizeModelConcurrencyConfig(
     openai: new Map<string, number>(),
     google: new Map<string, number>(),
     fireworks: new Map<string, number>(),
+    vercel: new Map<string, number>(),
     anthropic: new Map<string, number>(),
     claude: new Map<string, number>(),
   };
@@ -134,6 +143,9 @@ function resolveDefaultProviderCap(
   }
   if (provider === "claude") {
     return DEFAULT_CLAUDE_MODEL_CONCURRENCY_CAP;
+  }
+  if (provider === "vercel") {
+    return DEFAULT_VERCEL_MODEL_CONCURRENCY_CAP;
   }
   return DEFAULT_FIREWORKS_MODEL_CONCURRENCY_CAP;
 }

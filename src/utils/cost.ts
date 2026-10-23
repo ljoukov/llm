@@ -1,5 +1,6 @@
 import { getAnthropicPricing } from "../anthropic/pricing.js";
 import { getFireworksPricing } from "../fireworks/pricing.js";
+import { getVercelPricing } from "../vercel/pricing.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
 import {
   getOpenAiImagePricing,
@@ -41,6 +42,7 @@ export function estimateCallCostUsd({
   responseImages,
   imageSize,
   imageQuality,
+  provider,
 }: {
   modelId: string;
   pricingModelId?: string;
@@ -48,6 +50,8 @@ export function estimateCallCostUsd({
   responseImages: number;
   imageSize?: string;
   imageQuality?: string;
+  /** Select route-specific rates for shared open model IDs. */
+  provider?: string;
 }): number {
   const pricingModelIds = resolvePricingModelIds(modelId, pricingModelId);
   const openAiImagePricing = resolvePricing(pricingModelIds, getOpenAiImagePricing);
@@ -144,12 +148,18 @@ export function estimateCallCostUsd({
     return inputCost + cachedCost + outputCost;
   }
 
-  const fireworksPricing = resolvePricing(pricingModelIds, getFireworksPricing);
-  if (fireworksPricing) {
-    const inputCost = nonCachedPrompt * fireworksPricing.inputRate;
-    const cachedCost = cachedTokens * fireworksPricing.cachedRate;
+  const useVercelPricing =
+    provider === "vercel" ||
+    (provider === undefined && modelId.includes("/") && getVercelPricing(modelId) !== undefined);
+  const openModelPricing = resolvePricing(
+    pricingModelIds,
+    useVercelPricing ? getVercelPricing : getFireworksPricing,
+  );
+  if (openModelPricing) {
+    const inputCost = nonCachedPrompt * openModelPricing.inputRate;
+    const cachedCost = cachedTokens * openModelPricing.cachedRate;
     const outputTokens = responseTokens + thinkingTokens;
-    const outputCost = outputTokens * fireworksPricing.outputRate;
+    const outputCost = outputTokens * openModelPricing.outputRate;
     return inputCost + cachedCost + outputCost;
   }
 

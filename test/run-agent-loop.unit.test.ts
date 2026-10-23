@@ -591,6 +591,38 @@ describe("runAgentLoop", () => {
     expect(childCompleted?.parentRunId).toBe(parentStarted?.runId);
   });
 
+  it("inherits an explicit provider in child agents", async () => {
+    runToolLoopMock.mockClear();
+    let calls = 0;
+    runToolLoopMock.mockImplementation(async (request: unknown) => {
+      if (calls++ === 0) {
+        const parent = request as {
+          tools: Record<string, { execute: (input: unknown) => Promise<any> }>;
+        };
+        const spawn = parent.tools.spawn_agent;
+        const wait = parent.tools.wait;
+        const close = parent.tools.close_agent;
+        if (!spawn || !wait || !close) throw new Error("Missing subagent controls.");
+        const child = await spawn.execute({ prompt: "child task" });
+        await wait.execute({ agent_id: child.agent_id, timeout_ms: 10_000 });
+        await close.execute({ agent_id: child.agent_id });
+      }
+      return { text: "done", thoughts: "", steps: [], totalCostUsd: 0 };
+    });
+    const { runAgentLoop } = await import("../src/agent.js");
+    await runAgentLoop({
+      model: "glm-5.3",
+      provider: "fireworks",
+      input: "delegate",
+      subagentTool: { enabled: true, maxDepth: 2 },
+      logging: false,
+    });
+    expect(runToolLoopMock).toHaveBeenCalledTimes(2);
+    for (const [call] of runToolLoopMock.mock.calls) {
+      expect(call).toMatchObject({ model: "glm-5.3", provider: "fireworks" });
+    }
+  });
+
   it("flushes telemetry sink after all emits settle", async () => {
     runToolLoopMock.mockClear();
     runToolLoopMock.mockImplementationOnce(async () => {

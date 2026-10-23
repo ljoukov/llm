@@ -92,6 +92,7 @@ export type {
   LlmOpenAiShellEnvironment,
   LlmOpenAiShellNetworkPolicy,
   LlmProvider,
+  LlmOpenModelProvider,
   LlmStreamEvent,
   LlmTextDeltaEvent,
   LlmTextModelId,
@@ -356,3 +357,6 @@ export type { AnthropicModelId, AnthropicProviderModelId } from "./anthropic/mod
 
 export { CLAUDE_MODEL_IDS, isClaudeModelId, resolveClaudeProviderModel } from "./claude/models.js";
 export type { ClaudeModelId } from "./claude/models.js";
+
+export { VERCEL_MODEL_IDS, isVercelModelId, resolveVercelModelId } from "./vercel/models.js";
+export type { VercelModelId } from "./vercel/models.js";

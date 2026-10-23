@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { resolveOpenModelProvider } from "../src/vercel/models.js";
 import os from "node:os";
 import path from "node:path";
 
@@ -27,6 +28,7 @@ export type IntegrationProviderAvailability = {
   readonly anthropic: boolean;
   readonly claude: boolean;
   readonly fireworks: boolean;
+  readonly vercel: boolean;
   readonly chatGpt: boolean;
 };
 
@@ -76,6 +78,7 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
     // Ordinary credential checks do not launch the CLI or inspect its credential store.
     claude: process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1",
     fireworks: hasFireworks,
+    vercel: Boolean(process.env.AI_GATEWAY_API_KEY?.trim()),
     chatGpt: hasChatGpt,
   };
 
@@ -106,7 +109,7 @@ export function hasIntegrationCredentialsForModel(
     return availability.claude;
   }
   if (isFireworksModelId(model)) {
-    return availability.fireworks;
+    return resolveOpenModelProvider() === "vercel" ? availability.vercel : availability.fireworks;
   }
 
   return false;
@@ -129,7 +132,9 @@ function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId):
     return "Claude Code subscription login + LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1";
   }
   if (isFireworksModelId(model)) {
-    return "FIREWORKS_TOKEN or FIREWORKS_API_KEY";
+    return resolveOpenModelProvider() === "vercel"
+      ? "AI_GATEWAY_API_KEY"
+      : "FIREWORKS_TOKEN or FIREWORKS_API_KEY";
   }
   return "unknown credentials";
 }

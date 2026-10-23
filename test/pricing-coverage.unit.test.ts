@@ -5,6 +5,8 @@ import { getAnthropicPricing } from "../src/anthropic/pricing.js";
 import { CLAUDE_MODEL_IDS } from "../src/claude/models.js";
 import { FIREWORKS_MODEL_IDS, resolveFireworksModelId } from "../src/fireworks/models.js";
 import { getFireworksPricing } from "../src/fireworks/pricing.js";
+import { VERCEL_MODEL_IDS, resolveVercelModelId } from "../src/vercel/models.js";
+import { getVercelPricing } from "../src/vercel/pricing.js";
 import { GEMINI_IMAGE_MODEL_IDS, GEMINI_TEXT_MODEL_IDS } from "../src/google/client.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../src/google/pricing.js";
 import { LLM_IMAGE_MODEL_IDS, LLM_MODEL_IDS, LLM_TEXT_MODEL_IDS } from "../src/llm.js";
@@ -106,6 +108,29 @@ describe("supported model pricing coverage", () => {
       pricing?.outputRateLow,
       pricing?.outputRateHigh,
     ]);
+  });
+
+  it.each(VERCEL_MODEL_IDS)("has Vercel route-specific estimates for %s", (modelId) => {
+    const pricing = getVercelPricing(modelId);
+    expectPositiveRates([pricing?.inputRate, pricing?.cachedRate, pricing?.outputRate]);
+    const native = resolveVercelModelId(modelId) ?? "";
+    expect(getVercelPricing(native)).toEqual(pricing);
+    expect(
+      estimateCallCostUsd({
+        modelId,
+        provider: "vercel",
+        tokens: { promptTokens: 1_000_000 },
+        responseImages: 0,
+      }),
+    ).toBeCloseTo((pricing?.inputRate ?? 0) * 1_000_000, 12);
+    expect(
+      estimateCallCostUsd({
+        modelId: native,
+        pricingModelId: modelId,
+        tokens: { responseTokens: 1_000_000 },
+        responseImages: 0,
+      }),
+    ).toBeCloseTo((pricing?.outputRate ?? 0) * 1_000_000, 12);
   });
 
   it.each([
