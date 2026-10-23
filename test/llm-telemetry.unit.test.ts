@@ -101,7 +101,8 @@ vi.mock("../src/openai/calls.js", () => {
   };
 });
 
-vi.mock("../src/google/calls.js", () => {
+vi.mock("../src/google/calls.js", async () => {
+  const actual = await vi.importActual("../src/google/calls.js");
   const fakeClient = {
     models: {
       generateContentStream: async (request: any) => {
@@ -118,6 +119,7 @@ vi.mock("../src/google/calls.js", () => {
   };
 
   return {
+    ...actual,
     runGeminiCall: async (fn: (client: any) => Promise<any>) => fn(fakeClient),
   };
 });

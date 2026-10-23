@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
+import { createRetryingFetch } from "../utils/retryFetch.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 const DEFAULT_FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
@@ -69,12 +70,16 @@ function getFireworksFetch(): typeof fetch {
     bodyTimeout: timeoutMs,
     headersTimeout: timeoutMs,
   });
-  fireworksClientState.cachedFetch = ((input: any, init?: any) => {
+  const requestFetch = ((input: any, init?: any) => {
     return undiciFetch(input, {
       ...(init ?? {}),
       dispatcher,
     });
   }) as typeof fetch;
+  fireworksClientState.cachedFetch = createRetryingFetch(requestFetch, {
+    maxAttempts: 4,
+    scope: "fireworks",
+  });
 
   return fireworksClientState.cachedFetch;
 }
@@ -88,6 +93,7 @@ export function getFireworksClient(): OpenAI {
     apiKey: resolveApiKey(),
     baseURL: resolveBaseUrl(),
     timeout: resolveTimeoutMs(),
+    maxRetries: 0,
     fetch: getFireworksFetch(),
   });
   return fireworksClientState.cachedClient;

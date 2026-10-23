@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { withRetryFetchMetrics } from "../utils/retryFetch.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import {
   createCallScheduler,
@@ -17,18 +18,19 @@ const vercelCallState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.vercelCallS
 
 function getSchedulerForModel(modelId?: string): CallScheduler {
   const normalizedModelId = modelId?.trim();
+  const concurrencyCap = resolveModelConcurrencyCap({
+    provider: "vercel",
+    modelId: normalizedModelId,
+  });
   const schedulerKey = normalizedModelId || DEFAULT_SCHEDULER_KEY;
   const existing = vercelCallState.schedulerByModel.get(schedulerKey);
   if (existing) {
+    existing.setMaxParallelRequests(concurrencyCap);
     return existing;
   }
   const created = createCallScheduler({
-    maxParallelRequests: resolveModelConcurrencyCap({
-      provider: "vercel",
-      modelId: normalizedModelId,
-    }),
-    minIntervalBetweenStartMs: 200,
-    startJitterMs: 200,
+    maxParallelRequests: concurrencyCap,
+    initialParallelRequests: concurrencyCap,
   });
   vercelCallState.schedulerByModel.set(schedulerKey, created);
   return created;
@@ -39,5 +41,25 @@ export async function runVercelCall<T>(
   modelId?: string,
   runOptions?: CallSchedulerRunOptions,
 ): Promise<T> {
-  return getSchedulerForModel(modelId).run(async () => fn(getVercelClient()), runOptions);
+  let fetchMetrics = { retryCount: 0, retryDelayMs: 0, overloadCount: 0 };
+  return getSchedulerForModel(modelId).run(
+    () =>
+      withRetryFetchMetrics(
+        async () => fn(getVercelClient()),
+        (metrics) => {
+          fetchMetrics = metrics;
+        },
+      ),
+    {
+      ...runOptions,
+      onSettled: (metrics) => {
+        runOptions?.onSettled?.({
+          ...metrics,
+          attempts: metrics.attempts + fetchMetrics.retryCount,
+          retryDelayMs: metrics.retryDelayMs + fetchMetrics.retryDelayMs,
+          overloadCount: metrics.overloadCount + fetchMetrics.overloadCount,
+        });
+      },
+    },
+  );
 }

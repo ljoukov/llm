@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
+import { createRetryingFetch } from "../utils/retryFetch.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 const DEFAULT_VERCEL_BASE_URL = "https://ai-gateway.vercel.sh/v1";
@@ -40,9 +41,13 @@ function getVercelFetch(timeoutMs: number): typeof fetch {
     bodyTimeout: timeoutMs,
     headersTimeout: timeoutMs,
   });
-  vercelClientState.cachedFetch = ((input: any, init?: any) => {
+  const fetchImpl = ((input: any, init?: any) => {
     return undiciFetch(input, { ...(init ?? {}), dispatcher });
   }) as typeof fetch;
+  vercelClientState.cachedFetch = createRetryingFetch(fetchImpl, {
+    maxAttempts: 4,
+    scope: "vercel",
+  });
   return vercelClientState.cachedFetch;
 }
 
@@ -56,6 +61,7 @@ export function getVercelClient(): OpenAI {
     apiKey,
     baseURL: resolveVercelBaseUrl(),
     timeout: timeoutMs,
+    maxRetries: 0,
     fetch: getVercelFetch(timeoutMs),
   });
   return vercelClientState.cachedClient;

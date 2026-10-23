@@ -1,8 +1,24 @@
 import { loadLocalEnv } from "../utils/env.js";
+import { createRetryingFetch } from "../utils/retryFetch.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
+const retryingFetches = getRuntimeSingleton(
+  Symbol.for("@ljoukov/llm.anthropicRetryingFetches"),
+  () => new WeakMap<typeof fetch, typeof fetch>(),
+);
+
+function getRetryingFetch(): typeof fetch {
+  const fetchImpl = fetch;
+  const existing = retryingFetches.get(fetchImpl);
+  if (existing) {
+    return existing;
+  }
+  const retryingFetch = createRetryingFetch(fetchImpl, { scope: "anthropic", maxAttempts: 4 });
+  retryingFetches.set(fetchImpl, retryingFetch);
+  return retryingFetch;
+}
 
 export type AnthropicTextBlock = {
   type: "text";
@@ -121,11 +137,13 @@ export type AnthropicStreamOptions = {
 
 export class AnthropicApiError extends Error {
   readonly status?: number;
+  readonly headers?: Headers;
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, headers?: Headers) {
     super(message);
     this.name = "AnthropicApiError";
     this.status = status;
+    this.headers = headers;
   }
 }
 
@@ -148,6 +166,23 @@ function safeErrorMessage(message: unknown, apiKey: string): string {
     .slice(0, 1000);
 }
 
+function errorHeaders(response: Response, apiKey: string): Headers {
+  const headers = new Headers();
+  for (const [name, value] of response.headers) {
+    if (
+      name === "retry-after" ||
+      name === "retry-after-ms" ||
+      name === "request-id" ||
+      name === "x-request-id" ||
+      name === "x-should-retry" ||
+      name.startsWith("anthropic-ratelimit-")
+    ) {
+      headers.set(name, safeErrorMessage(value, apiKey));
+    }
+  }
+  return headers;
+}
+
 function mergeUsage(current: AnthropicUsage, update: Partial<AnthropicUsage>): AnthropicUsage {
   return {
     ...current,
@@ -161,14 +196,14 @@ function mergeUsage(current: AnthropicUsage, update: Partial<AnthropicUsage>): A
   };
 }
 
-/** A minimal native Messages API client; streamed requests are never retried. */
+/** Retries rejected HTTP requests before handing an accepted stream to its consumer. */
 export class AnthropicClient {
   async streamMessage(
     request: AnthropicMessageRequest,
     options: AnthropicStreamOptions = {},
   ): Promise<AnthropicMessage> {
     const apiKey = resolveApiKey();
-    const response = await fetch(ANTHROPIC_MESSAGES_URL, {
+    const response = await getRetryingFetch()(ANTHROPIC_MESSAGES_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -192,6 +227,7 @@ export class AnthropicClient {
       throw new AnthropicApiError(
         `Anthropic API request failed (HTTP ${response.status})${detail}`,
         response.status,
+        errorHeaders(response, apiKey),
       );
     }
     if (!response.body) {

@@ -7,12 +7,17 @@ import {
   getAnthropicClient,
   type AnthropicMessageRequest,
 } from "../src/anthropic/client.js";
+import {
+  configureModelConcurrency,
+  resetModelConcurrencyConfig,
+} from "../src/utils/modelConcurrency.js";
 
 const request: AnthropicMessageRequest = {
   model: "claude-sonnet-5-5",
   max_tokens: 256,
   messages: [{ role: "user", content: "Hello" }],
 };
+let testModelIndex = 0;
 
 function event(type: string, fields: Record<string, unknown> = {}): string {
   return `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
@@ -60,11 +65,16 @@ function stubStream(text: string, chunkSize?: number): ReturnType<typeof vi.fn> 
 describe("Anthropic native Messages client", () => {
   beforeEach(() => {
     vi.stubEnv("ANTHROPIC_API_KEY", "anthropic-unit-test-secret");
+    // Rate-limit cooldowns are shared by model, including across raw fetch instances.
+    request.model = `claude-sonnet-5-5-unit-${++testModelIndex}`;
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    resetModelConcurrencyConfig();
   });
 
   it.each([
@@ -305,29 +315,120 @@ describe("Anthropic native Messages client", () => {
     );
   });
 
+  it("honors Retry-After on a rejected HTTP request and reports transport retries", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: "Rate limited" } }), {
+          status: 429,
+          headers: { "retry-after": "2" },
+        }),
+      )
+      .mockImplementationOnce(async () => responseFromChunks(start() + event("message_stop")));
+    vi.stubGlobal("fetch", fetchMock);
+    const settled = vi.fn();
+    const result = runAnthropicCall((client) => client.streamMessage(request), request.model, {
+      onSettled: settled,
+    });
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.runAllTimersAsync();
+    expect((await result).id).toBe("msg_test");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(settled).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ attempts: 2, overloadCount: 1 }),
+    );
+    expect(settled.mock.calls[0]?.[0].retryDelayMs).toBeGreaterThanOrEqual(2000);
+  });
+
+  it("keeps billing failures terminal and exposes only sanitized response metadata", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: { message: "Insufficient credits" } }), {
+          status: 402,
+          headers: {
+            "retry-after": "1",
+            "request-id": "req_test",
+            "anthropic-ratelimit-requests-remaining": "0",
+            "x-api-key": "anthropic-unit-test-secret",
+            "x-provider-debug": "private",
+          },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const error = await new AnthropicClient()
+      .streamMessage(request)
+      .catch((value: unknown) => value);
+    expect(error).toBeInstanceOf(AnthropicApiError);
+    expect((error as AnthropicApiError).status).toBe(402);
+    expect((error as AnthropicApiError).headers?.get("request-id")).toBe("req_test");
+    expect((error as AnthropicApiError).headers?.get("retry-after")).toBe("1");
+    expect((error as AnthropicApiError).headers?.get("x-api-key")).toBeNull();
+    expect((error as AnthropicApiError).headers?.get("x-provider-debug")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows aborting a rate-limit backoff without issuing another request", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi.fn(
+      async () => new Response("limited", { status: 429, headers: { "retry-after": "60" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = new AnthropicClient().streamMessage(request, { signal: controller.signal });
+    const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort();
+    await rejected;
+    await vi.runAllTimersAsync();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("never replays an accepted stream after delivering partial output", async () => {
+    const fetchMock = stubStream(
+      start() +
+        event("content_block_start", { index: 0, content_block: { type: "text", text: "" } }) +
+        event("content_block_delta", { index: 0, delta: { type: "text_delta", text: "Partial" } }) +
+        event("error", { error: { type: "overloaded_error", message: "Try again later" } }),
+    );
+    const onDelta = vi.fn();
+    await expect(new AnthropicClient().streamMessage(request, { onDelta })).rejects.toThrow(
+      "Try again later",
+    );
+    expect(onDelta).toHaveBeenCalledExactlyOnceWith("response", "Partial");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("handles non-JSON HTTP errors and missing credentials without leaking request data", async () => {
+    vi.useFakeTimers();
     const fetchMock = vi.fn(async () => new Response("gateway failure", { status: 502 }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(new AnthropicClient().streamMessage(request)).rejects.toThrow("HTTP 502");
+    const rejected = expect(new AnthropicClient().streamMessage(request)).rejects.toThrow(
+      "HTTP 502",
+    );
+    await vi.runAllTimersAsync();
+    await rejected;
     vi.stubEnv("ANTHROPIC_API_KEY", " ");
     await expect(new AnthropicClient().streamMessage(request)).rejects.toThrow(
       "ANTHROPIC_API_KEY must be provided",
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("propagates aborts and cancels the stream when a delta consumer throws", async () => {
     const controller = new AbortController();
     controller.abort();
     const cancel = vi.fn();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(new ReadableStream({ cancel }))),
-    );
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({ cancel })));
+    vi.stubGlobal("fetch", fetchMock);
     await expect(
       new AnthropicClient().streamMessage(request, { signal: controller.signal }),
     ).rejects.toMatchObject({ name: "AbortError" });
-    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
 
     stubStream(
       start() +
@@ -354,5 +455,27 @@ describe("Anthropic native Messages client", () => {
     );
     expect(fn).toHaveBeenCalledTimes(1);
     expect(settled).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ attempts: 1 }));
+  });
+
+  it("starts the configured concurrency without an artificial spacing or warm-up limit", async () => {
+    configureModelConcurrency({ providerCaps: { anthropic: 16 } });
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fn = vi.fn(async () => {
+      await pending;
+      return "done";
+    });
+    const calls = Promise.all(
+      Array.from({ length: 16 }, () => runAnthropicCall(fn, request.model)),
+    );
+    void calls.catch(() => undefined);
+    try {
+      await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(16));
+    } finally {
+      release?.();
+    }
+    await expect(calls).resolves.toEqual(Array(16).fill("done"));
   });
 });

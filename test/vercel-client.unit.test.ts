@@ -2,8 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
 
+const retryMocks = vi.hoisted(() => ({
+  createRetryingFetch: vi.fn((fetchImpl: typeof fetch) => fetchImpl),
+}));
+vi.mock("../src/utils/retryFetch.js", () => retryMocks);
+
 describe("Vercel AI Gateway client", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     resetRuntimeSingletonsForTesting();
     vi.resetModules();
     vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "vercel-unit-test-key");
@@ -21,7 +27,13 @@ describe("Vercel AI Gateway client", () => {
     expect(client.apiKey).toBe("vercel-unit-test-key");
     expect(client.baseURL).toBe("https://ai-gateway.vercel.sh/v1");
     expect(client.timeout).toBe(15 * 60_000);
+    expect(client.maxRetries).toBe(0);
     expect(getVercelClient()).toBe(client);
+    expect(retryMocks.createRetryingFetch).toHaveBeenCalledTimes(1);
+    expect(retryMocks.createRetryingFetch).toHaveBeenCalledWith(expect.any(Function), {
+      maxAttempts: 4,
+      scope: "vercel",
+    });
   });
 
   it("supports a custom gateway endpoint and timeout", async () => {

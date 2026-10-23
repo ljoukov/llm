@@ -124,7 +124,7 @@ describe("model concurrency config", () => {
   });
 
   it("keeps Vercel concurrency separate from direct Fireworks", () => {
-    expect(resolveModelConcurrencyCap({ provider: "vercel", modelId: "zai/glm-5.3" })).toBe(6);
+    expect(resolveModelConcurrencyCap({ provider: "vercel", modelId: "zai/glm-5.3" })).toBe(16);
     configureModelConcurrency({ providerCaps: { vercel: 2, fireworks: 5 } });
     expect(resolveModelConcurrencyCap({ provider: "vercel", modelId: "zai/glm-5.3" })).toBe(2);
     expect(resolveModelConcurrencyCap({ provider: "fireworks", modelId: "glm-5.3" })).toBe(5);

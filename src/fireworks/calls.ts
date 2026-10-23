@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { withRetryFetchMetrics } from "../utils/retryFetch.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import {
   createCallScheduler,
@@ -43,5 +44,25 @@ export async function runFireworksCall<T>(
   modelId?: string,
   runOptions?: CallSchedulerRunOptions,
 ): Promise<T> {
-  return getSchedulerForModel(modelId).run(async () => fn(getFireworksClient()), runOptions);
+  let fetchMetrics = { retryCount: 0, retryDelayMs: 0, overloadCount: 0 };
+  return getSchedulerForModel(modelId).run(
+    () =>
+      withRetryFetchMetrics(
+        async () => fn(getFireworksClient()),
+        (metrics) => {
+          fetchMetrics = metrics;
+        },
+      ),
+    {
+      ...runOptions,
+      onSettled: (metrics) => {
+        runOptions?.onSettled?.({
+          ...metrics,
+          attempts: metrics.attempts + fetchMetrics.retryCount,
+          retryDelayMs: metrics.retryDelayMs + fetchMetrics.retryDelayMs,
+          overloadCount: metrics.overloadCount + fetchMetrics.overloadCount,
+        });
+      },
+    },
+  );
 }

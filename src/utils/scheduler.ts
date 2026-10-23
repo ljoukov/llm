@@ -30,6 +30,7 @@ export type CallSchedulerOptions = {
 
 export type CallScheduler = {
   run: <T>(fn: () => Promise<T>, options?: CallSchedulerRunOptions) => Promise<T>;
+  setMaxParallelRequests: (maxParallelRequests: number) => void;
 };
 
 export type CallSchedulerRunMetrics = {
@@ -45,12 +46,53 @@ export type CallSchedulerRunMetrics = {
 };
 
 export type CallSchedulerRunOptions = {
+  readonly signal?: AbortSignal;
   readonly onSettled?: (metrics: CallSchedulerRunMetrics) => void;
 };
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+function throwIfAborted(signal?: AbortSignal): void {
+  signal?.throwIfAborted();
+}
+
+async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  let remainingMs = ms;
+  do {
+    throwIfAborted(signal);
+    // Node reduces overflowing timeouts to 1ms. Preserve long provider retry
+    // hints by waiting in valid timer-sized slices instead of retrying early.
+    const sliceMs = Math.min(remainingMs, 2_147_483_647);
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(signal?.reason);
+      };
+      const timer = setTimeout(finish, sliceMs);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+    remainingMs -= sliceMs;
+  } while (remainingMs > 0);
+}
+
+function waitForSpacingTurn(previous: Promise<void>, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  if (!signal) {
+    return previous;
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void previous.then(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    });
   });
 }
 
@@ -123,7 +165,7 @@ function defaultIsOverloadError(error: unknown): boolean {
 }
 
 export function createCallScheduler(options: CallSchedulerOptions = {}): CallScheduler {
-  const maxParallelRequests = Math.max(1, Math.floor(options.maxParallelRequests ?? 3));
+  let maxParallelRequests = Math.max(1, Math.floor(options.maxParallelRequests ?? 3));
   const initialParallelRequests = Math.min(
     maxParallelRequests,
     Math.max(1, Math.floor(options.initialParallelRequests ?? Math.min(3, maxParallelRequests))),
@@ -148,24 +190,29 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
   type QueueJob = () => Promise<void>;
   const queue: QueueJob[] = [];
 
-  async function applyStartSpacing(): Promise<void> {
+  async function applyStartSpacing(signal?: AbortSignal): Promise<void> {
     const previous = startSpacingChain;
     let release: (() => void) | undefined;
-    startSpacingChain = new Promise<void>((resolve) => {
+    const turn = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await previous;
+    // An aborted waiter may release its own turn immediately, but successors must
+    // still wait for its predecessor to finish spacing.
+    startSpacingChain = previous.then(() => turn);
     try {
+      await waitForSpacingTurn(previous, signal);
+      throwIfAborted(signal);
       if (lastStartTime > 0 && minIntervalBetweenStartMs > 0) {
         const earliestNext = lastStartTime + minIntervalBetweenStartMs;
         const wait = Math.max(0, earliestNext - Date.now());
         if (wait > 0) {
-          await sleep(wait);
+          await sleep(wait, signal);
         }
       }
       if (startJitterMs > 0) {
-        await sleep(Math.floor(Math.random() * (startJitterMs + 1)));
+        await sleep(Math.floor(Math.random() * (startJitterMs + 1)), signal);
       }
+      throwIfAborted(signal);
       lastStartTime = Date.now();
     } finally {
       release?.();
@@ -187,18 +234,25 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
     fn: () => Promise<T>,
     attempt: number,
     state: RunState,
+    signal?: AbortSignal,
   ): Promise<T> {
     try {
+      throwIfAborted(signal);
       const spacingStartedAtMs = Date.now();
-      await applyStartSpacing();
+      try {
+        await applyStartSpacing(signal);
+      } finally {
+        state.schedulerDelayMs += Math.max(0, Date.now() - spacingStartedAtMs);
+      }
+      throwIfAborted(signal);
       const callStartedAtMs = Date.now();
-      state.schedulerDelayMs += Math.max(0, callStartedAtMs - spacingStartedAtMs);
       if (state.startedAtMs === undefined) {
         state.startedAtMs = callStartedAtMs;
       }
       state.attempts = Math.max(state.attempts, attempt);
       return await fn();
     } catch (error: unknown) {
+      throwIfAborted(signal);
       if (isOverloadError(error)) {
         state.overloadCount += 1;
         consecutiveSuccesses = 0;
@@ -208,19 +262,19 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
       if (!retryPolicy || attempt >= retryPolicy.maxAttempts) {
         throw err;
       }
-      let delay = retryPolicy.getDelayMs(attempt, error);
-      if (delay === null) {
+      const delay = retryPolicy.getDelayMs(attempt, error);
+      if (delay === null || !Number.isFinite(delay) || delay < 0) {
         throw err;
       }
-      if (!Number.isFinite(delay)) {
-        delay = 0;
+      if (delay > 0) {
+        const delayStartedAtMs = Date.now();
+        try {
+          await sleep(delay, signal);
+        } finally {
+          state.retryDelayMs += Math.max(0, Date.now() - delayStartedAtMs);
+        }
       }
-      const normalizedDelay = Math.max(0, delay);
-      if (normalizedDelay > 0) {
-        state.retryDelayMs += normalizedDelay;
-        await sleep(normalizedDelay);
-      }
-      return attemptWithRetries(fn, attempt + 1, state);
+      return attemptWithRetries(fn, attempt + 1, state, signal);
     }
   }
 
@@ -238,7 +292,53 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
   function run<T>(fn: () => Promise<T>, runOptions: CallSchedulerRunOptions = {}): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const enqueuedAtMs = Date.now();
+      let queued = true;
+      const notifySettled = (state: RunState) => {
+        const startedAtMs = state.startedAtMs ?? state.dequeuedAtMs;
+        const completedAtMs = state.completedAtMs ?? Date.now();
+        const metrics: CallSchedulerRunMetrics = {
+          enqueuedAtMs: state.enqueuedAtMs,
+          dequeuedAtMs: state.dequeuedAtMs,
+          startedAtMs,
+          completedAtMs,
+          queueWaitMs: Math.max(0, state.dequeuedAtMs - state.enqueuedAtMs),
+          schedulerDelayMs: Math.max(0, state.schedulerDelayMs),
+          retryDelayMs: Math.max(0, state.retryDelayMs),
+          attempts: Math.max(0, state.attempts),
+          overloadCount: Math.max(0, state.overloadCount),
+        };
+        try {
+          runOptions.onSettled?.(metrics);
+        } catch {
+          // Metrics hooks must not interfere with scheduling behavior.
+        }
+      };
+      const onQueuedAbort = () => {
+        if (!queued) {
+          return;
+        }
+        queued = false;
+        runOptions.signal?.removeEventListener("abort", onQueuedAbort);
+        const index = queue.indexOf(job);
+        if (index !== -1) {
+          queue.splice(index, 1);
+        }
+        const completedAtMs = Date.now();
+        reject(toError(runOptions.signal?.reason));
+        notifySettled({
+          enqueuedAtMs,
+          dequeuedAtMs: completedAtMs,
+          completedAtMs,
+          schedulerDelayMs: 0,
+          retryDelayMs: 0,
+          attempts: 0,
+          overloadCount: 0,
+        });
+        queueMicrotask(drainQueue);
+      };
       const job: QueueJob = async () => {
+        queued = false;
+        runOptions.signal?.removeEventListener("abort", onQueuedAbort);
         const dequeuedAtMs = Date.now();
         const state: RunState = {
           enqueuedAtMs,
@@ -249,7 +349,7 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
           overloadCount: 0,
         };
         try {
-          const result = await attemptWithRetries(fn, 1, state);
+          const result = await attemptWithRetries(fn, 1, state, runOptions.signal);
           state.completedAtMs = Date.now();
           consecutiveSuccesses += 1;
           if (
@@ -264,32 +364,33 @@ export function createCallScheduler(options: CallSchedulerOptions = {}): CallSch
           state.completedAtMs = Date.now();
           reject(toError(error));
         } finally {
-          const startedAtMs = state.startedAtMs ?? state.dequeuedAtMs;
-          const completedAtMs = state.completedAtMs ?? Date.now();
-          const metrics: CallSchedulerRunMetrics = {
-            enqueuedAtMs: state.enqueuedAtMs,
-            dequeuedAtMs: state.dequeuedAtMs,
-            startedAtMs,
-            completedAtMs,
-            queueWaitMs: Math.max(0, state.dequeuedAtMs - state.enqueuedAtMs),
-            schedulerDelayMs: Math.max(0, state.schedulerDelayMs),
-            retryDelayMs: Math.max(0, state.retryDelayMs),
-            attempts: Math.max(1, state.attempts),
-            overloadCount: Math.max(0, state.overloadCount),
-          };
-          try {
-            runOptions.onSettled?.(metrics);
-          } catch {
-            // Metrics hooks must not interfere with scheduling behavior.
-          }
+          notifySettled(state);
           activeCount -= 1;
           queueMicrotask(drainQueue);
         }
       };
+      if (runOptions.signal?.aborted) {
+        onQueuedAbort();
+        return;
+      }
       queue.push(job);
+      runOptions.signal?.addEventListener("abort", onQueuedAbort, { once: true });
       drainQueue();
     });
   }
 
-  return { run };
+  function setMaxParallelRequests(requestedLimit: number): void {
+    const nextLimit = Number.isFinite(requestedLimit) ? Math.max(1, Math.floor(requestedLimit)) : 1;
+    if (nextLimit === maxParallelRequests) {
+      return;
+    }
+    maxParallelRequests = nextLimit;
+    currentParallelLimit = nextLimit;
+    consecutiveSuccesses = 0;
+    // Existing callbacks retain their slots when reducing the limit. Increasing
+    // it can immediately admit jobs already waiting in this same queue.
+    drainQueue();
+  }
+
+  return { run, setMaxParallelRequests };
 }
