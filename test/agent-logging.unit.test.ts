@@ -122,7 +122,11 @@ describe("agent logging", () => {
           },
         ],
         metadata: {
+          provider: "responses-api",
+          access: "subscription",
+          modelId: "incorrect-transport-version",
           costUsd: 0.123,
+          costSource: "estimate",
         },
       });
       await session.flush();
@@ -171,7 +175,14 @@ describe("agent logging", () => {
         await fs.readFile(path.join(callDir, "response.metadata.json"), "utf8"),
       ) as Record<string, unknown>;
       expect(responseMetadata.status).toBe("completed");
-      expect(responseMetadata.costUsd).toBe(0.123);
+      expect(responseMetadata).toMatchObject({
+        provider: "openai",
+        access: "api",
+        modelId: "gpt-6-luna",
+        transportProvider: "responses-api",
+        costUsd: 0.123,
+        costSource: "estimate",
+      });
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
@@ -187,8 +198,9 @@ describe("agent logging", () => {
       });
 
       const call = session.startLlmCall({
-        provider: "chatgpt",
-        modelId: "chatgpt-gpt-6-sol",
+        provider: "openai",
+        access: "subscription",
+        modelId: "gpt-6-sol",
         requestText: "hello",
       });
       call.appendResponseDelta("partial");
@@ -197,7 +209,12 @@ describe("agent logging", () => {
         toolCallText: JSON.stringify([{ name: "list_dir" }]),
         toolCallPayload: [{ name: "list_dir" }],
         metadata: {
-          costUsd: 0.001,
+          provider: "chatgpt",
+          access: "api",
+          modelId: "wrong-model",
+          costUsd: null,
+          costSource: "subscription",
+          apiEquivalentCostUsd: 0.001,
         },
       });
       await session.flush();
@@ -220,6 +237,15 @@ describe("agent logging", () => {
       ) as Record<string, unknown>;
       expect(responseMetadata.status).toBe("failed");
       expect(responseMetadata.error).toBe("boom");
+      expect(responseMetadata).toMatchObject({
+        provider: "openai",
+        access: "subscription",
+        modelId: "gpt-6-sol",
+        transportProvider: "chatgpt",
+        costUsd: null,
+        costSource: "subscription",
+        apiEquivalentCostUsd: 0.001,
+      });
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

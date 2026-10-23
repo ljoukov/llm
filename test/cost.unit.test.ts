@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isChatGptImageModelId, isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
+import { isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("estimateCallCostUsd", () => {
   it.each([
     ["gpt-6.1-sol", 0.00781],
-    ["chatgpt-gpt-6.1-sol", 0.00781],
+    ["gpt-6.1-sol", 0.00781],
     ["gpt-6-sol", 0.00782],
-    ["chatgpt-gpt-6-luna", 0.000391],
+    ["gpt-6-luna", 0.000391],
     ["gpt-6-astra", 0.0391],
-    ["chatgpt-gpt-6-astra", 0.0391],
+    ["gpt-6-astra", 0.0391],
     ["gpt-5.6-sol", 0.01564],
-    ["chatgpt-gpt-5.6-terra", 0.00902],
+    ["gpt-5.6-terra", 0.00902],
     ["gpt-5.6-luna", 0.000902],
   ] as const)("prices %s standard, priority, and concrete versions", (modelId, expectedCost) => {
     const tokens = {
@@ -33,9 +33,9 @@ describe("estimateCallCostUsd", () => {
     ["gpt-6.1-sol", 1000, 0.00791],
     ["gpt-6.1-sol", 272000, 0.54991],
     ["gpt-6.1-sol", 272001, 1.096824],
-    ["chatgpt-gpt-6-astra", 1000, 0.0396],
-    ["chatgpt-gpt-6-astra", 272000, 2.7496],
-    ["chatgpt-gpt-6-astra", 272001, 5.48422],
+    ["gpt-6-astra", 1000, 0.0396],
+    ["gpt-6-astra", 272000, 2.7496],
+    ["gpt-6-astra", 272001, 5.48422],
   ] as const)("prices %s cache writes at the %s token boundary", (modelId, promptTokens, expectedCost) => {
     expect(
       estimateCallCostUsd({
@@ -67,7 +67,7 @@ describe("estimateCallCostUsd", () => {
           tokens: { promptTokens: 1000, responseTokens: 600 },
           responseImages: 0,
         }),
-      ).toBe(0);
+      ).toBeNull();
     }
     expect(
       estimateCallCostUsd({
@@ -208,7 +208,7 @@ describe("estimateCallCostUsd", () => {
 
   it.each([
     "gpt-image-2",
-    "chatgpt-gpt-image-2",
+    "gpt-image-2",
   ])("prices %s reported input and output tokens without charging per-image estimates again", (modelId) => {
     expect(
       estimateCallCostUsd({
@@ -294,10 +294,10 @@ describe("estimateCallCostUsd", () => {
 
     expect(flashCost).toBeGreaterThan(0);
     expect(proCost).toBeGreaterThan(0);
-    expect(flashCost).toBeLessThan(proCost);
+    expect(flashCost).toBeLessThan(proCost as number);
   });
 
-  it("has non-zero pricing coverage for all supported model ids", () => {
+  it("prices supported models with verified rate snapshots and retains unknown rates", () => {
     const tokens = {
       promptTokens: 1000,
       cachedTokens: 100,
@@ -307,7 +307,7 @@ describe("estimateCallCostUsd", () => {
     };
 
     for (const modelId of LLM_MODEL_IDS) {
-      const isGptImageModel = isOpenAiImageModelId(modelId) || isChatGptImageModelId(modelId);
+      const isGptImageModel = isOpenAiImageModelId(modelId);
       const responseImages = modelId.includes("image-preview") || isGptImageModel ? 1 : 0;
       const cost = estimateCallCostUsd({
         modelId,
@@ -316,7 +316,11 @@ describe("estimateCallCostUsd", () => {
         imageSize: isGptImageModel ? "1024x1024" : "2K",
         imageQuality: isGptImageModel ? "medium" : undefined,
       });
-      expect(cost, `expected non-zero cost mapping for ${modelId}`).toBeGreaterThan(0);
+      if (modelId === "grok-build") {
+        expect(cost).toBeNull();
+      } else {
+        expect(cost, `expected non-zero cost mapping for ${modelId}`).toBeGreaterThan(0);
+      }
     }
   });
 });

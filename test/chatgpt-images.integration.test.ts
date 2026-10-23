@@ -7,7 +7,7 @@ import {
 } from "./integration-env.js";
 
 const subscriptionModel = resolveIntegrationRequestedImageModels().find(
-  (model) => model === "chatgpt-gpt-image-2",
+  (ref) => ref.provider === "openai" && ref.access === "subscription",
 );
 const subscriptionIt = subscriptionModel ? it : it.skip;
 
@@ -59,7 +59,7 @@ describe("integration: ChatGPT subscription GPT Image 2 prompt-driven aspect rat
 
       for (const testCase of cases) {
         const images = await generateImages({
-          model: subscriptionModel,
+          ...subscriptionModel,
           stylePrompt: "Minimal flat graphic, plain background, no text.",
           imagePrompts: [testCase.prompt],
           background: "auto",

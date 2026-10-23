@@ -2,16 +2,15 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
-  CLAUDE_MODEL_IDS,
+  ANTHROPIC_MODEL_IDS,
   configureModelConcurrency,
   generateText,
-  isClaudeModelId,
   resetModelConcurrencyConfig,
   runToolLoop,
   streamText,
   streamToolLoop,
   tool,
-  type ClaudeModelId,
+  type AnthropicModelId,
 } from "../src/index.js";
 import {
   assertIntegrationCredentialsForModels,
@@ -22,17 +21,27 @@ const enabled = process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1";
 const requestedModels =
   enabled && process.env.LLM_INTEGRATION_MODELS?.trim()
     ? resolveIntegrationRequestedModels()
-    : CLAUDE_MODEL_IDS;
+    : ANTHROPIC_MODEL_IDS.map((model) => ({
+        provider: "anthropic" as const,
+        access: "subscription" as const,
+        model,
+      }));
 if (
   enabled &&
-  (requestedModels.length === 0 || requestedModels.some((model) => !isClaudeModelId(model)))
+  (requestedModels.length === 0 ||
+    requestedModels.some((ref) => ref.provider !== "anthropic" || ref.access !== "subscription"))
 ) {
   throw new Error(
-    `LLM_INTEGRATION_MODELS must select Claude subscription models: ${CLAUDE_MODEL_IDS.join(", ")}`,
+    `LLM_INTEGRATION_MODELS must select Claude subscription models: ${ANTHROPIC_MODEL_IDS.map((model) => `anthropic:subscription:${model}`).join(", ")}`,
   );
 }
-const model = requestedModels[0] as ClaudeModelId;
-if (enabled) assertIntegrationCredentialsForModels([model]);
+const ref = requestedModels[0] as {
+  provider: "anthropic";
+  access: "subscription";
+  model: AnthropicModelId;
+};
+const { model } = ref;
+if (enabled) assertIntegrationCredentialsForModels([ref]);
 
 // Run this file separately from the parallel model matrix: the nested-call case
 // deliberately changes the process-wide Claude concurrency cap.
@@ -40,7 +49,7 @@ describe.skipIf(!enabled)("integration: Claude subscription edge cases", () => {
   it(`${model}: terminal tools stop after the initial model/tool turn`, async () => {
     const invocations: number[] = [];
     const result = await runToolLoop({
-      model,
+      ...ref,
       input: "Call finish exactly once with index 7. Its terminal result completes the request.",
       tools: {
         finish: tool({
@@ -69,7 +78,7 @@ describe.skipIf(!enabled)("integration: Claude subscription edge cases", () => {
     let observedDelta = false;
     const timer = setTimeout(() => controller.abort(), 90_000);
     const call = streamText({
-      model,
+      ...ref,
       input:
         "Write 5000 numbered lines. Each line must contain its number and a distinct twelve-word sentence about a garden. Start immediately at line 1 and continue without summaries or omissions.",
       thinkingLevel: "low",
@@ -107,14 +116,14 @@ describe.skipIf(!enabled)("integration: Claude subscription edge cases", () => {
   }, 120_000);
 
   it(`${model}: runs a nested same-model call at cap one and transforms tool input once`, async () => {
-    configureModelConcurrency({ providerCaps: { claude: 1 } });
+    configureModelConcurrency({ providerCaps: { anthropic: 1 } });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 120_000);
     let transformations = 0;
     const invocations: number[] = [];
     try {
       const result = await runToolLoop({
-        model,
+        ...ref,
         input:
           'Call nested_lookup exactly once with {"count":"7"}. Then return only the code from its output, without formatting or punctuation.',
         tools: {
@@ -131,12 +140,13 @@ describe.skipIf(!enabled)("integration: Claude subscription edge cases", () => {
             execute: async ({ count }) => {
               invocations.push(count);
               const child = await generateText({
-                model,
+                ...ref,
                 input: "Return exactly: NESTED_OK",
                 thinkingLevel: "low",
                 signal: controller.signal,
               });
-              expect(child.provider).toBe("claude");
+              expect(child.provider).toBe("anthropic");
+              expect(child.access).toBe("subscription");
               expect(child.model).toBe(model);
               expect(child.text.trim()).toBe("NESTED_OK");
               return { code: `${child.text.trim()}_${count}` };
@@ -165,7 +175,7 @@ describe.skipIf(!enabled)("integration: Claude subscription edge cases", () => {
     const invocations: string[] = [];
     let call: ReturnType<typeof streamToolLoop>;
     call = streamToolLoop({
-      model,
+      ...ref,
       input:
         "First call gate alone and wait for its result. After gate returns, call second_step exactly once. Then reply exactly ORIGINAL.",
       tools: {

@@ -39,10 +39,10 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 
 describe("generateJson (ChatGPT)", () => {
   it.each([
-    "chatgpt-gpt-6-astra",
-    "chatgpt-gpt-6.1-sol",
-    "chatgpt-gpt-6-sol",
-    "chatgpt-gpt-6-luna",
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6-sol",
+    "gpt-6-luna",
   ] as const)("passes json_schema text.format through %s", async (model) => {
     const { generateJson } = await import("../src/llm.js");
 
@@ -52,6 +52,8 @@ describe("generateJson (ChatGPT)", () => {
     const schema = z.object({ ok: z.boolean(), message: z.string() });
     let streamedThoughts = "";
     const { value, result } = await generateJson({
+      provider: "openai",
+      access: "subscription",
       model,
       thinkingLevel: "high",
       input: "Return JSON",
@@ -64,12 +66,12 @@ describe("generateJson (ChatGPT)", () => {
     });
 
     expect(value).toEqual({ ok: true, message: "hello" });
-    expect(result.provider).toBe("chatgpt");
+    expect(result.provider).toBe("openai");
     expect(result.modelVersion).toBe(model);
     expect(streamedThoughts).toContain("Thinking");
     expect(capturedRequest?.text?.format?.type).toBe("json_schema");
     expect(capturedRequest?.reasoning?.effort).toBe("high");
-    expect(capturedRequest?.model).toBe(model.slice("chatgpt-".length));
+    expect(capturedRequest?.model).toBe(model);
   });
 
   it("retries without json_schema when ChatGPT rejects structured format", async () => {
@@ -81,7 +83,9 @@ describe("generateJson (ChatGPT)", () => {
     const schema = z.object({ ok: z.boolean(), message: z.string() });
 
     const { value } = await generateJson({
-      model: "chatgpt-gpt-6-luna",
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6-luna",
       input: "Return JSON",
       schema,
       maxAttempts: 2,

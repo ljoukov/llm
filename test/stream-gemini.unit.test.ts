@@ -108,7 +108,7 @@ describe("streamText (Gemini)", () => {
     }
     const result = await call.result;
 
-    expect(result.provider).toBe("gemini");
+    expect(result.provider).toBe("google");
     expect(result.text).toBe("Hello world");
     expect(result.thoughts).toBe("Thinking");
     expect(result.usage?.totalTokens).toBe(16);
@@ -278,7 +278,7 @@ describe("streamText (Gemini)", () => {
     }
     const result = await call.result;
 
-    expect(result.provider).toBe("gemini");
+    expect(result.provider).toBe("google");
     expect(geminiRequests[0]?.model).toBe("gemini-3.1-flash-image-preview");
     expect(geminiRequests[0]?.config?.thinkingConfig).toBeUndefined();
   });

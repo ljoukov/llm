@@ -1,6 +1,9 @@
 import { getAnthropicPricing } from "../anthropic/pricing.js";
 import { getFireworksPricing } from "../fireworks/pricing.js";
-import { getVercelPricing } from "../vercel/pricing.js";
+import { getVercelPricing, resolveVercelPricing } from "../vercel/pricing.js";
+import type { VercelTokenPricing } from "../vercel/catalog.js";
+import { isVercelModelId } from "../vercel/models.js";
+import { getXaiPricing } from "../xai/pricing.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
 import {
   getOpenAiImagePricing,
@@ -28,6 +31,28 @@ export type LlmUsageTokens = {
   readonly toolUsePromptTokens?: number;
 };
 
+export type LlmCostSource = "reported" | "catalog" | "estimate" | "unknown" | "subscription";
+
+export type LlmCallCostResolution = {
+  /** A known API charge/estimate, or null when unknown or covered by a subscription. */
+  readonly costUsd: number | null;
+  readonly costSource: LlmCostSource;
+  /** Token-value estimate for subscription use; not an additional billed charge. */
+  readonly apiEquivalentCostUsd?: number | null;
+};
+
+export type EstimateCallCostOptions = {
+  readonly modelId: string;
+  readonly pricingModelId?: string;
+  readonly tokens: LlmUsageTokens | undefined;
+  readonly responseImages: number;
+  readonly imageSize?: string;
+  readonly imageQuality?: string;
+  /** Select route-specific rates for shared model IDs. */
+  readonly provider?: string;
+  readonly access?: "api" | "subscription";
+};
+
 function resolveUsageNumber(value: number | undefined): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.max(0, value);
@@ -43,17 +68,15 @@ export function estimateCallCostUsd({
   imageSize,
   imageQuality,
   provider,
-}: {
-  modelId: string;
-  pricingModelId?: string;
-  tokens: LlmUsageTokens | undefined;
-  responseImages: number;
-  imageSize?: string;
-  imageQuality?: string;
-  /** Select route-specific rates for shared open model IDs. */
-  provider?: string;
-}): number {
+}: EstimateCallCostOptions): number | null {
   const pricingModelIds = resolvePricingModelIds(modelId, pricingModelId);
+  const useVercelPricing =
+    provider === "vercel" ||
+    (provider === undefined && modelId.includes("/") && isVercelModelId(modelId));
+  if (useVercelPricing) {
+    const pricing = resolvePricing(pricingModelIds, getVercelPricing);
+    return pricing ? estimateTokenCostUsd(pricing, tokens) : null;
+  }
   const openAiImagePricing = resolvePricing(pricingModelIds, getOpenAiImagePricing);
   if (openAiImagePricing) {
     return estimateOpenAiImageCostUsd({
@@ -97,7 +120,7 @@ export function estimateCallCostUsd({
   }
 
   if (!tokens) {
-    return 0;
+    return null;
   }
   const promptTokens = resolveUsageNumber(tokens.promptTokens);
   const cachedTokens = resolveUsageNumber(tokens.cachedTokens);
@@ -106,6 +129,14 @@ export function estimateCallCostUsd({
   const toolUsePromptTokens = resolveUsageNumber(tokens.toolUsePromptTokens);
   const promptTokenTotal = promptTokens + toolUsePromptTokens;
   const nonCachedPrompt = Math.max(0, promptTokenTotal - cachedTokens);
+
+  if (
+    provider === "xai" ||
+    (provider === undefined && pricingModelIds.some((id) => id.startsWith("grok-")))
+  ) {
+    const pricing = resolvePricing(pricingModelIds, (id) => getXaiPricing(id, promptTokenTotal));
+    return pricing ? estimateTokenCostUsd(pricing, tokens) : null;
+  }
 
   const anthropicPricing = resolvePricing(pricingModelIds, (id) =>
     getAnthropicPricing(id, promptTokenTotal),
@@ -148,13 +179,7 @@ export function estimateCallCostUsd({
     return inputCost + cachedCost + outputCost;
   }
 
-  const useVercelPricing =
-    provider === "vercel" ||
-    (provider === undefined && modelId.includes("/") && getVercelPricing(modelId) !== undefined);
-  const openModelPricing = resolvePricing(
-    pricingModelIds,
-    useVercelPricing ? getVercelPricing : getFireworksPricing,
-  );
+  const openModelPricing = resolvePricing(pricingModelIds, getFireworksPricing);
   if (openModelPricing) {
     const inputCost = nonCachedPrompt * openModelPricing.inputRate;
     const cachedCost = cachedTokens * openModelPricing.cachedRate;
@@ -179,7 +204,60 @@ export function estimateCallCostUsd({
     return (inputCost + cachedCost + cacheWriteCost) * inputMultiplier + outputCost;
   }
 
-  return 0;
+  return null;
+}
+
+/** Resolve reported charges first, then current catalogue rates, then static estimates. */
+export async function resolveCallCostUsd(
+  options: EstimateCallCostOptions & { readonly reportedCostUsd?: number },
+): Promise<LlmCallCostResolution> {
+  if (options.access === "subscription") {
+    return {
+      costUsd: null,
+      costSource: "subscription",
+      apiEquivalentCostUsd: estimateCallCostUsd(options),
+    };
+  }
+  const reported = options.reportedCostUsd;
+  if (typeof reported === "number" && Number.isFinite(reported) && reported >= 0) {
+    return { costUsd: reported, costSource: "reported" };
+  }
+  if (options.provider === "vercel") {
+    // There is no value in fetching prices when usage is absent.
+    if (!options.tokens) return { costUsd: null, costSource: "unknown" };
+    for (const modelId of resolvePricingModelIds(options.modelId, options.pricingModelId)) {
+      const resolved = await resolveVercelPricing(modelId);
+      if (resolved) {
+        return {
+          costUsd: estimateTokenCostUsd(resolved.pricing, options.tokens),
+          costSource: resolved.source,
+        };
+      }
+    }
+    return { costUsd: null, costSource: "unknown" };
+  }
+  const costUsd = estimateCallCostUsd(options);
+  return { costUsd, costSource: costUsd === null ? "unknown" : "estimate" };
+}
+
+function estimateTokenCostUsd(
+  pricing: VercelTokenPricing,
+  tokens: LlmUsageTokens | undefined,
+): number | null {
+  if (!tokens) return null;
+  const promptTokens =
+    resolveUsageNumber(tokens.promptTokens) + resolveUsageNumber(tokens.toolUsePromptTokens);
+  const cachedTokens = Math.min(promptTokens, resolveUsageNumber(tokens.cachedTokens));
+  const nonCachedTokens = promptTokens - cachedTokens;
+  const cacheWriteTokens = Math.min(nonCachedTokens, resolveUsageNumber(tokens.cacheWriteTokens));
+  const outputTokens =
+    resolveUsageNumber(tokens.responseTokens) + resolveUsageNumber(tokens.thinkingTokens);
+  return (
+    (nonCachedTokens - cacheWriteTokens) * pricing.inputRate +
+    cachedTokens * (pricing.cachedRate ?? pricing.inputRate) +
+    cacheWriteTokens * (pricing.cacheWriteRate ?? pricing.inputRate) +
+    outputTokens * pricing.outputRate
+  );
 }
 
 function resolvePricingModelIds(modelId: string, pricingModelId: string | undefined): string[] {

@@ -2,10 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { generateText, type LlmTextModelId } from "../src/index.js";
+import { generateText, type LlmTextModelRef } from "../src/index.js";
 import { assertIntegrationCredentialsForModels } from "./integration-env.js";
 
-const shellModel = "gpt-5.6-sol" satisfies LlmTextModelId;
+const shellModel = { provider: "openai", model: "gpt-5.6-sol" } satisfies LlmTextModelRef;
 
 assertIntegrationCredentialsForModels([shellModel]);
 
@@ -15,7 +15,7 @@ describe("integration: OpenAI shell tool", () => {
     const expectedDigest = createHash("sha256").update(nonce, "utf8").digest("hex");
 
     const result = await generateText({
-      model: shellModel,
+      ...shellModel,
       thinkingLevel: "low",
       tools: [{ type: "shell" }],
       input:

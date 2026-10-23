@@ -4,6 +4,7 @@ import { z } from "zod";
 import { runAgentLoop } from "../src/index.js";
 import {
   assertIntegrationCredentialsForModels,
+  integrationModelLabel,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
 
@@ -13,11 +14,11 @@ assertIntegrationCredentialsForModels(requestedModels);
 
 describe(`integration: runAgentLoop hello-world (${runtime})`, () => {
   for (const model of requestedModels) {
-    it(`runs hello-world tool flow for ${model}`, async () => {
+    it(`runs hello-world tool flow for ${integrationModelLabel(model)}`, async () => {
       let toolCalls = 0;
 
       const result = await runAgentLoop({
-        model,
+        ...model,
         input: [
           {
             role: "system",

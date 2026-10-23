@@ -2,10 +2,11 @@ import { Buffer } from "node:buffer";
 
 import { describe, expect, it } from "vitest";
 
-import { files, generateText, isGeminiTextModelId } from "../src/index.js";
+import { files, generateText } from "../src/index.js";
 import { getCanonicalFileSignedUrl } from "../src/files.js";
 import {
   assertIntegrationCredentialsForModels,
+  integrationModelLabel,
   hasCanonicalFilesBackend,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
@@ -79,11 +80,14 @@ type GeminiSignedUrlCase =
     };
 
 const requestedModels = resolveIntegrationRequestedModels();
-const requestedGeminiModel = requestedModels.find((model) => model === "gemini-2.5-pro");
-const geminiModel = requestedGeminiModel ?? "gemini-2.5-pro";
+const requestedGeminiModel = requestedModels.find(
+  (ref) => ref.provider === "google" && ref.model === "gemini-2.5-pro",
+);
+const geminiModel =
+  requestedGeminiModel ?? ({ provider: "google", model: "gemini-2.5-pro" } as const);
 const geminiSignedUrlIt = requestedGeminiModel && hasCanonicalFilesBackend() ? it : it.skip;
 
-if (requestedGeminiModel && isGeminiTextModelId(geminiModel)) {
+if (requestedGeminiModel) {
   assertIntegrationCredentialsForModels([geminiModel]);
 }
 
@@ -113,7 +117,7 @@ const geminiSignedUrlCases: readonly GeminiSignedUrlCase[] = [
 describe("integration: Gemini signed URL prompt files", () => {
   for (const testCase of geminiSignedUrlCases) {
     geminiSignedUrlIt(
-      `${geminiModel}: reads ${testCase.label} attachments from signed GCS URLs`,
+      `${integrationModelLabel(geminiModel)}: reads ${testCase.label} attachments from signed GCS URLs`,
       async () => {
         const stored = await files.create({
           data: testCase.bytes,
@@ -123,7 +127,7 @@ describe("integration: Gemini signed URL prompt files", () => {
         const signedUrl = await getCanonicalFileSignedUrl({ fileId: stored.id });
 
         const result = await generateText({
-          model: geminiModel,
+          ...geminiModel,
           thinkingLevel: "low",
           input: [
             {

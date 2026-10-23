@@ -10,16 +10,17 @@ import {
   createFilesystemToolSetForModel,
   createNodeAgentFilesystem,
   isLlmTextModelId,
+  parseModelRef,
   loadLocalEnv,
   streamAgentLoop,
   type AgentLoopStream,
   type LlmInputMessage,
   type LlmThinkingLevel,
   type LlmStreamEvent,
-  type LlmTextModelId,
+  type LlmTextModelSelection,
 } from "../src/index.js";
 
-const DEFAULT_MODEL: LlmTextModelId = "chatgpt-gpt-5.6-sol-fast";
+const DEFAULT_MODEL = "openai:subscription:gpt-5.6-sol-fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
 const DEFAULT_MODEL_TOOLS = [{ type: "web-search", mode: "live" }] as const;
 const DEFAULT_SUBAGENT_TOOL_NAMES = [
@@ -31,8 +32,11 @@ const DEFAULT_SUBAGENT_TOOL_NAMES = [
 ] as const;
 const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
 const MODEL = CLI_OPTIONS.model;
+const MODEL_SELECTION = textModelSelection(MODEL);
 const THINKING_LEVEL = CLI_OPTIONS.thinkingLevel;
-const FILESYSTEM_TOOL_NAMES = Object.keys(createFilesystemToolSetForModel(MODEL)).sort();
+const FILESYSTEM_TOOL_NAMES = Object.keys(
+  createFilesystemToolSetForModel(MODEL_SELECTION.model),
+).sort();
 const EXAMPLES_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(EXAMPLES_DIR, "..");
 const RUN_OUTPUT_DIR = path.join(
@@ -88,14 +92,26 @@ function isThinkingLevel(value: string): value is LlmThinkingLevel {
   );
 }
 
+function textModelSelection(label: string): LlmTextModelSelection {
+  if (label.includes(":")) {
+    const selection = parseModelRef(label);
+    if (isLlmTextModelId(selection.model)) {
+      return selection as LlmTextModelSelection;
+    }
+  } else if (!label.includes("/") && isLlmTextModelId(label)) {
+    return { model: label } as LlmTextModelSelection;
+  }
+  throw new Error(`Expected a known text model ID or provider:access:model: ${label}`);
+}
+
 function resolveCliOptions(args: readonly string[]): {
-  readonly model: LlmTextModelId;
+  readonly model: string;
   readonly thinkingLevel: LlmThinkingLevel;
 } {
   const program = new Command()
     .name("cli-chat")
     .description("Interactive local CLI chat with tool loop telemetry.")
-    .option("--model <id>", "Model id to run.")
+    .option("--model <id>", "Known model ID or provider:access:model reference.")
     .option(
       "--thinking-level <level>",
       "Thinking level: low, medium, high, xhigh, max, ultra.",
@@ -107,7 +123,9 @@ function resolveCliOptions(args: readonly string[]): {
   const options = program.opts<{ model?: string; thinkingLevel?: string }>();
 
   const modelRaw = options.model?.trim() ?? DEFAULT_MODEL;
-  if (!isLlmTextModelId(modelRaw)) {
+  try {
+    textModelSelection(modelRaw);
+  } catch {
     process.stderr.write(`Unsupported --model value: ${modelRaw}\n`);
     process.exit(1);
   }
@@ -291,7 +309,7 @@ async function handleSubmittedLine(rawLine: string): Promise<void> {
 
 function startRun(): void {
   const call = streamAgentLoop({
-    model: MODEL,
+    ...MODEL_SELECTION,
     input: history,
     thinkingLevel: THINKING_LEVEL,
     modelTools: DEFAULT_MODEL_TOOLS,
@@ -303,10 +321,7 @@ function startRun(): void {
         allowOutsideCwd: false,
       },
     },
-    subagentTool: {
-      enabled: true,
-      model: MODEL,
-    },
+    subagentTool: { enabled: true },
     logging: {
       workspaceDir: RUN_OUTPUT_DIR,
       mirrorToConsole: false,
@@ -355,7 +370,7 @@ async function consumeRun(state: ActiveRunState): Promise<void> {
     }
 
     printSystem(
-      `Completed in ${result.steps.length} step(s), total cost ~$${result.totalCostUsd.toFixed(6)}.`,
+      `Completed in ${result.steps.length} step(s), total cost ${result.totalCostUsd === null ? "unknown" : `~$${result.totalCostUsd.toFixed(6)}`}.`,
     );
   } catch (error) {
     await state.call.result.catch(() => undefined);

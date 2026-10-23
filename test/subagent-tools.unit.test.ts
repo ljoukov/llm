@@ -96,7 +96,7 @@ describe("subagent tools", () => {
         0,
       ),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -166,7 +166,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -203,7 +203,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -242,7 +242,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -284,7 +284,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
       onBackgroundMessage: background,
     });
@@ -314,7 +314,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -368,7 +368,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -400,7 +400,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -421,7 +421,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -442,7 +442,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       runSubagent,
     });
 
@@ -455,29 +455,43 @@ describe("subagent tools", () => {
     ).rejects.toThrow("unknown agent_type 'missing-role'");
   });
 
-  it("ignores model override fields supplied to spawn_agent input", async () => {
-    const runSubagent = vi.fn(async () => ({
+  it.each([
+    { provider: "openai", access: "subscription", model: "gpt-6-luna" },
+    { provider: "vercel", access: "api", model: "reflection/beam-free" },
+  ] as const)("inherits the entire $provider:$access route and strips child overrides", async (route) => {
+    const runSubagent = vi.fn(async (_request: SubagentRunRequest) => ({
       text: "done",
       thoughts: "",
       steps: [],
-      totalCostUsd: 0,
+      totalCostUsd: null,
     }));
-
+    const parentRoute = { ...route };
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute,
       runSubagent,
     });
-
+    // Later callers must not mutate a controller's resolved selection.
+    Object.assign(parentRoute, { provider: "fireworks", access: "api", model: "glm-5.3" });
     const spawn = getExecutableTool(controller.tools, "spawn_agent");
-    const parsed = spawn.inputSchema.safeParse({ message: "task", model: "gpt-5" });
+    const parsed = spawn.inputSchema.safeParse({
+      message: "task",
+      provider: "openai",
+      access: "api",
+      model: "gpt-6-astra",
+    });
     expect(parsed.success).toBe(true);
-    if (parsed.success) {
-      expect("model" in parsed.data).toBe(false);
-      const spawned = await spawn.execute(parsed.data);
-      expect(spawned.agent?.model).toBe("gpt-6-luna");
-    }
+    if (!parsed.success) throw new Error("Expected valid task input.");
+    expect(parsed.data).not.toHaveProperty("model");
+    expect(parsed.data).not.toHaveProperty("provider");
+    expect(parsed.data).not.toHaveProperty("access");
+    const spawned = await spawn.execute(parsed.data);
+    expect(spawned.agent).toMatchObject(route);
+    const wait = getExecutableTool(controller.tools, "wait");
+    await wait.execute({ agent_id: spawned.agent_id, timeout_ms: 200 });
+    expect(runSubagent).toHaveBeenCalledOnce();
+    expect(runSubagent.mock.calls[0]?.[0]?.route).toEqual(route);
   });
 
   it("supports fork_context by seeding child history from parent context snapshot", async () => {
@@ -495,7 +509,7 @@ describe("subagent tools", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "gpt-6-luna",
+      parentRoute: { provider: "openai", access: "api", model: "gpt-6-luna" },
       forkContextMessages: [
         { role: "system", content: "parent-system" },
         { role: "assistant", content: "parent-assistant" },

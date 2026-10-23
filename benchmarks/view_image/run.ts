@@ -10,15 +10,14 @@ import {
   createGlobTool,
   createListDirectoryTool,
   createWriteFileTool,
-  isLlmTextModelId,
   LLM_TEXT_MODEL_IDS,
   loadLocalEnv,
   runAgentLoop,
   streamText,
   tool,
-  type LlmTextModelId,
   type LlmStreamEvent,
 } from "../../src/index.js";
+import { benchmarkModelSelection, isBenchmarkModel } from "../model-selection.js";
 
 const BENCH_ROOT = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = resolve(BENCH_ROOT, "..", "..");
@@ -43,7 +42,7 @@ type BenchmarkCaseResult = {
   readonly error?: string;
 };
 
-function toModelList(raw: string | undefined): LlmTextModelId[] {
+function toModelList(raw: string | undefined): string[] {
   const candidates = (
     raw
       ? raw
@@ -53,12 +52,12 @@ function toModelList(raw: string | undefined): LlmTextModelId[] {
       : [...DEFAULT_MODELS]
   ) as string[];
 
-  const invalid = candidates.filter((model) => !isLlmTextModelId(model));
+  const invalid = candidates.filter((model) => !isBenchmarkModel(model));
   if (invalid.length > 0) {
     throw new Error(`Unsupported model ids: ${invalid.join(", ")}`);
   }
 
-  return [...new Set(candidates)] as LlmTextModelId[];
+  return [...new Set(candidates)] as string[];
 }
 
 function toRepoRelativePath(absolutePath: string): string {
@@ -140,8 +139,8 @@ function logEvent(model: string, event: LlmStreamEvent): void {
   }
 }
 
-async function runSingleModel(model: LlmTextModelId): Promise<BenchmarkCaseResult> {
-  const workspace = resolve(WORKSPACES_ROOT, model);
+async function runSingleModel(model: string): Promise<BenchmarkCaseResult> {
+  const workspace = resolve(WORKSPACES_ROOT, model.replace(/[^a-zA-Z0-9_-]+/g, "-"));
   const workspaceRel = toRepoRelativePath(workspace);
   await mkdir(workspace, { recursive: true });
 
@@ -166,7 +165,7 @@ async function runSingleModel(model: LlmTextModelId): Promise<BenchmarkCaseResul
 
   try {
     const result = await runAgentLoop({
-      model,
+      ...benchmarkModelSelection(model),
       input: [
         {
           role: "system",
@@ -197,7 +196,7 @@ async function runSingleModel(model: LlmTextModelId): Promise<BenchmarkCaseResul
             }
             const imageUrl = `data:${mimeType};base64,${bytes.toString("base64")}`;
             const inspection = await streamText({
-              model,
+              ...benchmarkModelSelection(model),
               input: [
                 {
                   role: "user",

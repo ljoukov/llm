@@ -7,14 +7,19 @@ import { estimateCallCostUsd } from "../src/utils/cost.js";
 
 describe("Anthropic model allowlist", () => {
   it("accepts exactly the supported Claude model IDs", () => {
-    expect(ANTHROPIC_MODEL_IDS).toEqual(["haiku-5-5", "sonnet-5-5", "opus-5-5", "fable-5-1"]);
+    expect(ANTHROPIC_MODEL_IDS).toEqual([
+      "claude-haiku-5-5",
+      "claude-sonnet-5-5",
+      "claude-opus-5-5",
+      "claude-fable-5-1",
+    ]);
     for (const modelId of ANTHROPIC_MODEL_IDS) {
       expect(isAnthropicModelId(modelId)).toBe(true);
-      expect(isAnthropicModelId(`claude-${modelId}`)).toBe(false);
-      expect(isClaudeModelId(`claude-${modelId}`)).toBe(true);
+      expect(isAnthropicModelId(modelId.slice("claude-".length))).toBe(false);
+      expect(isClaudeModelId(modelId)).toBe(true);
     }
     expect(isAnthropicModelId("claude-sonnet-4-5")).toBe(false);
-    expect(isAnthropicModelId("sonnet-5-5-latest")).toBe(false);
+    expect(isAnthropicModelId("claude-sonnet-5-5-latest")).toBe(false);
     expect(isAnthropicModelId("toString")).toBe(false);
   });
 });
@@ -22,7 +27,7 @@ describe("Anthropic model allowlist", () => {
 describe("Anthropic standard global pricing", () => {
   it("uses API-equivalent estimates for subscription and native model IDs", () => {
     for (const modelId of CLAUDE_MODEL_IDS) {
-      const apiModelId = modelId.slice("claude-".length);
+      const apiModelId = modelId;
       expect(getAnthropicPricing(modelId)).toEqual(getAnthropicPricing(apiModelId));
       const tokens = { promptTokens: 1_000, responseTokens: 100 };
       expect(estimateCallCostUsd({ modelId, tokens, responseImages: 0 })).toBe(
@@ -31,10 +36,10 @@ describe("Anthropic standard global pricing", () => {
     }
   });
   it.each([
-    ["haiku-5-5", 0.1, 0.5, 0.01, 0.125, 0.2],
-    ["sonnet-5-5", 2, 10, 0.1, 2.5, 4],
-    ["opus-5-5", 4, 20, 0.2, 5, 8],
-    ["fable-5-1", 10, 50, 0.25, 12.5, 20],
+    ["claude-haiku-5-5", 0.1, 0.5, 0.01, 0.125, 0.2],
+    ["claude-sonnet-5-5", 2, 10, 0.1, 2.5, 4],
+    ["claude-opus-5-5", 4, 20, 0.2, 5, 8],
+    ["claude-fable-5-1", 10, 50, 0.25, 12.5, 20],
   ] as const)("%s uses the official per-token input/output/cache rates", (modelId, input, output, read, write5m, write1h) => {
     expect(getAnthropicPricing(modelId)).toEqual({
       inputRate: input / 1_000_000,
@@ -46,19 +51,21 @@ describe("Anthropic standard global pricing", () => {
   });
 
   it("applies Haiku's higher tier only above 100,000 total prompt tokens", () => {
-    expect(getAnthropicPricing("haiku-5-5", 100_000)?.inputRate).toBe(0.1 / 1_000_000);
-    expect(getAnthropicPricing("haiku-5-5", 100_001)).toEqual({
+    expect(getAnthropicPricing("claude-haiku-5-5", 100_000)?.inputRate).toBe(0.1 / 1_000_000);
+    expect(getAnthropicPricing("claude-haiku-5-5", 100_001)).toEqual({
       inputRate: 0.5 / 1_000_000,
       outputRate: 2.5 / 1_000_000,
       cachedRate: 0.05 / 1_000_000,
       cacheWrite5mRate: 0.625 / 1_000_000,
       cacheWrite1hRate: 1 / 1_000_000,
     });
-    expect(getAnthropicPricing("sonnet-5-5", 900_000)).toEqual(getAnthropicPricing("sonnet-5-5"));
+    expect(getAnthropicPricing("claude-sonnet-5-5", 900_000)).toEqual(
+      getAnthropicPricing("claude-sonnet-5-5"),
+    );
   });
 
   it("has no inferred rate for unsupported models", () => {
-    expect(getAnthropicPricing("opus-5-5-fast")).toBeUndefined();
+    expect(getAnthropicPricing("claude-opus-5-5-fast")).toBeUndefined();
     expect(getAnthropicPricing("claude-future")).toBeUndefined();
     expect(getAnthropicPricing("constructor")).toBeUndefined();
   });
@@ -66,10 +73,10 @@ describe("Anthropic standard global pricing", () => {
 
 describe("Anthropic cost accounting", () => {
   it.each([
-    ["haiku-5-5", 0.1, 0.5],
-    ["sonnet-5-5", 2, 10],
-    ["opus-5-5", 4, 20],
-    ["fable-5-1", 10, 50],
+    ["claude-haiku-5-5", 0.1, 0.5],
+    ["claude-sonnet-5-5", 2, 10],
+    ["claude-opus-5-5", 4, 20],
+    ["claude-fable-5-1", 10, 50],
   ] as const)("prices %s input and output", (modelId, input, output) => {
     expect(
       estimateCallCostUsd({
@@ -83,7 +90,7 @@ describe("Anthropic cost accounting", () => {
   it("prices normal input, cache reads, and both cache-write TTLs separately", () => {
     expect(
       estimateCallCostUsd({
-        modelId: "sonnet-5-5",
+        modelId: "claude-sonnet-5-5",
         tokens: {
           promptTokens: 1_000,
           cachedTokens: 200,
@@ -101,7 +108,7 @@ describe("Anthropic cost accounting", () => {
   it("uses five-minute pricing when cache-write TTL details are absent", () => {
     expect(
       estimateCallCostUsd({
-        modelId: "fable-5-1",
+        modelId: "claude-fable-5-1",
         tokens: { promptTokens: 1_000, cacheWriteTokens: 400 },
         responseImages: 0,
       }),
@@ -111,7 +118,7 @@ describe("Anthropic cost accounting", () => {
   it("can derive cache-write totals from the TTL breakdown", () => {
     expect(
       estimateCallCostUsd({
-        modelId: "opus-5-5",
+        modelId: "claude-opus-5-5",
         tokens: {
           promptTokens: 1_000,
           anthropicCacheCreation5mInputTokens: 200,
@@ -125,7 +132,7 @@ describe("Anthropic cost accounting", () => {
   it("counts cache reads and writes toward Haiku's prompt threshold", () => {
     expect(
       estimateCallCostUsd({
-        modelId: "haiku-5-5",
+        modelId: "claude-haiku-5-5",
         tokens: {
           promptTokens: 100_001,
           cachedTokens: 50_000,
@@ -143,8 +150,8 @@ describe("Anthropic cost accounting", () => {
       tokens: { promptTokens: 1_000, responseTokens: 100 },
       responseImages: 0,
     };
-    expect(estimateCallCostUsd(options)).toBe(0);
-    expect(estimateCallCostUsd({ ...options, pricingModelId: "sonnet-5-5" })).toBeCloseTo(
+    expect(estimateCallCostUsd(options)).toBeNull();
+    expect(estimateCallCostUsd({ ...options, pricingModelId: "claude-sonnet-5-5" })).toBeCloseTo(
       0.003,
       12,
     );
@@ -153,7 +160,7 @@ describe("Anthropic cost accounting", () => {
   it("does not let inconsistent cache counters produce negative input costs", () => {
     expect(
       estimateCallCostUsd({
-        modelId: "sonnet-5-5",
+        modelId: "claude-sonnet-5-5",
         tokens: {
           promptTokens: 100,
           cachedTokens: 150,

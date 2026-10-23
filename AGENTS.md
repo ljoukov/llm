@@ -22,19 +22,19 @@
 
 ## OpenAI Model Policy
 
-- OpenAI text and image model ids are closed literal allowlists. Do not add support for arbitrary strings.
+- Direct OpenAI API and subscription text and image model ids are closed literal allowlists. Do not add support for arbitrary strings on those routes. Vercel model ids may use validated `publisher/model` passthrough when `provider: "vercel"` is explicit.
 - Supported OpenAI API model ids: `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `gpt-6-astra`, `gpt-6-astra-fast`, `gpt-6-sol`, `gpt-6-sol-fast`, `gpt-6-luna`, `gpt-6-luna-fast`, `gpt-5.6`, `gpt-5.6-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`.
 - Supported OpenAI image model ids: `gpt-image-2`.
-- Supported ChatGPT-authenticated text model ids: `chatgpt-gpt-6.1-sol`, `chatgpt-gpt-6.1-sol-fast`, `chatgpt-gpt-6-astra`, `chatgpt-gpt-6-astra-fast`, `chatgpt-gpt-6-sol`, `chatgpt-gpt-6-sol-fast`, `chatgpt-gpt-6-luna`, `chatgpt-gpt-6-luna-fast`, `chatgpt-gpt-5.6-sol`, `chatgpt-gpt-5.6-sol-fast`, `chatgpt-gpt-5.6-terra`, `chatgpt-gpt-5.6-terra-fast`, `chatgpt-gpt-5.6-luna`, `chatgpt-gpt-5.6-luna-fast`.
-- Supported ChatGPT-authenticated image model ids: `chatgpt-gpt-image-2`.
+- Supported OpenAI subscription text model ids (with `provider: "openai", access: "subscription"`): `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `gpt-6-astra`, `gpt-6-astra-fast`, `gpt-6-sol`, `gpt-6-sol-fast`, `gpt-6-luna`, `gpt-6-luna-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`.
+- Supported OpenAI subscription image model ids (with `provider: "openai", access: "subscription"`): `gpt-image-2`.
 - Experimental ChatGPT-authenticated model ids may use the public `experimental-chatgpt-*` prefix so private/internal model suffixes do not need to be committed to this package.
 - Remove old aliases instead of keeping backward-compatibility shims.
-- Subagents must inherit the parent model. Do not add agent-facing model override fields for subagents or other model-invoked tools.
+- Subagents must inherit the parent’s complete resolved provider, access mode, and model. Do not add agent-facing model override fields for subagents or other model-invoked tools.
 
 ### Model Change Checks
 
 - Do not run the full OpenAI integration matrix on every commit.
 - Run `npm run test:integration:openai-models` when changing text model ids, OpenAI or ChatGPT request routing, pricing, auth, transport, tool-loop behavior, or any agent model-selection path.
 - Run a targeted image-generation integration check when changing OpenAI image model ids or Image API request parameters.
-- To run only authorized routes, set `LLM_INTEGRATION_MODELS` to a comma-separated list of supported OpenAI/ChatGPT ids before `npm run test:integration:openai-models`; without it the full matrix runs.
+- To run only authorized routes, set `LLM_INTEGRATION_MODELS` to a comma-separated list of canonical `openai:api:<model>` or `openai:subscription:<model>` references before `npm run test:integration:openai-models`; without it the full matrix runs.
 - Keep the OpenAI integration matrix parallelized so all supported OpenAI and ChatGPT model ids are exercised in one targeted run.

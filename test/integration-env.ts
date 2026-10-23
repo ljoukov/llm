@@ -1,200 +1,204 @@
 import fs from "node:fs";
-import { resolveOpenModelProvider } from "../src/vercel/models.js";
 import os from "node:os";
 import path from "node:path";
 
 import {
-  isChatGptModelId,
-  isChatGptImageModelId,
-  isAnthropicModelId,
-  isClaudeModelId,
-  isFireworksModelId,
-  isGeminiImageModelId,
-  isGeminiTextModelId,
+  ANTHROPIC_MODEL_IDS,
+  GEMINI_IMAGE_MODEL_IDS,
+  GEMINI_TEXT_MODEL_IDS,
+  FIREWORKS_MODEL_IDS,
+  OPENAI_IMAGE_MODEL_IDS,
+  OPENAI_MODEL_IDS,
+  OPENAI_SUBSCRIPTION_MODEL_IDS,
   isLlmImageModelId,
-  isLlmTextModelId,
-  isOpenAiImageModelId,
-  isOpenAiModelId,
-  LLM_IMAGE_MODEL_IDS,
-  LLM_TEXT_MODEL_IDS,
   loadLocalEnv,
-  type LlmImageModelId,
-  type LlmTextModelId,
+  parseModelRef,
+  resolveModelRef,
+  type LlmImageModelRef,
+  type LlmModelRef,
+  type LlmTextModelRef,
 } from "../src/index.js";
+import { resolveOpenModelProvider } from "../src/vercel/models.js";
 
 export type IntegrationProviderAvailability = {
   readonly openAi: boolean;
-  readonly gemini: boolean;
+  readonly google: boolean;
   readonly anthropic: boolean;
-  readonly claude: boolean;
+  readonly anthropicSubscription: boolean;
   readonly fireworks: boolean;
   readonly vercel: boolean;
-  readonly chatGpt: boolean;
+  readonly openAiSubscription: boolean;
+  readonly xai: boolean;
+  readonly xaiSubscription: boolean;
 };
 
 let availabilityCache: IntegrationProviderAvailability | null = null;
 
 function hasCodexStore(): boolean {
   const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
-  const authPath = path.join(codexHome, "auth.json");
   try {
-    const raw = fs.readFileSync(authPath, "utf8");
-    const doc = JSON.parse(raw) as any;
-    const tokens = doc?.tokens;
-    return Boolean(tokens?.access_token && tokens?.refresh_token);
+    const doc = JSON.parse(fs.readFileSync(path.join(codexHome, "auth.json"), "utf8"));
+    return Boolean(doc?.tokens?.access_token && doc?.tokens?.refresh_token);
   } catch {
     return false;
   }
 }
 
 export function getIntegrationProviderAvailability(): IntegrationProviderAvailability {
-  if (availabilityCache) {
-    return availabilityCache;
-  }
-
+  if (availabilityCache) return availabilityCache;
   loadLocalEnv();
-
-  const hasOpenAi = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const hasGemini = Boolean(
-    process.env.GEMINI_API_KEY?.trim() ||
-      process.env.GOOGLE_API_KEY?.trim() ||
-      process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim(),
-  );
-  const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-  const hasFireworks = Boolean(
-    process.env.FIREWORKS_TOKEN?.trim() || process.env.FIREWORKS_API_KEY?.trim(),
-  );
   const tokenProviderUrl = process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim();
   const tokenProviderKey =
     process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY?.trim() ||
     process.env.CHATGPT_AUTH_API_KEY?.trim();
-  const hasChatGpt = Boolean((tokenProviderUrl && tokenProviderKey) || hasCodexStore());
-
   availabilityCache = {
-    openAi: hasOpenAi,
-    gemini: hasGemini,
-    anthropic: hasAnthropic,
-    // The explicit opt-in asserts that Claude Code is installed and logged into a subscription.
-    // Ordinary credential checks do not launch the CLI or inspect its credential store.
-    claude: process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1",
-    fireworks: hasFireworks,
+    openAi: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    google: Boolean(
+      process.env.GEMINI_API_KEY?.trim() ||
+        process.env.GOOGLE_API_KEY?.trim() ||
+        process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim(),
+    ),
+    anthropic: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+    // Explicit opt-ins assert that the corresponding CLI is installed and logged in.
+    anthropicSubscription: process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1",
+    fireworks: Boolean(
+      process.env.FIREWORKS_TOKEN?.trim() || process.env.FIREWORKS_API_KEY?.trim(),
+    ),
     vercel: Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY?.trim()),
-    chatGpt: hasChatGpt,
+    openAiSubscription: Boolean((tokenProviderUrl && tokenProviderKey) || hasCodexStore()),
+    xai: Boolean(process.env.XAI_API_KEY?.trim()),
+    xaiSubscription: process.env.LLM_INTEGRATION_GROK_SUBSCRIPTION?.trim() === "1",
   };
-
   return availabilityCache;
 }
 
-export function hasIntegrationCredentialsForModel(
-  model: LlmTextModelId | LlmImageModelId,
-): boolean {
+export function integrationModelLabel(ref: LlmModelRef): string {
+  return `${ref.provider}:${ref.access ?? "api"}:${ref.model}`;
+}
+
+export function hasIntegrationCredentialsForModel(ref: LlmModelRef): boolean {
   const availability = getIntegrationProviderAvailability();
-
-  if (isOpenAiModelId(model) || isOpenAiImageModelId(model)) {
-    return availability.openAi;
+  switch (ref.provider) {
+    case "openai":
+      return ref.access === "subscription" ? availability.openAiSubscription : availability.openAi;
+    case "anthropic":
+      return ref.access === "subscription"
+        ? availability.anthropicSubscription
+        : availability.anthropic;
+    case "google":
+      return availability.google;
+    case "fireworks":
+      return availability.fireworks;
+    case "vercel":
+      return availability.vercel;
+    case "xai":
+      return ref.access === "subscription" ? availability.xaiSubscription : availability.xai;
   }
-  if (isChatGptModelId(model) || isChatGptImageModelId(model)) {
-    return availability.chatGpt;
-  }
-  if (isGeminiTextModelId(model)) {
-    return availability.gemini;
-  }
-  if (isGeminiImageModelId(model)) {
-    return availability.gemini;
-  }
-  if (isAnthropicModelId(model)) {
-    return availability.anthropic;
-  }
-  if (isClaudeModelId(model)) {
-    return availability.claude;
-  }
-  if (isFireworksModelId(model)) {
-    return resolveOpenModelProvider() === "vercel" ? availability.vercel : availability.fireworks;
-  }
-
-  return false;
 }
 
-function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId): string {
-  if (isOpenAiModelId(model) || isOpenAiImageModelId(model)) {
-    return "OPENAI_API_KEY";
+function resolveCredentialHintForModel(ref: LlmModelRef): string {
+  switch (ref.provider) {
+    case "openai":
+      return ref.access === "subscription"
+        ? "CHATGPT_AUTH_TOKEN_PROVIDER_URL + CHATGPT_AUTH_API_KEY (or CODEX auth store)"
+        : "OPENAI_API_KEY";
+    case "anthropic":
+      return ref.access === "subscription"
+        ? "Claude Code subscription login + LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1"
+        : "ANTHROPIC_API_KEY";
+    case "google":
+      return "GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_SERVICE_ACCOUNT_JSON";
+    case "fireworks":
+      return "FIREWORKS_TOKEN or FIREWORKS_API_KEY";
+    case "vercel":
+      return "VERCEL_AI_GATEWAY_API_KEY";
+    case "xai":
+      return ref.access === "subscription"
+        ? "Grok CLI subscription login + LLM_INTEGRATION_GROK_SUBSCRIPTION=1"
+        : "XAI_API_KEY";
   }
-  if (isChatGptModelId(model) || isChatGptImageModelId(model)) {
-    return "CHATGPT_AUTH_TOKEN_PROVIDER_URL + CHATGPT_AUTH_API_KEY (or CODEX auth store)";
-  }
-  if (isGeminiTextModelId(model) || isGeminiImageModelId(model)) {
-    return "GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_SERVICE_ACCOUNT_JSON";
-  }
-  if (isAnthropicModelId(model)) {
-    return "ANTHROPIC_API_KEY";
-  }
-  if (isClaudeModelId(model)) {
-    return "Claude Code subscription login + LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1";
-  }
-  if (isFireworksModelId(model)) {
-    return resolveOpenModelProvider() === "vercel"
-      ? "VERCEL_AI_GATEWAY_API_KEY"
-      : "FIREWORKS_TOKEN or FIREWORKS_API_KEY";
-  }
-  return "unknown credentials";
 }
 
-export function assertIntegrationCredentialsForModels(
-  models: readonly (LlmTextModelId | LlmImageModelId)[],
-): void {
-  const missing = models.filter((model) => !hasIntegrationCredentialsForModel(model));
-  if (missing.length === 0) {
-    return;
-  }
-  const details = missing.map((model) => `${model} [${resolveCredentialHintForModel(model)}]`);
+export function assertIntegrationCredentialsForModels(models: readonly LlmModelRef[]): void {
+  const missing = models.filter((ref) => !hasIntegrationCredentialsForModel(ref));
+  if (!missing.length) return;
+  const details = missing.map(
+    (ref) => `${integrationModelLabel(ref)} [${resolveCredentialHintForModel(ref)}]`,
+  );
   throw new Error(
     `Missing integration credentials for requested models: ${details.join(", ")}. ` +
       "Set the required environment variables or narrow the requested model list.",
   );
 }
 
-export function resolveIntegrationRequestedModels(): readonly LlmTextModelId[] {
-  const raw = process.env.LLM_INTEGRATION_MODELS?.trim();
-  if (!raw) {
-    return LLM_TEXT_MODEL_IDS;
-  }
-
-  const parsed = raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-
-  const invalid = parsed.filter((entry) => !isLlmTextModelId(entry));
-  if (invalid.length > 0) {
-    throw new Error(
-      `LLM_INTEGRATION_MODELS contains unsupported model ids: ${invalid.join(", ")}. ` +
-        `Allowed: ${LLM_TEXT_MODEL_IDS.join(", ")}`,
-    );
-  }
-
-  return [...new Set(parsed)] as readonly LlmTextModelId[];
+export function openAiIntegrationModels(): readonly LlmTextModelRef[] {
+  return [
+    ...OPENAI_MODEL_IDS.map((model) => ({
+      provider: "openai" as const,
+      access: "api" as const,
+      model,
+    })),
+    ...OPENAI_SUBSCRIPTION_MODEL_IDS.map((model) => ({
+      provider: "openai" as const,
+      access: "subscription" as const,
+      model,
+    })),
+  ];
 }
 
-export function resolveIntegrationRequestedImageModels(): readonly LlmImageModelId[] {
-  const raw = process.env.LLM_INTEGRATION_IMAGE_MODELS?.trim();
-  if (!raw) {
-    return LLM_IMAGE_MODEL_IDS;
-  }
-
-  const parsed = raw
+function parseRequestedModels(raw: string): readonly LlmModelRef[] {
+  const unique = new Map<string, LlmModelRef>();
+  for (const selector of raw
     .split(",")
     .map((entry) => entry.trim())
-    .filter(Boolean);
-
-  const invalid = parsed.filter((entry) => !isLlmImageModelId(entry));
-  if (invalid.length > 0) {
-    throw new Error(
-      `LLM_INTEGRATION_IMAGE_MODELS contains unsupported model ids: ${invalid.join(", ")}. ` +
-        `Allowed: ${LLM_IMAGE_MODEL_IDS.join(", ")}`,
-    );
+    .filter(Boolean)) {
+    const ref = selector.includes(":")
+      ? parseModelRef(selector)
+      : (resolveModelRef({ model: selector }) as LlmModelRef);
+    unique.set(integrationModelLabel(ref), ref);
   }
+  if (!unique.size) throw new Error("Integration model selectors must contain at least one model.");
+  return [...unique.values()];
+}
 
-  return [...new Set(parsed)] as readonly LlmImageModelId[];
+export function resolveIntegrationRequestedModels(): readonly LlmTextModelRef[] {
+  const raw = process.env.LLM_INTEGRATION_MODELS?.trim();
+  const refs: readonly LlmModelRef[] = raw
+    ? parseRequestedModels(raw)
+    : [
+        ...openAiIntegrationModels(),
+        ...ANTHROPIC_MODEL_IDS.flatMap((model) => [
+          { provider: "anthropic" as const, access: "api" as const, model },
+          { provider: "anthropic" as const, access: "subscription" as const, model },
+        ]),
+        ...GEMINI_TEXT_MODEL_IDS.map((model) => ({ provider: "google" as const, model })),
+        ...FIREWORKS_MODEL_IDS.map((model) => ({ provider: resolveOpenModelProvider(), model })),
+      ];
+  const images = refs.filter((ref) => isLlmImageModelId(ref.model));
+  if (images.length)
+    throw new Error(
+      `LLM_INTEGRATION_MODELS requires text models: ${images.map(integrationModelLabel).join(", ")}`,
+    );
+  return refs as readonly LlmTextModelRef[];
+}
+
+export function resolveIntegrationRequestedImageModels(): readonly LlmImageModelRef[] {
+  const raw = process.env.LLM_INTEGRATION_IMAGE_MODELS?.trim();
+  const refs: readonly LlmModelRef[] = raw
+    ? parseRequestedModels(raw)
+    : [
+        ...OPENAI_IMAGE_MODEL_IDS.flatMap((model) => [
+          { provider: "openai" as const, access: "api" as const, model },
+          { provider: "openai" as const, access: "subscription" as const, model },
+        ]),
+        ...GEMINI_IMAGE_MODEL_IDS.map((model) => ({ provider: "google" as const, model })),
+      ];
+  const text = refs.filter((ref) => !isLlmImageModelId(ref.model));
+  if (text.length)
+    throw new Error(
+      `LLM_INTEGRATION_IMAGE_MODELS requires image models: ${text.map(integrationModelLabel).join(", ")}`,
+    );
+  return refs as readonly LlmImageModelRef[];
 }
 
 export function hasCanonicalFilesBackend(): boolean {

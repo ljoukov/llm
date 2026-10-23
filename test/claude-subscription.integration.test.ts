@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
-  CLAUDE_MODEL_IDS,
+  ANTHROPIC_MODEL_IDS,
   generateJson,
-  isClaudeModelId,
   runToolLoop,
   streamText,
   tool,
-  type ClaudeModelId,
+  type AnthropicModelId,
   type LlmTextResult,
   type LlmUsageTokens,
 } from "../src/index.js";
@@ -22,21 +21,30 @@ const enabled = process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1";
 const requestedModels =
   enabled && process.env.LLM_INTEGRATION_MODELS?.trim()
     ? resolveIntegrationRequestedModels()
-    : CLAUDE_MODEL_IDS;
+    : ANTHROPIC_MODEL_IDS.map((model) => ({
+        provider: "anthropic" as const,
+        access: "subscription" as const,
+        model,
+      }));
 if (
   enabled &&
-  (requestedModels.length === 0 || requestedModels.some((model) => !isClaudeModelId(model)))
+  (requestedModels.length === 0 ||
+    requestedModels.some((ref) => ref.provider !== "anthropic" || ref.access !== "subscription"))
 ) {
   throw new Error(
-    `LLM_INTEGRATION_MODELS must select Claude subscription models: ${CLAUDE_MODEL_IDS.join(", ")}`,
+    `LLM_INTEGRATION_MODELS must select Claude subscription models: ${ANTHROPIC_MODEL_IDS.map((model) => `anthropic:subscription:${model}`).join(", ")}`,
   );
 }
-const models = requestedModels as readonly ClaudeModelId[];
+const models = requestedModels as readonly {
+  provider: "anthropic";
+  access: "subscription";
+  model: AnthropicModelId;
+}[];
 if (enabled) assertIntegrationCredentialsForModels(models);
 
 // Independent API-equivalent price fixtures, USD per million tokens, October 22, 2026.
 // These are estimates for comparison, not an additional charge for subscription calls.
-function expectedCostUsd(model: ClaudeModelId, usage: LlmUsageTokens): number {
+function expectedCostUsd(model: AnthropicModelId, usage: LlmUsageTokens): number {
   const prompt = usage.promptTokens ?? 0;
   const cached = usage.cachedTokens ?? 0;
   const writes = usage.cacheWriteTokens ?? 0;
@@ -62,34 +70,39 @@ function expectedCostUsd(model: ClaudeModelId, usage: LlmUsageTokens): number {
 }
 
 function expectUsageAndCost(
-  model: ClaudeModelId,
+  model: AnthropicModelId,
   usage: LlmUsageTokens | undefined,
-  costUsd: number,
+  costUsd: number | null | undefined,
 ) {
   expect(usage?.promptTokens).toBeGreaterThan(0);
   expect(usage?.responseTokens).toBeGreaterThan(0);
   expect(usage?.totalTokens).toBeGreaterThan(0);
+  expect(costUsd).toBeTypeOf("number");
   expect(costUsd).toBeGreaterThan(0);
   expect(costUsd).toBeCloseTo(expectedCostUsd(model, usage ?? {}), 12);
 }
 
-function expectSubscriptionResult(model: ClaudeModelId, result: LlmTextResult) {
-  expect(result.provider).toBe("claude");
+function expectSubscriptionResult(model: AnthropicModelId, result: LlmTextResult) {
+  expect(result.provider).toBe("anthropic");
+  expect(result.access).toBe("subscription");
   expect(result.model).toBe(model);
   expect(result.modelVersion).toBe(model);
   expect(result.blocked).toBe(false);
-  expectUsageAndCost(model, result.usage, result.costUsd);
+  expect(result.costUsd).toBeNull();
+  expect(result.costSource).toBe("subscription");
+  expectUsageAndCost(model, result.usage, result.apiEquivalentCostUsd);
 }
 
 describe.skipIf(!enabled).concurrent("integration: Claude Code subscription models", () => {
-  for (const model of models) {
+  for (const ref of models) {
+    const { model } = ref;
     it(`${model}: streams text with usage and API-equivalent cost`, async () => {
-      const call = streamText({ model, input: "Return exactly: OK", thinkingLevel: "low" });
+      const call = streamText({ ...ref, input: "Return exactly: OK", thinkingLevel: "low" });
       const streamed = (async () => {
         let text = "";
         let deltaCount = 0;
         let usage: LlmUsageTokens | undefined;
-        let costUsd: number | undefined;
+        let costUsd: number | null | undefined;
         for await (const event of call.events) {
           if (event.type === "delta" && event.channel === "response") {
             text += event.text;
@@ -115,7 +128,7 @@ describe.skipIf(!enabled).concurrent("integration: Claude Code subscription mode
         .object({ ok: z.boolean(), count: z.number().int(), message: z.string() })
         .strict();
       const { value, result } = await generateJson({
-        model,
+        ...ref,
         input: 'Return exactly this JSON object: {"ok":true,"count":3,"message":"hello"}.',
         schema,
         thinkingLevel: "low",
@@ -131,7 +144,7 @@ describe.skipIf(!enabled).concurrent("integration: Claude Code subscription mode
       const code = "TOOL_RESULT_87319";
       const events: string[] = [];
       const result = await runToolLoop({
-        model,
+        ...ref,
         input: [
           {
             role: "system",
@@ -171,11 +184,12 @@ describe.skipIf(!enabled).concurrent("integration: Claude Code subscription mode
       expect(calls[0]?.error).toBeUndefined();
       expect(events).toEqual(["started", "completed"]);
       expect(result.text.trim()).toBe(code);
-      for (const step of result.steps) expectUsageAndCost(model, step.usage, step.costUsd);
-      expect(result.totalCostUsd).toBeCloseTo(
-        result.steps.reduce((sum, step) => sum + step.costUsd, 0),
-        12,
-      );
+      for (const step of result.steps) {
+        expect(step.costUsd).toBeNull();
+        expect(step.costSource).toBe("subscription");
+        expectUsageAndCost(model, step.usage, step.apiEquivalentCostUsd);
+      }
+      expect(result.totalCostUsd).toBeNull();
     }, 180_000);
   }
 });

@@ -236,7 +236,9 @@ describe("runAgentLoop uploads", () => {
 
       const { runAgentLoop } = await import("../src/agent.js");
       const result = await runAgentLoop({
-        model: "chatgpt-gpt-6-sol",
+        provider: "openai",
+        access: "subscription",
+        model: "gpt-6-sol",
         input: "Inspect all of the images and finish.",
         filesystemTool: {
           profile: "codex",

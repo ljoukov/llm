@@ -105,6 +105,8 @@ describe("Claude subscription tool loops", () => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     const events: any[] = [];
     const result = await runToolLoop({
+      provider: "anthropic",
+      access: "subscription",
       model,
       input: "Multiply",
       thinkingLevel: "low",
@@ -130,7 +132,9 @@ describe("Claude subscription tool loops", () => {
     });
     expect(result.steps[0]?.finishReason).toBe("tool_use");
     expect(result.steps[1]?.usage).toMatchObject({ promptTokens: 10, responseTokens: 6 });
-    expect(result.totalCostUsd).toBeGreaterThan(0);
+    expect(result.totalCostUsd).toBeNull();
+    expect(result.steps.every((step) => step.costUsd === null)).toBe(true);
+    expect(result.steps.every((step) => (step.apiEquivalentCostUsd ?? 0) > 0)).toBe(true);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ model, maxSteps: 3, maxOutputTokens: 1000, effort: "low" });
     expect(toolResults[0].content).toBe('{"value":6}');
@@ -144,6 +148,8 @@ describe("Claude subscription tool loops", () => {
     const execute = vi.fn();
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
+      provider: "anthropic",
+      access: "subscription",
       model: "claude-haiku-5-5",
       input: "Multiply",
       tools: {
@@ -158,6 +164,8 @@ describe("Claude subscription tool loops", () => {
   it("stops at terminal tools and returns the terminal output", async () => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
+      provider: "anthropic",
+      access: "subscription",
       model: "claude-haiku-5-5",
       input: "Multiply",
       tools: {
@@ -176,6 +184,8 @@ describe("Claude subscription tool loops", () => {
   it("returns native image blocks from function tools", async () => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     await runToolLoop({
+      provider: "anthropic",
+      access: "subscription",
       model: "claude-haiku-5-5",
       input: "Multiply",
       tools: {
@@ -194,6 +204,8 @@ describe("Claude subscription tool loops", () => {
     finishReason = "max_tokens";
     const { runToolLoop, tool } = await import("../src/llm.js");
     const result = await runToolLoop({
+      provider: "anthropic",
+      access: "subscription",
       model: "claude-opus-5-5",
       input: "Multiply",
       tools: { multiply: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
@@ -208,6 +220,8 @@ describe("Claude subscription tool loops", () => {
     const { runToolLoop, tool, customTool } = await import("../src/llm.js");
     await expect(
       runToolLoop({
+        provider: "anthropic",
+        access: "subscription",
         model: "claude-haiku-5-5",
         input: "Hi",
         tools: { custom: customTool({ execute: (input) => input }) },
@@ -215,6 +229,8 @@ describe("Claude subscription tool loops", () => {
     ).rejects.toThrow("do not support custom/freeform");
     await expect(
       runToolLoop({
+        provider: "anthropic",
+        access: "subscription",
         model: "claude-haiku-5-5",
         input: "Hi",
         modelTools: [{ type: "web-search" }],
@@ -237,7 +253,7 @@ describe("Claude subscription tool loops", () => {
     const controller = createSubagentToolController({
       config: resolveSubagentToolConfig({ minWaitTimeoutMs: 1 }, 0),
       parentDepth: 0,
-      parentModel: "claude-sonnet-5-5",
+      parentRoute: { provider: "anthropic", access: "subscription", model: "claude-sonnet-5-5" },
       runSubagent,
     });
     const spawn = controller.tools.spawn_agent as any;
@@ -245,10 +261,16 @@ describe("Claude subscription tool loops", () => {
     const parsed = spawn.inputSchema.parse({ message: "task", model: "sonnet-5-5" });
     expect(parsed).not.toHaveProperty("model");
     const spawned = await spawn.execute(parsed);
-    expect(spawned.agent.model).toBe("claude-sonnet-5-5");
+    expect(spawned.agent).toMatchObject({
+      provider: "anthropic",
+      access: "subscription",
+      model: "claude-sonnet-5-5",
+    });
     await wait.execute({ agent_id: spawned.agent_id, timeout_ms: 200 });
     expect(runSubagent).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "claude-sonnet-5-5" }),
+      expect.objectContaining({
+        route: { provider: "anthropic", access: "subscription", model: "claude-sonnet-5-5" },
+      }),
     );
     await controller.closeAll();
   });

@@ -416,4 +416,4 @@ export const AGENT_BENCHMARK_TASKS: readonly AgentBenchmarkTask[] = [
   },
 ];
 
-export const DEFAULT_BENCHMARK_MODELS: readonly string[] = ["chatgpt-gpt-6-luna"];
+export const DEFAULT_BENCHMARK_MODELS: readonly string[] = ["openai:subscription:gpt-6-luna"];

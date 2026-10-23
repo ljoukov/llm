@@ -259,14 +259,12 @@ export const AGENT_BENCHMARK_TASKS: readonly AgentBenchmarkTask[] = [
 ];
 
 export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
-  "chatgpt-gpt-6-luna",
+  "openai:subscription:gpt-6-luna",
   "gpt-6-sol",
   "gpt-6-luna",
   "kimi-k3",
   "glm-5.3",
   "deepseek-v4.1-flash-1017",
-  "gemini-2.5-pro",
-  "gemini-flash-latest",
-  "gemini-3.1-pro-preview",
-  "gemini-3-flash-preview",
+  "gemini-4-argon",
+  "gemini-3.8-flash",
 ];

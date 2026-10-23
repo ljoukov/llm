@@ -7,6 +7,11 @@ import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 const DEFAULT_VERCEL_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 const DEFAULT_VERCEL_TIMEOUT_MS = 15 * 60_000;
 
+export function resolveVercelBaseUrl(): string {
+  loadLocalEnv();
+  return process.env.AI_GATEWAY_BASE_URL?.trim() || DEFAULT_VERCEL_BASE_URL;
+}
+
 const vercelClientState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.vercelClientState"), () => ({
   cachedClient: null as OpenAI | null,
   cachedFetch: null as typeof fetch | null,
@@ -49,7 +54,7 @@ export function getVercelClient(): OpenAI {
   const timeoutMs = resolveTimeoutMs();
   vercelClientState.cachedClient = new OpenAI({
     apiKey,
-    baseURL: process.env.AI_GATEWAY_BASE_URL?.trim() || DEFAULT_VERCEL_BASE_URL,
+    baseURL: resolveVercelBaseUrl(),
     timeout: timeoutMs,
     fetch: getVercelFetch(timeoutMs),
   });

@@ -1,6 +1,6 @@
 # Vercel Codex Proxy
 
-Small Vercel app that proxies `chatgpt-*` Codex Responses requests through Vercel while using the
+Small Vercel app that proxies OpenAI subscription Codex Responses requests through Vercel while using the
 Cloudflare `workers/chatgpt-auth` app as the token store.
 
 It exposes:
@@ -51,6 +51,9 @@ Point the library at this deployment:
 export CHATGPT_CODEX_PROXY_URL="https://<your-vercel-project>.vercel.app"
 export CHATGPT_CODEX_PROXY_API_KEY="<same value as CODEX_PROXY_API_KEY>"
 ```
+
+Select this subscription route explicitly with
+`{ provider: "openai", access: "subscription", model: "gpt-6.1-sol" }`.
 
 `CHATGPT_CODEX_PROXY_URL` may be the root deployment URL or the full `/api/codex/responses`
 endpoint. The library derives the corresponding `/api/codex/images/generations` and

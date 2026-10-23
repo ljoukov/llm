@@ -33,12 +33,8 @@ import {
   type LlmUsageTokens,
   runToolLoop,
 } from "./llm.js";
-import {
-  isChatGptModelId,
-  isOpenAiModelId,
-  type ChatGptImageModelId,
-  type OpenAiImageModelId,
-} from "./openai/models.js";
+import type { OpenAiImageModelId } from "./openai/models.js";
+import { type ResolvedModelRef, resolveModelRef } from "./model-selection.js";
 import {
   collectFileUploadMetrics,
   emptyFileUploadMetrics,
@@ -78,20 +74,24 @@ type AgentImageGenerationToolConfigBase = {
 
 export type AgentOpenAiImageGenerationToolConfig = AgentImageGenerationToolConfigBase & {
   /** Select the public Images API and enable its structured image controls. */
+  readonly provider?: "openai";
+  readonly access?: "api";
   readonly model: OpenAiImageModelId;
   readonly imageResolution?: LlmOpenAiImageResolution;
   readonly imageSize?: LlmOpenAiImageSize;
   readonly imageQuality?: LlmOpenAiImageQuality;
 };
 
-export type AgentChatGptImageGenerationToolConfig = AgentImageGenerationToolConfigBase & {
-  /** Select ChatGPT subscription rendering. Omit to follow a ChatGPT outer model. */
-  readonly model?: ChatGptImageModelId;
+export type AgentSubscriptionImageGenerationToolConfig = AgentImageGenerationToolConfigBase & {
+  /** Select image rendering through the OpenAI subscription. */
+  readonly provider?: "openai";
+  readonly access: "subscription";
+  readonly model?: OpenAiImageModelId;
 };
 
 export type AgentImageGenerationToolConfig =
   | AgentOpenAiImageGenerationToolConfig
-  | AgentChatGptImageGenerationToolConfig;
+  | AgentSubscriptionImageGenerationToolConfig;
 
 export type AgentImageGenerationToolSelection = boolean | AgentImageGenerationToolConfig;
 
@@ -106,7 +106,9 @@ export type {
   AgentLogLineSink,
 } from "./agentLogging.js";
 
-export type RunAgentLoopRequest = Omit<LlmToolLoopRequest, "tools"> & {
+type WithoutTools<T> = T extends unknown ? Omit<T, "tools"> : never;
+
+export type RunAgentLoopRequest = WithoutTools<LlmToolLoopRequest> & {
   readonly tools?: LlmToolSet;
   readonly filesystemTool?: AgentFilesystemToolSelection;
   readonly filesystem_tool?: AgentFilesystemToolSelection;
@@ -129,12 +131,17 @@ export type AgentLoopStream = {
 };
 
 export async function runAgentLoop(request: RunAgentLoopRequest): Promise<LlmToolLoopResult> {
+  // Resolve environment-dependent defaults once. Children inherit this complete route,
+  // so later credential or environment changes cannot redirect part of an agent run.
+  const route = Object.freeze(resolveModelRef(request));
+  const resolvedRequest = { ...request, ...route } as RunAgentLoopRequest;
   const telemetry = createTelemetrySession(request.telemetry);
   const logging = createRootAgentLoggingSession(request);
   try {
     return await runWithAgentLoggingSession(logging, async () => {
-      return await runAgentLoopInternal(request, {
+      return await runAgentLoopInternal(resolvedRequest, {
         depth: 0,
+        route,
         telemetry,
         logging,
       });
@@ -213,17 +220,24 @@ export function streamAgentLoop(request: RunAgentLoopRequest): AgentLoopStream {
 
 type RunAgentLoopInternalContext = {
   readonly depth: number;
+  readonly route: ResolvedModelRef;
   readonly parentRunId?: string;
   readonly telemetry?: TelemetrySession;
   readonly logging?: AgentLoggingSession;
 };
 
 type AgentTelemetryEventPayload =
-  | Omit<AgentRunStartedTelemetryEvent, "timestamp" | "runId" | "parentRunId" | "depth" | "model">
-  | Omit<AgentRunStreamTelemetryEvent, "timestamp" | "runId" | "parentRunId" | "depth" | "model">
+  | Omit<
+      AgentRunStartedTelemetryEvent,
+      "timestamp" | "runId" | "parentRunId" | "depth" | "provider" | "access" | "model"
+    >
+  | Omit<
+      AgentRunStreamTelemetryEvent,
+      "timestamp" | "runId" | "parentRunId" | "depth" | "provider" | "access" | "model"
+    >
   | Omit<
       AgentRunCompletedTelemetryEvent,
-      "timestamp" | "runId" | "parentRunId" | "depth" | "model"
+      "timestamp" | "runId" | "parentRunId" | "depth" | "provider" | "access" | "model"
     >;
 
 async function runAgentLoopInternal(
@@ -246,7 +260,7 @@ async function runAgentLoopInternal(
 
   const imageToolSelection = imageGenerationTool ?? image_generation_tool;
   const resolvedImageTools = resolveAgentImageGenerationTools(
-    request.model,
+    context.route,
     imageToolSelection,
     request.signal,
   );
@@ -282,7 +296,7 @@ async function runAgentLoopInternal(
   const resolvedSubagentConfig = resolveSubagentToolConfig(subagentSelection, context.depth);
   const subagentController = createSubagentController({
     runId,
-    model: request.model,
+    route: context.route,
     depth: context.depth,
     telemetry: telemetrySession,
     logging: loggingSession,
@@ -323,7 +337,7 @@ async function runAgentLoopInternal(
     runId,
     parentRunId: context.parentRunId,
     depth: context.depth,
-    model: request.model,
+    route: context.route,
   });
 
   emitTelemetry({
@@ -338,6 +352,8 @@ async function runAgentLoopInternal(
     [
       `[agent:${runId}] run_started`,
       `depth=${context.depth.toString()}`,
+      `provider=${context.route.provider}`,
+      `access=${context.route.access}`,
       `model=${request.model}`,
       `tools=${Object.keys(mergedTools).length.toString()}`,
       `filesystemTools=${Object.keys(filesystemTools).length > 0 ? "true" : "false"}`,
@@ -403,7 +419,7 @@ async function runAgentLoopInternal(
         `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
         `steps=${result.steps.length.toString()}`,
         `toolCalls=${countToolCalls(result).toString()}`,
-        `totalCostUsd=${(result.totalCostUsd ?? 0).toFixed(6)}`,
+        `totalCostUsd=${formatCostUsd(result.totalCostUsd)}`,
         `uploadCount=${uploadMetrics.count.toString()}`,
         `uploadBytes=${uploadMetrics.totalBytes.toString()}`,
         `uploadLatencyMs=${uploadMetrics.totalLatencyMs.toString()}`,
@@ -416,7 +432,11 @@ async function runAgentLoopInternal(
           `step=${step.step.toString()}`,
           `modelVersion=${step.modelVersion}`,
           `toolCalls=${step.toolCalls.length.toString()}`,
-          `costUsd=${(step.costUsd ?? 0).toFixed(6)}`,
+          `costUsd=${formatCostUsd(step.costUsd)}`,
+          ...(step.costSource ? [`costSource=${step.costSource}`] : []),
+          ...(step.apiEquivalentCostUsd !== undefined
+            ? [`apiEquivalentCostUsd=${formatCostUsd(step.apiEquivalentCostUsd)}`]
+            : []),
         ].join(" "),
       );
     }
@@ -503,7 +523,7 @@ function resolveFilesystemTools(
 }
 
 function resolveAgentImageGenerationTools(
-  outerModel: LlmToolLoopRequest["model"],
+  outerRoute: ResolvedModelRef,
   selection: AgentImageGenerationToolSelection | undefined,
   signal: AbortSignal | undefined,
 ): {
@@ -513,28 +533,36 @@ function resolveAgentImageGenerationTools(
   if (selection === undefined || selection === false) {
     return { runtimeTools: {}, modelTools: [] };
   }
-  const config = typeof selection === "object" ? selection : {};
+  const config:
+    | Partial<AgentOpenAiImageGenerationToolConfig>
+    | Partial<AgentSubscriptionImageGenerationToolConfig> =
+    typeof selection === "object" ? selection : {};
   if (config.enabled === false) {
     return { runtimeTools: {}, modelTools: [] };
   }
 
-  const defaultImageModel = isOpenAiModelId(outerModel)
-    ? ("gpt-image-2" as const)
-    : isChatGptModelId(outerModel)
-      ? ("chatgpt-gpt-image-2" as const)
+  const defaultImageModel =
+    outerRoute.provider === "openai" || config.access === "subscription"
+      ? ("gpt-image-2" as const)
       : undefined;
   const imageModel = config.model ?? defaultImageModel;
   if (!imageModel) {
     throw new Error(
-      "imageGenerationTool requires an explicit image model when the outer model is not OpenAI or ChatGPT-authenticated.",
+      "imageGenerationTool requires an explicit image model when the outer provider is not OpenAI.",
     );
   }
 
   const imageResolution = "imageResolution" in config ? config.imageResolution : undefined;
   const imageSize = "imageSize" in config ? config.imageSize : undefined;
   const imageQuality = "imageQuality" in config ? config.imageQuality : undefined;
+  const imageAccess = config.access ?? (config.model ? "api" : outerRoute.access);
+  resolveModelRef({
+    provider: config.provider ?? "openai",
+    access: imageAccess,
+    model: imageModel,
+  });
 
-  if (isOpenAiModelId(outerModel) && imageModel === "gpt-image-2") {
+  if (outerRoute.provider === "openai" && outerRoute.access === "api" && imageAccess === "api") {
     return {
       runtimeTools: {},
       modelTools: [
@@ -551,7 +579,7 @@ function resolveAgentImageGenerationTools(
   }
 
   if (
-    imageModel === "chatgpt-gpt-image-2" &&
+    imageAccess === "subscription" &&
     (imageResolution !== undefined || imageSize !== undefined || imageQuality !== undefined)
   ) {
     throw new Error(
@@ -562,6 +590,8 @@ function resolveAgentImageGenerationTools(
   return {
     runtimeTools: {
       image_generation: createImageGenerationTool({
+        provider: "openai",
+        access: imageAccess,
         model: imageModel,
         ...(imageResolution ? { imageResolution } : {}),
         ...(imageSize ? { imageSize } : {}),
@@ -589,7 +619,7 @@ function mergeToolSets(base: LlmToolSet, extra: LlmToolSet): LlmToolSet {
 
 function createSubagentController(params: {
   readonly runId: string;
-  readonly model: LlmToolLoopRequest["model"];
+  readonly route: ResolvedModelRef;
   readonly depth: number;
   readonly telemetry: TelemetrySession | undefined;
   readonly logging: AgentLoggingSession | undefined;
@@ -611,7 +641,7 @@ function createSubagentController(params: {
   return createSubagentToolController({
     config: params.resolvedSubagentConfig,
     parentDepth: params.depth,
-    parentModel: params.model,
+    parentRoute: params.route,
     forkContextMessages: normalizeForkContextMessages(params.toolLoopRequest.input),
     onBackgroundMessage: (message) => {
       params.steering?.append({ role: "user", content: message });
@@ -625,8 +655,7 @@ function createSubagentController(params: {
         : false;
       return await runAgentLoopInternal(
         {
-          model: subagentRequest.model,
-          provider: params.toolLoopRequest.provider,
+          ...params.route,
           input: subagentRequest.input,
           instructions: subagentRequest.instructions,
           tools: childCustomTools,
@@ -640,9 +669,10 @@ function createSubagentController(params: {
           thinkingLevel: params.toolLoopRequest.thinkingLevel,
           mediaResolution: params.toolLoopRequest.mediaResolution,
           signal: subagentRequest.signal,
-        },
+        } as RunAgentLoopRequest,
         {
           depth: params.depth + 1,
+          route: params.route,
           parentRunId: params.runId,
           telemetry: params.telemetry,
           logging: params.logging,
@@ -737,6 +767,10 @@ function toErrorMessage(error: unknown): string {
     return error;
   }
   return "Unknown error";
+}
+
+function formatCostUsd(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(6) : "unknown";
 }
 
 function countToolCalls(result: LlmToolLoopResult): number {
@@ -842,7 +876,7 @@ function createAgentTelemetryEmitter(params: {
   runId: string;
   parentRunId?: string;
   depth: number;
-  model: LlmToolLoopRequest["model"];
+  route: ResolvedModelRef;
 }): (event: AgentTelemetryEventPayload) => void {
   return (event) => {
     if (!params.session) {
@@ -854,7 +888,7 @@ function createAgentTelemetryEmitter(params: {
       runId: params.runId,
       ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       depth: params.depth,
-      model: params.model,
+      ...params.route,
     });
   };
 }

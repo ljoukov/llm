@@ -419,6 +419,13 @@ async function connectWebSocket(options: {
       }
       settled = true;
       cleanup();
+      // Terminating a connecting socket can emit another error asynchronously.
+      // Keep an error listener until close so the original rejection stays catchable.
+      const ignoreTerminationError = () => {};
+      socket.on("error", ignoreTerminationError);
+      socket.once("close", () => {
+        socket.removeListener("error", ignoreTerminationError);
+      });
       try {
         socket.terminate();
       } catch {

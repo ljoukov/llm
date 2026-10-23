@@ -30,7 +30,8 @@ export async function runClaudeQuery(
   if (!scheduler) {
     scheduler = createCallScheduler({
       maxParallelRequests: resolveModelConcurrencyCap({
-        provider: "claude",
+        provider: "anthropic",
+        access: "subscription",
         modelId: request.model,
       }),
     });
