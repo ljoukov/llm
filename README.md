@@ -290,18 +290,17 @@ SSE for the rest of the process to avoid repeated failing upgrade attempts.
 
 ### Adaptive per-model concurrency
 
-Provider calls use adaptive, overload-aware concurrency (with retry/backoff where supported). Configure hard caps in
-code (clamped to `1..64`):
+Provider calls use adaptive, overload-aware per-model concurrency. Configure hard caps in code (clamped to `1..64`):
 
 ```ts
 import { configureModelConcurrency } from "@ljoukov/llm";
 
 configureModelConcurrency({
-  globalCap: 8,
+  globalCap: 16,
   providerCaps: {
     openai: 16,
     google: 3,
-    vercel: 8,
+    vercel: 16,
     fireworks: 8,
     anthropic: 4,
     xai: 4,
@@ -317,16 +316,43 @@ configureModelConcurrency({
 });
 ```
 
+`globalCap` supplies a per-model default, and `providerCaps` supplies a per-model default for each provider. Neither
+is an aggregate process-wide limit. More specific settings take precedence: `providerModelCaps`, then `modelCaps`,
+then `providerCaps`, then `globalCap`. For example, five Vercel models can each have 16 calls in flight; use an
+application-level queue to cap the total across models. Bound memory-heavy tools separately from inference calls.
+
+Vercel starts at its configured cap without an artificial delay between request starts. Exhausted overload retries
+reduce its adaptive concurrency; successful requests gradually restore it. Changes to the configuration also apply
+to subsequent calls for Vercel and Anthropic API models that have already been used.
+
 Default caps (without configuration):
 
 - OpenAI: `12`
 - Google preview models (`*preview*`): `2`
 - Other Google models: `4`
-- Vercel AI Gateway: `6`
+- Vercel AI Gateway: `16`
 - Fireworks: `6`
 - Anthropic: `4`
 - Anthropic subscription access: `2`
-- xAI: `3`
+- xAI API: `6`
+- xAI subscription access: `2`
+
+### Rate limits and retries
+
+[Vercel documents](https://vercel.com/docs/ai-gateway/rate-limits) no Gateway rate limit on its paid tier. Free-tier
+limits vary by model, and upstream providers can return `429` on either tier. A concurrency cap controls local
+in-flight calls; it does not guarantee an upstream request or token rate.
+
+Vercel, Fireworks, xAI, and native Anthropic API calls make at most four HTTP attempts for connection failures,
+`408`, `409`, `429`, and `5xx` responses, unless the server sends `x-should-retry: false`. Retries honor valid
+`Retry-After` seconds or HTTP dates and `retry-after-ms`, with exponential backoff and jitter as a minimum.
+Rate-limit cooldowns are shared by concurrent calls to the same model in this process. Abort signals cancel queueing, backoff, and requests. Authentication,
+permission, invalid-request, and budget errors such as `400`, `401`, `402`, and `403` are surfaced without retrying.
+
+These HTTP retries stop once a successful response has been handed to the stream reader. A later stream failure
+is surfaced instead of replaying a partially delivered answer or tool call. Google permits at most three attempts,
+only before its first stream chunk. OpenAI retains its SDK's two retries and existing WebSocket-to-SSE fallback.
+Provider timing metrics include retry attempts and backoff delays for the shared HTTP retry layer.
 
 ## Usage
 

@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 
 import { resolveModelConcurrencyCap } from "../utils/modelConcurrency.js";
+import { withRetryFetchMetrics } from "../utils/retryFetch.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import {
   createCallScheduler,
@@ -38,8 +39,25 @@ export async function runXaiCall<T>(
   access: XaiAccess = "api",
   runOptions?: CallSchedulerRunOptions,
 ): Promise<T> {
+  let fetchMetrics = { retryCount: 0, retryDelayMs: 0, overloadCount: 0 };
   return await schedulerFor(modelId, access).run(
-    async () => await fn(await getXaiClient(modelId, access)),
-    runOptions,
+    () =>
+      withRetryFetchMetrics(
+        async () => await fn(await getXaiClient(modelId, access)),
+        (metrics) => {
+          fetchMetrics = metrics;
+        },
+      ),
+    {
+      ...runOptions,
+      onSettled: (metrics) => {
+        runOptions?.onSettled?.({
+          ...metrics,
+          attempts: metrics.attempts + fetchMetrics.retryCount,
+          retryDelayMs: metrics.retryDelayMs + fetchMetrics.retryDelayMs,
+          overloadCount: metrics.overloadCount + fetchMetrics.overloadCount,
+        });
+      },
+    },
   );
 }

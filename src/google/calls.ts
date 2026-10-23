@@ -13,6 +13,46 @@ import { getGeminiClient } from "./client.js";
 const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const RETRYABLE_ERROR_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN"]);
 const RATE_LIMIT_REASONS = new Set(["RATE_LIMIT_EXCEEDED", "RESOURCE_EXHAUSTED", "QUOTA_EXCEEDED"]);
+const STREAM_INTERRUPTED = Symbol.for("@ljoukov/llm.googleStreamInterrupted");
+
+class GeminiStreamInterruptedError extends Error {
+  readonly [STREAM_INTERRUPTED] = true;
+  readonly status: number | undefined;
+
+  constructor(cause: unknown) {
+    super(getErrorMessage(cause) || "Google response stream interrupted", { cause });
+    this.name = "GeminiStreamInterruptedError";
+    this.status = getStatus(cause);
+  }
+}
+
+/** An interrupted response must not replay chunks that a caller has already observed. */
+export async function* guardGeminiStreamRetries<T>(stream: AsyncIterable<T>): AsyncGenerator<T> {
+  let receivedChunk = false;
+  try {
+    for await (const chunk of stream) {
+      receivedChunk = true;
+      yield chunk;
+    }
+  } catch (error) {
+    if (receivedChunk) {
+      throw new GeminiStreamInterruptedError(error);
+    }
+    throw error;
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const maybe = error as { name?: unknown; code?: unknown; cause?: unknown };
+  return (
+    maybe.name === "AbortError" ||
+    maybe.code === "ABORT_ERR" ||
+    (!!maybe.cause && maybe.cause !== error && isAbortError(maybe.cause))
+  );
+}
 
 function getStatus(error: unknown): number | undefined {
   const maybe = error as {
@@ -90,6 +130,16 @@ function getErrorMessage(error: unknown): string {
   return "";
 }
 
+function parseDurationPart(value: unknown): number {
+  if (value === undefined) {
+    return 0;
+  }
+  if (typeof value === "number") {
+    return value;
+  }
+  return typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+}
+
 function parseRetryInfo(details: unknown): number | undefined {
   if (Array.isArray(details)) {
     for (const entry of details) {
@@ -103,27 +153,26 @@ function parseRetryInfo(details: unknown): number | undefined {
   if (!details || typeof details !== "object") {
     return undefined;
   }
-  const retryDelay = (details as { retryDelay?: unknown }).retryDelay as
-    | { seconds?: unknown; nanos?: unknown }
-    | undefined;
-  if (retryDelay) {
-    const secondsRaw = retryDelay.seconds;
-    const nanosRaw = retryDelay.nanos;
-    const seconds =
-      typeof secondsRaw === "number"
-        ? secondsRaw
-        : typeof secondsRaw === "string"
-          ? Number.parseFloat(secondsRaw)
-          : 0;
-    const nanos =
-      typeof nanosRaw === "number"
-        ? nanosRaw
-        : typeof nanosRaw === "string"
-          ? Number.parseInt(nanosRaw, 10)
-          : 0;
-    if (Number.isFinite(seconds) || Number.isFinite(nanos)) {
+  const retryDelay = (details as { retryDelay?: unknown }).retryDelay;
+  if (typeof retryDelay === "string" && /^\d+(?:\.\d{1,9})?s$/u.test(retryDelay)) {
+    const totalMs = Number(retryDelay.slice(0, -1)) * 1000;
+    if (Number.isFinite(totalMs)) {
+      return totalMs;
+    }
+  }
+  if (retryDelay && typeof retryDelay === "object") {
+    const delay = retryDelay as { seconds?: unknown; nanos?: unknown };
+    const seconds = parseDurationPart(delay.seconds);
+    const nanos = parseDurationPart(delay.nanos);
+    if (
+      Number.isFinite(seconds) &&
+      Number.isFinite(nanos) &&
+      seconds >= 0 &&
+      nanos >= 0 &&
+      nanos < 1_000_000_000
+    ) {
       const totalMs = seconds * 1000 + nanos / 1_000_000;
-      if (totalMs > 0) {
+      if (Number.isFinite(totalMs)) {
         return totalMs;
       }
     }
@@ -143,20 +192,54 @@ function parseRetryAfterFromMessage(message: string): number | undefined {
   if (!trimmed) {
     return undefined;
   }
-  const regex = /retry in\\s+([0-9]+(?:\\.[0-9]+)?)\\s*(s|sec|secs|seconds?)/iu;
+  const regex = /retry in\s+([0-9]+(?:\.[0-9]+)?)\s*(s|sec|secs|seconds?)/iu;
   const match = regex.exec(trimmed);
   if (match?.[1]) {
     const value = Number.parseFloat(match[1]);
-    if (Number.isFinite(value) && value > 0) {
-      return value * 1000;
+    const delayMs = value * 1000;
+    if (Number.isFinite(delayMs) && value >= 0) {
+      return delayMs;
     }
   }
   return undefined;
 }
 
+function retryAfterHeader(headers: unknown): number | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+  const headerRecord = headers as Record<string, unknown>;
+  const getter = headerRecord.get;
+  const value =
+    typeof getter === "function"
+      ? getter.call(headers, "retry-after")
+      : Object.entries(headerRecord).find(([name]) => name.toLowerCase() === "retry-after")?.[1];
+  const firstValue = Array.isArray(value) ? value[0] : value;
+  if (typeof firstValue !== "string" && typeof firstValue !== "number") {
+    return undefined;
+  }
+  const trimmed = String(firstValue).trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const seconds = Number(trimmed);
+  if (!Number.isNaN(seconds)) {
+    const delayMs = seconds * 1000;
+    return seconds >= 0 && Number.isFinite(delayMs) ? delayMs : undefined;
+  }
+  const dateMs = Date.parse(trimmed);
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - Date.now()) : undefined;
+}
+
 function getRetryAfterMs(error: unknown): number | undefined {
   if (!error || typeof error !== "object") {
     return undefined;
+  }
+
+  const maybe = error as { headers?: unknown; response?: { headers?: unknown } };
+  const headerDelay = retryAfterHeader(maybe.headers) ?? retryAfterHeader(maybe.response?.headers);
+  if (headerDelay !== undefined) {
+    return headerDelay;
   }
 
   const infoFromDetails = parseRetryInfo((error as { errorDetails?: unknown }).errorDetails);
@@ -184,6 +267,9 @@ function getRetryAfterMs(error: unknown): number | undefined {
 }
 
 function shouldRetry(error: unknown): boolean {
+  if (isAbortError(error) || (error && typeof error === "object" && STREAM_INTERRUPTED in error)) {
+    return false;
+  }
   const status = getStatus(error);
   if (status && RETRYABLE_STATUSES.has(status)) {
     return true;

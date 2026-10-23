@@ -14,7 +14,8 @@ vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
 });
 
-vi.mock("../src/google/calls.js", () => {
+vi.mock("../src/google/calls.js", async () => {
+  const actual = await vi.importActual("../src/google/calls.js");
   async function* stream() {
     yield {
       modelVersion: "gemini-2.5-pro",
@@ -48,6 +49,7 @@ vi.mock("../src/google/calls.js", () => {
   };
 
   return {
+    ...actual,
     runGeminiCall: async (fn: (client: any) => Promise<any>) => fn(fakeClient),
   };
 });

@@ -50,7 +50,7 @@ import {
   isFireworksModelId,
   resolveFireworksModelId,
 } from "./fireworks/models.js";
-import { runGeminiCall } from "./google/calls.js";
+import { guardGeminiStreamRetries, runGeminiCall } from "./google/calls.js";
 import {
   GEMINI_IMAGE_MODEL_IDS,
   GEMINI_TEXT_MODEL_IDS,
@@ -5542,88 +5542,92 @@ async function runTextCall(params: {
           summary: "detailed" as const,
         };
 
-        await runOpenAiCall(async (client) => {
-          const stream = client.responses.stream(
-            {
-              model: modelForProvider,
-              input: openAiInput as any,
-              ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
-              reasoning,
-              text: openAiTextConfig as any,
-              ...(openAiTools ? { tools: openAiTools as any } : {}),
-              include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
-            },
-            { signal } as any,
-          );
-
-          for await (const event of stream as any) {
-            switch (event.type) {
-              case "response.output_text.delta": {
-                const delta = event.delta ?? "";
-                pushDelta("response", typeof delta === "string" ? delta : "");
-                break;
-              }
-              case "response.reasoning_summary_text.delta": {
-                const delta = event.delta ?? "";
-                pushDelta("thought", typeof delta === "string" ? delta : "");
-                break;
-              }
-              case "response.refusal.delta": {
-                blocked = true;
-                pushEvent({ type: "blocked" });
-                break;
-              }
-              default:
-                break;
-            }
-          }
-
-          const finalResponse = await (stream as any).finalResponse();
-          openAi = extractOpenAiResponseMetadata(finalResponse);
-          modelVersion =
-            typeof finalResponse.model === "string" ? finalResponse.model : request.model;
-          pushEvent({ type: "model", modelVersion });
-          if (finalResponse.error) {
-            const message =
-              typeof finalResponse.error.message === "string"
-                ? finalResponse.error.message
-                : "OpenAI response failed";
-            throw new Error(message);
-          }
-          if (
-            finalResponse.status &&
-            finalResponse.status !== "completed" &&
-            finalResponse.status !== "in_progress"
-          ) {
-            const detail = finalResponse.incomplete_details?.reason;
-            throw new Error(
-              `OpenAI response status ${finalResponse.status}${detail ? ` (${detail})` : ""}`,
+        await runOpenAiCall(
+          async (client) => {
+            const stream = client.responses.stream(
+              {
+                model: modelForProvider,
+                input: openAiInput as any,
+                ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
+                reasoning,
+                text: openAiTextConfig as any,
+                ...(openAiTools ? { tools: openAiTools as any } : {}),
+                include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
+              },
+              { signal } as any,
             );
-          }
-          latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
 
-          // Always collect non-text output. Text is only used as a fallback when the
-          // stream omitted its corresponding delta events.
-          const needsResponseFallback = !sawResponseDelta;
-          const needsThoughtFallback = !sawThoughtDelta;
-          const fallback = extractOpenAiResponseParts(finalResponse, {
-            imageMimeType: resolveOpenAiImageToolOutputMimeType(request.tools),
-          });
-          blocked = blocked || fallback.blocked;
-          for (const part of fallback.parts) {
-            if (part.type === "text") {
-              const channel = part.thought === true ? "thought" : "response";
-              if (
-                (channel === "response" && needsResponseFallback) ||
-                (channel === "thought" && needsThoughtFallback)
-              ) {
-                pushDelta(channel, part.text);
+            for await (const event of stream as any) {
+              switch (event.type) {
+                case "response.output_text.delta": {
+                  const delta = event.delta ?? "";
+                  pushDelta("response", typeof delta === "string" ? delta : "");
+                  break;
+                }
+                case "response.reasoning_summary_text.delta": {
+                  const delta = event.delta ?? "";
+                  pushDelta("thought", typeof delta === "string" ? delta : "");
+                  break;
+                }
+                case "response.refusal.delta": {
+                  blocked = true;
+                  pushEvent({ type: "blocked" });
+                  break;
+                }
+                default:
+                  break;
               }
-            } else if (part.type === "inlineData") {
-              pushInline(part.data, part.mimeType);
             }
-          }
-        }, modelForProvider);
+
+            const finalResponse = await (stream as any).finalResponse();
+            openAi = extractOpenAiResponseMetadata(finalResponse);
+            modelVersion =
+              typeof finalResponse.model === "string" ? finalResponse.model : request.model;
+            pushEvent({ type: "model", modelVersion });
+            if (finalResponse.error) {
+              const message =
+                typeof finalResponse.error.message === "string"
+                  ? finalResponse.error.message
+                  : "OpenAI response failed";
+              throw new Error(message);
+            }
+            if (
+              finalResponse.status &&
+              finalResponse.status !== "completed" &&
+              finalResponse.status !== "in_progress"
+            ) {
+              const detail = finalResponse.incomplete_details?.reason;
+              throw new Error(
+                `OpenAI response status ${finalResponse.status}${detail ? ` (${detail})` : ""}`,
+              );
+            }
+            latestUsage = extractOpenAiUsageTokens(finalResponse.usage);
+
+            // Always collect non-text output. Text is only used as a fallback when the
+            // stream omitted its corresponding delta events.
+            const needsResponseFallback = !sawResponseDelta;
+            const needsThoughtFallback = !sawThoughtDelta;
+            const fallback = extractOpenAiResponseParts(finalResponse, {
+              imageMimeType: resolveOpenAiImageToolOutputMimeType(request.tools),
+            });
+            blocked = blocked || fallback.blocked;
+            for (const part of fallback.parts) {
+              if (part.type === "text") {
+                const channel = part.thought === true ? "thought" : "response";
+                if (
+                  (channel === "response" && needsResponseFallback) ||
+                  (channel === "thought" && needsThoughtFallback)
+                ) {
+                  pushDelta(channel, part.text);
+                }
+              } else if (part.type === "inlineData") {
+                pushInline(part.data, part.mimeType);
+              }
+            }
+          },
+          modelForProvider,
+          { signal },
+        );
       } else if (provider === "chatgpt") {
         if (isOpenAiImageModelId(request.model)) {
           throw new Error("gpt-image-2 is an image generation model; use generateImages().");
@@ -5757,6 +5761,7 @@ async function runTextCall(params: {
               { signal, onDelta: pushDelta },
             ),
           request.model,
+          { signal },
         );
         modelVersion = response.model || request.model;
         pushEvent({
@@ -5791,47 +5796,53 @@ async function runTextCall(params: {
               ? (fn, modelId, options) =>
                   runXaiCall(fn, modelId ?? modelForProvider, providerInfo.access, options)
               : runFireworksCall;
-        await runCall(async (client) => {
-          const responseFormat = request.responseJsonSchema
-            ? {
-                type: "json_schema" as const,
-                json_schema: {
-                  name: "llm-response",
-                  schema: request.responseJsonSchema,
-                },
-              }
-            : request.responseMimeType === "application/json"
-              ? { type: "json_object" as const }
-              : undefined;
+        await runCall(
+          async (client) => {
+            const responseFormat = request.responseJsonSchema
+              ? {
+                  type: "json_schema" as const,
+                  json_schema: {
+                    name: "llm-response",
+                    schema: request.responseJsonSchema,
+                  },
+                }
+              : request.responseMimeType === "application/json"
+                ? { type: "json_object" as const }
+                : undefined;
 
-          const response = await streamFireworksChatCompletion(
-            client,
-            {
-              model: modelForProvider,
-              ...(provider === "vercel" ? { providerOptions: { gateway: { sort: "cost" } } } : {}),
-              messages: fireworksMessages as any,
-              ...(responseFormat ? { response_format: responseFormat } : {}),
-              ...(request.thinkingLevel
-                ? {
-                    reasoning_effort: resolveFireworksReasoningEffort(request.thinkingLevel),
-                  }
-                : {}),
-            } as any,
-            { signal, onDelta: pushDelta, provider },
-          );
+            const response = await streamFireworksChatCompletion(
+              client,
+              {
+                model: modelForProvider,
+                ...(provider === "vercel"
+                  ? { providerOptions: { gateway: { sort: "cost" } } }
+                  : {}),
+                messages: fireworksMessages as any,
+                ...(responseFormat ? { response_format: responseFormat } : {}),
+                ...(request.thinkingLevel
+                  ? {
+                      reasoning_effort: resolveFireworksReasoningEffort(request.thinkingLevel),
+                    }
+                  : {}),
+              } as any,
+              { signal, onDelta: pushDelta, provider },
+            );
 
-          reportedCostUsd = provider === "vercel" ? extractVercelCostUsd(response) : undefined;
-          modelVersion = typeof response.model === "string" ? response.model : request.model;
-          pushEvent({ type: "model", modelVersion });
+            reportedCostUsd = provider === "vercel" ? extractVercelCostUsd(response) : undefined;
+            modelVersion = typeof response.model === "string" ? response.model : request.model;
+            pushEvent({ type: "model", modelVersion });
 
-          const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
-          if (choice?.finish_reason === "content_filter") {
-            blocked = true;
-            pushEvent({ type: "blocked" });
-          }
+            const choice = Array.isArray(response.choices) ? response.choices[0] : undefined;
+            if (choice?.finish_reason === "content_filter") {
+              blocked = true;
+              pushEvent({ type: "blocked" });
+            }
 
-          latestUsage = extractFireworksUsageTokens(response.usage, provider);
-        }, modelForProvider);
+            latestUsage = extractFireworksUsageTokens(response.usage, provider);
+          },
+          modelForProvider,
+          { signal },
+        );
       } else {
         const geminiContents = await maybePrepareGeminiPromptContents(
           contents.map((content) =>
@@ -5844,6 +5855,7 @@ async function runTextCall(params: {
         const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
         const config: GenerateContentConfig = {
           maxOutputTokens: 32_000,
+          abortSignal: signal,
           ...(thinkingConfig ? { thinkingConfig } : {}),
           ...(mediaResolution ? { mediaResolution } : {}),
           ...(request.responseMimeType ? { responseMimeType: request.responseMimeType } : {}),
@@ -5865,58 +5877,62 @@ async function runTextCall(params: {
           config.tools = geminiTools;
         }
 
-        await runGeminiCall(async (client) => {
-          const stream = await client.models.generateContentStream({
-            model: modelForProvider,
-            contents: geminiContents,
-            config,
-          });
-          let latestGrounding: GroundingMetadata | undefined;
-          for await (const chunk of stream) {
-            if (chunk.modelVersion) {
-              modelVersion = chunk.modelVersion;
-              pushEvent({ type: "model", modelVersion });
-            }
-            if (chunk.promptFeedback?.blockReason) {
-              blocked = true;
-              pushEvent({ type: "blocked" });
-            }
-            latestUsage = mergeTokenUpdates(
-              latestUsage,
-              extractGeminiUsageTokens(chunk.usageMetadata),
-            );
-            const candidates = chunk.candidates;
-            if (!candidates || candidates.length === 0) {
-              continue;
-            }
-            const primary = candidates[0];
-            if (primary && isModerationFinish(primary.finishReason)) {
-              blocked = true;
-              pushEvent({ type: "blocked" });
-            }
-            for (const candidate of candidates) {
-              const candidateContent = candidate.content;
-              if (!candidateContent) {
+        await runGeminiCall(
+          async (client) => {
+            const stream = await client.models.generateContentStream({
+              model: modelForProvider,
+              contents: geminiContents,
+              config,
+            });
+            let latestGrounding: GroundingMetadata | undefined;
+            for await (const chunk of guardGeminiStreamRetries(stream)) {
+              if (chunk.modelVersion) {
+                modelVersion = chunk.modelVersion;
+                pushEvent({ type: "model", modelVersion });
+              }
+              if (chunk.promptFeedback?.blockReason) {
+                blocked = true;
+                pushEvent({ type: "blocked" });
+              }
+              latestUsage = mergeTokenUpdates(
+                latestUsage,
+                extractGeminiUsageTokens(chunk.usageMetadata),
+              );
+              const candidates = chunk.candidates;
+              if (!candidates || candidates.length === 0) {
                 continue;
               }
-              if (candidate.groundingMetadata) {
-                latestGrounding = candidate.groundingMetadata;
+              const primary = candidates[0];
+              if (primary && isModerationFinish(primary.finishReason)) {
+                blocked = true;
+                pushEvent({ type: "blocked" });
               }
-              const content = convertGeminiContentToLlmContent(candidateContent);
-              if (!responseRole) {
-                responseRole = content.role;
-              }
-              for (const part of content.parts) {
-                if (part.type === "text") {
-                  pushDelta(part.thought === true ? "thought" : "response", part.text);
-                } else if (part.type === "inlineData") {
-                  pushInline(part.data, part.mimeType);
+              for (const candidate of candidates) {
+                const candidateContent = candidate.content;
+                if (!candidateContent) {
+                  continue;
+                }
+                if (candidate.groundingMetadata) {
+                  latestGrounding = candidate.groundingMetadata;
+                }
+                const content = convertGeminiContentToLlmContent(candidateContent);
+                if (!responseRole) {
+                  responseRole = content.role;
+                }
+                for (const part of content.parts) {
+                  if (part.type === "text") {
+                    pushDelta(part.thought === true ? "thought" : "response", part.text);
+                  } else if (part.type === "inlineData") {
+                    pushInline(part.data, part.mimeType);
+                  }
                 }
               }
             }
-          }
-          grounding = latestGrounding;
-        }, modelForProvider);
+            grounding = latestGrounding;
+          },
+          modelForProvider,
+          { signal },
+        );
       }
 
       const mergedParts = mergeConsecutiveTextParts(responseParts);
@@ -6817,6 +6833,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             },
             providerInfo.model,
             {
+              signal: request.signal,
               onSettled: (metrics) => {
                 schedulerMetrics = metrics;
               },
@@ -7620,6 +7637,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             },
             providerInfo.model,
             {
+              signal: request.signal,
               onSettled: (metrics) => {
                 schedulerMetrics = metrics;
               },
@@ -8239,6 +8257,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               }),
             request.model,
             {
+              signal: request.signal,
               onSettled: (metrics) => {
                 schedulerMetrics = metrics;
               },
@@ -8469,6 +8488,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
       const config: GenerateContentConfig = {
         maxOutputTokens: 32_000,
+        abortSignal: request.signal,
         tools: geminiTools,
         toolConfig: {
           functionCallingConfig: {
@@ -8516,7 +8536,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             let latestUsageMetadata: unknown;
             let resolvedModelVersion: string | undefined;
 
-            for await (const chunk of stream) {
+            for await (const chunk of guardGeminiStreamRetries(stream)) {
               markFirstModelEvent();
               if (chunk.modelVersion) {
                 resolvedModelVersion = chunk.modelVersion;
@@ -8577,6 +8597,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           },
           request.model,
           {
+            signal: request.signal,
             onSettled: (metrics) => {
               schedulerMetrics = metrics;
             },
@@ -9122,31 +9143,35 @@ async function generateImagesWithOpenAiImageApi(
         imagePrompt,
         hasStyleImages,
       });
-      const response = await runOpenAiCall(async (client) => {
-        const payload = {
-          model: request.model,
-          prompt,
-          n: params.n,
-          size: params.size,
-          quality: params.quality,
-          ...(params.outputFormat ? { output_format: params.outputFormat } : {}),
-          ...(request.outputCompression !== undefined
-            ? { output_compression: request.outputCompression }
-            : {}),
-          ...(params.background ? { background: params.background } : {}),
-          ...(params.moderation ? { moderation: params.moderation } : {}),
-        };
-        if (styleImages && styleImages.length > 0) {
-          return await client.images.edit(
-            {
-              ...payload,
-              image: styleImages,
-            } as any,
-            { signal: request.signal } as any,
-          );
-        }
-        return await client.images.generate(payload as any, { signal: request.signal } as any);
-      }, request.model);
+      const response = await runOpenAiCall(
+        async (client) => {
+          const payload = {
+            model: request.model,
+            prompt,
+            n: params.n,
+            size: params.size,
+            quality: params.quality,
+            ...(params.outputFormat ? { output_format: params.outputFormat } : {}),
+            ...(request.outputCompression !== undefined
+              ? { output_compression: request.outputCompression }
+              : {}),
+            ...(params.background ? { background: params.background } : {}),
+            ...(params.moderation ? { moderation: params.moderation } : {}),
+          };
+          if (styleImages && styleImages.length > 0) {
+            return await client.images.edit(
+              {
+                ...payload,
+                image: styleImages,
+              } as any,
+              { signal: request.signal } as any,
+            );
+          }
+          return await client.images.generate(payload as any, { signal: request.signal } as any);
+        },
+        request.model,
+        { signal: request.signal },
+      );
 
       const data = Array.isArray((response as { data?: unknown }).data)
         ? ((response as { data?: Array<{ b64_json?: unknown }> }).data ?? [])

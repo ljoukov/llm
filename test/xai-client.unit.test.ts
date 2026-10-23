@@ -24,7 +24,9 @@ describe("xAI API and subscription transport", () => {
   beforeEach(() => {
     resetRuntimeSingletonsForTesting();
     vi.resetModules();
-    vi.clearAllMocks();
+    mocks.auth.mockReset();
+    mocks.fetch.mockReset();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     vi.stubEnv("XAI_API_KEY", "fake-api-credential");
     vi.stubEnv("XAI_BASE_URL", "");
     vi.stubEnv("XAI_TIMEOUT_MS", "");
@@ -36,6 +38,8 @@ describe("xAI API and subscription transport", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
@@ -43,6 +47,7 @@ describe("xAI API and subscription transport", () => {
     const { getXaiClient } = await import("../src/xai/client.js");
     const client = await getXaiClient("grok-4.7");
     expect(client.apiKey).toBe("fake-api-credential");
+    expect(client.maxRetries).toBe(0);
     expect(client.baseURL).toBe("https://api.x.ai/v1");
     await client.models.list();
     expect(mocks.auth).not.toHaveBeenCalled();
@@ -63,6 +68,7 @@ describe("xAI API and subscription transport", () => {
     const { getXaiClient } = await import("../src/xai/client.js");
     const client = await getXaiClient("grok-4.7", "subscription");
     expect(client.baseURL).toBe("https://cli-chat-proxy.grok.com/v1");
+    expect(client.maxRetries).toBe(0);
     await client.models.list();
     const headers = new Headers(mocks.fetch.mock.calls[0]?.[1]?.headers);
     expect(headers.get("authorization")).toBe("Bearer fake-subscription-credential");
@@ -111,7 +117,8 @@ describe("xAI API and subscription transport", () => {
       "grok login",
     );
     expect(mocks.auth).toHaveBeenLastCalledWith({ forceRefresh: true });
-    // The underlying SDK may retry transport errors, but no request switches to API auth.
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    // Authentication errors never fall back to the API credential.
     for (const call of mocks.fetch.mock.calls) {
       expect(new Headers(call[1]?.headers).get("authorization")).toBe(
         "Bearer fake-subscription-credential",
@@ -126,6 +133,148 @@ describe("xAI API and subscription transport", () => {
     const client = await getXaiClient("grok-4.7");
     expect(client.baseURL).toBe("https://custom-api.example/v1");
     expect(client.timeout).toBe(12_000);
+  });
+
+  it.each([
+    "api",
+    "subscription",
+  ] as const)("retries a %s 429 before streaming and merges HTTP retry metrics", async (access) => {
+    vi.useFakeTimers();
+    mocks.fetch
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "rate limited" } }, 429))
+      .mockResolvedValueOnce(
+        new Response(
+          `data: ${JSON.stringify({
+            id: "completion",
+            choices: [{ index: 0, delta: { content: "OK" }, finish_reason: null }],
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+    const { runXaiCall } = await import("../src/xai/calls.js");
+    let metrics: { attempts: number; retryDelayMs: number; overloadCount: number } | undefined;
+    const pending = runXaiCall(
+      async (client) => {
+        const stream = await client.chat.completions.create({
+          model: "grok-4.7",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+        });
+        let text = "";
+        for await (const chunk of stream) text += chunk.choices[0]?.delta.content ?? "";
+        return text;
+      },
+      "grok-4.7",
+      access,
+      {
+        onSettled: (value) => {
+          metrics = value;
+        },
+      },
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(pending).resolves.toBe("OK");
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(metrics).toMatchObject({ attempts: 2, overloadCount: 1 });
+    expect(metrics?.retryDelayMs).toBeGreaterThanOrEqual(375);
+    if (access === "subscription") {
+      expect(mocks.auth).not.toHaveBeenCalledWith({ forceRefresh: true });
+      for (const call of mocks.fetch.mock.calls) {
+        expect(new Headers(call[1]?.headers).get("authorization")).toBe(
+          "Bearer fake-subscription-credential",
+        );
+      }
+    } else {
+      expect(mocks.auth).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([400, 401, 402, 403])("does not retry terminal API HTTP %s", async (status) => {
+    mocks.fetch.mockImplementation(async () =>
+      jsonResponse({ error: { message: "terminal failure" } }, status),
+    );
+    const { getXaiClient } = await import("../src/xai/client.js");
+    await expect((await getXaiClient("grok-4.7", "api")).models.list()).rejects.toMatchObject({
+      status,
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.auth).not.toHaveBeenCalled();
+  });
+
+  it("never repeats CLI refresh after a later transient retry rejects the bearer again", async () => {
+    vi.useFakeTimers();
+    mocks.fetch
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "expired" } }, 401))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "busy" } }, 503))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "invalid" } }, 401));
+    mocks.auth.mockImplementation(async (options?: { forceRefresh?: boolean }) => ({
+      token: options?.forceRefresh ? "fake-new-credential" : "fake-old-credential",
+      clientVersion: "1.0.67",
+    }));
+    const { getXaiClient } = await import("../src/xai/client.js");
+    const pending = (await getXaiClient("grok-4.7", "subscription")).models
+      .list()
+      .catch((error) => error);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await pending).toMatchObject({ status: 401 });
+    expect(mocks.fetch).toHaveBeenCalledTimes(3);
+    expect(mocks.auth.mock.calls.filter((call) => call[0]?.forceRefresh)).toHaveLength(1);
+  });
+
+  it("bounds xAI API transient failures to four total HTTP attempts", async () => {
+    vi.useFakeTimers();
+    mocks.fetch.mockImplementation(async () => jsonResponse({ error: { message: "busy" } }, 503));
+    const { getXaiClient } = await import("../src/xai/client.js");
+    const pending = (await getXaiClient("grok-4.7", "api")).models.list().catch((error) => error);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await pending).toMatchObject({ status: 503 });
+    expect(mocks.fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([
+    "api",
+    "subscription",
+  ] as const)("does not replay an established %s stream after it fails", async (access) => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(new Error("stream disconnected"));
+      },
+    });
+    mocks.fetch.mockResolvedValue(
+      new Response(body, { headers: { "content-type": "text/event-stream" } }),
+    );
+    const { getXaiClient } = await import("../src/xai/client.js");
+    const stream = await (await getXaiClient("grok-4.7", access)).chat.completions.create({
+      model: "grok-4.7",
+      messages: [{ role: "user", content: "Hello" }],
+      stream: true,
+    });
+    await expect(async () => {
+      for await (const _chunk of stream) {
+        // The stream is interrupted before its first chunk.
+      }
+    }).rejects.toThrow("stream disconnected");
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "api",
+    "subscription",
+  ] as const)("honors user aborts during %s retry backoff", async (access) => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    mocks.fetch.mockImplementation(async () =>
+      jsonResponse({ error: { message: "rate limited" } }, 429),
+    );
+    const { getXaiClient } = await import("../src/xai/client.js");
+    const client = await getXaiClient("grok-4.7", access);
+    const pending = client.models.list({ signal: controller.signal }).catch((error) => error);
+    await vi.advanceTimersByTimeAsync(100);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await pending).toMatchObject({ name: "Error", message: "Request was aborted." });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.auth).not.toHaveBeenCalledWith({ forceRefresh: true });
   });
 
   it("discovers separate route catalogues and leaves subscription cost unknown", async () => {
