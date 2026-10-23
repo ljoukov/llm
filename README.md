@@ -114,12 +114,12 @@ Claude subscription limits and any enabled Claude Code extra usage apply.
 
 ### Vercel AI Gateway and Fireworks
 
-- `AI_GATEWAY_API_KEY` for Vercel AI Gateway
+- `VERCEL_AI_GATEWAY_API_KEY` for Vercel AI Gateway
 - `FIREWORKS_TOKEN` (or `FIREWORKS_API_KEY`)
 - `LLM_PROVIDER` (optional: `vercel` or `fireworks`)
 
 For `deepseek-v4.1-flash-1017`, `glm-5.3`, and `kimi-k3`, the library prefers Vercel AI Gateway when
-`AI_GATEWAY_API_KEY` is present and otherwise uses Fireworks. Keep both keys to switch providers without changing
+`VERCEL_AI_GATEWAY_API_KEY` is present and otherwise uses Fireworks. Keep both keys to switch providers without changing
 credentials. Set `LLM_PROVIDER` to choose a process-wide default, or pass `provider: "vercel"` or
 `provider: "fireworks"` on a text-generation, tool-loop, or agent-loop request to override it for that request.
 An explicitly selected provider requires its own key.
@@ -802,7 +802,7 @@ The same short model IDs work with either provider. Vercel requests use the
 | `glm-5.3` | `zai/glm-5.3` |
 | `kimi-k3` | `moonshotai/kimi-k3` |
 
-Set `AI_GATEWAY_API_KEY` to prefer Vercel automatically, or choose either provider using `LLM_PROVIDER` or the
+Set `VERCEL_AI_GATEWAY_API_KEY` to prefer Vercel automatically, or choose either provider using `LLM_PROVIDER` or the
 request's `provider` option. The resolved provider is reported as `"vercel"` or `"fireworks"` in results and events.
 Vercel requests set `providerOptions.gateway.sort` to `"cost"` for cost-sorted upstream routing. Availability and
 Gateway settings, including stored provider credentials (BYOK), can affect the selected upstream and its price.

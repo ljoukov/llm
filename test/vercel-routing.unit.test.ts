@@ -94,7 +94,7 @@ describe("Vercel shared-model routing", () => {
       cost: 0.0123,
     };
     state.metadata = undefined;
-    vi.stubEnv("AI_GATEWAY_API_KEY", "unit-gateway-key");
+    vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "unit-gateway-key");
     vi.stubEnv("LLM_PROVIDER", "");
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -147,9 +147,18 @@ describe("Vercel shared-model routing", () => {
   });
 
   it("falls back to Fireworks when the Gateway key is absent", async () => {
-    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "");
     const { generateText } = await import("../src/llm.js");
     expect((await generateText({ model: "glm-5.3", input: "hello" })).provider).toBe("fireworks");
+  });
+
+  it("does not prefer Vercel when only the old credential variable is present", async () => {
+    vi.stubEnv("VERCEL_AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "old-credential-must-not-be-used");
+    const { generateText } = await import("../src/llm.js");
+    expect((await generateText({ model: "glm-5.3", input: "hello" })).provider).toBe("fireworks");
+    expect(state.requests).toHaveLength(1);
+    expect(state.requests[0]?.provider).toBe("fireworks");
   });
 
   it("does not allow provider overrides to reroute direct models", async () => {

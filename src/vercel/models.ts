@@ -32,5 +32,5 @@ export function resolveOpenModelProvider(provider?: LlmOpenModelProvider): LlmOp
     if (configured === "vercel" || configured === "fireworks") return configured;
     throw new Error(`Unsupported LLM_PROVIDER: ${configured}. Expected vercel or fireworks.`);
   }
-  return process.env.AI_GATEWAY_API_KEY?.trim() ? "vercel" : "fireworks";
+  return process.env.VERCEL_AI_GATEWAY_API_KEY?.trim() ? "vercel" : "fireworks";
 }

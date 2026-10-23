@@ -78,7 +78,7 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
     // Ordinary credential checks do not launch the CLI or inspect its credential store.
     claude: process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1",
     fireworks: hasFireworks,
-    vercel: Boolean(process.env.AI_GATEWAY_API_KEY?.trim()),
+    vercel: Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY?.trim()),
     chatGpt: hasChatGpt,
   };
 
@@ -133,7 +133,7 @@ function resolveCredentialHintForModel(model: LlmTextModelId | LlmImageModelId):
   }
   if (isFireworksModelId(model)) {
     return resolveOpenModelProvider() === "vercel"
-      ? "AI_GATEWAY_API_KEY"
+      ? "VERCEL_AI_GATEWAY_API_KEY"
       : "FIREWORKS_TOKEN or FIREWORKS_API_KEY";
   }
   return "unknown credentials";
