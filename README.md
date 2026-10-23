@@ -11,7 +11,7 @@ Unified TypeScript wrapper over:
 - **Anthropic Claude API** via short `haiku-*`, `sonnet-*`, `opus-*`, and `fable-*` model ids
 - **Claude Code subscription models** via `claude-*` model ids and the locally authenticated Claude Code runtime
 - **Google Gemini** via **Vertex AI** or the **Gemini Developer API** (`@google/genai`)
-- **Fireworks direct serverless models** (DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3)
+- **Vercel AI Gateway or Fireworks** for DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3
 - **ChatGPT subscription models** via `chatgpt-*` model ids (reuses Codex auth store, or a token provider)
 - **Agentic orchestration with subagents** via `runAgentLoop()` + built-in delegation control tools
 
@@ -31,8 +31,8 @@ Requires Node.js 22 or newer.
 
 ## Environment variables
 
-This package optionally loads a `.env.local` file from `process.cwd()` (Node.js) on first use (dotenv-style `KEY=value`
-syntax) and does not override already-set `process.env` values. It always falls back to plain environment variables.
+This package optionally loads `.env.local`, then `.env`, from `process.cwd()` (Node.js) on first use using
+dotenv-style `KEY=value` syntax. Existing `process.env` values take priority, followed by `.env.local`, then `.env`.
 
 See Node.js docs on environment variables and dotenv files: https://nodejs.org/api/environment_variables.html#dotenv
 
@@ -112,9 +112,28 @@ The library keeps API-key authentication separate from this route so a parent pr
 silently turn a subscription call into an API-key call. It does not read or copy raw OAuth credentials into the library.
 Claude subscription limits and any enabled Claude Code extra usage apply.
 
-### Fireworks
+### Vercel AI Gateway and Fireworks
 
+- `AI_GATEWAY_API_KEY` for Vercel AI Gateway
 - `FIREWORKS_TOKEN` (or `FIREWORKS_API_KEY`)
+- `LLM_PROVIDER` (optional: `vercel` or `fireworks`)
+
+For `deepseek-v4.1-flash-1017`, `glm-5.3`, and `kimi-k3`, the library prefers Vercel AI Gateway when
+`AI_GATEWAY_API_KEY` is present and otherwise uses Fireworks. Keep both keys to switch providers without changing
+credentials. Set `LLM_PROVIDER` to choose a process-wide default, or pass `provider: "vercel"` or
+`provider: "fireworks"` on a text-generation, tool-loop, or agent-loop request to override it for that request.
+An explicitly selected provider requires its own key.
+
+```ts
+const result = await generateText({
+  model: "kimi-k3",
+  provider: "fireworks",
+  input: "Return exactly: OK",
+});
+```
+
+Provider selection applies only to these shared model IDs. OpenAI, ChatGPT, Anthropic, Claude Code subscription,
+and Gemini model IDs retain their existing routes.
 
 ### ChatGPT subscription models
 
@@ -175,6 +194,7 @@ configureModelConcurrency({
   providerCaps: {
     openai: 16,
     google: 3,
+    vercel: 8,
     fireworks: 8,
     anthropic: 4,
     claude: 2,
@@ -195,6 +215,7 @@ Default caps (without configuration):
 - OpenAI: `12`
 - Google preview models (`*preview*`): `2`
 - Other Google models: `4`
+- Vercel AI Gateway: `6`
 - Fireworks: `6`
 - Anthropic: `4`
 - Claude Code subscription: `2`
@@ -769,7 +790,28 @@ Gemini `latest` aliases use the concrete response model version's rate when know
 documented alias target as a fallback. Image estimates use reported image tokens when available
 and published output-token counts by image size otherwise.
 
-### Fireworks
+### Vercel AI Gateway and Fireworks
+
+The same short model IDs work with either provider. Vercel requests use the
+[OpenAI-compatible AI Gateway API](https://vercel.com/docs/ai-gateway/openai-compat) at
+`https://ai-gateway.vercel.sh/v1` with these model IDs:
+
+| Library model ID | Vercel AI Gateway model ID |
+| --- | --- |
+| `deepseek-v4.1-flash-1017` | `deepseek/deepseek-v4.1-flash-1017` |
+| `glm-5.3` | `zai/glm-5.3` |
+| `kimi-k3` | `moonshotai/kimi-k3` |
+
+Set `AI_GATEWAY_API_KEY` to prefer Vercel automatically, or choose either provider using `LLM_PROVIDER` or the
+request's `provider` option. The resolved provider is reported as `"vercel"` or `"fireworks"` in results and events.
+Vercel requests set `providerOptions.gateway.sort` to `"cost"` for cost-sorted upstream routing. Availability and
+Gateway settings, including stored provider credentials (BYOK), can affect the selected upstream and its price.
+`costUsd` uses the Gateway's reported charge when available. For BYOK requests, it also adds any separately
+reported upstream inference cost; that upstream value is an estimate and can differ from your provider contract.
+When reported cost is unavailable, the library falls back to the Gateway catalog's default-route token rates,
+which can differ from the selected upstream's rates.
+
+#### Fireworks pricing
 
 Use the short library model IDs below; they resolve to the exact direct Fireworks model paths. These direct serverless models and pricing were checked on October 22, 2026 against the [Fireworks catalogue](https://app.fireworks.ai/models?type=llm&capability=serverless) and authenticated inference `/models` endpoint. Routers and embedding/reranking models are excluded.
 
@@ -781,14 +823,16 @@ Use the short library model IDs below; they resolve to the exact direct Firework
 
 Version 10 removes retired `kimi-k2.5`, `glm-5`, and `minimax-m2.1`; use `kimi-k3`, `glm-5.3`, or `deepseek-v4.1-flash-1017` for current research runs. The Fireworks allowlist is intentionally limited to these three models; obsolete default exports are removed.
 
-Fireworks `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
+#### Shared streaming and tool-loop behavior
 
-Fireworks text generation and tool loops request streaming completions, including when you await `generateText()` or `runToolLoop()`. Thought and response deltas arrive while inference is running. Fragmented tool calls are assembled before execution, and usage is collected from the final stream chunk.
+For both providers, `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
+
+Vercel and Fireworks text generation and tool loops request streaming completions, including when you await `generateText()` or `runToolLoop()`. Thought and response deltas arrive while inference is running. Fragmented tool calls are assembled before execution, and usage is collected from the final stream chunk.
 
 
-Since 10.1, Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer. Anthropic also accepts this option starting in 10.2; other providers explicitly reject it. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
+Vercel and Fireworks `runToolLoop()` and `streamToolLoop()` accept optional `maxOutputTokens`, forwarded as `max_tokens` for each completion and including reasoning tokens. Omission preserves the provider default. It must be a positive safe integer. Anthropic and Claude subscription tool loops also accept this option; other providers explicitly reject it. This option is not available on text-generation requests. Provider output limits may differ from the model vendor's own service and are not inferred from context size.
 
-Fireworks tool-loop steps and `model` events expose the raw optional `finishReason`. In particular, `"length"` indicates an output or context budget limit, including completions containing only reasoning and no final text. It must not be interpreted as a completed mathematical answer. `"stop"` and `"tool_calls"` retain their provider meanings; unknown reasons are preserved. The library does not automatically retry or add a continuation when a limit is reached. See [Fireworks completion limits](https://docs.fireworks.ai/api-reference/post-chatcompletions#body-max-tokens).
+Vercel and Fireworks tool-loop steps and `model` events expose the raw optional `finishReason`. In particular, `"length"` indicates an output or context budget limit, including completions containing only reasoning and no final text. It must not be interpreted as a completed mathematical answer. `"stop"` and `"tool_calls"` retain their provider meanings; unknown reasons are preserved. The library does not automatically retry or add a continuation when a limit is reached. See [Fireworks completion limits](https://docs.fireworks.ai/api-reference/post-chatcompletions#body-max-tokens).
 
 ```ts
 import { generateText } from "@ljoukov/llm";

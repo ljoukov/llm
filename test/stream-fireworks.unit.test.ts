@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let capturedRequest: any = null;
 let streamOverride: (() => AsyncIterable<any>) | null = null;
@@ -77,7 +77,9 @@ vi.mock("../src/fireworks/calls.js", () => {
 });
 
 describe("streamText (Fireworks)", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
+    vi.stubEnv("LLM_PROVIDER", "fireworks");
     capturedRequest = null;
     streamOverride = null;
   });

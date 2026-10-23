@@ -33,6 +33,12 @@ import {
   type ChatGptInputMessagePart,
 } from "./openai/chatgpt-codex.js";
 import { runFireworksCall } from "./fireworks/calls.js";
+import { runVercelCall } from "./vercel/calls.js";
+import {
+  resolveOpenModelProvider,
+  resolveVercelModelId,
+  type LlmOpenModelProvider,
+} from "./vercel/models.js";
 import { streamFireworksChatCompletion } from "./fireworks/stream.js";
 import { runAnthropicCall } from "./anthropic/calls.js";
 import { runClaudeQuery } from "./claude/calls.js";
@@ -321,7 +327,15 @@ export type LlmStreamEvent =
   | LlmBlockedEvent
   | LlmToolCallStreamEvent;
 
-export type LlmProvider = "openai" | "chatgpt" | "gemini" | "fireworks" | "anthropic" | "claude";
+export type { LlmOpenModelProvider } from "./vercel/models.js";
+export type LlmProvider =
+  | "openai"
+  | "chatgpt"
+  | "gemini"
+  | "fireworks"
+  | "vercel"
+  | "anthropic"
+  | "claude";
 export const LLM_TEXT_MODEL_IDS = [
   ...OPENAI_MODEL_IDS,
   ...CHATGPT_MODEL_IDS,
@@ -447,6 +461,8 @@ export type LlmInput = {
 
 export type LlmBaseRequest = {
   readonly model: LlmModelId;
+  /** Override routing for shared DeepSeek, GLM, and Kimi models. */
+  readonly provider?: LlmOpenModelProvider;
   readonly tools?: readonly LlmToolConfig[];
   readonly responseMimeType?: string;
   readonly responseJsonSchema?: JsonSchema;
@@ -703,10 +719,12 @@ export type LlmToolLoopSteeringChannel = {
 
 export type LlmToolLoopRequest = LlmInput & {
   readonly model: LlmTextModelId;
+  /** Override routing for shared DeepSeek, GLM, and Kimi models. */
+  readonly provider?: LlmOpenModelProvider;
   readonly tools: LlmToolSet;
   readonly modelTools?: readonly LlmToolConfig[];
   readonly maxSteps?: number;
-  /** Maximum generated tokens per Fireworks, Anthropic, or Claude completion, including reasoning.
+  /** Maximum generated tokens per Fireworks, Vercel, Anthropic, or Claude completion, including reasoning.
    * Omit to retain the Fireworks default or Anthropic's 32,000 token limit.
    */
   readonly maxOutputTokens?: number;
@@ -1374,11 +1392,19 @@ function convertLlmContentToGeminiContent(
   };
 }
 
-function resolveProvider(model: LlmModelId): {
+function resolveProvider(
+  model: LlmModelId,
+  provider?: LlmOpenModelProvider,
+): {
   provider: LlmProvider;
   model: string;
   serviceTier?: "priority";
 } {
+  if (provider && !isFireworksModelId(model)) {
+    throw new Error(
+      `provider is only configurable for DeepSeek, GLM, and Kimi models; received ${model}.`,
+    );
+  }
   if (isChatGptModelId(model)) {
     return {
       provider: "chatgpt",
@@ -1396,6 +1422,10 @@ function resolveProvider(model: LlmModelId): {
     return { provider: "claude", model };
   }
   if (isFireworksModelId(model)) {
+    if (resolveOpenModelProvider(provider) === "vercel") {
+      const vercelModel = resolveVercelModelId(model);
+      if (vercelModel) return { provider: "vercel", model: vercelModel };
+    }
     const fireworksModel = resolveFireworksModelId(model);
     if (fireworksModel) {
       return { provider: "fireworks", model: fireworksModel };
@@ -3502,7 +3532,10 @@ function extractChatGptUsageTokens(usage: unknown): LlmUsageTokens | undefined {
   };
 }
 
-function extractFireworksUsageTokens(usage: unknown): LlmUsageTokens | undefined {
+function extractFireworksUsageTokens(
+  usage: unknown,
+  provider?: LlmOpenModelProvider,
+): LlmUsageTokens | undefined {
   if (!usage || typeof usage !== "object") {
     return undefined;
   }
@@ -3532,7 +3565,16 @@ function extractFireworksUsageTokens(usage: unknown): LlmUsageTokens | undefined
   );
   let responseTokens: number | undefined;
   if (outputTokensRaw !== undefined) {
-    const adjusted = outputTokensRaw - (reasoningTokens ?? 0);
+    // Some Gateway upstreams exclude reasoning from completion_tokens. Its total
+    // distinguishes that shape from the usual inclusive OpenAI convention.
+    const reasoningIsSeparate =
+      provider === "vercel" &&
+      (reasoningTokens ?? 0) > 0 &&
+      promptTokens !== undefined &&
+      totalTokens === promptTokens + outputTokensRaw + (reasoningTokens ?? 0);
+    const adjusted = reasoningIsSeparate
+      ? outputTokensRaw
+      : outputTokensRaw - (reasoningTokens ?? 0);
     responseTokens = adjusted >= 0 ? adjusted : 0;
   }
   if (
@@ -4661,8 +4703,56 @@ function extractFireworksReasoningText(message: unknown): string | undefined {
   if (!message || typeof message !== "object") {
     return undefined;
   }
-  const reasoning = (message as { reasoning_content?: unknown }).reasoning_content;
+  const reasoning =
+    (message as { reasoning?: unknown }).reasoning ??
+    (message as { reasoning_content?: unknown }).reasoning_content;
   return typeof reasoning === "string" ? reasoning : undefined;
+}
+
+function extractVercelCostUsd(response: {
+  usage?: unknown;
+  provider_metadata?: unknown;
+}): number | undefined {
+  const usage = response.usage;
+  const metadata = response.provider_metadata as { gateway?: { cost?: unknown } } | undefined;
+  const cost =
+    (usage && typeof usage === "object" ? (usage as { cost?: unknown }).cost : undefined) ??
+    metadata?.gateway?.cost;
+  const parsed = typeof cost === "string" && cost.trim() ? Number(cost) : cost;
+  const gatewayCost =
+    typeof parsed === "number" && Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  if (usage && typeof usage === "object" && (usage as { is_byok?: unknown }).is_byok === true) {
+    // BYOK inference is billed by the upstream separately from the Gateway debit.
+    const upstream = (usage as { cost_details?: { upstream_inference_cost?: unknown } })
+      .cost_details?.upstream_inference_cost;
+    const upstreamCost =
+      typeof upstream === "string" && upstream.trim() ? Number(upstream) : upstream;
+    return gatewayCost !== undefined &&
+      typeof upstreamCost === "number" &&
+      Number.isFinite(upstreamCost) &&
+      upstreamCost >= 0
+      ? gatewayCost + upstreamCost
+      : undefined;
+  }
+  return gatewayCost;
+}
+
+function assistantReasoningFields(
+  message: unknown,
+  provider: LlmOpenModelProvider,
+  reasoning: string | undefined,
+): Record<string, unknown> {
+  if (provider === "fireworks") {
+    return reasoning !== undefined ? { reasoning_content: reasoning } : {};
+  }
+  const details =
+    message && typeof message === "object"
+      ? (message as { reasoning_details?: unknown }).reasoning_details
+      : undefined;
+  return {
+    ...(reasoning !== undefined ? { reasoning } : {}),
+    ...(Array.isArray(details) ? { reasoning_details: details } : {}),
+  };
 }
 
 function extractFireworksToolCalls(message: unknown): FireworksFunctionToolCall[] {
@@ -5278,7 +5368,7 @@ function startLlmCallLoggerFromPayload(options: {
               (options.requestPayload as { messages?: unknown }).messages,
             ),
           )
-        : options.provider === "fireworks"
+        : options.provider === "fireworks" || options.provider === "vercel"
           ? extractToolCallResponseTextFromFireworksMessages(
               (options.requestPayload as { messages?: unknown }).messages,
             )
@@ -5294,7 +5384,7 @@ function startLlmCallLoggerFromPayload(options: {
         ? extractToolCallResponsePayloadFromAnthropicMessages(
             (options.requestPayload as { messages?: unknown }).messages,
           )
-        : options.provider === "fireworks"
+        : options.provider === "fireworks" || options.provider === "vercel"
           ? extractToolCallResponsePayloadFromFireworksMessages(
               (options.requestPayload as { messages?: unknown }).messages,
             )
@@ -5322,7 +5412,7 @@ async function runTextCall(params: {
   onEvent?: (event: LlmStreamEvent) => void;
 }): Promise<LlmTextResult> {
   const { request, queue, abortController } = params;
-  const providerInfo = resolveProvider(request.model);
+  const providerInfo = resolveProvider(request.model, request.provider);
   const provider = providerInfo.provider;
   const modelForProvider = providerInfo.model;
   const contents = resolveTextContents(request);
@@ -5342,6 +5432,7 @@ async function runTextCall(params: {
   const responseParts: LlmContentPart[] = [];
   let responseRole: LlmRole | undefined;
   let latestUsage: LlmUsageTokens | undefined;
+  let reportedCostUsd: number | undefined;
   let responseImages = 0;
   let sawResponseDelta = false;
   let sawThoughtDelta = false;
@@ -5654,10 +5745,10 @@ async function runTextCall(params: {
         if (!sawResponseDelta) pushDelta("response", fallback.text);
         if (!sawThoughtDelta) pushDelta("thought", fallback.thoughts);
         latestUsage = extractAnthropicUsageTokens(response.usage);
-      } else if (provider === "fireworks") {
+      } else if (provider === "fireworks" || provider === "vercel") {
         if (request.tools && request.tools.length > 0) {
           throw new Error(
-            "Fireworks provider does not support provider-native tools in generateText; use runToolLoop for function tools.",
+            `${provider === "vercel" ? "Vercel" : "Fireworks"} provider does not support provider-native tools in generateText; use runToolLoop for function tools.`,
           );
         }
 
@@ -5666,7 +5757,8 @@ async function runTextCall(params: {
           responseJsonSchema: request.responseJsonSchema,
         });
 
-        await runFireworksCall(async (client) => {
+        const runCall = provider === "vercel" ? runVercelCall : runFireworksCall;
+        await runCall(async (client) => {
           const responseFormat = request.responseJsonSchema
             ? {
                 type: "json_schema" as const,
@@ -5683,6 +5775,7 @@ async function runTextCall(params: {
             client,
             {
               model: modelForProvider,
+              ...(provider === "vercel" ? { providerOptions: { gateway: { sort: "cost" } } } : {}),
               messages: fireworksMessages as any,
               ...(responseFormat ? { response_format: responseFormat } : {}),
               ...(request.thinkingLevel
@@ -5691,9 +5784,10 @@ async function runTextCall(params: {
                   }
                 : {}),
             } as any,
-            { signal, onDelta: pushDelta },
+            { signal, onDelta: pushDelta, provider },
           );
 
+          reportedCostUsd = provider === "vercel" ? extractVercelCostUsd(response) : undefined;
           modelVersion = typeof response.model === "string" ? response.model : request.model;
           pushEvent({ type: "model", modelVersion });
 
@@ -5703,7 +5797,7 @@ async function runTextCall(params: {
             pushEvent({ type: "blocked" });
           }
 
-          latestUsage = extractFireworksUsageTokens(response.usage);
+          latestUsage = extractFireworksUsageTokens(response.usage, provider);
         }, modelForProvider);
       } else {
         const geminiContents = await maybePrepareGeminiPromptContents(
@@ -5801,13 +5895,15 @@ async function runTextCall(params: {
       const outputAttachments = collectLoggedAttachmentsFromLlmParts(mergedParts, "output");
 
       const costUsd =
-        estimateCallCostUsd({
-          modelId: modelVersion,
-          pricingModelId: request.model,
-          tokens: latestUsage,
-          responseImages,
-          imageSize: request.imageSize,
-        }) + estimateHostedImageGenerationCostUsd(request.tools, responseImages);
+        (reportedCostUsd ??
+          estimateCallCostUsd({
+            provider,
+            modelId: modelVersion,
+            pricingModelId: request.model,
+            tokens: latestUsage,
+            responseImages,
+            imageSize: request.imageSize,
+          })) + estimateHostedImageGenerationCostUsd(request.tools, responseImages);
 
       if (latestUsage) {
         pushEvent({ type: "usage", usage: latestUsage, costUsd, modelVersion });
@@ -5879,7 +5975,7 @@ function startTextStream(
 ): LlmTextStream {
   const queue = createAsyncQueue<LlmStreamEvent>();
   const abortController = new AbortController();
-  const provider = resolveProvider(request.model).provider;
+  const provider = resolveProvider(request.model, request.provider).provider;
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
     operation,
@@ -5982,7 +6078,7 @@ function buildJsonSchemaConfig<T>(request: LlmJsonRequest<T>): {
   openAiTextFormat?: ResponseTextConfig["format"];
 } {
   const schemaName = (request.openAiSchemaName ?? "llm-response").trim() || "llm-response";
-  const providerInfo = resolveProvider(request.model);
+  const providerInfo = resolveProvider(request.model, request.provider);
   const isOpenAiVariant = providerInfo.provider === "openai" || providerInfo.provider === "chatgpt";
   const isGeminiVariant = providerInfo.provider === "gemini";
   const baseJsonSchema = zodToJsonSchema(request.schema, {
@@ -6018,7 +6114,7 @@ function startJsonStream<T>(
 ): LlmJsonStream<T> {
   const queue = createAsyncQueue<LlmJsonStreamEvent<T>>();
   const abortController = new AbortController();
-  const provider = resolveProvider(request.model).provider;
+  const provider = resolveProvider(request.model, request.provider).provider;
   const telemetry = createLlmTelemetryEmitter({
     telemetry: request.telemetry,
     operation,
@@ -6083,6 +6179,7 @@ function startJsonStream<T>(
             try {
               const call = streamText({
                 model: request.model,
+                provider: request.provider,
                 input: request.input,
                 instructions: request.instructions,
                 tools: request.tools,
@@ -6393,12 +6490,15 @@ function buildOpenAiToolsFromToolSet(tools: LlmToolSet): unknown[] {
   });
 }
 
-function buildFireworksToolsFromToolSet(tools: LlmToolSet): unknown[] {
+function buildFireworksToolsFromToolSet(
+  tools: LlmToolSet,
+  provider: LlmOpenModelProvider = "fireworks",
+): unknown[] {
   const toolEntries = Object.entries(tools);
   return toolEntries.map(([name, toolDef]) => {
     if (isCustomTool(toolDef)) {
       throw new Error(
-        `Fireworks provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
+        `${provider === "vercel" ? "Vercel" : "Fireworks"} provider does not support custom/freeform tools (${name}). Use JSON function tools instead.`,
       );
     }
     return {
@@ -6493,18 +6593,19 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
   }
 
   const maxSteps = Math.max(1, Math.floor(request.maxSteps ?? DEFAULT_TOOL_LOOP_MAX_STEPS));
-  const providerInfo = resolveProvider(request.model);
+  const providerInfo = resolveProvider(request.model, request.provider);
   if (request.maxOutputTokens !== undefined) {
     if (!Number.isSafeInteger(request.maxOutputTokens) || request.maxOutputTokens <= 0) {
       throw new Error("maxOutputTokens must be a positive safe integer.");
     }
     if (
       providerInfo.provider !== "fireworks" &&
+      providerInfo.provider !== "vercel" &&
       providerInfo.provider !== "anthropic" &&
       providerInfo.provider !== "claude"
     ) {
       throw new Error(
-        "maxOutputTokens is only supported for Fireworks tool loops, Anthropic tool loops, and Claude subscription tool loops.",
+        "maxOutputTokens is only supported for Fireworks tool loops, Vercel tool loops, Anthropic tool loops, and Claude subscription tool loops.",
       );
     }
     if (
@@ -7369,14 +7470,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       throw new Error(`Tool loop exceeded max steps (${maxSteps}) without final response.`);
     }
 
-    if (providerInfo.provider === "fireworks") {
+    if (providerInfo.provider === "fireworks" || providerInfo.provider === "vercel") {
       if (request.modelTools && request.modelTools.length > 0) {
         throw new Error(
-          "Fireworks provider does not support provider-native modelTools in runToolLoop.",
+          `${providerInfo.provider === "vercel" ? "Vercel" : "Fireworks"} provider does not support provider-native modelTools in runToolLoop.`,
         );
       }
 
-      const fireworksTools = buildFireworksToolsFromToolSet(request.tools);
+      const provider = providerInfo.provider;
+      const runCall = provider === "vercel" ? runVercelCall : runFireworksCall;
+      const fireworksTools = buildFireworksToolsFromToolSet(request.tools, provider);
       const messages: Array<Record<string, unknown>> = toFireworksMessages(contents);
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
@@ -7393,6 +7496,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         let stepToolCallPayload: ReadonlyArray<Record<string, unknown>> | undefined;
         const stepRequestPayload = {
           model: providerInfo.model,
+          ...(provider === "vercel" ? { providerOptions: { gateway: { sort: "cost" } } } : {}),
           messages,
           tools: fireworksTools,
           stream: true as const,
@@ -7407,16 +7511,17 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             : {}),
         };
         const stepCallLogger = startLlmCallLoggerFromPayload({
-          provider: "fireworks",
+          provider,
           modelId: request.model,
           requestPayload: stepRequestPayload,
           step: turn,
         });
         try {
-          const response = await runFireworksCall(
+          const response = await runCall(
             async (client) => {
               return await streamFireworksChatCompletion(client, stepRequestPayload, {
                 signal: request.signal,
+                provider,
                 onDelta: (channel, text) => {
                   if (channel === "thought") {
                     reasoningContent = (reasoningContent ?? "") + text;
@@ -7451,13 +7556,16 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           reasoningContent = extractFireworksReasoningText(message);
           responseText = extractFireworksMessageText(message).trim();
 
-          usageTokens = extractFireworksUsageTokens(response.usage);
-          const stepCostUsd = estimateCallCostUsd({
-            modelId: modelVersion,
-            pricingModelId: request.model,
-            tokens: usageTokens,
-            responseImages: 0,
-          });
+          usageTokens = extractFireworksUsageTokens(response.usage, provider);
+          const stepCostUsd =
+            (provider === "vercel" ? extractVercelCostUsd(response) : undefined) ??
+            estimateCallCostUsd({
+              provider,
+              modelId: modelVersion,
+              pricingModelId: request.model,
+              tokens: usageTokens,
+              responseImages: 0,
+            });
           totalCostUsd += stepCostUsd;
 
           if (usageTokens) {
@@ -7508,7 +7616,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             stepCallLogger?.complete({
               responseText,
               metadata: {
-                provider: "fireworks",
+                provider,
                 model: request.model,
                 modelVersion,
                 finishReason,
@@ -7529,7 +7637,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               messages.push({
                 role: "assistant",
                 content: responseText,
-                ...(reasoningContent !== undefined ? { reasoning_content: reasoningContent } : {}),
+                ...assistantReasoningFields(message, provider, reasoningContent),
               });
             }
             messages.push(...steeringMessages);
@@ -7651,7 +7759,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             toolCallText: stepToolCallText,
             toolCallPayload: stepToolCallPayload,
             metadata: {
-              provider: "fireworks",
+              provider,
               model: request.model,
               modelVersion,
               finishReason,
@@ -7675,7 +7783,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             role: "assistant",
             ...(responseText.length > 0 ? { content: responseText } : {}),
             tool_calls: assistantToolCalls,
-            ...(reasoningContent !== undefined ? { reasoning_content: reasoningContent } : {}),
+            ...assistantReasoningFields(message, provider, reasoningContent),
           });
           messages.push(...toolMessages);
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
@@ -7688,7 +7796,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             toolCallText: stepToolCallText,
             toolCallPayload: stepToolCallPayload,
             metadata: {
-              provider: "fireworks",
+              provider,
               model: request.model,
               modelVersion,
               finishReason,

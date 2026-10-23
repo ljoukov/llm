@@ -1,3 +1,4 @@
+import { resolveOpenModelProvider } from "../src/vercel/models.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -84,7 +85,7 @@ describe("integration: text model matrix", () => {
       } else if (isClaudeModelId(model)) {
         expect(result.provider).toBe("claude");
       } else {
-        expect(result.provider).toBe("fireworks");
+        expect(result.provider).toBe(resolveOpenModelProvider());
       }
     }, 180_000);
   }

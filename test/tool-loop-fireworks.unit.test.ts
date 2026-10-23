@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 let requests: any[] = [];
@@ -169,7 +169,9 @@ vi.mock("../src/fireworks/calls.js", () => {
 });
 
 describe("runToolLoop (Fireworks)", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
+    vi.stubEnv("LLM_PROVIDER", "fireworks");
     requests = [];
     callCount = 0;
     responseOverride = null;

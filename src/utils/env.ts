@@ -8,7 +8,7 @@ const envState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.envState"), () => 
 }));
 
 /**
- * Loads `.env.local` from `process.cwd()` once.
+ * Loads `.env.local` and then `.env` from `process.cwd()` once.
  *
  * - Does not override already-set `process.env` values.
  * - Missing file is silently ignored.
@@ -19,6 +19,7 @@ export function loadLocalEnv(): void {
   }
   const envPath = path.join(process.cwd(), ".env.local");
   loadEnvFromFile(envPath, { override: false });
+  loadEnvFromFile(path.join(process.cwd(), ".env"), { override: false });
   envState.envLoaded = true;
 }
 

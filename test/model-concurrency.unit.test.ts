@@ -106,4 +106,11 @@ describe("model concurrency config", () => {
     resetModelConcurrencyConfig();
     expect(resolveModelConcurrencyCap({ provider: "openai", modelId: "gpt-6-luna" })).toBe(12);
   });
+
+  it("keeps Vercel concurrency separate from direct Fireworks", () => {
+    expect(resolveModelConcurrencyCap({ provider: "vercel", modelId: "zai/glm-5.3" })).toBe(6);
+    configureModelConcurrency({ providerCaps: { vercel: 2, fireworks: 5 } });
+    expect(resolveModelConcurrencyCap({ provider: "vercel", modelId: "zai/glm-5.3" })).toBe(2);
+    expect(resolveModelConcurrencyCap({ provider: "fireworks", modelId: "glm-5.3" })).toBe(5);
+  });
 });
