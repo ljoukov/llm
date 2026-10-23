@@ -5,6 +5,11 @@ import path from "node:path";
 
 import type { LlmStreamEvent } from "./llm.js";
 import type { LlmAccess, LlmProvider } from "./model-selection.js";
+import {
+  createLogTextRedactor,
+  redactFinalLogText,
+  redactLogSecrets,
+} from "./utils/logRedaction.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 
 export type AgentLogLineSink = {
@@ -86,12 +91,12 @@ function toIsoNow(): string {
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
-    return error.message;
+    return redactLogSecrets(error.message);
   }
   if (typeof error === "string") {
-    return error;
+    return redactLogSecrets(error);
   }
-  return String(error);
+  return redactLogSecrets(String(error));
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
@@ -112,6 +117,7 @@ function normalisePathSegment(value: string): string {
 }
 
 function ensureTrailingNewline(value: string): string {
+  value = redactLogSecrets(value);
   return value.endsWith("\n") ? value : `${value}\n`;
 }
 
@@ -142,11 +148,12 @@ function serialiseJsonArtifact(value: unknown): string | undefined {
   try {
     return `${JSON.stringify(sanitiseLogValue(value), null, 2)}\n`;
   } catch {
-    return `${JSON.stringify(String(value), null, 2)}\n`;
+    return `${JSON.stringify(redactLogSecrets(String(value)), null, 2)}\n`;
   }
 }
 
 export function redactDataUrlPayload(value: string): string {
+  value = redactLogSecrets(value);
   if (!value.toLowerCase().startsWith("data:")) {
     return value;
   }
@@ -173,7 +180,7 @@ export function sanitiseLogValue(value: unknown, seen = new WeakSet<object>()): 
     return value.map((entry) => sanitiseLogValue(entry, seen));
   }
   if (typeof value !== "object") {
-    return String(value);
+    return redactLogSecrets(String(value));
   }
   if (seen.has(value)) {
     return "[circular]";
@@ -196,7 +203,7 @@ export function sanitiseLogValue(value: unknown, seen = new WeakSet<object>()): 
         const nested = entryValue as Record<string, unknown>;
         if (typeof nested.url === "string") {
           output[key] = {
-            ...nested,
+            ...(sanitiseLogValue(nested, seen) as Record<string, unknown>),
             url: redactDataUrlPayload(nested.url),
           };
           continue;
@@ -330,6 +337,8 @@ export function createAgentStreamEventLogger(options: {
     options.thoughtDeltaThrottleMs ?? DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS,
   );
   let pendingThoughtDelta = "";
+  const redactThought = createLogTextRedactor();
+  const redactResponse = createLogTextRedactor();
   let thoughtFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   const cancelThoughtFlushTimer = (): void => {
@@ -340,13 +349,13 @@ export function createAgentStreamEventLogger(options: {
     thoughtFlushTimer = null;
   };
 
-  const flushThoughtDelta = (): void => {
+  const flushThoughtDelta = (final = false): void => {
     cancelThoughtFlushTimer();
-    if (pendingThoughtDelta.length === 0) {
-      return;
-    }
-    options.append(`thought_delta: ${pendingThoughtDelta}`);
+    const text = redactThought(pendingThoughtDelta, final);
     pendingThoughtDelta = "";
+    if (text.length > 0) {
+      options.append(`thought_delta: ${text}`);
+    }
   };
 
   const scheduleThoughtFlush = (): void => {
@@ -375,13 +384,24 @@ export function createAgentStreamEventLogger(options: {
         return;
       }
       flushThoughtDelta();
+      if (event.type === "delta" && event.channel === "response") {
+        const text = redactResponse(event.text);
+        if (text.length > 0) {
+          appendAgentStreamEventLog({ event: { ...event, text }, append: options.append });
+        }
+        return;
+      }
       appendAgentStreamEventLog({
         event,
-        append: options.append,
+        append: (line) => options.append(redactLogSecrets(line)),
       });
     },
     flush: (): void => {
-      flushThoughtDelta();
+      flushThoughtDelta(true);
+      const text = redactResponse("", true);
+      if (text.length > 0) {
+        options.append(`response_delta: ${text}`);
+      }
     },
   };
 }
@@ -445,6 +465,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
   }
 
   logLine(line: string): void {
+    line = redactLogSecrets(line);
     const timestamped = `${toIsoNow()} ${line}`;
     if (this.mirrorToConsole) {
       console.log(timestamped);
@@ -515,7 +536,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
         };
         await writeFile(
           path.join(baseDir, "request.metadata.json"),
-          `${JSON.stringify(requestMetadata, null, 2)}\n`,
+          `${JSON.stringify(sanitiseLogValue(requestMetadata), null, 2)}\n`,
           "utf8",
         );
 
@@ -539,6 +560,8 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
     let closed = false;
     let pendingThoughtChunks: string[] = [];
     let pendingResponseChunks: string[] = [];
+    const redactThought = createLogTextRedactor();
+    const redactResponse = createLogTextRedactor();
     let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
     const enqueue = (operation: () => Promise<void>): void => {
@@ -553,8 +576,8 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
         clearTimeout(deltaFlushTimer);
         deltaFlushTimer = null;
       }
-      const thoughts = pendingThoughtChunks.join("");
-      const response = pendingResponseChunks.join("");
+      const thoughts = redactThought(pendingThoughtChunks.join(""), closed);
+      const response = redactResponse(pendingResponseChunks.join(""), closed);
       pendingThoughtChunks = [];
       pendingResponseChunks = [];
       if (thoughts.length > 0) {
@@ -606,7 +629,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
         close();
         enqueue(async () => {
           if (hasNonEmptyText(options?.responseText)) {
-            await writeFile(responsePath, options.responseText, "utf8");
+            await writeFile(responsePath, redactFinalLogText(options.responseText), "utf8");
           }
           if (hasNonEmptyText(options?.toolCallText)) {
             await writeFile(toolCallPath, ensureTrailingNewline(options.toolCallText), "utf8");
@@ -629,7 +652,11 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
             }
           }
           applyCallRouteMetadata(payload, input);
-          await writeFile(responseMetadataPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+          await writeFile(
+            responseMetadataPath,
+            `${JSON.stringify(sanitiseLogValue(payload), null, 2)}\n`,
+            "utf8",
+          );
         });
       },
       fail: (error: unknown, options?: AgentLlmCallCompletion) => {
@@ -639,7 +666,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
         close();
         enqueue(async () => {
           if (hasNonEmptyText(options?.responseText)) {
-            await writeFile(responsePath, options.responseText, "utf8");
+            await writeFile(responsePath, redactFinalLogText(options.responseText), "utf8");
           }
           if (hasNonEmptyText(options?.toolCallText)) {
             await writeFile(toolCallPath, ensureTrailingNewline(options.toolCallText), "utf8");
@@ -664,7 +691,11 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
             }
           }
           applyCallRouteMetadata(payload, input);
-          await writeFile(responseMetadataPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+          await writeFile(
+            responseMetadataPath,
+            `${JSON.stringify(sanitiseLogValue(payload), null, 2)}\n`,
+            "utf8",
+          );
         });
       },
     };
