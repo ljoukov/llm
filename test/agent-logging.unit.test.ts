@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAgentLoggingSession,
@@ -40,6 +40,21 @@ async function getCallDir(logsRootDir: string): Promise<string> {
 }
 
 describe("agent logging", () => {
+  // These tests cover ordinary text, independent of developer credential prefixes.
+  // Dedicated redaction tests supply explicit known credentials and boundary cases.
+  beforeEach(() => {
+    for (const name of Object.keys(process.env)) {
+      if (
+        /api.?key|token|password|secret|credential|private.?key|service.?account|cookie/iu.test(
+          name,
+        )
+      ) {
+        vi.stubEnv(name, "");
+      }
+    }
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
   it("redacts data-url image payloads", () => {
     const dataUrl = "data:image/png;base64,AAAA";
 
