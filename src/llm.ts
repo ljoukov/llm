@@ -282,7 +282,7 @@ export type LlmUsageEvent = {
 export type LlmModelEvent = {
   readonly type: "model";
   readonly modelVersion: string;
-  /** Raw provider completion reason when available (Fireworks and Anthropic). */
+  /** Raw provider completion reason when available (including Fireworks, Anthropic, and Gemini). */
   readonly finishReason?: string;
 };
 
@@ -684,7 +684,7 @@ export type LlmToolLoopStepTiming = {
 export type LlmToolLoopStep = {
   readonly step: number;
   readonly modelVersion: string;
-  /** Raw provider completion reason. Fireworks "length" and Anthropic "max_tokens" indicate limits. */
+  /** Raw provider completion reason; Fireworks "length", Anthropic "max_tokens", and Gemini "MAX_TOKENS" indicate limits. */
   readonly finishReason?: string;
   readonly text?: string;
   readonly thoughts?: string;
@@ -732,8 +732,8 @@ export type LlmToolLoopRequest = LlmInput &
     readonly tools: LlmToolSet;
     readonly modelTools?: readonly LlmToolConfig[];
     readonly maxSteps?: number;
-    /** Maximum generated tokens per Fireworks, Vercel, Anthropic, or Claude completion, including reasoning.
-     * Omit to retain the Fireworks default or Anthropic's 32,000 token limit.
+    /** Maximum generated tokens per Fireworks, Vercel, xAI, Anthropic, Claude, or Gemini completion, including reasoning.
+     * Omit to retain the provider default; Gemini and Anthropic tool loops default to 32,000.
      */
     readonly maxOutputTokens?: number;
     readonly thinkingLevel?: LlmThinkingLevel;
@@ -6669,10 +6669,11 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       providerInfo.provider !== "vercel" &&
       providerInfo.provider !== "xai" &&
       providerInfo.provider !== "anthropic" &&
-      providerInfo.provider !== "claude"
+      providerInfo.provider !== "claude" &&
+      providerInfo.provider !== "gemini"
     ) {
       throw new Error(
-        "maxOutputTokens is only supported for Fireworks tool loops, Vercel tool loops, Anthropic tool loops, and Claude subscription tool loops.",
+        "maxOutputTokens is only supported for Fireworks, Vercel, xAI, Anthropic, Claude subscription, and Gemini tool loops.",
       );
     }
     if (
@@ -8474,6 +8475,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       let firstModelEventAtMs: number | undefined;
       let schedulerMetrics: CallSchedulerRunMetrics | undefined;
       let modelVersion: string = request.model;
+      let finishReason: string | undefined;
       let usageTokens: LlmUsageTokens | undefined;
       let responseText = "";
       let thoughtsText = "";
@@ -8487,7 +8489,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
       const thinkingConfig = resolveGeminiThinkingConfig(request.model, request.thinkingLevel);
       const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
       const config: GenerateContentConfig = {
-        maxOutputTokens: 32_000,
+        maxOutputTokens: request.maxOutputTokens ?? 32_000,
         abortSignal: request.signal,
         tools: geminiTools,
         toolConfig: {
@@ -8520,6 +8522,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           readonly modelParts: GeminiPart[];
           readonly usageMetadata?: unknown;
           readonly modelVersion?: string;
+          readonly finishReason?: string;
         };
 
         const response: GeminiToolLoopResponse = await runGeminiCall(
@@ -8535,6 +8538,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
             let latestUsageMetadata: unknown;
             let resolvedModelVersion: string | undefined;
+            let resolvedFinishReason: string | undefined;
 
             for await (const chunk of guardGeminiStreamRetries(stream)) {
               markFirstModelEvent();
@@ -8550,6 +8554,9 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
                 continue;
               }
               const primary = candidates[0];
+              if (primary?.finishReason) {
+                resolvedFinishReason = primary.finishReason;
+              }
               const parts = primary?.content?.parts ?? [];
               const chunkFunctionCalls =
                 (
@@ -8593,6 +8600,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               modelParts,
               usageMetadata: latestUsageMetadata,
               modelVersion: resolvedModelVersion ?? request.model,
+              finishReason: resolvedFinishReason,
             };
           },
           request.model,
@@ -8607,6 +8615,10 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
 
         usageTokens = extractGeminiUsageTokens(response.usageMetadata);
         modelVersion = response.modelVersion ?? request.model;
+        finishReason = response.finishReason;
+        if (finishReason !== undefined) {
+          request.onEvent?.({ type: "model", modelVersion, finishReason });
+        }
         responseText = response.responseText.trim();
         thoughtsText = response.thoughtsText.trim();
         const responseOutputAttachments = collectLoggedAttachmentsFromGeminiParts(
@@ -8643,6 +8655,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
           steps.push({
             step: steps.length + 1,
             modelVersion,
+            finishReason,
             text: finalText || undefined,
             thoughts: finalThoughts || undefined,
             toolCalls: [],
@@ -8658,6 +8671,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
               provider: "gemini",
               model: request.model,
               modelVersion,
+              finishReason,
               step: turn,
               usage: usageTokens,
               ...stepCostResolution,
@@ -8802,6 +8816,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
         steps.push({
           step: steps.length + 1,
           modelVersion,
+          finishReason,
           text: responseText || undefined,
           thoughts: thoughtsText || undefined,
           toolCalls,
@@ -8820,6 +8835,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             provider: "gemini",
             model: request.model,
             modelVersion,
+            finishReason,
             step: turn,
             usage: usageTokens,
             ...stepCostResolution,
@@ -8856,6 +8872,7 @@ export async function runToolLoop(request: LlmToolLoopRequest): Promise<LlmToolL
             provider: "gemini",
             model: request.model,
             modelVersion,
+            finishReason,
             step: turn,
             usage: usageTokens,
             responseChars: responseText.length,
