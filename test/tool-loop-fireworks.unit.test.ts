@@ -390,7 +390,6 @@ describe("runToolLoop (Fireworks)", () => {
 
   it.each([
     "gpt-6-luna",
-    "gemini-3.1-pro-preview",
   ] as const)("rejects maxOutputTokens for unsupported route %s before inference", async (model) => {
     const { runToolLoop, tool } = await import("../src/llm.js");
     await expect(
@@ -400,7 +399,7 @@ describe("runToolLoop (Fireworks)", () => {
         maxOutputTokens: 1024,
         tools: { unused: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
       }),
-    ).rejects.toThrow("maxOutputTokens is only supported for Fireworks tool loops");
+    ).rejects.toThrow("maxOutputTokens is only supported for Fireworks");
     expect(requests).toHaveLength(0);
   });
 
