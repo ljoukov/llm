@@ -19,6 +19,7 @@ import {
   type LlmTextModelRef,
 } from "../src/index.js";
 import { resolveOpenModelProvider } from "../src/vercel/models.js";
+import { getSupportedModelSpeeds, LLM_SPEEDS, type LlmSpeed } from "../src/model-selection.js";
 
 export type IntegrationProviderAvailability = {
   readonly openAi: boolean;
@@ -73,7 +74,7 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
 }
 
 export function integrationModelLabel(ref: LlmModelRef): string {
-  return `${ref.provider}:${ref.access ?? "api"}:${ref.model}`;
+  return `${ref.provider}:${ref.access ?? "api"}:${ref.model}${ref.speed ? ` speed=${ref.speed}` : ""}`;
 }
 
 export function hasIntegrationCredentialsForModel(ref: LlmModelRef): boolean {
@@ -144,6 +145,44 @@ export function openAiIntegrationModels(): readonly LlmTextModelRef[] {
       model,
     })),
   ];
+}
+
+/** Cross selected base routes with serving speeds without manufacturing model aliases. */
+export function openAiIntegrationSpeedVariants(
+  models: readonly LlmTextModelRef[],
+): readonly LlmTextModelRef[] {
+  const rawSpeeds = process.env.LLM_INTEGRATION_SPEEDS?.trim();
+  const requestedSpeeds = rawSpeeds
+    ? [
+        ...new Set(
+          rawSpeeds
+            .split(",")
+            .map((speed) => speed.trim())
+            .filter(Boolean),
+        ),
+      ]
+    : undefined;
+  if (
+    requestedSpeeds?.some((speed) => !(LLM_SPEEDS as readonly string[]).includes(speed)) ||
+    requestedSpeeds?.length === 0
+  ) {
+    throw new Error(
+      `LLM_INTEGRATION_SPEEDS must contain standard, fast, or ultrafast; received: ${rawSpeeds}.`,
+    );
+  }
+  const variants = models.flatMap((ref) => {
+    const supported = getSupportedModelSpeeds(ref);
+    const speeds = requestedSpeeds
+      ? supported.filter((speed) => requestedSpeeds.includes(speed))
+      : supported;
+    return speeds.map((speed: LlmSpeed) => resolveModelRef({ ...ref, speed }) as LlmTextModelRef);
+  });
+  if (!variants.length) {
+    throw new Error(
+      "LLM_INTEGRATION_SPEEDS selected no supported speeds for the requested OpenAI routes.",
+    );
+  }
+  return variants;
 }
 
 function parseRequestedModels(raw: string): readonly LlmModelRef[] {

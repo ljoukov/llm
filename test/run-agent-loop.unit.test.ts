@@ -416,7 +416,10 @@ describe("runAgentLoop", () => {
         steps: [
           {
             step: 1,
-            modelVersion: "gpt-6-luna",
+            modelVersion: "gpt-6.1-sol",
+            requestedSpeed: "fast",
+            effectiveSpeed: "fast",
+            serviceTier: "fast",
             toolCalls: [{ toolName: "list_dir", input: {}, output: {} }],
             usage: {
               promptTokens: 10,
@@ -430,7 +433,10 @@ describe("runAgentLoop", () => {
           },
           {
             step: 2,
-            modelVersion: "gpt-6-astra",
+            modelVersion: "gpt-6.1-sol",
+            requestedSpeed: "fast",
+            effectiveSpeed: "standard",
+            serviceTier: "default",
             toolCalls: [],
             usage: {
               promptTokens: 8,
@@ -453,7 +459,8 @@ describe("runAgentLoop", () => {
     await runAgentLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-luna",
+      model: "gpt-6.1-sol",
+      speed: "fast",
       input: "test",
       filesystemTool: true,
       onEvent,
@@ -474,6 +481,9 @@ describe("runAgentLoop", () => {
       runId: string;
       depth: number;
       parentRunId?: string;
+      requestedSpeed?: string;
+      effectiveSpeed?: string;
+      serviceTier?: string;
       success?: boolean;
       stepCount?: number;
       toolCallCount?: number;
@@ -497,6 +507,11 @@ describe("runAgentLoop", () => {
     expect(completed.stepCount).toBe(2);
     expect(completed.toolCallCount).toBe(1);
     expect(completed.totalCostUsd).toBe(0.02);
+    expect(started.requestedSpeed).toBe("fast");
+    expect(streamed.requestedSpeed).toBe("fast");
+    expect(completed.requestedSpeed).toBe("fast");
+    expect(completed.effectiveSpeed).toBe("standard");
+    expect(completed.serviceTier).toBe("default");
     expect(completed.usage?.cacheWriteTokens).toBe(5);
     expect(completed.usage?.anthropicCacheCreation5mInputTokens).toBe(4);
     expect(completed.usage?.anthropicCacheCreation1hInputTokens).toBe(1);
@@ -639,6 +654,64 @@ describe("runAgentLoop", () => {
     expect(runToolLoopMock).toHaveBeenCalledTimes(2);
     for (const [call] of runToolLoopMock.mock.calls) {
       expect(call).toMatchObject({ model: "glm-5.3", provider: "fireworks" });
+    }
+  });
+
+  it.each([
+    {
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6.1-sol",
+      speed: "fast",
+    },
+    { model: "openai:subscription:gpt-6.1-sol", speed: "fast" },
+  ] as const)("normalizes $model and inherits its speed in child agents", async (selection) => {
+    runToolLoopMock.mockClear();
+    let calls = 0;
+    runToolLoopMock.mockImplementation(async (request: unknown) => {
+      if (calls++ === 0) {
+        const parent = request as {
+          tools: Record<string, { execute: (input: unknown) => Promise<any> }>;
+        };
+        const spawn = parent.tools.spawn_agent;
+        const wait = parent.tools.wait;
+        const close = parent.tools.close_agent;
+        if (!spawn || !wait || !close) throw new Error("Missing subagent controls.");
+        const child = await spawn.execute({ prompt: "child task" });
+        await wait.execute({ agent_id: child.agent_id, timeout_ms: 10_000 });
+        await close.execute({ agent_id: child.agent_id });
+      }
+      return { text: "done", thoughts: "", steps: [], totalCostUsd: null };
+    });
+    const events: Array<{ type: string }> = [];
+    const { runAgentLoop } = await import("../src/agent.js");
+    await runAgentLoop({
+      ...selection,
+      input: "delegate",
+      subagentTool: { enabled: true, maxDepth: 2 },
+      logging: false,
+      telemetry: {
+        sink: {
+          emit: (event) => {
+            events.push(event);
+          },
+        },
+      },
+    });
+
+    const route = {
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6.1-sol",
+    };
+    expect(runToolLoopMock).toHaveBeenCalledTimes(2);
+    for (const [call] of runToolLoopMock.mock.calls) {
+      expect(call).toMatchObject({ ...route, speed: "fast" });
+    }
+    const started = events.filter((event) => event.type === "agent.run.started");
+    expect(started).toHaveLength(2);
+    for (const event of started) {
+      expect(event).toMatchObject({ ...route, requestedSpeed: "fast" });
     }
   });
 

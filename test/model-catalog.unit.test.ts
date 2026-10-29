@@ -21,6 +21,13 @@ const catalogue = {
     },
     { id: "publisher/unknown-price" },
     { id: "publisher/invalid-price", pricing: { input: "-1", output: "NaN" } },
+    ...[
+      "openai/gpt-6.1-sol-fast",
+      "openai/chatgpt-gpt-6.1-sol",
+      "anthropic/claude-opus-5-5-fast",
+      "anthropic/claude-opus-5-fast",
+      "publisher/genuine-model-fast",
+    ].map((id) => ({ id, pricing: { input: "0.000002", output: "0.00001" } })),
     { id: "malformed" },
   ],
 };
@@ -65,12 +72,13 @@ describe("RAM model catalogue", () => {
     const subscription = await listModels({ provider: "openai", access: "subscription" });
     expect(api.some((model) => model.model === "gpt-5.6")).toBe(true);
     expect(subscription.some((model) => model.model === "gpt-5.6")).toBe(false);
-    for (const id of ["gpt-6.1-terra", "gpt-6.1-terra-fast"]) {
+    for (const id of ["gpt-6.1-terra"]) {
       expect(api.some((model) => model.model === id)).toBe(false);
       expect(subscription.find((model) => model.model === id)).toMatchObject({
         provider: "openai",
         access: "subscription",
         model: id,
+        supportedSpeeds: ["standard", "fast"],
       });
     }
     expect(
@@ -79,6 +87,40 @@ describe("RAM model catalogue", () => {
     await expect(listModels({ provider: "vercel", access: "subscription" })).rejects.toThrow(
       "does not support subscription",
     );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("filters known serving aliases while preserving unrelated native model names", async () => {
+    const models = await listModels({ provider: "vercel" });
+    const ids = models.map((model) => model.model);
+    expect(ids).not.toContain("openai/gpt-6.1-sol-fast");
+    expect(ids).not.toContain("openai/chatgpt-gpt-6.1-sol");
+    expect(ids).not.toContain("anthropic/claude-opus-5-5-fast");
+    expect(ids).not.toContain("anthropic/claude-opus-5-fast");
+    expect(ids).toContain("publisher/genuine-model-fast");
+  });
+
+  it("lists each base model once with speed capabilities and known rates", async () => {
+    const models = await listModels({ provider: "openai", access: "subscription" });
+    expect(new Set(models.map((model) => model.model)).size).toBe(models.length);
+    expect(models.some((model) => model.model.endsWith("-fast"))).toBe(false);
+    expect(models.some((model) => model.model.startsWith("chatgpt-"))).toBe(false);
+    const sol = models.find((model) => model.model === "gpt-6.1-sol");
+    expect(sol).toMatchObject({
+      supportedSpeeds: ["standard", "fast", "ultrafast"],
+      pricingBySpeed: {
+        standard: { inputRate: 2 / 1_000_000, outputRate: 10 / 1_000_000 },
+        fast: { inputRate: 4 / 1_000_000, outputRate: 20 / 1_000_000 },
+        ultrafast: { inputRate: 12 / 1_000_000 },
+      },
+    });
+    expect(sol?.pricingBySpeed?.ultrafast?.outputRate).toBeCloseTo(60 / 1_000_000, 12);
+    expect(models.find((model) => model.model === "gpt-image-2")?.supportedSpeeds).toEqual([]);
+    const anthropic = await listModels({ provider: "anthropic" });
+    expect(anthropic.find((model) => model.model === "claude-opus-5-5")).toMatchObject({
+      supportedSpeeds: ["standard", "fast"],
+      pricingBySpeed: { fast: { inputRate: 8 / 1_000_000, outputRate: 40 / 1_000_000 } },
+    });
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -152,6 +194,34 @@ describe("RAM model catalogue", () => {
 });
 
 describe("cost provenance", () => {
+  it("never looks up alias prices, but preserves an actual reported charge", async () => {
+    const options = {
+      provider: "vercel",
+      modelId: "openai/gpt-6.1-sol-fast",
+      tokens: usage,
+      responseImages: 0,
+    };
+    expect(await resolveCallCostUsd(options)).toEqual({ costUsd: null, costSource: "unknown" });
+    expect(await resolveCallCostUsd({ ...options, reportedCostUsd: 0.123 })).toEqual({
+      costUsd: 0.123,
+      costSource: "reported",
+    });
+    expect(
+      await resolveCallCostUsd({
+        ...options,
+        modelId: "publisher/unknown",
+        pricingModelId: "anthropic/claude-opus-5-fast",
+      }),
+    ).toEqual({ costUsd: null, costSource: "unknown" });
+    expect(fetch).not.toHaveBeenCalled();
+    const genuine = await resolveCallCostUsd({
+      ...options,
+      modelId: "publisher/genuine-model-fast",
+    });
+    expect(genuine.costSource).toBe("catalog");
+    expect(genuine.costUsd).toBeGreaterThan(0);
+  });
+
   it("uses a reported charge, including zero, without fetching a catalogue", async () => {
     for (const reportedCostUsd of [0, 0.123]) {
       expect(
@@ -227,5 +297,55 @@ describe("cost provenance", () => {
     expect(cost).toMatchObject({ costUsd: null, costSource: "subscription" });
     expect(cost.apiEquivalentCostUsd).toBeGreaterThan(0);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps unknown faster Gateway rates separate from standard catalogue prices", async () => {
+    const options = {
+      provider: "vercel",
+      modelId: "reflection/beam-free",
+      speed: "fast" as const,
+      tokens: usage,
+      responseImages: 0,
+    };
+    expect(await resolveCallCostUsd(options)).toEqual({ costUsd: null, costSource: "unknown" });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await resolveCallCostUsd({ ...options, reportedCostUsd: 0.123 })).toEqual({
+      costUsd: 0.123,
+      costSource: "reported",
+    });
+    for (const effectiveServiceTier of ["flex", "unknown-tier"]) {
+      expect(
+        await resolveCallCostUsd({ ...options, effectiveSpeed: "standard", effectiveServiceTier }),
+      ).toEqual({ costUsd: null, costSource: "unknown" });
+    }
+    expect(
+      await resolveCallCostUsd({
+        ...options,
+        effectiveSpeed: "standard",
+        effectiveServiceTier: "priority",
+      }),
+    ).toEqual({ costUsd: null, costSource: "unknown" });
+    expect(await resolveCallCostUsd({ ...options, effectiveSpeed: "standard" })).toEqual({
+      costUsd: 0,
+      costSource: "catalog",
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("prices the actual subscription speed without creating a billed charge", async () => {
+    const cost = await resolveCallCostUsd({
+      provider: "openai",
+      access: "subscription",
+      modelId: "gpt-6.1-sol",
+      speed: "fast",
+      effectiveServiceTier: "default",
+      tokens: { promptTokens: 1000, responseTokens: 1000 },
+      responseImages: 0,
+    });
+    expect(cost).toEqual({
+      costUsd: null,
+      costSource: "subscription",
+      apiEquivalentCostUsd: 0.012,
+    });
   });
 });

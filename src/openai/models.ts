@@ -1,20 +1,12 @@
 export const OPENAI_MODEL_IDS = [
   "gpt-6.1-sol",
-  "gpt-6.1-sol-fast",
   "gpt-6-astra",
-  "gpt-6-astra-fast",
   "gpt-6-sol",
-  "gpt-6-sol-fast",
   "gpt-6-luna",
-  "gpt-6-luna-fast",
   "gpt-5.6",
-  "gpt-5.6-fast",
   "gpt-5.6-sol",
-  "gpt-5.6-sol-fast",
   "gpt-5.6-terra",
-  "gpt-5.6-terra-fast",
   "gpt-5.6-luna",
-  "gpt-5.6-luna-fast",
 ] as const;
 
 export type OpenAiModelId = (typeof OPENAI_MODEL_IDS)[number];
@@ -169,48 +161,19 @@ export type OpenAiGptImage2NumImages = (typeof OPENAI_GPT_IMAGE_2_NUM_IMAGES)[nu
 
 export const CHATGPT_MODEL_IDS = [
   "gpt-6.1-sol",
-  "gpt-6.1-sol-fast",
   "gpt-6.1-terra",
-  "gpt-6.1-terra-fast",
   "gpt-6-astra",
-  "gpt-6-astra-fast",
   "gpt-6-sol",
-  "gpt-6-sol-fast",
   "gpt-6-luna",
-  "gpt-6-luna-fast",
   "gpt-5.6-sol",
-  "gpt-5.6-sol-fast",
   "gpt-5.6-terra",
-  "gpt-5.6-terra-fast",
   "gpt-5.6-luna",
-  "gpt-5.6-luna-fast",
 ] as const;
 
 export const OPENAI_SUBSCRIPTION_MODEL_IDS = CHATGPT_MODEL_IDS;
 export type OpenAiSubscriptionModelId = ChatGptModelId;
 export const isOpenAiSubscriptionModelId = isChatGptModelId;
 
-const FAST_MODEL_SUFFIX = "-fast";
-const OPENAI_PRIORITY_MODEL_IDS = [
-  "gpt-6.1-sol-fast",
-  "gpt-6-astra-fast",
-  "gpt-6-sol-fast",
-  "gpt-6-luna-fast",
-  "gpt-5.6-fast",
-  "gpt-5.6-sol-fast",
-  "gpt-5.6-terra-fast",
-  "gpt-5.6-luna-fast",
-] as const;
-const CHATGPT_PRIORITY_MODEL_IDS = [
-  "gpt-6.1-sol-fast",
-  "gpt-6.1-terra-fast",
-  "gpt-6-astra-fast",
-  "gpt-6-sol-fast",
-  "gpt-6-luna-fast",
-  "gpt-5.6-sol-fast",
-  "gpt-5.6-terra-fast",
-  "gpt-5.6-luna-fast",
-] as const;
 const CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL = "gpt-image-2" as const;
 
 export const EXPERIMENTAL_CHATGPT_MODEL_PREFIX = "experimental-chatgpt-" as const;
@@ -232,18 +195,14 @@ export function isChatGptModelId(value: string): value is ChatGptModelId {
   );
 }
 
-function stripFastSuffix(model: string): string {
-  return model.endsWith(FAST_MODEL_SUFFIX) ? model.slice(0, -FAST_MODEL_SUFFIX.length) : model;
-}
-
 export function resolveOpenAiProviderModel(model: OpenAiModelId): string {
-  return (OPENAI_PRIORITY_MODEL_IDS as readonly string[]).includes(model)
-    ? stripFastSuffix(model)
-    : model;
+  return model;
 }
 
-export function resolveOpenAiServiceTier(model: OpenAiModelId): "priority" | undefined {
-  return (OPENAI_PRIORITY_MODEL_IDS as readonly string[]).includes(model) ? "priority" : undefined;
+export function resolveOpenAiServiceTier(
+  speed?: "standard" | "fast" | "ultrafast",
+): "default" | "fast" | "ultrafast" | undefined {
+  return speed === "standard" ? "default" : speed;
 }
 
 export function stripChatGptPrefix(model: ChatGptModelId): string {
@@ -254,16 +213,15 @@ export function stripChatGptPrefix(model: ChatGptModelId): string {
 }
 
 export function resolveChatGptProviderModel(model: ChatGptModelId): string {
-  const providerModel = stripChatGptPrefix(model);
-  return (CHATGPT_PRIORITY_MODEL_IDS as readonly string[]).includes(model)
-    ? stripFastSuffix(providerModel)
-    : providerModel;
+  return stripChatGptPrefix(model);
 }
 
 export function resolveChatGptImageProviderModel(_model: ChatGptImageModelId): string {
   return CHATGPT_IMAGE_GENERATION_PROVIDER_MODEL;
 }
 
-export function resolveChatGptServiceTier(model: ChatGptModelId): "priority" | undefined {
-  return (CHATGPT_PRIORITY_MODEL_IDS as readonly string[]).includes(model) ? "priority" : undefined;
+export function resolveChatGptServiceTier(
+  speed?: "standard" | "fast" | "ultrafast",
+): "default" | "priority" | "ultrafast" | undefined {
+  return speed === "standard" ? "default" : speed === "fast" ? "priority" : speed;
 }

@@ -3,6 +3,7 @@ import {
   isOpenAiImageModelId,
   type OpenAiGptImage2Quality,
 } from "./models.js";
+import type { LlmSpeed } from "../model-selection.js";
 
 export type OpenAiPricing = {
   readonly inputRate: number;
@@ -120,19 +121,30 @@ const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
   },
 };
 
-export function getOpenAiPricing(modelId: string): OpenAiPricing | undefined {
-  const priority = modelId.endsWith("-fast");
-  let normalized = modelId.replace(/^chatgpt-/u, "").replace(/-fast$/u, "");
-  normalized = normalized.replace(/-\d{4}-\d{2}-\d{2}$/u, "");
+export function getOpenAiPricing(
+  modelId: string,
+  speed: LlmSpeed = "standard",
+): OpenAiPricing | undefined {
+  let normalized = modelId.replace(/-\d{4}-\d{2}-\d{2}$/u, "");
   if (normalized === "gpt-5.6") normalized = "gpt-5.6-sol";
   const standard = Object.hasOwn(TEXT_PRICING, normalized) ? TEXT_PRICING[normalized] : undefined;
-  if (!standard || !priority) return standard;
+  if (!standard) return undefined;
+  if (speed === "standard") return standard;
+  // Official Ultrafast snapshot, 2026-10-29: the two supported models use 6x standard rates.
+  if (
+    speed !== "fast" &&
+    (speed !== "ultrafast" || !["gpt-6-astra", "gpt-6.1-sol"].includes(normalized))
+  ) {
+    return undefined;
+  }
+  const multiplier = speed === "ultrafast" ? 6 : 2;
   return {
     ...standard,
-    inputRate: standard.inputRate * 2,
-    cachedRate: standard.cachedRate * 2,
-    cacheWriteRate: standard.cacheWriteRate === undefined ? undefined : standard.cacheWriteRate * 2,
-    outputRate: standard.outputRate * 2,
+    inputRate: standard.inputRate * multiplier,
+    cachedRate: standard.cachedRate * multiplier,
+    cacheWriteRate:
+      standard.cacheWriteRate === undefined ? undefined : standard.cacheWriteRate * multiplier,
+    outputRate: standard.outputRate * multiplier,
   };
 }
 

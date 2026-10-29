@@ -2,6 +2,7 @@ import type OpenAI from "openai";
 import { describe, expect, it, vi } from "vitest";
 
 import { streamFireworksChatCompletion } from "../src/fireworks/stream.js";
+import { extractVercelServingMetadata } from "../src/vercel/speed.js";
 
 function mockClient(chunks: unknown[]) {
   return {
@@ -18,6 +19,30 @@ function mockClient(chunks: unknown[]) {
 }
 
 describe("Vercel AI Gateway SSE accumulation", () => {
+  it("preserves the actually served tier across streaming metadata updates", async () => {
+    const client = mockClient([
+      {
+        model: "openai/gpt-6.1-sol",
+        service_tier: "priority",
+        choices: [{ index: 0, delta: { content: "OK" } }],
+      },
+      {
+        service_tier: "default",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      },
+    ]);
+    const response = await streamFireworksChatCompletion(
+      client,
+      { model: "openai/gpt-6.1-sol" },
+      { provider: "vercel" },
+    );
+    expect(response.service_tier).toBe("default");
+    expect(extractVercelServingMetadata(response)).toEqual({
+      effectiveSpeed: "standard",
+      serviceTier: "default",
+    });
+  });
+
   it("preserves unified reasoning, provider charges, and fragmented tool calls", async () => {
     const usage = { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18, cost: 0.000012 };
     const client = mockClient([

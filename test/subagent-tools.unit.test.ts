@@ -456,8 +456,8 @@ describe("subagent tools", () => {
   });
 
   it.each([
-    { provider: "openai", access: "subscription", model: "gpt-6-luna" },
-    { provider: "vercel", access: "api", model: "reflection/beam-free" },
+    { provider: "openai", access: "subscription", model: "gpt-6.1-sol", speed: "fast" },
+    { provider: "vercel", access: "api", model: "reflection/beam-free", speed: "standard" },
   ] as const)("inherits the entire $provider:$access route and strips child overrides", async (route) => {
     const runSubagent = vi.fn(async (_request: SubagentRunRequest) => ({
       text: "done",
@@ -473,19 +473,26 @@ describe("subagent tools", () => {
       runSubagent,
     });
     // Later callers must not mutate a controller's resolved selection.
-    Object.assign(parentRoute, { provider: "fireworks", access: "api", model: "glm-5.3" });
+    Object.assign(parentRoute, {
+      provider: "fireworks",
+      access: "api",
+      model: "glm-5.3",
+      speed: "ultrafast",
+    });
     const spawn = getExecutableTool(controller.tools, "spawn_agent");
     const parsed = spawn.inputSchema.safeParse({
       message: "task",
       provider: "openai",
       access: "api",
       model: "gpt-6-astra",
+      speed: "ultrafast",
     });
     expect(parsed.success).toBe(true);
     if (!parsed.success) throw new Error("Expected valid task input.");
     expect(parsed.data).not.toHaveProperty("model");
     expect(parsed.data).not.toHaveProperty("provider");
     expect(parsed.data).not.toHaveProperty("access");
+    expect(parsed.data).not.toHaveProperty("speed");
     const spawned = await spawn.execute(parsed.data);
     expect(spawned.agent).toMatchObject(route);
     const wait = getExecutableTool(controller.tools, "wait");

@@ -23,6 +23,15 @@ Runs execute models in parallel and tasks/variants/runs sequentially per model.
 
 Use `provider:access:model` for explicit routing, including arbitrary Vercel publisher/model IDs. For example: `--models vercel:api:reflection/beam-free,vercel:api:nvidia/nemotron-3.5-lightning-free`. Known bare model IDs retain automatic routing. Unavailable prices are reported as `unknown`.
 
+Inference speed is independent of the model ID. Use `--speed standard|fast|ultrafast` for the tested agent and
+`--grader-speed standard|fast|ultrafast` for its grader. Omission preserves the provider default. Unsupported
+model/speed combinations fail before calls start; projections and reports use the selected speeds.
+`--merge-latest` requires the same agent and grader speed settings as the saved run.
+
+```bash
+npx tsx benchmarks/agent/run.ts --models openai:subscription:gpt-6.1-sol --speed fast --estimate-only
+```
+
 ## Run
 
 ```bash

@@ -1,25 +1,24 @@
-import { isLlmTextModelId, parseModelRef, type LlmTextModelSelection } from "../src/index.js";
+import {
+  isLlmTextModelId,
+  resolveModelRef,
+  type LlmSpeed,
+  type LlmTextModelSelection,
+} from "../src/index.js";
 
 /** CLI labels preserve the route while reports remain readable strings. */
-export function benchmarkModelSelection(label: string): LlmTextModelSelection {
-  if (label.includes(":")) {
-    const selection = parseModelRef(label);
-    if (!isLlmTextModelId(selection.model)) {
-      throw new Error(`Expected a text model: ${label}`);
-    }
+export function benchmarkModelSelection(label: string, speed?: LlmSpeed): LlmTextModelSelection {
+  const selection = resolveModelRef({ model: label, speed });
+  if (isLlmTextModelId(selection.model)) {
     return selection as LlmTextModelSelection;
   }
-  if (!label.includes("/") && isLlmTextModelId(label)) {
-    return { model: label } as LlmTextModelSelection;
-  }
   throw new Error(
-    `Unsupported model: ${label}. Use a known model ID or provider:access:model, for example vercel:api:reflection/beam-free.`,
+    `Expected a text model: ${label}. Use a known model ID or provider:access:model, for example vercel:api:reflection/beam-free.`,
   );
 }
 
-export function isBenchmarkModel(label: string): boolean {
+export function isBenchmarkModel(label: string, speed?: LlmSpeed): boolean {
   try {
-    benchmarkModelSelection(label);
+    benchmarkModelSelection(label, speed);
     return true;
   } catch {
     return false;

@@ -156,6 +156,49 @@ describe("Anthropic native Messages client", () => {
     expect(message.content[1]).toEqual({ type: "text", text: "Hello world" });
   });
 
+  it.each([
+    "standard",
+    "fast",
+  ] as const)("forwards %s speed separately from model identity and preserves serving metadata", async (speed) => {
+    const fetchMock = stubStream(
+      [
+        start({ speed, service_tier: "standard" }),
+        event("message_delta", { usage: { output_tokens: 8 } }),
+        event("message_stop"),
+      ].join(""),
+    );
+
+    const message = await new AnthropicClient().streamMessage({ ...request, speed });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      model: request.model,
+      speed,
+      stream: true,
+    });
+    expect(message.model).toBe(request.model);
+    expect(message.usage).toMatchObject({ speed, service_tier: "standard", output_tokens: 8 });
+  });
+
+  it("uses final serving metadata when a later usage event updates speed or capacity tier", async () => {
+    stubStream(
+      [
+        start({ speed: "fast", service_tier: "priority" }),
+        event("message_delta", {
+          usage: { output_tokens: 8, speed: "standard", service_tier: "standard" },
+        }),
+        event("message_stop"),
+      ].join(""),
+    );
+
+    const message = await new AnthropicClient().streamMessage({ ...request, speed: "fast" });
+
+    expect(message.usage).toMatchObject({
+      speed: "standard",
+      service_tier: "standard",
+      output_tokens: 8,
+    });
+  });
+
   it("preserves thinking signatures, redacted blocks, tool JSON, citations, and cache details", async () => {
     stubStream(
       [

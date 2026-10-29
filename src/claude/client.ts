@@ -15,6 +15,7 @@ import type {
   AnthropicMessageParam,
   AnthropicUsage,
 } from "../anthropic/client.js";
+import type { LlmSpeed } from "../model-selection.js";
 
 export type ClaudeToolContext = { callId: string; turn: number; toolIndex: number };
 export type ClaudeToolResult = {
@@ -30,6 +31,7 @@ export type ClaudeTool = {
 };
 export type ClaudeQueryRequest = {
   model: string;
+  speed?: LlmSpeed;
   system?: string;
   messages: AnthropicMessageParam[];
   effort?: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
@@ -50,6 +52,8 @@ export type ClaudeQueryResult = {
   usage: AnthropicUsage;
   structuredOutput?: unknown;
   finishReason?: string;
+  effectiveSpeed?: LlmSpeed;
+  serviceTier?: string;
 };
 
 export class ClaudeSubscriptionError extends Error {
@@ -63,7 +67,7 @@ function abortError(): Error {
   return new DOMException("The Claude query was aborted.", "AbortError");
 }
 
-/** Keep the local OAuth login, while preventing API/cloud credentials or request overrides. */
+/** Keep subscription OAuth auth, while preventing API/cloud credentials or request overrides. */
 function subscriptionEnvironment(maxOutputTokens?: number): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -75,6 +79,8 @@ function subscriptionEnvironment(maxOutputTokens?: number): Record<string, strin
       continue;
     env[key] = value;
   }
+  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  if (oauthToken?.trim()) env.CLAUDE_CODE_OAUTH_TOKEN = oauthToken;
   env.CLAUDE_AGENT_SDK_CLIENT_APP = "@ljoukov/llm";
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
   env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION = "false";
@@ -83,15 +89,19 @@ function subscriptionEnvironment(maxOutputTokens?: number): Record<string, strin
   return env;
 }
 
-function assertSubscription(account: AccountInfo): void {
+function assertSubscription(account: AccountInfo, oauthTokenForwarded: boolean): void {
   const plan = account.subscriptionType?.trim().toLowerCase() ?? "";
+  // Claude Code reports the environment token source instead of a subscription
+  // plan for setup-token/headless auth. The CLI validates the token itself.
+  const tokenOnly =
+    oauthTokenForwarded && !plan && account.tokenSource === "CLAUDE_CODE_OAUTH_TOKEN";
   if (
     account.apiProvider !== "firstParty" ||
-    !/(?:^|\s)(?:pro|max|team|enterprise)(?:$|\s)/u.test(plan) ||
+    (!tokenOnly && !/(?:^|\s)(?:pro|max|team|enterprise)(?:$|\s)/u.test(plan)) ||
     (account.apiKeySource !== undefined && !["none", "oauth"].includes(account.apiKeySource))
   ) {
     throw new ClaudeSubscriptionError(
-      "Claude subscription models require Claude Code signed into a Pro, Max, Team, or Enterprise Claude account. Run `claude auth login`; API-key and cloud-provider authentication are not used.",
+      "Claude subscription models require Claude Code signed into a Pro, Max, Team, or Enterprise Claude account, or an explicit CLAUDE_CODE_OAUTH_TOKEN selected by Claude Code. Run `claude auth login` or supply a token from `claude setup-token`; API-key and cloud-provider authentication are not used.",
     );
   }
 }
@@ -210,6 +220,8 @@ function mcpContent(content: ClaudeToolResult["content"]) {
 }
 
 function addUsage(total: AnthropicUsage, usage: AnthropicUsage): void {
+  if (usage.speed !== undefined) total.speed = usage.speed;
+  if (usage.service_tier !== undefined) total.service_tier = usage.service_tier;
   for (const key of [
     "input_tokens",
     "output_tokens",
@@ -236,9 +248,30 @@ function addUsage(total: AnthropicUsage, usage: AnthropicUsage): void {
   }
 }
 
+function servingMetadata(usage: AnthropicUsage): {
+  effectiveSpeed?: LlmSpeed;
+  serviceTier?: string;
+} {
+  return {
+    ...(usage.speed === "standard" || usage.speed === "fast"
+      ? { effectiveSpeed: usage.speed }
+      : {}),
+    ...(typeof usage.service_tier === "string" ? { serviceTier: usage.service_tier } : {}),
+  };
+}
+
 /** One official Agent SDK session owns the model/tool loop for the entire call. */
 export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<ClaudeQueryResult> {
   if (request.signal?.aborted) throw abortError();
+  if (
+    request.speed !== undefined &&
+    request.speed !== "standard" &&
+    (request.speed !== "fast" || request.model !== "claude-opus-5-5")
+  ) {
+    throw new ClaudeSubscriptionError(
+      `Claude subscription speed ${request.speed} is not supported for ${request.model}.`,
+    );
+  }
   if (
     request.maxSteps !== undefined &&
     (!Number.isInteger(request.maxSteps) || request.maxSteps < 1)
@@ -388,6 +421,7 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
         : {},
       strictMcpConfig: true,
       settingSources: [],
+      ...(request.speed !== undefined ? { settings: { fastMode: request.speed === "fast" } } : {}),
       extraArgs: { "safe-mode": null },
       plugins: [],
       skills: [],
@@ -486,8 +520,9 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
         ],
       },
     };
+    const oauthTokenForwarded = Boolean(options.env?.CLAUDE_CODE_OAUTH_TOKEN?.trim());
     activeQuery = query({ prompt, options });
-    assertSubscription(await activeQuery.accountInfo());
+    assertSubscription(await activeQuery.accountInfo(), oauthTokenForwarded);
     if (controller.signal.aborted) throw abortError();
     releaseInput(true);
     for await (const message of activeQuery) {
@@ -544,6 +579,10 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
             const value = event.usage[key];
             if (typeof value === "number") current.usage[key] = value;
           }
+          const servingUsage = event.usage as Partial<AnthropicUsage>;
+          if (servingUsage.speed !== undefined) current.usage.speed = servingUsage.speed;
+          if (servingUsage.service_tier !== undefined)
+            current.usage.service_tier = servingUsage.service_tier;
           finishReason = current.stop_reason ?? undefined;
         } else if (event.type === "message_stop") flushAssistant();
       } else if (message.type === "assistant" && !message.parent_tool_use_id) {
@@ -601,12 +640,21 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
     }
     // SDK modelUsage uses a different accounting basis; the native usage counters
     // preserve the input/cache split expected by the public provider interface.
-    const usage: AnthropicUsage = finalResult ? { ...finalResult.usage } : aggregateUsage;
+    const usage: AnthropicUsage = finalResult
+      ? {
+          ...(aggregateUsage.speed !== undefined ? { speed: aggregateUsage.speed } : {}),
+          ...(aggregateUsage.service_tier !== undefined
+            ? { service_tier: aggregateUsage.service_tier }
+            : {}),
+          ...finalResult.usage,
+        }
+      : aggregateUsage;
     return {
       text,
       thoughts,
       model,
       usage,
+      ...servingMetadata(usage),
       ...(structuredOutput !== undefined ? { structuredOutput } : {}),
       ...(finishReason ? { finishReason } : {}),
     };
@@ -615,7 +663,14 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
     if (request.signal?.aborted) throw abortError();
     // Some CLI versions interrupt the iterator after a terminal PostToolUse hook.
     if (terminal)
-      return { text, thoughts, model, usage: aggregateUsage, finishReason: "terminal_tool" };
+      return {
+        text,
+        thoughts,
+        model,
+        usage: aggregateUsage,
+        finishReason: "terminal_tool",
+        ...servingMetadata(aggregateUsage),
+      };
     throw error;
   } finally {
     releaseInput(false);

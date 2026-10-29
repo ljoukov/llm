@@ -6,21 +6,23 @@ import {
   assertIntegrationCredentialsForModels,
   integrationModelLabel,
   openAiIntegrationModels,
+  openAiIntegrationSpeedVariants,
   resolveIntegrationRequestedModels,
 } from "./integration-env.js";
 
 const allSupportedOpenAiTextModels = openAiIntegrationModels();
-const supportedOpenAiTextModels = process.env.LLM_INTEGRATION_MODELS?.trim()
+const requestedOpenAiTextModels = process.env.LLM_INTEGRATION_MODELS?.trim()
   ? resolveIntegrationRequestedModels()
   : allSupportedOpenAiTextModels;
 if (
-  supportedOpenAiTextModels.length === 0 ||
-  supportedOpenAiTextModels.some((ref) => ref.provider !== "openai")
+  requestedOpenAiTextModels.length === 0 ||
+  requestedOpenAiTextModels.some((ref) => ref.provider !== "openai")
 ) {
   throw new Error(
-    `LLM_INTEGRATION_MODELS must select supported OpenAI text routes; received: ${supportedOpenAiTextModels.map(integrationModelLabel).join(", ")}`,
+    `LLM_INTEGRATION_MODELS must select supported OpenAI text routes; received: ${requestedOpenAiTextModels.map(integrationModelLabel).join(", ")}`,
   );
 }
+const supportedOpenAiTextModels = openAiIntegrationSpeedVariants(requestedOpenAiTextModels);
 assertIntegrationCredentialsForModels(supportedOpenAiTextModels);
 
 async function streamToStrings(call: ReturnType<typeof streamText>): Promise<{
@@ -66,6 +68,8 @@ describe.concurrent("integration: supported OpenAI text models", () => {
       expect(result.usage?.totalTokens).toBeTypeOf("number");
       expect(result.provider).toBe("openai");
       expect(result.access).toBe(model.access ?? "api");
+      expect(result.requestedSpeed).toBe(model.speed);
+      expect(result.modelVersion).not.toMatch(/-fast$/u);
       if (model.access === "subscription") {
         expect(result.costUsd).toBeNull();
         expect(result.costSource).toBe("subscription");

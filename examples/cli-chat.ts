@@ -10,7 +10,8 @@ import {
   createFilesystemToolSetForModel,
   createNodeAgentFilesystem,
   isLlmTextModelId,
-  parseModelRef,
+  resolveModelRef,
+  LLM_SPEEDS,
   loadLocalEnv,
   streamAgentLoop,
   type AgentLoopStream,
@@ -18,9 +19,11 @@ import {
   type LlmThinkingLevel,
   type LlmStreamEvent,
   type LlmTextModelSelection,
+  type LlmSpeed,
 } from "../src/index.js";
 
-const DEFAULT_MODEL = "openai:subscription:gpt-5.6-sol-fast";
+const DEFAULT_MODEL = "openai:subscription:gpt-5.6-sol";
+const DEFAULT_SPEED: LlmSpeed = "fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
 const DEFAULT_MODEL_TOOLS = [{ type: "web-search", mode: "live" }] as const;
 const DEFAULT_SUBAGENT_TOOL_NAMES = [
@@ -32,7 +35,7 @@ const DEFAULT_SUBAGENT_TOOL_NAMES = [
 ] as const;
 const CLI_OPTIONS = resolveCliOptions(process.argv.slice(2));
 const MODEL = CLI_OPTIONS.model;
-const MODEL_SELECTION = textModelSelection(MODEL);
+const MODEL_SELECTION = textModelSelection(MODEL, CLI_OPTIONS.speed);
 const THINKING_LEVEL = CLI_OPTIONS.thinkingLevel;
 const FILESYSTEM_TOOL_NAMES = Object.keys(
   createFilesystemToolSetForModel(MODEL_SELECTION.model),
@@ -92,26 +95,27 @@ function isThinkingLevel(value: string): value is LlmThinkingLevel {
   );
 }
 
-function textModelSelection(label: string): LlmTextModelSelection {
-  if (label.includes(":")) {
-    const selection = parseModelRef(label);
-    if (isLlmTextModelId(selection.model)) {
-      return selection as LlmTextModelSelection;
-    }
-  } else if (!label.includes("/") && isLlmTextModelId(label)) {
-    return { model: label } as LlmTextModelSelection;
+function textModelSelection(label: string, speed?: LlmSpeed): LlmTextModelSelection {
+  const selection = resolveModelRef({ model: label, speed });
+  if (isLlmTextModelId(selection.model)) {
+    return selection as LlmTextModelSelection;
   }
   throw new Error(`Expected a known text model ID or provider:access:model: ${label}`);
 }
 
 function resolveCliOptions(args: readonly string[]): {
   readonly model: string;
+  readonly speed?: LlmSpeed;
   readonly thinkingLevel: LlmThinkingLevel;
 } {
   const program = new Command()
     .name("cli-chat")
     .description("Interactive local CLI chat with tool loop telemetry.")
     .option("--model <id>", "Known model ID or provider:access:model reference.")
+    .option(
+      "--speed <speed>",
+      "Processing speed: standard, fast, ultrafast (default: fast for the default model; provider default with --model).",
+    )
     .option(
       "--thinking-level <level>",
       "Thinking level: low, medium, high, xhigh, max, ultra.",
@@ -120,13 +124,23 @@ function resolveCliOptions(args: readonly string[]): {
     .showHelpAfterError();
 
   program.parse(args, { from: "user" });
-  const options = program.opts<{ model?: string; thinkingLevel?: string }>();
+  const options = program.opts<{ model?: string; speed?: string; thinkingLevel?: string }>();
 
   const modelRaw = options.model?.trim() ?? DEFAULT_MODEL;
+  const speedRaw =
+    options.speed?.trim().toLowerCase() ??
+    (options.model === undefined ? DEFAULT_SPEED : undefined);
+  if (speedRaw !== undefined && !(LLM_SPEEDS as readonly string[]).includes(speedRaw)) {
+    process.stderr.write(`Unsupported --speed value: ${speedRaw}\n`);
+    process.exit(1);
+  }
+  const speed = speedRaw as LlmSpeed | undefined;
   try {
-    textModelSelection(modelRaw);
-  } catch {
-    process.stderr.write(`Unsupported --model value: ${modelRaw}\n`);
+    textModelSelection(modelRaw, speed);
+  } catch (error) {
+    process.stderr.write(
+      `Unsupported model/speed selection: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
     process.exit(1);
   }
 
@@ -138,6 +152,7 @@ function resolveCliOptions(args: readonly string[]): {
 
   return {
     model: modelRaw,
+    speed,
     thinkingLevel: thinkingLevelRaw,
   };
 }
@@ -520,6 +535,7 @@ function printBanner(): void {
   process.stdout.write(
     `${ANSI.bold}CLI Chat Example${ANSI.reset}\n` +
       `${ANSI.dim}model:${ANSI.reset} ${MODEL}  ` +
+      `${ANSI.dim}speed:${ANSI.reset} ${CLI_OPTIONS.speed ?? "provider default"}  ` +
       `${ANSI.dim}thinking:${ANSI.reset} ${THINKING_LEVEL}  ` +
       `${ANSI.dim}cwd:${ANSI.reset} ${process.cwd()}\n` +
       `${ANSI.dim}model tools:${ANSI.reset} ${modelToolSummary}\n` +
@@ -538,6 +554,7 @@ function printHelp(usePromptAwareOutput = true): void {
     `${ANSI.dim}  /exit${ANSI.reset} quit\n` +
     `${ANSI.dim}Startup flags:${ANSI.reset}\n` +
     `${ANSI.dim}  --model <id>${ANSI.reset} choose model (default: ${DEFAULT_MODEL})\n` +
+    `${ANSI.dim}  --speed <speed>${ANSI.reset} standard|fast|ultrafast (default: ${DEFAULT_SPEED} for the default model; provider default with --model)\n` +
     `${ANSI.dim}  --thinking-level <level>${ANSI.reset} low|medium|high|xhigh|max (default: ${DEFAULT_THINKING_LEVEL})\n` +
     `${ANSI.dim}During a run: type a message and press Enter to append steering without interrupting.${ANSI.reset}\n`;
 

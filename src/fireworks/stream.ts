@@ -19,6 +19,7 @@ type ReasoningDetail = {
 
 export type FireworksChatCompletion = {
   model: string;
+  service_tier?: string;
   choices: Array<{
     index: number;
     finish_reason: string | null;
@@ -38,6 +39,7 @@ export type FireworksChatCompletion = {
 
 type StreamChunk = {
   model?: string;
+  service_tier?: string;
   usage?: unknown;
   provider_metadata?: Record<string, unknown>;
   choices?: Array<{
@@ -115,6 +117,7 @@ export async function streamFireworksChatCompletion(
   signal?.addEventListener("abort", onAbort, { once: true });
 
   let model = typeof request.model === "string" ? request.model : "";
+  let serviceTier: string | undefined;
   let finishReason: string | null = null;
   let content = "";
   let reasoning = "";
@@ -161,6 +164,7 @@ export async function streamFireworksChatCompletion(
       }
       const chunk = next.value;
       if (typeof chunk.model === "string") model = chunk.model;
+      if (typeof chunk.service_tier === "string") serviceTier = chunk.service_tier;
       if (chunk.usage !== null && chunk.usage !== undefined) usage = chunk.usage;
       if (chunk.provider_metadata) {
         providerMetadata = mergeMetadata(providerMetadata ?? {}, chunk.provider_metadata);
@@ -219,6 +223,7 @@ export async function streamFireworksChatCompletion(
     }
     return {
       model,
+      ...(serviceTier !== undefined ? { service_tier: serviceTier } : {}),
       choices: [
         {
           index: 0,

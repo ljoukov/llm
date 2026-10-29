@@ -45,14 +45,22 @@ const result = await generateText({ ...model, input: "Return exactly: OK" });
 
 const subscriptionResult = await generateText({
   provider: "openai",
-  model: "gpt-6.1-sol-fast",
+  model: "gpt-6.1-sol",
   access: "subscription",
+  speed: "fast",
   input: "Return exactly: OK",
 });
 
-// Configuration and CLI values can use an explicit provider:access:model slug.
-const selection = parseModelRef("openai:subscription:gpt-6.1-sol-fast");
-const configuredResult = await generateText({ ...selection, input: "Return exactly: OK" });
+// Qualified strings work directly in every generation and agent request.
+const configuredResult = await generateText({
+  model: "openai:subscription:gpt-6.1-sol",
+  speed: "fast",
+  input: "Return exactly: OK",
+});
+
+// The parser also builds a reusable structured selection from configuration.
+const selection = parseModelRef("openai:subscription:gpt-6.1-sol");
+const parsedResult = await generateText({ ...selection, speed: "fast", input: "Return exactly: OK" });
 ```
 
 `access` is `"api"` by default. `"subscription"` selects the provider's locally authenticated subscription transport;
@@ -61,7 +69,7 @@ The discriminated `LlmModelRef` type rejects unsupported provider/model/access c
 
 | Provider | Access | Models |
 | --- | --- | --- |
-| `openai` | API or subscription | Separate closed literal allowlists of native `gpt-*` IDs, including `-fast` variants |
+| `openai` | API or subscription | Separate closed literal allowlists of native `gpt-*` IDs; speed is a separate modifier |
 | `anthropic` | API or subscription | Native `claude-*` IDs on either route |
 | `google` | API | Supported Gemini IDs, authenticated with a Gemini key or Vertex service account |
 | `fireworks` | API | The three listed short IDs below |
@@ -86,29 +94,70 @@ A namespaced ID requires an explicit Vercel provider. Accepting an ID passes the
 controls availability, credentials, limits, supported modalities, tools, structured outputs, and reasoning options.
 OpenAI IDs remain closed allowlists; selecting another provider does not open the direct OpenAI route to arbitrary strings.
 
-`parseModelRef()` requires all three fields: `"<provider>:<api|subscription>:<model>"`. It splits the first two colons and
-preserves the remaining model ID, including any provider-native colons. Object selections are the canonical API.
-For known short IDs, omitting `provider` retains model-based inference and Vercel/Fireworks preference. Prefer explicit
-objects when storing or sharing model configurations.
+`parseModelRef()` requires all three fields: `"<provider>:<api|subscription>:<model>"`. Qualified strings in the
+request's `model` field use the same format. Both forms normalize to the same validated route; contradictory explicit
+`provider` or `access` fields are rejected. The first two colons delimit routing fields and the remaining model ID is
+preserved, including provider-native colons. There is no speed suffix, fourth colon component, or query-string syntax.
+For known short IDs, omitting `provider` retains model-based inference and Vercel/Fireworks preference. Subscription-only
+models require an explicit subscription route even when supplied as a bare string.
 
-### Migrating to version 12
+### Processing speed
 
-Version 12 removes route-encoding aliases without compatibility fallbacks:
+Use `speed: "standard" | "fast" | "ultrafast"` independently of model identity and `thinkingLevel`:
 
-| Previous selection | Version 12 selection |
+```ts
+const selection = {
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6.1-sol",
+  speed: "fast",
+} satisfies LlmModelRef;
+
+const result = await generateText({ ...selection, input: "Hello" });
+```
+
+Omitting `speed` preserves the provider's default; explicit `"standard"` requests standard processing. Supported speeds
+depend on provider, access mode, and model. Unsupported combinations fail validation. OpenAI supports fast processing
+on listed text models and ultrafast on GPT-6.1 Sol and GPT-6 Astra. Anthropic fast processing is supported only on
+Claude Opus 5.5. Vercel fast routing is supported for known `openai/<base-model>` text IDs and
+`anthropic/claude-opus-5-5`; other Gateway models currently support standard speed only. Image routes do not accept a
+speed modifier. Use `listModels()` to inspect each route's `supportedSpeeds`.
+
+Adapters follow [OpenAI service tiers](https://developers.openai.com/api/docs/guides/fast-mode),
+[Anthropic speed](https://platform.claude.com/docs/en/build-with-claude/fast-mode), and
+[Vercel fast routing](https://vercel.com/docs/ai-gateway/models-and-providers/fast-mode).
+Claude Code fast processing uses usage credits rather than included subscription limits;
+see [Claude Code fast mode](https://code.claude.com/docs/en/fast-mode).
+
+Results and usage metadata keep the native `modelVersion` and expose `requestedSpeed`, `effectiveSpeed`, and
+`serviceTier` separately when available. Actual serving metadata takes precedence in cost estimates when a provider
+serves a different tier. Subagents inherit the complete resolved provider, access, model, and speed; agent-facing tools
+do not expose model or speed overrides.
+
+### Migrating to version 13
+
+Version 13 removes synthetic `-fast` model IDs completely. Leading `chatgpt-` route aliases are also rejected.
+There are no backward-compatibility aliases or automatic suffix/prefix rewrites. Update configuration strings,
+application requests, scripts, benchmarks, and saved agent settings before upgrading. See [release notes](./CHANGELOG.md).
+
+| Removed selection | Version 13 replacement |
 | --- | --- |
-| `model: "chatgpt-gpt-6.1-sol"` | `provider: "openai", model: "gpt-6.1-sol", access: "subscription"` |
-| `model: "chatgpt-gpt-6.1-sol-fast"` | `provider: "openai", model: "gpt-6.1-sol-fast", access: "subscription"` |
-| `model: "sonnet-5-5"` | `provider: "anthropic", model: "claude-sonnet-5-5"` |
-| `model: "claude-sonnet-5-5"` for a subscription | `provider: "anthropic", model: "claude-sonnet-5-5", access: "subscription"` |
-| `model: "chatgpt-gpt-image-2"` | `provider: "openai", model: "gpt-image-2", access: "subscription"` |
-| `provider: "claude"` or `provider: "chatgpt"` | `provider: "anthropic"` or `provider: "openai"`, with `access: "subscription"` |
-| Subscription API-equivalent estimate in `costUsd` | `costUsd: null`, `costSource: "subscription"`, separate `apiEquivalentCostUsd` |
-| Unknown model price represented as `0` | `costUsd: null`, `costSource: "unknown"` |
+| `{ model: "gpt-6.1-sol-fast" }` | `{ model: "gpt-6.1-sol", speed: "fast" }` |
+| `{ provider: "openai", access: "subscription", model: "gpt-6.1-sol-fast" }` | `{ provider: "openai", access: "subscription", model: "gpt-6.1-sol", speed: "fast" }` |
+| `{ model: "chatgpt-gpt-6.1-sol-fast" }` | `{ model: "openai:subscription:gpt-6.1-sol", speed: "fast" }` |
+| `{ model: "chatgpt-gpt-6.1-sol" }` | `{ model: "openai:subscription:gpt-6.1-sol" }` |
+| `parseModelRef("openai:subscription:gpt-6.1-terra-fast")` | `{ ...parseModelRef("openai:subscription:gpt-6.1-terra"), speed: "fast" }` |
+| `{ model: "chatgpt-gpt-image-2" }` | `{ model: "openai:subscription:gpt-image-2" }` |
+| CLI `--model openai:subscription:gpt-6.1-sol-fast` | `--model openai:subscription:gpt-6.1-sol --speed fast` |
+
+`listModels()` returns each base model once and describes supported speeds separately. Pricing estimators also take
+`speed` explicitly; passing a removed model ID does not recover its previous rates. Known Gateway fast-serving aliases
+are also rejected and excluded from discovery: select their base model with `speed: "fast"`. Unrelated provider-native
+IDs whose names happen to end in `-fast` remain opaque catalog IDs and are never rewritten by this package.
 
 The `CHATGPT_*` environment variables still configure the OpenAI subscription transport and its token-provider/proxy
-services; their names are independent of public model selection. `-fast` remains a typed variant that sends the base
-OpenAI model with priority processing. Subagents inherit the complete resolved selection.
+services. The separate `experimental-chatgpt-*` namespace remains an explicit subscription-only exception for private
+model suffixes; it does not restore the removed leading `chatgpt-` aliases or arbitrary direct API model IDs.
 
 ## Environment variables
 
@@ -184,15 +233,29 @@ Keep provider keys in server-side environment variables or a git-ignored `.env.l
 
 ### Claude Code subscription models
 
-Install Claude Code and sign in with your Claude subscription using `claude auth login`. Requests with
-`provider: "anthropic", access: "subscription"` reuse that local login through the Claude Agent SDK, which launches
-Claude Code as a subprocess. They require a local
+Install Claude Code and sign in with your Claude subscription using `claude auth login`. For headless environments,
+generate a subscription token with `claude setup-token` and supply it as `CLAUDE_CODE_OAUTH_TOKEN` at runtime.
+Requests with `provider: "anthropic", access: "subscription"` use that token or the local login through the Claude
+Agent SDK, which launches Claude Code as a subprocess. They require a
 Node.js environment where Claude Code can run; the subscription route is unsuitable for edge runtimes.
 The executable defaults to `claude` on `PATH`; set `LLM_CLAUDE_EXECUTABLE` to use a specific installation.
 
 The library keeps API-key authentication separate from this route so a parent process's `ANTHROPIC_API_KEY` cannot
-silently turn a subscription call into an API-key call. It does not read or copy raw OAuth credentials into the library.
+silently turn a subscription call into an API-key call. The explicit OAuth environment token is forwarded only to
+Claude Code; the library does not extract credentials from Claude Code's login store. Token authentication can omit
+the SDK's subscription-plan metadata; the library checks the selected credential source and lets Claude Code validate
+the token. Missing metadata without an explicit OAuth token, API-key sources, and cloud-provider routes are rejected.
 Claude subscription limits and any enabled Claude Code extra usage apply.
+
+In a cloud environment, make the token available to the process running this library, install Claude Code on `PATH`
+(or set `LLM_CLAUDE_EXECUTABLE`), and permit its outbound connections. A successful standalone `claude -p` check
+verifies the CLI's authentication; also test the library route:
+
+```sh
+LLM_INTEGRATION_CLAUDE_SUBSCRIPTION=1 \
+LLM_INTEGRATION_MODELS=anthropic:subscription:claude-haiku-5-5 \
+npm run test:integration:claude-subscription
+```
 
 ### Vercel AI Gateway and Fireworks
 
@@ -884,7 +947,8 @@ const result = await generateText({
 console.log(result.provider, result.access); // "anthropic", "subscription"
 ```
 
-Each call launches the Claude Code runtime through the Agent SDK and uses its existing local subscription login.
+Each call launches the Claude Code runtime through the Agent SDK and uses `CLAUDE_CODE_OAUTH_TOKEN` when supplied,
+or its existing local subscription login.
 The subscription route supports text/thought streaming, schema-validated JSON, application function tools, terminal
 tools, cancellation, steering, and inherited subagent models. Only the caller's tools are enabled; Claude Code's
 built-in tools and local project customizations are disabled. Previous messages are supplied as a role-labeled
@@ -1042,16 +1106,15 @@ For subscription calls, estimated costs describe equivalent API usage. They are 
 $12.50 cache writes, and $50 output per million tokens; requests above 272,000 input tokens apply 2× input/cache rates
 and 1.5× output rates. `usage.cacheWriteTokens` is populated only when reported.
 
-Every supported text variant has a `-fast` form that sends the same base model with priority processing enabled
-(`service_tier="priority"`). Priority rates are twice standard rates.
+Use the native text model ID with `speed: "fast"` for faster processing. OpenAI receives `service_tier="fast"`;
+explicit `speed: "standard"` maps to `service_tier="default"`. Fast API-equivalent rates are twice standard rates.
 [Official pricing](https://developers.openai.com/api/docs/pricing) includes cache writes and the long-input rates.
 
 Supported OpenAI IDs are fixed literal unions in code:
 
 - API text: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6` (Sol alias), `gpt-5.6-sol`,
-  `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each.
-- Subscription text: the same named variants and `-fast` forms, plus `gpt-6.1-terra` and `gpt-6.1-terra-fast`,
-  except the generic `gpt-5.6` and `gpt-5.6-fast` aliases.
+  `gpt-5.6-terra`, and `gpt-5.6-luna`.
+- Subscription text: the same named models, plus `gpt-6.1-terra`, except the generic `gpt-5.6` alias.
 - Images: `gpt-image-2` on either route; select `access: "subscription"` explicitly for ChatGPT/Codex.
 
 The explicit OpenAI subscription route also accepts the existing `experimental-chatgpt-*` prefix for private model
@@ -1068,13 +1131,14 @@ Select GPT-6.1 Terra through ChatGPT/Codex subscription access:
 const result = await generateText({
   provider: "openai",
   access: "subscription",
-  model: "gpt-6.1-terra-fast", // Or "gpt-6.1-terra" for standard processing.
+  model: "gpt-6.1-terra",
+  speed: "fast",
   input: "Return exactly: OK",
 });
 ```
 
 GPT-6.1 Terra API-equivalent estimates use $1 input, $0.05 cached input, $1.25 cache writes, and $5 output per million
-tokens, with the same priority and long-input multipliers described above.
+tokens, with the same fast and long-input multipliers described above.
 
 ## Model discovery and costs
 
@@ -1098,7 +1162,7 @@ console.log(result.costUsd, result.costSource);
 ```
 
 `listModels()` returns model selections plus available names, descriptions, context/output limits, capabilities, and
-pricing. Vercel reads its [public `/v1/models` API](https://ai-gateway.vercel.sh/v1/models); no credential is sent to that catalog. xAI queries the authenticated
+pricing, and supported processing speeds. Base models appear once; speed choices are metadata. Vercel reads its [public `/v1/models` API](https://ai-gateway.vercel.sh/v1/models); no credential is sent to that catalog. xAI queries the authenticated
 API or subscription catalog. Other providers return the package's supported local allowlist. Discovery does not
 expand OpenAI's closed model types.
 
@@ -1684,8 +1748,11 @@ Interactive CLI chat with mid-run steering, thought streaming, filesystem tools 
 the current directory, subagents enabled, and `Esc` interrupt support:
 
 ```bash
-npm run example:cli-chat
+npm run example:cli-chat -- --model openai:subscription:gpt-6.1-sol --speed fast
 ```
+
+The CLI's implicit default model uses fast speed. Supplying `--model` without `--speed` preserves that model's provider
+default, so selecting a model with standard speed only does not implicitly request fast processing.
 
 ## Testing
 
@@ -1710,10 +1777,11 @@ npm run test:integration:new-models
 `LLM_INTEGRATION_MODELS` can narrow a matrix to a comma-separated list of canonical `provider:access:model` selections:
 
 ```sh
-LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.1-sol-fast npm run test:integration:openai-models
+LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.1-sol LLM_INTEGRATION_SPEEDS=standard,fast npm run test:integration:openai-models
 ```
 
-The OpenAI matrix runs selected models in parallel. To test the Gemini Developer API
+`LLM_INTEGRATION_SPEEDS` selects a comma-separated list of processing speeds; the matrix filters unsupported
+model/speed combinations. The OpenAI matrix runs selected models and speeds in parallel. To test the Gemini Developer API
 when a Vertex service account is configured in `.env.local`, use `GOOGLE_SERVICE_ACCOUNT_JSON= npm run test:integration:new-models`.
 
 Large-file live integration tests are opt-in because they upload multi-megabyte fixtures to real canonical/provider

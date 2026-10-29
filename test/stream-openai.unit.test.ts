@@ -13,6 +13,7 @@ import {
 
 let capturedRequest: any = null;
 let finalResponseModelOverride: string | undefined;
+let finalResponseServiceTierOverride: string | undefined;
 let finalResponseOutput: unknown[] | undefined;
 let emitDefaultStreamDeltas = true;
 let inputTokenDetails: { cached_tokens?: number; cache_write_tokens?: number } | undefined;
@@ -34,6 +35,7 @@ vi.mock("../src/openai/calls.js", () => {
         id: "resp_123",
         model: finalResponseModelOverride ?? capturedRequest?.model ?? "gpt-6-luna",
         status: "completed",
+        service_tier: finalResponseServiceTierOverride ?? capturedRequest?.service_tier,
         ...(finalResponseOutput ? { output: finalResponseOutput } : {}),
         usage: {
           input_tokens: 10,
@@ -65,6 +67,7 @@ describe("streamText (OpenAI)", () => {
   beforeEach(() => {
     capturedRequest = null;
     finalResponseModelOverride = undefined;
+    finalResponseServiceTierOverride = undefined;
     inputTokenDetails = undefined;
     finalResponseOutput = undefined;
     emitDefaultStreamDeltas = true;
@@ -154,34 +157,89 @@ describe("streamText (OpenAI)", () => {
   });
 
   it.each([
-    ["gpt-6.1-sol-fast", "gpt-6.1-sol"],
-    ["gpt-6-astra-fast", "gpt-6-astra"],
-    ["gpt-6-sol-fast", "gpt-6-sol"],
-    ["gpt-6-luna-fast", "gpt-6-luna"],
-    ["gpt-5.6-fast", "gpt-5.6"],
-    ["gpt-5.6-sol-fast", "gpt-5.6-sol"],
-    ["gpt-5.6-terra-fast", "gpt-5.6-terra"],
-    ["gpt-5.6-luna-fast", "gpt-5.6-luna"],
-  ] as const)("maps %s to %s with priority service tier", async (model, providerModel) => {
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+  ] as const)("requests fast serving without changing %s", async (model) => {
     const { generateText } = await import("../src/llm.js");
 
-    await generateText({ model, input: "hi" });
+    const result = await generateText({ model, speed: "fast", input: "hi" });
 
-    expect(capturedRequest?.model).toBe(providerModel);
-    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(capturedRequest?.model).toBe(model);
+    expect(capturedRequest?.service_tier).toBe("fast");
+    expect(result.modelVersion).toBe(model);
+    expect(result.requestedSpeed).toBe("fast");
+    expect(result.effectiveSpeed).toBe("fast");
+    expect(result.serviceTier).toBe("fast");
   });
 
-  it("maps gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {
+  it.each([
+    ["standard", "default", 0.00008],
+    ["fast", "fast", 0.00016],
+    ["ultrafast", "ultrafast", 0.00048],
+  ] as const)("maps explicit %s speed independently of model identity", async (speed, serviceTier, expectedCost) => {
     const { generateText } = await import("../src/llm.js");
-
     const result = await generateText({
-      model: "gpt-6.1-sol-fast",
+      model: "openai:api:gpt-6.1-sol",
+      speed,
       input: "hi",
     });
 
     expect(capturedRequest?.model).toBe("gpt-6.1-sol");
-    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(capturedRequest?.service_tier).toBe(serviceTier);
+    expect(result.model).toBe("gpt-6.1-sol");
     expect(result.modelVersion).toBe("gpt-6.1-sol");
+    expect(result.requestedSpeed).toBe(speed);
+    expect(result.effectiveSpeed).toBe(speed);
+    expect(result.serviceTier).toBe(serviceTier);
+    expect(result.costUsd).toBeCloseTo(expectedCost, 10);
+  });
+
+  it("records a provider downgrade and prices the actual standard tier", async () => {
+    finalResponseServiceTierOverride = "default";
+    const { streamText } = await import("../src/llm.js");
+    const call = streamText({ model: "openai:api:gpt-6.1-sol", speed: "fast", input: "hi" });
+    const events: any[] = [];
+    for await (const event of call.events) events.push(event);
+    const result = await call.result;
+
+    expect(capturedRequest?.service_tier).toBe("fast");
+    expect(result).toMatchObject({
+      requestedSpeed: "fast",
+      effectiveSpeed: "standard",
+      serviceTier: "default",
+    });
+    expect(result.costUsd).toBeCloseTo(0.00008, 10);
+    expect(events.find((event) => event.type === "usage")).toMatchObject({
+      requestedSpeed: "fast",
+      effectiveSpeed: "standard",
+      serviceTier: "default",
+    });
+  });
+
+  it("normalizes the provider's legacy priority tier metadata to fast speed", async () => {
+    finalResponseServiceTierOverride = "priority";
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({ model: "gpt-6.1-sol", speed: "fast", input: "hi" });
+    expect(result).toMatchObject({ effectiveSpeed: "fast", serviceTier: "priority" });
+    expect(result.costUsd).toBeCloseTo(0.00016, 10);
+  });
+
+  it.each([
+    "gpt-6.1-sol-fast",
+    "chatgpt-gpt-6.1-sol",
+    "chatgpt-gpt-6.1-sol-fast",
+  ])("rejects removed model alias %s", async (model) => {
+    const { generateText } = await import("../src/llm.js");
+    await expect(
+      generateText({ provider: "openai", model, input: "hi" } as never),
+    ).rejects.toThrow();
+    expect(capturedRequest).toBeNull();
   });
 
   it("maps the hosted image-generation tool and returns its image inline", async () => {
@@ -249,17 +307,18 @@ describe("streamText (OpenAI)", () => {
     ).rejects.toThrow("outputCompression requires outputFormat to be jpeg or webp");
   });
 
-  it("prices gpt-6.1-sol-fast at priority rates when OpenAI returns a concrete model version", async () => {
+  it("prices explicit fast speed when OpenAI returns a concrete model version", async () => {
     finalResponseModelOverride = "gpt-6.1-sol-2026-10-03";
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "gpt-6.1-sol-fast",
+      model: "gpt-6.1-sol",
+      speed: "fast",
       input: "hi",
     });
 
     expect(capturedRequest?.model).toBe("gpt-6.1-sol");
-    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(capturedRequest?.service_tier).toBe("fast");
     expect(result.modelVersion).toBe("gpt-6.1-sol-2026-10-03");
     expect(result.costUsd).toBeCloseTo(0.00016, 8);
   });

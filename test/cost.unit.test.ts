@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
+import { getOpenAiPricing } from "../src/openai/pricing.js";
+import type { LlmSpeed } from "../src/model-selection.js";
 
 describe("estimateCallCostUsd", () => {
   it.each([
@@ -15,19 +17,139 @@ describe("estimateCallCostUsd", () => {
     ["gpt-5.6-sol", 0.01564],
     ["gpt-5.6-terra", 0.00902],
     ["gpt-5.6-luna", 0.000902],
-  ] as const)("prices %s standard, priority, and concrete versions", (modelId, expectedCost) => {
+  ] as const)("prices %s standard, fast, and concrete versions", (modelId, expectedCost) => {
     const tokens = {
       promptTokens: 1000,
       cachedTokens: 100,
       responseTokens: 500,
       thinkingTokens: 100,
     };
-    const estimate = (model: string, pricingModelId?: string) =>
-      estimateCallCostUsd({ modelId: model, pricingModelId, tokens, responseImages: 0 });
+    const estimate = (model: string, pricingModelId?: string, speed?: LlmSpeed) =>
+      estimateCallCostUsd({ modelId: model, pricingModelId, speed, tokens, responseImages: 0 });
     expect(estimate(modelId)).toBeCloseTo(expectedCost, 10);
-    expect(estimate(modelId + "-fast")).toBeCloseTo(expectedCost * 2, 10);
-    expect(estimate(modelId + "-2026-10-03")).toBeCloseTo(expectedCost, 10);
-    expect(estimate(modelId + "-2026-10-03", modelId + "-fast")).toBeCloseTo(expectedCost * 2, 10);
+    expect(estimate(modelId, undefined, "fast")).toBeCloseTo(expectedCost * 2, 10);
+    expect(estimate(`${modelId}-2026-10-03`)).toBeCloseTo(expectedCost, 10);
+    expect(estimate(`${modelId}-2026-10-03`, modelId, "fast")).toBeCloseTo(expectedCost * 2, 10);
+  });
+
+  it.each([
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+  ])("prices %s Ultrafast at the published rates", (modelId) => {
+    const tokens = {
+      promptTokens: 272_001,
+      cachedTokens: 100,
+      cacheWriteTokens: 200,
+      responseTokens: 500,
+      thinkingTokens: 100,
+    };
+    const standard = estimateCallCostUsd({ modelId, tokens, responseImages: 0 });
+    const ultrafast = estimateCallCostUsd({
+      modelId,
+      speed: "ultrafast",
+      tokens,
+      responseImages: 0,
+    });
+    expect(ultrafast).toBeCloseTo((standard as number) * 6, 10);
+    expect(getOpenAiPricing(modelId, "ultrafast")?.cacheWriteRate).toBe(
+      (getOpenAiPricing(modelId)?.cacheWriteRate as number) * 6,
+    );
+  });
+
+  it("does not price unsupported Ultrafast models", () => {
+    expect(getOpenAiPricing("gpt-6.1-terra", "ultrafast")).toBeUndefined();
+    expect(
+      estimateCallCostUsd({
+        modelId: "gpt-6.1-terra",
+        speed: "ultrafast",
+        tokens: { promptTokens: 1000 },
+        responseImages: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it("uses the served OpenAI tier rather than the requested speed", () => {
+    const options = {
+      provider: "openai",
+      modelId: "gpt-6.1-sol",
+      tokens: { promptTokens: 1000, responseTokens: 1000 },
+      responseImages: 0,
+    };
+    expect(
+      estimateCallCostUsd({ ...options, speed: "fast", effectiveServiceTier: "default" }),
+    ).toBeCloseTo(0.012, 10);
+    expect(estimateCallCostUsd({ ...options, effectiveServiceTier: "priority" })).toBeCloseTo(
+      0.024,
+      10,
+    );
+    expect(estimateCallCostUsd({ ...options, effectiveServiceTier: "ultrafast" })).toBeCloseTo(
+      0.072,
+      10,
+    );
+    expect(estimateCallCostUsd({ ...options, effectiveServiceTier: "flex" })).toBeNull();
+    expect(
+      estimateCallCostUsd({ ...options, effectiveSpeed: "fast", effectiveServiceTier: "default" }),
+    ).toBeCloseTo(0.012, 10);
+    expect(
+      estimateCallCostUsd({ ...options, effectiveSpeed: "standard", effectiveServiceTier: "fast" }),
+    ).toBeCloseTo(0.024, 10);
+    for (const effectiveServiceTier of ["flex", "unknown-tier"]) {
+      expect(
+        estimateCallCostUsd({ ...options, effectiveSpeed: "standard", effectiveServiceTier }),
+      ).toBeNull();
+    }
+  });
+
+  it("keeps Anthropic speed independent of its capacity tier", () => {
+    const options = {
+      provider: "anthropic",
+      modelId: "claude-opus-5-5",
+      tokens: { promptTokens: 1000, cachedTokens: 100, cacheWriteTokens: 200, responseTokens: 500 },
+      responseImages: 0,
+    };
+    const standard = estimateCallCostUsd(options) as number;
+    expect(standard).toBeCloseTo(0.01382, 10);
+    expect(estimateCallCostUsd({ ...options, speed: "fast" })).toBeCloseTo(standard * 2, 10);
+    expect(
+      estimateCallCostUsd({
+        ...options,
+        speed: "fast",
+        effectiveSpeed: "standard",
+        effectiveServiceTier: "priority",
+      }),
+    ).toBeCloseTo(standard, 10);
+    expect(estimateCallCostUsd({ ...options, effectiveServiceTier: "priority" })).toBeCloseTo(
+      standard,
+      10,
+    );
+  });
+
+  it.each([
+    "gpt-6.1-sol-fast",
+    "chatgpt-gpt-6.1-sol",
+    "chatgpt-gpt-6.1-sol-fast",
+    "openai/gpt-6.1-sol-fast",
+    "openai/chatgpt-gpt-6.1-sol",
+    "anthropic/claude-opus-5-5-fast",
+    "anthropic/claude-opus-5-fast",
+  ])("rejects obsolete model pricing aliases: %s", (modelId) => {
+    expect(getOpenAiPricing(modelId)).toBeUndefined();
+    expect(
+      estimateCallCostUsd({
+        modelId,
+        pricingModelId: "gpt-6.1-sol",
+        tokens: { promptTokens: 1000 },
+        responseImages: 0,
+      }),
+    ).toBeNull();
+    expect(
+      estimateCallCostUsd({
+        modelId: "unrecognized-provider-version",
+        pricingModelId: modelId,
+        tokens: { promptTokens: 1000 },
+        responseImages: 0,
+      }),
+    ).toBeNull();
   });
 
   it.each([

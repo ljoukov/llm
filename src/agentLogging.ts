@@ -4,7 +4,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { LlmStreamEvent } from "./llm.js";
-import type { LlmAccess, LlmProvider } from "./model-selection.js";
+import type { LlmAccess, LlmProvider, LlmSpeed } from "./model-selection.js";
 import {
   createLogTextRedactor,
   redactFinalLogText,
@@ -43,6 +43,7 @@ export type AgentLlmCallStartInput = {
   readonly provider: LlmProvider;
   readonly access?: LlmAccess;
   readonly modelId: string;
+  readonly requestedSpeed?: LlmSpeed;
   readonly requestText: string;
   readonly requestMetadata?: Record<string, unknown>;
   readonly attachments?: readonly AgentLlmCallAttachment[];
@@ -80,6 +81,7 @@ function applyCallRouteMetadata(
   payload.provider = input.provider;
   payload.access = input.access ?? "api";
   payload.modelId = input.modelId;
+  payload.requestedSpeed = input.requestedSpeed;
 }
 
 const DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS = 5_000;
@@ -248,6 +250,18 @@ function formatUsd(value: number | null | undefined): string {
     : "unknown";
 }
 
+function speedLogSegments(value: {
+  readonly requestedSpeed?: LlmSpeed;
+  readonly effectiveSpeed?: LlmSpeed;
+  readonly serviceTier?: string;
+}): string[] {
+  return [
+    ...(value.requestedSpeed ? [`requestedSpeed=${value.requestedSpeed}`] : []),
+    ...(value.effectiveSpeed ? [`effectiveSpeed=${value.effectiveSpeed}`] : []),
+    ...(value.serviceTier ? [`serviceTier=${value.serviceTier}`] : []),
+  ];
+}
+
 export function appendToolCallStreamLog(options: {
   readonly event: LlmStreamEvent;
   readonly append: (line: string) => void;
@@ -296,7 +310,7 @@ export function appendAgentStreamEventLog(options: {
       return;
     }
     case "model": {
-      options.append(`model: ${event.modelVersion}`);
+      options.append([`model: ${event.modelVersion}`, ...speedLogSegments(event)].join(" "));
       return;
     }
     case "usage": {
@@ -304,6 +318,7 @@ export function appendAgentStreamEventLog(options: {
         [
           "usage:",
           `modelVersion=${event.modelVersion}`,
+          ...speedLogSegments(event),
           `costUsd=${formatUsd(event.costUsd)}`,
           ...(event.costSource ? [`costSource=${event.costSource}`] : []),
           ...(event.apiEquivalentCostUsd !== undefined
@@ -532,6 +547,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           provider: input.provider,
           access: input.access ?? "api",
           modelId: input.modelId,
+          ...(input.requestedSpeed ? { requestedSpeed: input.requestedSpeed } : {}),
           ...(input.requestMetadata ? { request: sanitiseLogValue(input.requestMetadata) } : {}),
         };
         await writeFile(

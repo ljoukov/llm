@@ -16,6 +16,7 @@ import {
   streamText,
   tool,
   type LlmStreamEvent,
+  type LlmSpeed,
 } from "../../src/index.js";
 import { benchmarkModelSelection, isBenchmarkModel } from "../model-selection.js";
 
@@ -29,7 +30,8 @@ const AGENT_OUTPUT_ROOT = resolve(
   "benchmark-view-image",
   new Date().toISOString().replace(/[:.]/g, "-"),
 );
-const DEFAULT_MODELS = [...LLM_TEXT_MODEL_IDS] as const;
+const DEFAULT_MODELS = LLM_TEXT_MODEL_IDS.filter((model) => isBenchmarkModel(model));
+let benchmarkSpeed: LlmSpeed | undefined;
 
 type BenchmarkCaseResult = {
   readonly model: string;
@@ -52,7 +54,7 @@ function toModelList(raw: string | undefined): string[] {
       : [...DEFAULT_MODELS]
   ) as string[];
 
-  const invalid = candidates.filter((model) => !isBenchmarkModel(model));
+  const invalid = candidates.filter((model) => !isBenchmarkModel(model, benchmarkSpeed));
   if (invalid.length > 0) {
     throw new Error(`Unsupported model ids: ${invalid.join(", ")}`);
   }
@@ -165,7 +167,7 @@ async function runSingleModel(model: string): Promise<BenchmarkCaseResult> {
 
   try {
     const result = await runAgentLoop({
-      ...benchmarkModelSelection(model),
+      ...benchmarkModelSelection(model, benchmarkSpeed),
       input: [
         {
           role: "system",
@@ -196,7 +198,7 @@ async function runSingleModel(model: string): Promise<BenchmarkCaseResult> {
             }
             const imageUrl = `data:${mimeType};base64,${bytes.toString("base64")}`;
             const inspection = await streamText({
-              ...benchmarkModelSelection(model),
+              ...benchmarkModelSelection(model, benchmarkSpeed),
               input: [
                 {
                   role: "user",
@@ -239,6 +241,7 @@ async function runSingleModel(model: string): Promise<BenchmarkCaseResult> {
       `${JSON.stringify(
         {
           model,
+          speed: benchmarkSpeed,
           workspace: workspaceRel,
           outputRaw,
           parsed,
@@ -284,9 +287,16 @@ async function main(): Promise<void> {
       models: {
         type: "string",
       },
+      speed: { type: "string" },
     },
   });
 
+  if (values.speed !== undefined) {
+    if (values.speed !== "standard" && values.speed !== "fast" && values.speed !== "ultrafast") {
+      throw new Error(`Invalid --speed: ${values.speed}. Expected standard, fast, or ultrafast.`);
+    }
+    benchmarkSpeed = values.speed;
+  }
   const models = toModelList(values.models);
   if (models.length === 0) {
     throw new Error("No models selected.");
@@ -302,6 +312,7 @@ async function main(): Promise<void> {
     }),
   );
 
+  console.log(`Inference speed: ${benchmarkSpeed ?? "provider default"}`);
   const passCount = results.filter((result) => result.success).length;
   console.log("\\n=== Benchmark summary ===");
   for (const result of results) {

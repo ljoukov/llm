@@ -8,8 +8,21 @@ const chatGptAuthMock = vi.hoisted(() => ({
     accountId: "direct-account",
   })),
 }));
+const openAiImagesMock = vi.hoisted(() => ({
+  generate: vi.fn(),
+  edit: vi.fn(),
+}));
 
 vi.mock("../src/openai/chatgpt-auth.js", () => chatGptAuthMock);
+vi.mock("../src/openai/calls.js", async () => {
+  const actual = await vi.importActual("../src/openai/calls.js");
+  return {
+    ...actual,
+    runOpenAiCall: async (
+      call: (client: { images: typeof openAiImagesMock }) => Promise<unknown>,
+    ) => await call({ images: openAiImagesMock }),
+  };
+});
 
 import { createImageGenerationTool, estimateCallCostUsd, generateImages } from "../src/index.js";
 import type { TelemetryEvent } from "../src/telemetry.js";
@@ -230,6 +243,120 @@ describe("ChatGPT subscription image wrappers", () => {
     delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
     configureChatGptCodexProxy(null);
     chatGptAuthMock.getChatGptAuthProfile.mockClear();
+    openAiImagesMock.generate.mockReset();
+    openAiImagesMock.edit.mockReset();
+  });
+
+  it("normalizes a qualified subscription image string to the same native request and telemetry route", async () => {
+    const requests: Array<{ url: string; body: unknown }> = [];
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      requests.push({ url: String(input), body: parseRequestBody(init) });
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer direct-access");
+      return imageResponse();
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const events: TelemetryEvent[] = [];
+    const shared = {
+      stylePrompt: "Simple icon style.",
+      imagePrompts: ["A blue square"],
+      background: "opaque",
+      telemetry: {
+        sink: {
+          emit: (event: TelemetryEvent) => {
+            events.push(event);
+          },
+        },
+      },
+    } as const;
+
+    const nativeImages = await generateImages({
+      ...shared,
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-image-2",
+    });
+    const qualifiedImages = await generateImages({
+      ...shared,
+      model: "openai:subscription:gpt-image-2",
+    });
+
+    expect(qualifiedImages).toEqual(nativeImages);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(requests[0]).toMatchObject({
+      url: "https://chatgpt.com/backend-api/codex/images/generations",
+      body: { model: "gpt-image-2", n: 1, size: "auto", quality: "auto", background: "opaque" },
+    });
+    expect(events).toHaveLength(4);
+    for (const event of events) {
+      expect(event).toMatchObject({
+        provider: "openai",
+        access: "subscription",
+        model: "gpt-image-2",
+      });
+    }
+    expect(chatGptAuthMock.getChatGptAuthProfile).toHaveBeenCalledTimes(2);
+    expect(openAiImagesMock.generate).not.toHaveBeenCalled();
+    expect(openAiImagesMock.edit).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a qualified API image string to the same native Image API request", async () => {
+    openAiImagesMock.generate.mockResolvedValue({ data: [{ b64_json: generatedBase64 }] });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const shared = {
+      stylePrompt: "Simple icon style.",
+      imagePrompts: ["A blue square"],
+      imageResolution: "1024x1024",
+      imageQuality: "low",
+    } as const;
+
+    const nativeImages = await generateImages({
+      ...shared,
+      provider: "openai",
+      access: "api",
+      model: "gpt-image-2",
+    });
+    const qualifiedImages = await generateImages({ ...shared, model: "openai:api:gpt-image-2" });
+
+    expect(qualifiedImages).toEqual(nativeImages);
+    expect(openAiImagesMock.generate).toHaveBeenCalledTimes(2);
+    expect(openAiImagesMock.generate.mock.calls[1]?.[0]).toEqual(
+      openAiImagesMock.generate.mock.calls[0]?.[0],
+    );
+    expect(openAiImagesMock.generate.mock.calls[0]?.[0]).toMatchObject({
+      model: "gpt-image-2",
+      n: 1,
+      size: "1024x1024",
+      quality: "low",
+    });
+    expect(openAiImagesMock.edit).not.toHaveBeenCalled();
+    expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { provider: "openai", access: "api", model: "gpt-image-2" },
+    { provider: "openai", access: "subscription", model: "gpt-image-2" },
+    { model: "openai:api:gpt-image-2" },
+    { model: "openai:subscription:gpt-image-2" },
+  ] as const)("rejects image speed controls before auth or provider calls for %j", async (selection) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const speed of ["standard", "fast", "ultrafast"] as const) {
+      await expect(
+        generateImages({
+          ...selection,
+          speed,
+          stylePrompt: "",
+          imagePrompts: ["A blue square"],
+        } as never),
+      ).rejects.toThrow("Unsupported speed");
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
+    expect(openAiImagesMock.generate).not.toHaveBeenCalled();
+    expect(openAiImagesMock.edit).not.toHaveBeenCalled();
   });
 
   afterEach(() => {

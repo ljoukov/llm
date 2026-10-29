@@ -23,13 +23,15 @@
 ## OpenAI Model Policy
 
 - Direct OpenAI API and subscription text and image model ids are closed literal allowlists. Do not add support for arbitrary strings on those routes. Vercel model ids may use validated `publisher/model` passthrough when `provider: "vercel"` is explicit.
-- Supported OpenAI API model ids: `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `gpt-6-astra`, `gpt-6-astra-fast`, `gpt-6-sol`, `gpt-6-sol-fast`, `gpt-6-luna`, `gpt-6-luna-fast`, `gpt-5.6`, `gpt-5.6-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`.
+- Supported OpenAI API model ids: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`.
 - Supported OpenAI image model ids: `gpt-image-2`.
-- Supported OpenAI subscription text model ids (with `provider: "openai", access: "subscription"`): `gpt-6.1-sol`, `gpt-6.1-sol-fast`, `gpt-6.1-terra`, `gpt-6.1-terra-fast`, `gpt-6-astra`, `gpt-6-astra-fast`, `gpt-6-sol`, `gpt-6-sol-fast`, `gpt-6-luna`, `gpt-6-luna-fast`, `gpt-5.6-sol`, `gpt-5.6-sol-fast`, `gpt-5.6-terra`, `gpt-5.6-terra-fast`, `gpt-5.6-luna`, `gpt-5.6-luna-fast`.
+- Supported OpenAI subscription text model ids (with `provider: "openai", access: "subscription"`): `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`.
 - Supported OpenAI subscription image model ids (with `provider: "openai", access: "subscription"`): `gpt-image-2`.
 - Experimental ChatGPT-authenticated model ids may use the public `experimental-chatgpt-*` prefix so private/internal model suffixes do not need to be committed to this package.
-- Remove old aliases instead of keeping backward-compatibility shims.
-- Subagents must inherit the parent’s complete resolved provider, access mode, and model. Do not add agent-facing model override fields for subagents or other model-invoked tools.
+- Model identity and processing speed are separate. Use `speed: "standard" | "fast" | "ultrafast"` only where the selected route supports it. Synthetic `-fast` IDs and legacy leading `chatgpt-` route aliases are rejected without compatibility shims.
+- A qualified model string uses `provider:access:model`; normalize it centrally and reject conflicting explicit provider/access fields. Do not append speed as a colon component because native model IDs can contain colons.
+- Document breaking model-selection changes in `CHANGELOG.md` and the README migration guide with replacement examples.
+- Subagents must inherit the parent’s complete resolved provider, access mode, model, and speed. Do not add agent-facing model override fields for subagents or other model-invoked tools.
 
 ### Model Change Checks
 
