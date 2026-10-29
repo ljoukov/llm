@@ -170,6 +170,8 @@ export type OpenAiGptImage2NumImages = (typeof OPENAI_GPT_IMAGE_2_NUM_IMAGES)[nu
 export const CHATGPT_MODEL_IDS = [
   "gpt-6.1-sol",
   "gpt-6.1-sol-fast",
+  "gpt-6.1-terra",
+  "gpt-6.1-terra-fast",
   "gpt-6-astra",
   "gpt-6-astra-fast",
   "gpt-6-sol",
@@ -201,6 +203,7 @@ const OPENAI_PRIORITY_MODEL_IDS = [
 ] as const;
 const CHATGPT_PRIORITY_MODEL_IDS = [
   "gpt-6.1-sol-fast",
+  "gpt-6.1-terra-fast",
   "gpt-6-astra-fast",
   "gpt-6-sol-fast",
   "gpt-6-luna-fast",

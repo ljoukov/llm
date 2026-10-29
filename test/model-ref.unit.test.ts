@@ -31,6 +31,20 @@ const _openAiSubscriptionType = {
   access: "subscription",
   model: "gpt-6.1-sol-fast",
 } satisfies LlmModelRef;
+const _openAiTerraSubscriptionTypes = [
+  { provider: "openai", access: "subscription", model: "gpt-6.1-terra" },
+  { provider: "openai", access: "subscription", model: "gpt-6.1-terra-fast" },
+] as const satisfies readonly LlmModelRef[];
+const invalidOpenAiTerraApi = { provider: "openai", model: "gpt-6.1-terra" } as const;
+// @ts-expect-error GPT-6.1 Terra is only supported through subscription access.
+const _invalidOpenAiTerraApi: LlmModelRef = invalidOpenAiTerraApi;
+const invalidOpenAiTerraFastApi = {
+  provider: "openai",
+  access: "api",
+  model: "gpt-6.1-terra-fast",
+} as const;
+// @ts-expect-error GPT-6.1 Terra Fast is only supported through subscription access.
+const _invalidOpenAiTerraFastApi: LlmModelRef = invalidOpenAiTerraFastApi;
 const _anthropicSubscriptionType = {
   provider: "anthropic",
   access: "subscription",
@@ -178,6 +192,18 @@ describe("model references", () => {
       access: "api",
       model: "gpt-6.1-sol",
     });
+  });
+
+  it.each([
+    "gpt-6.1-terra",
+    "gpt-6.1-terra-fast",
+  ] as const)("resolves %s only with explicit OpenAI subscription access", (model) => {
+    const ref = { provider: "openai", access: "subscription", model } as const;
+    expect(resolveModelRef(ref)).toEqual(ref);
+    expect(parseModelRef(`openai:subscription:${model}`)).toEqual(ref);
+    expect(() => resolveModelRef({ provider: "openai", access: "api", model } as never)).toThrow();
+    expect(() => resolveModelRef({ provider: "openai", model } as never)).toThrow();
+    expect(() => resolveModelRef({ model } as never)).toThrow();
   });
 
   it("keeps explicit providers authoritative over environment preferences", () => {

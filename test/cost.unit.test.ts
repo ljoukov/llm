@@ -7,6 +7,7 @@ describe("estimateCallCostUsd", () => {
   it.each([
     ["gpt-6.1-sol", 0.00781],
     ["gpt-6.1-sol", 0.00781],
+    ["gpt-6.1-terra", 0.003905],
     ["gpt-6-sol", 0.00782],
     ["gpt-6-luna", 0.000391],
     ["gpt-6-astra", 0.0391],
@@ -33,6 +34,9 @@ describe("estimateCallCostUsd", () => {
     ["gpt-6.1-sol", 1000, 0.00791],
     ["gpt-6.1-sol", 272000, 0.54991],
     ["gpt-6.1-sol", 272001, 1.096824],
+    ["gpt-6.1-terra", 1000, 0.003955],
+    ["gpt-6.1-terra", 272000, 0.274955],
+    ["gpt-6.1-terra", 272001, 0.548412],
     ["gpt-6-astra", 1000, 0.0396],
     ["gpt-6-astra", 272000, 2.7496],
     ["gpt-6-astra", 272001, 5.48422],

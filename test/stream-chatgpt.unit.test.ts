@@ -297,6 +297,7 @@ describe("streamText (ChatGPT)", () => {
 
   it.each([
     ["gpt-6.1-sol-fast", "gpt-6.1-sol"],
+    ["gpt-6.1-terra-fast", "gpt-6.1-terra"],
     ["gpt-6-astra-fast", "gpt-6-astra"],
     ["gpt-6-sol-fast", "gpt-6-sol"],
     ["gpt-6-luna-fast", "gpt-6-luna"],
@@ -310,6 +311,29 @@ describe("streamText (ChatGPT)", () => {
 
     expect(capturedRequest?.model).toBe(providerModel);
     expect(capturedRequest?.service_tier).toBe("priority");
+  });
+
+  it.each([
+    ["gpt-6.1-terra", undefined, 0.00004],
+    ["gpt-6.1-terra-fast", "priority", 0.00008],
+  ] as const)("routes %s through ChatGPT and preserves subscription cost provenance", async (model, serviceTier, apiEquivalentCost) => {
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      provider: "openai",
+      access: "subscription",
+      model,
+      input: "hi",
+    });
+
+    expect(capturedRequest?.model).toBe("gpt-6.1-terra");
+    expect(capturedRequest?.service_tier).toBe(serviceTier);
+    expect(result.modelVersion).toBe(model);
+    expect(result.provider).toBe("openai");
+    expect(result.access).toBe("subscription");
+    expect(result.costUsd).toBeNull();
+    expect(result.costSource).toBe("subscription");
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(apiEquivalentCost, 10);
   });
 
   it("maps gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {

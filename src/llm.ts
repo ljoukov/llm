@@ -67,6 +67,7 @@ import {
 import {
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
+  OPENAI_SUBSCRIPTION_MODEL_IDS,
   isOpenAiImageModelId,
   isChatGptModelId,
   isExperimentalChatGptModelId,
@@ -344,7 +345,7 @@ type LlmTransportProvider =
   | "claude"
   | "xai";
 export const LLM_TEXT_MODEL_IDS = [
-  ...OPENAI_MODEL_IDS,
+  ...new Set([...OPENAI_MODEL_IDS, ...OPENAI_SUBSCRIPTION_MODEL_IDS]),
   ...FIREWORKS_MODEL_IDS,
   ...GEMINI_TEXT_MODEL_IDS,
   ...ANTHROPIC_MODEL_IDS,
@@ -365,7 +366,7 @@ export function isLlmTextModelId(value: string): value is LlmTextModelId {
     isAnthropicModelId(value) ||
     isGeminiTextModelId(value) ||
     isXaiModelId(value) ||
-    isExperimentalChatGptModelId(value) ||
+    isChatGptModelId(value) ||
     isQualifiedVercelModelId(value)
   );
 }
