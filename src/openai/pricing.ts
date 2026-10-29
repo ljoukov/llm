@@ -43,6 +43,14 @@ const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
     outputRate: 10 / 1_000_000,
     longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
   },
+  // Terra API-equivalent rates verified 2026-10-29 against the official pricing page.
+  "gpt-6.1-terra": {
+    inputRate: 1 / 1_000_000,
+    cachedRate: 0.05 / 1_000_000,
+    cacheWriteRate: 1.25 / 1_000_000,
+    outputRate: 5 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
   "gpt-6-astra": {
     inputRate: 10 / 1_000_000,
     cachedRate: 1 / 1_000_000,

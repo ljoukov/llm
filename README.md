@@ -1050,7 +1050,8 @@ Supported OpenAI IDs are fixed literal unions in code:
 
 - API text: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6` (Sol alias), `gpt-5.6-sol`,
   `gpt-5.6-terra`, `gpt-5.6-luna`, and a `-fast` form of each.
-- Subscription text: the same named variants and `-fast` forms, except the generic `gpt-5.6` and `gpt-5.6-fast` aliases.
+- Subscription text: the same named variants and `-fast` forms, plus `gpt-6.1-terra` and `gpt-6.1-terra-fast`,
+  except the generic `gpt-5.6` and `gpt-5.6-fast` aliases.
 - Images: `gpt-image-2` on either route; select `access: "subscription"` explicitly for ChatGPT/Codex.
 
 The explicit OpenAI subscription route also accepts the existing `experimental-chatgpt-*` prefix for private model
@@ -1060,6 +1061,20 @@ unknown unless a supported `pricingModelId` is supplied to the estimator.
 Standard API estimates per million tokens are $2 / $0.10 / $10 (input / cached input / output) for GPT-6.1 Sol and
 $0.10 / $0.01 / $0.50 for GPT-6 Luna. The catalog and cost metadata distinguish reported charges, estimates, and unknown
 prices.
+
+Select GPT-6.1 Terra through ChatGPT/Codex subscription access:
+
+```ts
+const result = await generateText({
+  provider: "openai",
+  access: "subscription",
+  model: "gpt-6.1-terra-fast", // Or "gpt-6.1-terra" for standard processing.
+  input: "Return exactly: OK",
+});
+```
+
+GPT-6.1 Terra API-equivalent estimates use $1 input, $0.05 cached input, $1.25 cache writes, and $5 output per million
+tokens, with the same priority and long-input multipliers described above.
 
 ## Model discovery and costs
 

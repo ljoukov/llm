@@ -125,6 +125,17 @@ describe("model id lists", () => {
     expect(isOpenAiSubscriptionModelId("chatgpt-arbitrary-model")).toBe(false);
   });
 
+  it("supports GPT-6.1 Terra only through subscription access", () => {
+    for (const model of ["gpt-6.1-terra", "gpt-6.1-terra-fast"]) {
+      expect(isOpenAiSubscriptionModelId(model)).toBe(true);
+      expect(isOpenAiModelId(model)).toBe(false);
+      expect(isLlmTextModelId(model)).toBe(true);
+      expect(isLlmModelId(model)).toBe(true);
+      expect(LLM_TEXT_MODEL_IDS).toContain(model);
+      expect(LLM_MODEL_IDS).toContain(model);
+    }
+  });
+
   it("defines provider model ids as explicit const lists", () => {
     expect(OPENAI_MODEL_IDS).toEqual([
       "gpt-6.1-sol",
@@ -147,6 +158,8 @@ describe("model id lists", () => {
     expect(OPENAI_SUBSCRIPTION_MODEL_IDS).toEqual([
       "gpt-6.1-sol",
       "gpt-6.1-sol-fast",
+      "gpt-6.1-terra",
+      "gpt-6.1-terra-fast",
       "gpt-6-astra",
       "gpt-6-astra-fast",
       "gpt-6-sol",
@@ -258,6 +271,8 @@ describe("model id lists", () => {
     for (const alias of [
       "chatgpt-gpt-6.1-sol",
       "chatgpt-gpt-6.1-sol-fast",
+      "chatgpt-gpt-6.1-terra",
+      "chatgpt-gpt-6.1-terra-fast",
       "chatgpt-gpt-image-2",
       "sonnet-5-5",
       "haiku-5-5",

@@ -65,6 +65,14 @@ describe("RAM model catalogue", () => {
     const subscription = await listModels({ provider: "openai", access: "subscription" });
     expect(api.some((model) => model.model === "gpt-5.6")).toBe(true);
     expect(subscription.some((model) => model.model === "gpt-5.6")).toBe(false);
+    for (const id of ["gpt-6.1-terra", "gpt-6.1-terra-fast"]) {
+      expect(api.some((model) => model.model === id)).toBe(false);
+      expect(subscription.find((model) => model.model === id)).toMatchObject({
+        provider: "openai",
+        access: "subscription",
+        model: id,
+      });
+    }
     expect(
       subscription.every((model) => model.provider === "openai" && model.access === "subscription"),
     ).toBe(true);
