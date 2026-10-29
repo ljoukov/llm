@@ -4,9 +4,9 @@ import { z } from "zod";
 
 import { runClaudeQuery } from "../src/claude/calls.js";
 import {
+  type ClaudeQueryRequest,
   ClaudeSubscriptionError,
   runClaudeQueryImpl,
-  type ClaudeQueryRequest,
 } from "../src/claude/client.js";
 import {
   configureModelConcurrency,
@@ -121,6 +121,7 @@ describe("Claude subscription Agent SDK transport", () => {
     sdk.query.mockReset();
     sdk.tool.mockClear();
     sdk.createSdkMcpServer.mockClear();
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", undefined);
   });
 
   afterEach(() => {
@@ -128,7 +129,11 @@ describe("Claude subscription Agent SDK transport", () => {
     resetModelConcurrencyConfig();
   });
 
-  it("keeps the prompt gated until the account confirms subscription authentication", async () => {
+  it.each([
+    false,
+    true,
+  ])("keeps the prompt gated until account verification (token-only: %s)", async (tokenOnly) => {
+    if (tokenOnly) vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token");
     let allow: ((value: AccountInfo) => void) | undefined;
     let promptRead: Promise<IteratorResult<SDKUserMessage>> | undefined;
     let input: QueryInput | undefined;
@@ -158,7 +163,9 @@ describe("Claude subscription Agent SDK transport", () => {
     });
     await Promise.resolve();
     expect(released).toBe(false);
-    allow(account);
+    allow(
+      tokenOnly ? { apiProvider: "firstParty", tokenSource: "CLAUDE_CODE_OAUTH_TOKEN" } : account,
+    );
     await expect(running).resolves.toMatchObject({ text: "Hello!" });
     expect((await promptRead).value?.message.content).toBe("Hello");
     expect(close).toHaveBeenCalledOnce();
@@ -172,6 +179,7 @@ describe("Claude subscription Agent SDK transport", () => {
     { apiProvider: "firstParty", apiKeySource: "project", subscriptionType: "pro" },
     { apiProvider: "firstParty", apiKeySource: "none", subscriptionType: "free" },
     { apiProvider: "firstParty", apiKeySource: "none" },
+    { apiProvider: "firstParty", tokenSource: "CLAUDE_CODE_OAUTH_TOKEN" },
   ])("rejects a non-subscription account without releasing the prompt: %j", async (info) => {
     let promptRead: Promise<IteratorResult<SDKUserMessage>> | undefined;
     const close = vi.fn();
@@ -197,12 +205,60 @@ describe("Claude subscription Agent SDK transport", () => {
     await expect(runClaudeQueryImpl(request)).resolves.toMatchObject({ text: "Hello!" });
   });
 
-  it("isolates credentials and disables ambient tools, project configuration, and persistence", async () => {
+  it.each<AccountInfo>([
+    { apiProvider: "bedrock" },
+    { apiProvider: "vertex" },
+    { apiProvider: "gateway" },
+    { apiKeySource: "user" },
+    { apiKeySource: "project" },
+    { subscriptionType: "free" },
+    { subscriptionType: "unknown" },
+    { tokenSource: "none" },
+    { tokenSource: "claude.ai" },
+    { tokenSource: "ANTHROPIC_AUTH_TOKEN" },
+    { tokenSource: undefined },
+    { apiProvider: undefined },
+  ])("rejects contradictory or unconfirmed token-only account metadata: %j", async (fields) => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token");
+    const mocked = stubQuery([], {
+      accountInfo: async () => ({
+        apiProvider: "firstParty",
+        tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
+        ...fields,
+      }),
+    });
+    await expect(runClaudeQueryImpl(request)).rejects.toThrow(ClaudeSubscriptionError);
+    expect(mocked.prompts).toEqual([]);
+    expect(mocked.close).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    true,
+    false,
+  ])("uses the forwarded OAuth credential snapshot during account verification (forwarded: %s)", async (forwarded) => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", forwarded ? "test-oauth-token" : undefined);
+    const mocked = stubQuery([result()], {
+      accountInfo: async () => {
+        vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", forwarded ? undefined : "late-oauth-token");
+        return { apiProvider: "firstParty", tokenSource: "CLAUDE_CODE_OAUTH_TOKEN" };
+      },
+    });
+    const running = runClaudeQueryImpl(request);
+    if (forwarded) {
+      await expect(running).resolves.toMatchObject({ text: "Hello!" });
+      expect(mocked.input().options.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("test-oauth-token");
+    } else {
+      await expect(running).rejects.toThrow(ClaudeSubscriptionError);
+      expect(mocked.input().options.env?.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+      expect(mocked.prompts).toEqual([]);
+    }
+  });
+
+  it("retains OAuth authentication while isolating other credentials and ambient configuration", async () => {
     for (const name of [
       "ANTHROPIC_API_KEY",
       "ANTHROPIC_BASE_URL",
       "CLAUDE_CODE_USE_BEDROCK",
-      "CLAUDE_CODE_OAUTH_TOKEN",
       "CLAUDECODE",
       "AWS_ACCESS_KEY_ID",
       "AMAZON_BEDROCK_BASE_URL",
@@ -213,6 +269,7 @@ describe("Claude subscription Agent SDK transport", () => {
       "FOUNDRY_API_KEY",
     ])
       vi.stubEnv(name, "should-not-reach-cli");
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token");
     vi.stubEnv("LLM_CLAUDE_EXECUTABLE", "/opt/test/claude");
     vi.stubEnv("LLM_SUBSCRIPTION_TEST_SETTING", "preserved");
     const mocked = stubQuery();
@@ -247,11 +304,101 @@ describe("Claude subscription Agent SDK transport", () => {
     expect(options.env).toMatchObject({
       LLM_SUBSCRIPTION_TEST_SETTING: "preserved",
       CLAUDE_AGENT_SDK_CLIENT_APP: "@ljoukov/llm",
+      CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token",
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: "123",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     });
     expect(Object.values(options.env ?? {})).not.toContain("should-not-reach-cli");
     expect(process.env.ANTHROPIC_API_KEY).toBe("should-not-reach-cli");
+  });
+
+  it.each(["", "   "])("does not forward an empty OAuth token: %j", async (token) => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", token);
+    const mocked = stubQuery();
+    await runClaudeQueryImpl(request);
+    expect(mocked.input().options.env?.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+  });
+
+  it("keeps the native init API-key fallback guard for token-only authentication", async () => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "test-oauth-token");
+    const mocked = stubQuery(
+      [{ type: "system", subtype: "init", model: request.model, apiKeySource: "user" }],
+      {
+        accountInfo: async () => ({
+          apiProvider: "firstParty",
+          tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
+        }),
+      },
+    );
+    await expect(runClaudeQueryImpl(request)).rejects.toThrow("refuse this fallback");
+    expect(mocked.close).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces native OAuth token rejection after token-only account verification", async () => {
+    vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", "invalid-test-oauth-token");
+    const mocked = stubQuery(
+      [
+        result({
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: ["OAuth token is invalid or expired"],
+        }),
+      ],
+      {
+        accountInfo: async () => ({
+          apiProvider: "firstParty",
+          tokenSource: "CLAUDE_CODE_OAUTH_TOKEN",
+        }),
+      },
+    );
+    await expect(runClaudeQueryImpl(request)).rejects.toThrow("OAuth token is invalid or expired");
+    expect(sdk.query).toHaveBeenCalledOnce();
+    expect(mocked.close).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["standard", "claude-sonnet-5-5", false],
+    ["fast", "claude-opus-5-5", true],
+  ] as const)("sets %s speed only in the query's flag settings", async (speed, model, fastMode) => {
+    const mocked = stubQuery();
+    await runClaudeQueryImpl({ ...request, model, speed });
+    expect(mocked.input().options).toMatchObject({ model, settings: { fastMode } });
+    expect(mocked.input().options.settingSources).toEqual([]);
+  });
+
+  it.each([
+    ["fast", "claude-sonnet-5-5"],
+    ["ultrafast", "claude-opus-5-5"],
+  ] as const)("rejects unsupported %s speed for %s before starting or switching a model", async (speed, model) => {
+    await expect(runClaudeQueryImpl({ ...request, model, speed })).rejects.toThrow(
+      "is not supported",
+    );
+    expect(sdk.query).not.toHaveBeenCalled();
+  });
+
+  it("reports the served speed and independent capacity tier instead of assuming requested speed", async () => {
+    const model = "claude-opus-5-5";
+    stubQuery([
+      event("message_start", {
+        message: message("speed_metadata", {
+          model,
+          usage: { input_tokens: 10, output_tokens: 0, speed: "fast", service_tier: "standard" },
+        }),
+      }),
+      event("message_delta", {
+        delta: { stop_reason: "end_turn", stop_sequence: null },
+        usage: { output_tokens: 2, speed: "standard", service_tier: "priority" },
+      }),
+      event("message_stop"),
+      result(),
+    ]);
+    const response = await runClaudeQueryImpl({ ...request, model, speed: "fast" });
+    expect(response).toMatchObject({
+      model,
+      effectiveSpeed: "standard",
+      serviceTier: "priority",
+      usage: { input_tokens: 10, output_tokens: 2, speed: "standard", service_tier: "priority" },
+    });
   });
 
   it("assembles streamed thoughts, signatures, text, usage, and one callback per assistant turn", async () => {

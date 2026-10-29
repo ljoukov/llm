@@ -88,6 +88,7 @@ export type AnthropicTool = {
 
 export type AnthropicMessageRequest = {
   model: string;
+  speed?: "standard" | "fast";
   max_tokens: number;
   messages: AnthropicMessageParam[];
   system?: string | AnthropicTextBlock[];
@@ -110,6 +111,9 @@ export type AnthropicMessageRequest = {
 export type AnthropicUsage = {
   input_tokens: number;
   output_tokens: number;
+  /** Inference speed actually used; independent of the capacity service tier. */
+  speed?: "standard" | "fast";
+  service_tier?: string;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
   cache_creation?: {

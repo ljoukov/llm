@@ -1,4 +1,5 @@
 import { isAnthropicModelId, type AnthropicModelId } from "./models.js";
+import type { LlmSpeed } from "../model-selection.js";
 
 export type AnthropicPricing = {
   readonly inputRate: number;
@@ -53,11 +54,26 @@ const HAIKU_LONG_CONTEXT_PRICING: AnthropicPricing = {
 export function getAnthropicPricing(
   modelId: string,
   promptTokens = 0,
+  speed: LlmSpeed = "standard",
 ): AnthropicPricing | undefined {
   // Subscription calls and native response model IDs use the same API-equivalent estimate.
   // This is a token-value estimate, not a charge against the Claude subscription.
   if (!isAnthropicModelId(modelId)) {
     return undefined;
+  }
+  if (speed !== "standard") {
+    if (speed !== "fast" || modelId !== "claude-opus-5-5") return undefined;
+    // Official fast-mode snapshot, 2026-10-29: $8/$40 input/output per MTok;
+    // prompt-caching multipliers apply on top of these fast rates.
+    // https://platform.claude.com/docs/en/build-with-claude/fast-mode#pricing
+    const standard = ANTHROPIC_PRICING[modelId];
+    return {
+      inputRate: standard.inputRate * 2,
+      cachedRate: standard.cachedRate * 2,
+      cacheWrite5mRate: standard.cacheWrite5mRate * 2,
+      cacheWrite1hRate: standard.cacheWrite1hRate * 2,
+      outputRate: standard.outputRate * 2,
+    };
   }
   if (modelId === "claude-haiku-5-5" && promptTokens > 100_000) {
     return HAIKU_LONG_CONTEXT_PRICING;

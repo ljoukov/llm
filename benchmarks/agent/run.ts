@@ -12,6 +12,7 @@ import {
   generateJson,
   runAgentLoop,
   type LlmThinkingLevel,
+  type LlmSpeed,
   type LlmToolLoopStep,
 } from "../../src/index.js";
 import { benchmarkModelSelection, isBenchmarkModel } from "../model-selection.js";
@@ -127,6 +128,7 @@ type TimingPhaseAggregate = {
 
 type CaseResult = {
   readonly model: string;
+  readonly speed?: LlmSpeed;
   readonly variant: BenchmarkVariant;
   readonly agentReasoning: ReasoningEffort;
   readonly taskId: string;
@@ -153,6 +155,7 @@ type CaseResult = {
   readonly timingEvents: readonly BenchmarkTimingEvent[];
   readonly grader: {
     readonly model: string;
+    readonly speed?: LlmSpeed;
     readonly value?: GraderVerdict;
     readonly error?: string;
   };
@@ -201,6 +204,8 @@ type ModelTaskRunSummary = {
 
 type LatestSummarySnapshot = {
   readonly models: readonly string[];
+  readonly speed?: LlmSpeed;
+  readonly graderSpeed?: LlmSpeed;
   readonly variants: readonly BenchmarkVariant[];
   readonly tasks: readonly BenchmarkTaskSummary[];
   readonly runs: number;
@@ -231,6 +236,9 @@ type PromptTemplates = {
   readonly taskTemplate: string;
   readonly graderPrompt: string;
 };
+
+let benchmarkSpeed: LlmSpeed | undefined;
+let graderSpeed: LlmSpeed | undefined;
 
 const DEFAULT_GRADER_MODEL = "openai:subscription:gpt-6-luna";
 const DEFAULT_MAX_STEPS = 100;
@@ -288,6 +296,8 @@ Options:
   --variant <name>                   Single variant alias for --variants
   --runs <n>                         Runs per model/task (default: 1)
   --reasoning <level>                low, medium, high, xhigh (default: medium)
+  --speed <mode>                     Agent inference speed: standard, fast, ultrafast (default: provider default)
+  --grader-speed <mode>              Grader inference speed (default: provider default)
   --grader-model <id>                LLM grader model (default: ${DEFAULT_GRADER_MODEL})
   --max-steps <n>                    Max agent tool-loop steps (default: ${DEFAULT_MAX_STEPS})
   --estimate-agent-prompt-tokens <n> Estimated prompt tokens per agent call (default: 4200)
@@ -308,6 +318,12 @@ function parsePositiveInt(raw: string, optionName: string): number {
     throw new Error(`Invalid ${optionName}: ${raw}`);
   }
   return parsed;
+}
+
+function parseSpeed(raw: string | undefined, optionName: string): LlmSpeed | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === "standard" || raw === "fast" || raw === "ultrafast") return raw;
+  throw new Error(`Invalid ${optionName}: ${raw}. Expected standard, fast, or ultrafast.`);
 }
 
 function parseReasoningEffort(raw: string): ReasoningEffort {
@@ -1477,7 +1493,7 @@ async function gradeOutputs(params: {
 
   try {
     const response = await generateJson({
-      ...benchmarkModelSelection(params.graderModel),
+      ...benchmarkModelSelection(params.graderModel, graderSpeed),
       input: buildGraderPrompt({
         task: params.task,
         reportText: params.layout.reportText,
@@ -1554,7 +1570,7 @@ async function runCase(params: {
   try {
     agentRunStartedAtMs = Date.now();
     const result = await runAgentLoop({
-      ...benchmarkModelSelection(params.model),
+      ...benchmarkModelSelection(params.model, benchmarkSpeed),
       input: buildAgentPrompt(layout, params.promptTemplates.agentPrompt, params.variant),
       filesystemTool: {
         profile: "model-agnostic",
@@ -1747,6 +1763,7 @@ async function runCase(params: {
 
   const caseResult: CaseResult = {
     model: params.model,
+    speed: benchmarkSpeed,
     variant: params.variant,
     agentReasoning: params.agentReasoning,
     taskId: params.task.id,
@@ -1773,6 +1790,7 @@ async function runCase(params: {
     timingEvents,
     grader: {
       model: params.graderModel,
+      speed: graderSpeed,
       value: grader.value,
       error: grader.error,
     },
@@ -1808,7 +1826,9 @@ function estimateProjection(params: {
   let estimatedGraderCostUsd: number | null = 0;
 
   for (const model of params.models) {
-    const selection = isBenchmarkModel(model) ? benchmarkModelSelection(model) : undefined;
+    const selection = isBenchmarkModel(model, benchmarkSpeed)
+      ? benchmarkModelSelection(model, benchmarkSpeed)
+      : undefined;
     const perCaseAgent = selection
       ? estimateCallCostUsd({
           ...selection,
@@ -1829,8 +1849,8 @@ function estimateProjection(params: {
     ]);
   }
 
-  const graderSelection = isBenchmarkModel(params.graderModel)
-    ? benchmarkModelSelection(params.graderModel)
+  const graderSelection = isBenchmarkModel(params.graderModel, graderSpeed)
+    ? benchmarkModelSelection(params.graderModel, graderSpeed)
     : undefined;
   const perCaseGrader = graderSelection
     ? estimateCallCostUsd({
@@ -2189,6 +2209,8 @@ function buildMarkdownReport(params: {
   lines.push(`- Models: ${params.models.join(", ")}`);
   lines.push(`- Variants: ${params.variants.join(", ")}`);
   lines.push(`- Grader model: ${params.graderModel}`);
+  lines.push(`- Agent speed: ${benchmarkSpeed ?? "provider default"}`);
+  lines.push(`- Grader speed: ${graderSpeed ?? "provider default"}`);
   lines.push(`- Reasoning effort: ${params.reasoning}`);
   const modelReasoningOverrideEntries = Object.entries(MODEL_REASONING_OVERRIDES);
   if (modelReasoningOverrideEntries.length > 0) {
@@ -2426,6 +2448,8 @@ function buildLatestResultsMarkdown(params: {
   lines.push(`- Models: ${params.models.map((model) => `\`${model}\``).join(", ")}`);
   lines.push(`- Variants: ${params.variants.map((variant) => `\`${variant}\``).join(", ")}`);
   lines.push(`- Grader: \`${params.graderModel}\``);
+  lines.push(`- Agent speed: ${benchmarkSpeed ?? "provider default"}`);
+  lines.push(`- Grader speed: ${graderSpeed ?? "provider default"}`);
   const modelReasoningOverrideEntries = Object.entries(MODEL_REASONING_OVERRIDES);
   if (modelReasoningOverrideEntries.length > 0) {
     lines.push(
@@ -2684,6 +2708,11 @@ async function loadLatestSummarySnapshot(
 
   return {
     models,
+    speed: parseSpeed(typeof parsed.speed === "string" ? parsed.speed : undefined, "stored speed"),
+    graderSpeed: parseSpeed(
+      typeof parsed.graderSpeed === "string" ? parsed.graderSpeed : undefined,
+      "stored grader speed",
+    ),
     variants,
     tasks,
     runs,
@@ -2861,6 +2890,8 @@ async function main(): Promise<void> {
       variant: { type: "string" },
       runs: { type: "string", default: "1" },
       reasoning: { type: "string", default: "medium" },
+      speed: { type: "string" },
+      "grader-speed": { type: "string" },
       "grader-model": { type: "string", default: DEFAULT_GRADER_MODEL },
       "max-steps": { type: "string", default: String(DEFAULT_MAX_STEPS) },
       "estimate-agent-prompt-tokens": { type: "string", default: "4200" },
@@ -2881,7 +2912,10 @@ async function main(): Promise<void> {
     return;
   }
 
+  benchmarkSpeed = parseSpeed(values.speed, "--speed");
+  graderSpeed = parseSpeed(values["grader-speed"], "--grader-speed");
   const models = parseModelList(values.models ?? DEFAULT_BENCHMARK_MODELS.join(","));
+  for (const model of models) benchmarkModelSelection(model, benchmarkSpeed);
   const tasks = selectTasks(values.tasks);
   const variants = parseBenchmarkVariants(
     values.variant ?? values.variants ?? BENCHMARK_VARIANTS.join(","),
@@ -2892,6 +2926,7 @@ async function main(): Promise<void> {
     (values["grader-model"] ?? DEFAULT_GRADER_MODEL).trim(),
     "--grader-model",
   );
+  benchmarkModelSelection(graderModel, graderSpeed);
   const maxSteps = parsePositiveInt(
     values["max-steps"] ?? String(DEFAULT_MAX_STEPS),
     "--max-steps",
@@ -2926,6 +2961,8 @@ async function main(): Promise<void> {
   console.log(`Variants: ${variants.join(", ")}`);
   console.log(`Runs per model/task: ${runs}`);
   console.log(`Grader model: ${graderModel}`);
+  console.log(`Agent speed: ${benchmarkSpeed ?? "provider default"}`);
+  console.log(`Grader speed: ${graderSpeed ?? "provider default"}`);
   console.log(`Projected cases: ${projection.totalCases}`);
   console.log(
     `Projected API-equivalent agent cost: ${formatCostUsd(projection.estimatedAgentCostUsd)}`,
@@ -2951,6 +2988,17 @@ async function main(): Promise<void> {
   }
 
   const benchmarkRoot = dirname(fileURLToPath(import.meta.url));
+  const existingSnapshot = values["merge-latest"]
+    ? await loadLatestSummarySnapshot(benchmarkRoot)
+    : undefined;
+  if (
+    existingSnapshot &&
+    (existingSnapshot.speed !== benchmarkSpeed || existingSnapshot.graderSpeed !== graderSpeed)
+  ) {
+    throw new Error(
+      "Cannot --merge-latest across different speed settings. Rerun without --merge-latest.",
+    );
+  }
   const promptTemplates = await loadPromptTemplates(benchmarkRoot);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const runId = `agent-fs-${timestamp}`;
@@ -3054,6 +3102,8 @@ async function main(): Promise<void> {
       runId,
       generatedAt,
       models: params.models,
+      speed: benchmarkSpeed,
+      graderSpeed,
       variants: params.variants,
       graderModel: params.graderModel,
       reasoning: params.reasoning,
@@ -3137,7 +3187,6 @@ async function main(): Promise<void> {
   let latestCaseResults: readonly CaseResult[] = orderedRunCaseResults;
 
   if (values["merge-latest"]) {
-    const existingSnapshot = await loadLatestSummarySnapshot(benchmarkRoot);
     if (existingSnapshot) {
       latestCaseResults = mergeCaseResults(existingSnapshot.caseResults, latestCaseResults);
       latestModels = mergeModels({

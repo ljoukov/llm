@@ -967,6 +967,7 @@ function buildSnapshot(agent: ManagedSubagent): Record<string, unknown> {
     provider: agent.route.provider,
     access: agent.route.access,
     model: agent.route.model,
+    ...(agent.route.speed ? { speed: agent.route.speed } : {}),
     pending_inputs: agent.pendingInputs.length,
     turns: agent.turns,
     created_at: new Date(agent.createdAtMs).toISOString(),

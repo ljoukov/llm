@@ -99,6 +99,7 @@ export type {
   LlmThinkingLevel,
   LlmTextRequest,
   LlmTextResult,
+  LlmServingMetadata,
   LlmTextStream,
   LlmToolCallContext,
   LlmToolCallResult,
@@ -357,12 +358,20 @@ export type { VercelModelId } from "./vercel/models.js";
 
 export {
   LLM_PROVIDERS,
+  LLM_SPEEDS,
+  getSupportedModelSpeeds,
+  isRemovedServingAlias,
   parseModelRef,
   resolveModelRef,
   isQualifiedVercelModelId,
 } from "./model-selection.js";
 export type {
   LlmAccess,
+  LlmSpeed,
+  QualifiedModelString,
+  QualifiedModelSelection,
+  QualifiedTextModelSelection,
+  QualifiedImageModelSelection,
   LlmModelRef,
   ModelRef,
   LlmTextModelRef,

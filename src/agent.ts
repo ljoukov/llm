@@ -355,6 +355,7 @@ async function runAgentLoopInternal(
       `provider=${context.route.provider}`,
       `access=${context.route.access}`,
       `model=${request.model}`,
+      ...(context.route.speed ? [`requestedSpeed=${context.route.speed}`] : []),
       `tools=${Object.keys(mergedTools).length.toString()}`,
       `filesystemTools=${Object.keys(filesystemTools).length > 0 ? "true" : "false"}`,
       `subagentTools=${resolvedSubagentConfig.enabled ? "true" : "false"}`,
@@ -399,6 +400,7 @@ async function runAgentLoopInternal(
     if (!result) {
       throw new Error("runToolLoop returned no result.");
     }
+    const lastStep = result.steps.at(-1);
     streamEventLogger?.flush();
     emitTelemetry({
       type: "agent.run.completed",
@@ -407,6 +409,8 @@ async function runAgentLoopInternal(
       stepCount: result.steps.length,
       toolCallCount: countToolCalls(result),
       totalCostUsd: result.totalCostUsd,
+      ...(lastStep?.effectiveSpeed ? { effectiveSpeed: lastStep.effectiveSpeed } : {}),
+      ...(lastStep?.serviceTier ? { serviceTier: lastStep.serviceTier } : {}),
       usage: summarizeResultUsage(result),
       uploadCount: uploadMetrics.count,
       uploadBytes: uploadMetrics.totalBytes,
@@ -420,6 +424,9 @@ async function runAgentLoopInternal(
         `steps=${result.steps.length.toString()}`,
         `toolCalls=${countToolCalls(result).toString()}`,
         `totalCostUsd=${formatCostUsd(result.totalCostUsd)}`,
+        ...(context.route.speed ? [`requestedSpeed=${context.route.speed}`] : []),
+        ...(lastStep?.effectiveSpeed ? [`effectiveSpeed=${lastStep.effectiveSpeed}`] : []),
+        ...(lastStep?.serviceTier ? [`serviceTier=${lastStep.serviceTier}`] : []),
         `uploadCount=${uploadMetrics.count.toString()}`,
         `uploadBytes=${uploadMetrics.totalBytes.toString()}`,
         `uploadLatencyMs=${uploadMetrics.totalLatencyMs.toString()}`,
@@ -431,6 +438,9 @@ async function runAgentLoopInternal(
           `[agent:${runId}] step_completed`,
           `step=${step.step.toString()}`,
           `modelVersion=${step.modelVersion}`,
+          ...(step.requestedSpeed ? [`requestedSpeed=${step.requestedSpeed}`] : []),
+          ...(step.effectiveSpeed ? [`effectiveSpeed=${step.effectiveSpeed}`] : []),
+          ...(step.serviceTier ? [`serviceTier=${step.serviceTier}`] : []),
           `toolCalls=${step.toolCalls.length.toString()}`,
           `costUsd=${formatCostUsd(step.costUsd)}`,
           ...(step.costSource ? [`costSource=${step.costSource}`] : []),
@@ -456,6 +466,7 @@ async function runAgentLoopInternal(
       [
         `[agent:${runId}] run_completed`,
         `status=error`,
+        ...(context.route.speed ? [`requestedSpeed=${context.route.speed}`] : []),
         `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
         `uploadCount=${uploadMetrics.count.toString()}`,
         `uploadBytes=${uploadMetrics.totalBytes.toString()}`,
@@ -888,7 +899,10 @@ function createAgentTelemetryEmitter(params: {
       runId: params.runId,
       ...(params.parentRunId ? { parentRunId: params.parentRunId } : {}),
       depth: params.depth,
-      ...params.route,
+      provider: params.route.provider,
+      access: params.route.access,
+      model: params.route.model,
+      ...(params.route.speed ? { requestedSpeed: params.route.speed } : {}),
     });
   };
 }

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { getSupportedModelSpeeds, isRemovedServingAlias } from "../src/model-selection.js";
+import { OPENAI_MODEL_IDS } from "../src/openai/models.js";
 
 import {
   generateText,
@@ -29,22 +31,23 @@ const _openAiApiType = {
 const _openAiSubscriptionType = {
   provider: "openai",
   access: "subscription",
-  model: "gpt-6.1-sol-fast",
+  model: "gpt-6.1-sol",
+  speed: "fast",
 } satisfies LlmModelRef;
 const _openAiTerraSubscriptionTypes = [
   { provider: "openai", access: "subscription", model: "gpt-6.1-terra" },
-  { provider: "openai", access: "subscription", model: "gpt-6.1-terra-fast" },
+  { provider: "openai", access: "subscription", model: "gpt-6.1-terra", speed: "fast" },
 ] as const satisfies readonly LlmModelRef[];
 const invalidOpenAiTerraApi = { provider: "openai", model: "gpt-6.1-terra" } as const;
 // @ts-expect-error GPT-6.1 Terra is only supported through subscription access.
 const _invalidOpenAiTerraApi: LlmModelRef = invalidOpenAiTerraApi;
-const invalidOpenAiTerraFastApi = {
+const invalidOpenAiFastAlias = {
   provider: "openai",
-  access: "api",
-  model: "gpt-6.1-terra-fast",
+  access: "subscription",
+  model: "gpt-6.1-sol-fast",
 } as const;
-// @ts-expect-error GPT-6.1 Terra Fast is only supported through subscription access.
-const _invalidOpenAiTerraFastApi: LlmModelRef = invalidOpenAiTerraFastApi;
+// @ts-expect-error Synthetic -fast aliases have been removed on every route.
+const _invalidOpenAiFastAlias: LlmModelRef = invalidOpenAiFastAlias;
 const _anthropicSubscriptionType = {
   provider: "anthropic",
   access: "subscription",
@@ -55,6 +58,28 @@ const _xaiSubscriptionType = {
   access: "subscription",
   model: "grok-latest-future-model",
 } satisfies LlmModelRef;
+const _qualifiedSubscriptionType = {
+  model: "openai:subscription:gpt-6.1-sol",
+  speed: "fast",
+} satisfies LlmTextModelSelection;
+const _qualifiedMatchingRouteType = {
+  provider: "openai",
+  access: "subscription",
+  model: "openai:subscription:gpt-6.1-sol",
+  speed: "ultrafast",
+} satisfies LlmTextModelSelection;
+const invalidQualifiedApi = { model: "openai:api:gpt-arbitrary" } as const;
+// @ts-expect-error A qualified string does not open the OpenAI model allowlist.
+const _invalidQualifiedApi: LlmTextModelSelection = invalidQualifiedApi;
+const conflictingQualifiedRoute = {
+  model: "openai:subscription:gpt-6.1-sol",
+  access: "api",
+} as const;
+// @ts-expect-error Qualified strings and explicit route fields must agree.
+const _conflictingQualifiedRoute: LlmTextModelSelection = conflictingQualifiedRoute;
+const invalidSpeed = { provider: "openai", model: "gpt-6.1-sol", speed: "turbo" } as const;
+// @ts-expect-error Serving speeds are a closed literal union.
+const _invalidSpeed: LlmTextModelSelection = invalidSpeed;
 
 const invalidUnqualifiedVercel = { provider: "vercel", model: "future-model" } as const;
 // @ts-expect-error Arbitrary Vercel IDs must include the publisher/model slash.
@@ -102,7 +127,8 @@ function _checkPublicRequestTypes(): void {
   const subscription = {
     provider: "openai",
     access: "subscription",
-    model: "gpt-6.1-sol-fast",
+    model: "gpt-6.1-sol",
+    speed: "fast",
   } as const;
   const vercel = { provider: "vercel", model: "reflection/beam-free" } as const;
   const qualifiedModel = "publisher/model" as `${string}/${string}`;
@@ -110,6 +136,7 @@ function _checkPublicRequestTypes(): void {
   void generateText({ ...api, input });
   void generateText({ ...subscription, input });
   void generateText({ ...vercel, input });
+  void generateText({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input });
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void generateText({ ...invalidProvider, input });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -121,6 +148,7 @@ function _checkPublicRequestTypes(): void {
   void generateJson({ ...api, input, schema });
   void generateJson({ ...subscription, input, schema });
   void generateJson({ ...vercel, input, schema });
+  void generateJson({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input, schema });
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void generateJson({ ...invalidProvider, input, schema });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -132,6 +160,7 @@ function _checkPublicRequestTypes(): void {
   void runToolLoop({ ...api, input, tools });
   void runToolLoop({ ...subscription, input, tools });
   void runToolLoop({ ...vercel, input, tools });
+  void runToolLoop({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input, tools });
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void runToolLoop({ ...invalidProvider, input, tools });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -143,6 +172,16 @@ function _checkPublicRequestTypes(): void {
   void runAgentLoop({ ...api, input, tools });
   void runAgentLoop({ ...subscription, input, tools });
   void runAgentLoop({ ...vercel, input, tools });
+  void runAgentLoop({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input, tools });
+  for (const model of [
+    "openai:subscription:gpt-6.1-sol",
+    "openai:api:gpt-6-astra",
+    "anthropic:api:claude-opus-5-5",
+  ] as const) {
+    const selection = { model, speed: "fast" } satisfies LlmTextModelSelection;
+    void generateText({ ...selection, input });
+    void runToolLoop({ ...selection, input, tools });
+  }
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void runAgentLoop({ ...invalidProvider, input, tools });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -154,6 +193,7 @@ function _checkPublicRequestTypes(): void {
   const image = { model: "gpt-image-2", stylePrompt: "", imagePrompts: ["A blue square"] } as const;
   void generateImages({ ...image, provider: "openai" });
   void generateImages({ ...image, provider: "openai", access: "subscription" });
+  void generateImages({ ...image, model: "openai:subscription:gpt-image-2" });
   const invalidImageProvider = { ...image, provider: "vercel" } as const;
   // @ts-expect-error Image generation does not accept unsupported providers.
   void generateImages(invalidImageProvider);
@@ -186,6 +226,158 @@ afterEach(() => {
 });
 
 describe("model references", () => {
+  it("normalizes qualified and structured selections identically with independent speed", () => {
+    const expected = {
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6.1-sol",
+      speed: "fast",
+    } as const;
+    expect(resolveModelRef(expected)).toEqual(expected);
+    expect(resolveModelRef({ model: "openai:subscription:gpt-6.1-sol", speed: "fast" })).toEqual(
+      expected,
+    );
+    expect(resolveModelRef({ ...expected, model: "openai:subscription:gpt-6.1-sol" })).toEqual(
+      expected,
+    );
+  });
+
+  it("preserves omitted speed and explicit standard as different selections", () => {
+    const selection = { provider: "openai", model: "gpt-6.1-sol" } as const;
+    expect(resolveModelRef(selection)).not.toHaveProperty("speed");
+    expect(resolveModelRef({ ...selection, speed: "standard" })).toMatchObject({
+      speed: "standard",
+    });
+  });
+
+  it("preserves provider-native colons when resolving direct qualified strings", () => {
+    expect(
+      resolveModelRef({ model: "vercel:api:publisher/model:variant:free", speed: "standard" }),
+    ).toEqual({
+      provider: "vercel",
+      access: "api",
+      model: "publisher/model:variant:free",
+      speed: "standard",
+    });
+    expect(
+      resolveModelRef({ provider: "vercel", model: "publisher/model:variant:free" }),
+    ).toMatchObject({
+      model: "publisher/model:variant:free",
+    });
+  });
+
+  it.each([
+    { model: "openai:subscription:gpt-6.1-sol", provider: "anthropic" },
+    { model: "openai:subscription:gpt-6.1-sol", access: "api" },
+    { model: "openai:api:gpt-arbitrary" },
+    { model: "openai:subscription:chatgpt-gpt-6.1-sol" },
+    { model: "openai:subscription:gpt-6.1-sol-fast" },
+    { model: "openai:subscription:" },
+    { model: "openai:token:gpt-6.1-sol" },
+  ])("rejects contradictory or unsupported direct qualified selection %j", (selection) => {
+    expect(() => resolveModelRef(selection as never)).toThrow();
+  });
+
+  it.each([
+    { provider: "openai", model: "gpt-6.1-sol", speed: "turbo" },
+    { provider: "openai", model: "gpt-6-luna", speed: "ultrafast" },
+    { provider: "openai", access: "subscription", model: "gpt-6.1-terra", speed: "ultrafast" },
+    {
+      provider: "openai",
+      access: "subscription",
+      model: "experimental-chatgpt-private-model",
+      speed: "fast",
+    },
+    { provider: "anthropic", model: "claude-sonnet-5-5", speed: "fast" },
+    { provider: "anthropic", model: "claude-opus-5-5", speed: "ultrafast" },
+    { provider: "google", model: "gemini-4-argon", speed: "fast" },
+    { provider: "fireworks", model: "glm-5.3", speed: "fast" },
+    { provider: "xai", model: "grok-4.7", speed: "fast" },
+    { provider: "openai", model: "gpt-image-2", speed: "standard" },
+    { provider: "vercel", model: "publisher/model", speed: "fast" },
+    { provider: "vercel", model: "glm-5.3", speed: "fast" },
+    { provider: "vercel", model: "anthropic/claude-sonnet-5-5", speed: "fast" },
+    { provider: "vercel", model: "openai/gpt-6.1-terra", speed: "fast" },
+    { provider: "vercel", model: "openai/gpt-6.1-sol", speed: "ultrafast" },
+    { provider: "vercel", model: "openai/gpt-image-2", speed: "standard" },
+    { provider: "vercel", model: "google/gemini-3-pro-image-preview", speed: "standard" },
+  ])("rejects unsupported serving speeds before transport: %j", (selection) => {
+    expect(() => resolveModelRef(selection as never)).toThrow("speed");
+  });
+
+  it("exposes route-specific speed capabilities without synthetic model entries", () => {
+    expect(getSupportedModelSpeeds({ provider: "openai", model: "gpt-6.1-sol" })).toEqual([
+      "standard",
+      "fast",
+      "ultrafast",
+    ]);
+    expect(
+      getSupportedModelSpeeds({
+        provider: "openai",
+        access: "subscription",
+        model: "gpt-6.1-terra",
+      }),
+    ).toEqual(["standard", "fast"]);
+    expect(getSupportedModelSpeeds({ provider: "anthropic", model: "claude-opus-5-5" })).toEqual([
+      "standard",
+      "fast",
+    ]);
+    expect(getSupportedModelSpeeds({ provider: "anthropic", model: "claude-sonnet-5-5" })).toEqual([
+      "standard",
+    ]);
+    expect(getSupportedModelSpeeds({ provider: "vercel", model: "publisher/model" })).toEqual([
+      "standard",
+    ]);
+    expect(getSupportedModelSpeeds({ provider: "vercel", model: "openai/gpt-image-2" })).toEqual(
+      [],
+    );
+    expect(getSupportedModelSpeeds({ provider: "openai", model: "gpt-image-2" })).toEqual([]);
+    expect(
+      resolveModelRef({ provider: "anthropic", model: "claude-opus-5-5", speed: "fast" }),
+    ).toMatchObject({ speed: "fast" });
+  });
+
+  it("permits Vercel fast only for documented OpenAI base routes and Claude Opus 5.5", () => {
+    for (const model of [
+      ...OPENAI_MODEL_IDS.map((id) => `openai/${id}`),
+      "anthropic/claude-opus-5-5",
+    ]) {
+      expect(getSupportedModelSpeeds({ provider: "vercel", model })).toEqual(["standard", "fast"]);
+      expect(resolveModelRef({ provider: "vercel", model, speed: "fast" })).toMatchObject({
+        model,
+        speed: "fast",
+      });
+    }
+  });
+
+  it.each([
+    "openai/gpt-6.1-sol-fast",
+    "openai/gpt-6.1-terra-fast",
+    "openai/chatgpt-gpt-6.1-sol",
+    "anthropic/claude-opus-5-5-fast",
+    "anthropic/claude-sonnet-5-5-fast",
+    "anthropic/claude-opus-5-fast",
+  ])("rejects known removed Gateway serving aliases without rewriting: %s", (model) => {
+    expect(isRemovedServingAlias(model)).toBe(true);
+    expect(() => resolveModelRef({ provider: "vercel", model })).toThrow("Removed model alias");
+    expect(() => resolveModelRef({ model: `vercel:api:${model}` })).toThrow("Removed model alias");
+    expect(getSupportedModelSpeeds({ provider: "vercel", model })).toEqual([]);
+  });
+
+  it("preserves unrelated native fast names and experimental private model suffixes", () => {
+    for (const model of ["publisher/model-fast", "openai/future-native-model-fast"]) {
+      expect(isRemovedServingAlias(model)).toBe(false);
+      expect(resolveModelRef({ provider: "vercel", model })).toMatchObject({ model });
+    }
+    const model = "experimental-chatgpt-private-model-fast";
+    expect(isRemovedServingAlias(model)).toBe(false);
+    expect(resolveModelRef({ provider: "openai", access: "subscription", model })).toMatchObject({
+      model,
+    });
+    expect(isRemovedServingAlias("chatgpt-gpt-image-2")).toBe(true);
+    expect(isRemovedServingAlias("gpt-6.1-sol-fast")).toBe(true);
+  });
+
   it("defaults explicit providers to API access", () => {
     expect(resolveModelRef({ provider: "openai", model: "gpt-6.1-sol" })).toEqual({
       provider: "openai",
@@ -196,7 +388,6 @@ describe("model references", () => {
 
   it.each([
     "gpt-6.1-terra",
-    "gpt-6.1-terra-fast",
   ] as const)("resolves %s only with explicit OpenAI subscription access", (model) => {
     const ref = { provider: "openai", access: "subscription", model } as const;
     expect(resolveModelRef(ref)).toEqual(ref);
@@ -326,8 +517,8 @@ describe("model references", () => {
       { provider: "vercel", access: "api", model: "reflection/beam-free" },
     ],
     [
-      "openai:subscription:gpt-6.1-sol-fast",
-      { provider: "openai", access: "subscription", model: "gpt-6.1-sol-fast" },
+      "openai:subscription:gpt-6.1-sol",
+      { provider: "openai", access: "subscription", model: "gpt-6.1-sol" },
     ],
     [
       "xai:subscription:grok-build-0.1",

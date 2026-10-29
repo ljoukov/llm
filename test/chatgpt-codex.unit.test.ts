@@ -122,6 +122,7 @@ describe("collectChatGptCodexResponse", () => {
           type: "response.completed",
           response: {
             model: "gpt-6-luna",
+            service_tier: "priority",
             status: "completed",
           },
         },
@@ -139,6 +140,7 @@ describe("collectChatGptCodexResponse", () => {
     });
 
     expect(result.text).toBe("proxied");
+    expect(result.serviceTier).toBe("priority");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
   });

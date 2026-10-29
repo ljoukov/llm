@@ -4,7 +4,13 @@ import { FIREWORKS_MODEL_IDS } from "./fireworks/models.js";
 import { getFireworksPricing } from "./fireworks/pricing.js";
 import { GEMINI_IMAGE_MODEL_IDS, GEMINI_TEXT_MODEL_IDS } from "./google/client.js";
 import { getGeminiProPricing } from "./google/pricing.js";
-import type { LlmAccess, LlmProvider } from "./model-selection.js";
+import {
+  getSupportedModelSpeeds,
+  isRemovedServingAlias,
+  type LlmAccess,
+  type LlmProvider,
+  type LlmSpeed,
+} from "./model-selection.js";
 import {
   OPENAI_IMAGE_MODEL_IDS,
   OPENAI_MODEL_IDS,
@@ -28,8 +34,12 @@ export type LlmModelInfo = {
   readonly maxOutputTokens?: number;
   readonly type?: string;
   readonly capabilities?: readonly string[];
+  /** Supported serving modifiers; image models have no speed modifier. */
+  readonly supportedSpeeds: readonly LlmSpeed[];
   /** For subscriptions, these are API-equivalent rates rather than billed charges. */
   readonly pricing?: ModelTokenPricing;
+  /** Known rates by serving speed. Missing entries are unknown, never free. */
+  readonly pricingBySpeed?: Readonly<Partial<Record<LlmSpeed, ModelTokenPricing>>>;
   readonly pricingSource?: "catalog" | "estimate";
 };
 
@@ -39,6 +49,18 @@ export type ListModelsOptions = {
   /** Bypass the Vercel RAM cache; concurrent refreshes still share one request. */
   readonly refresh?: boolean;
 };
+
+function pricesBySpeed(
+  speeds: readonly LlmSpeed[],
+  getPricing: (speed: LlmSpeed) => ModelTokenPricing | undefined,
+): Readonly<Partial<Record<LlmSpeed, ModelTokenPricing>>> {
+  const prices: Partial<Record<LlmSpeed, ModelTokenPricing>> = {};
+  for (const speed of speeds) {
+    const pricing = getPricing(speed);
+    if (pricing) prices[speed] = pricing;
+  }
+  return prices;
+}
 
 /** Discover dynamic Vercel/xAI catalogues, or the supported local provider allowlist. */
 export async function listModels(options: ListModelsOptions): Promise<readonly LlmModelInfo[]> {
@@ -51,13 +73,18 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
     throw new Error(`${provider} does not support subscription access.`);
   }
   if (provider === "vercel") {
-    return (await getVercelModelCatalog({ refresh: options.refresh })).map(({ id, ...model }) => ({
-      provider,
-      access,
-      model: id,
-      ...model,
-      pricingSource: model.pricing ? "catalog" : undefined,
-    }));
+    return (await getVercelModelCatalog({ refresh: options.refresh }))
+      .filter(({ id }) => !isRemovedServingAlias(id))
+      .map(({ id, ...model }) => ({
+        provider,
+        access,
+        model: id,
+        ...model,
+        supportedSpeeds:
+          model.type === "image" ? [] : getSupportedModelSpeeds({ provider, access, model: id }),
+        pricingBySpeed: model.pricing ? { standard: model.pricing } : undefined,
+        pricingSource: model.pricing ? "catalog" : undefined,
+      }));
   }
   if (provider === "xai") {
     return (await discoverXaiModels(access)).map(({ id, ...model }) => ({
@@ -65,6 +92,8 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
       access,
       model: id,
       ...model,
+      supportedSpeeds: getSupportedModelSpeeds({ provider, access, model: id }),
+      pricingBySpeed: model.pricing ? { standard: model.pricing } : undefined,
       pricingSource: model.pricing ? "estimate" : undefined,
     }));
   }
@@ -78,20 +107,27 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
         access,
         model,
         type: "language",
+        supportedSpeeds: getSupportedModelSpeeds({ provider, access, model }),
         pricing: getOpenAiPricing(model),
+        pricingBySpeed: pricesBySpeed(
+          getSupportedModelSpeeds({ provider, access, model }),
+          (speed) => getOpenAiPricing(model, speed),
+        ),
         pricingSource: "estimate" as const,
       })),
-      ...imageIds.map((model) => ({ provider, access, model, type: "image" })),
+      ...imageIds.map((model) => ({ provider, access, model, type: "image", supportedSpeeds: [] })),
     ];
   }
   if (provider === "anthropic") {
     return ANTHROPIC_MODEL_IDS.map((model) => {
       const pricing = getAnthropicPricing(model);
+      const supportedSpeeds = getSupportedModelSpeeds({ provider, access, model });
       return {
         provider,
         access,
         model,
         type: "language",
+        supportedSpeeds,
         pricing: pricing
           ? {
               inputRate: pricing.inputRate,
@@ -100,6 +136,17 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
               cacheWriteRate: pricing.cacheWrite5mRate,
             }
           : undefined,
+        pricingBySpeed: pricesBySpeed(supportedSpeeds, (speed) => {
+          const rates = getAnthropicPricing(model, 0, speed);
+          return rates
+            ? {
+                inputRate: rates.inputRate,
+                outputRate: rates.outputRate,
+                cachedRate: rates.cachedRate,
+                cacheWriteRate: rates.cacheWrite5mRate,
+              }
+            : undefined;
+        }),
         pricingSource: "estimate",
       };
     });
@@ -110,7 +157,9 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
       access,
       model,
       type: "language",
+      supportedSpeeds: getSupportedModelSpeeds({ provider, access, model }),
       pricing: getFireworksPricing(model),
+      pricingBySpeed: { standard: getFireworksPricing(model) },
       pricingSource: "estimate",
     }));
   }
@@ -123,6 +172,7 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
           access,
           model,
           type: "language",
+          supportedSpeeds: getSupportedModelSpeeds({ provider, access, model }),
           pricing: pricing
             ? {
                 inputRate: pricing.inputRateLow,
@@ -133,7 +183,13 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
           pricingSource: "estimate" as const,
         };
       }),
-      ...GEMINI_IMAGE_MODEL_IDS.map((model) => ({ provider, access, model, type: "image" })),
+      ...GEMINI_IMAGE_MODEL_IDS.map((model) => ({
+        provider,
+        access,
+        model,
+        type: "image",
+        supportedSpeeds: [],
+      })),
     ];
   }
   throw new Error(`Unsupported provider: ${String(provider)}.`);

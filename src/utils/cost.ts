@@ -5,6 +5,7 @@ import type { VercelTokenPricing } from "../vercel/catalog.js";
 import { isVercelModelId } from "../vercel/models.js";
 import { getXaiPricing } from "../xai/pricing.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
+import { isRemovedServingAlias, type LlmSpeed } from "../model-selection.js";
 import {
   getOpenAiImagePricing,
   getOpenAiPricing,
@@ -51,7 +52,40 @@ export type EstimateCallCostOptions = {
   /** Select route-specific rates for shared model IDs. */
   readonly provider?: string;
   readonly access?: "api" | "subscription";
+  /** Requested serving speed, independent of model identity. */
+  readonly speed?: LlmSpeed;
+  /** Actual serving speed reported by the provider, when available. */
+  readonly effectiveSpeed?: LlmSpeed;
+  /** Actual provider tier; OpenAI tier names are mapped to the corresponding speed. */
+  readonly effectiveServiceTier?: string;
 };
+
+function resolvePricingSpeed(options: {
+  readonly provider?: string;
+  readonly speed?: LlmSpeed;
+  readonly effectiveSpeed?: LlmSpeed;
+  readonly effectiveServiceTier?: string;
+}): LlmSpeed | undefined {
+  if (
+    options.effectiveServiceTier !== undefined &&
+    (options.provider === "openai" || options.provider === "vercel")
+  ) {
+    switch (options.effectiveServiceTier) {
+      case "default":
+      case "standard":
+        return "standard";
+      case "fast":
+      case "priority":
+        return "fast";
+      case "ultrafast":
+        return "ultrafast";
+      default:
+        // An unfamiliar or Flex tier does not establish a known per-token price.
+        return undefined;
+    }
+  }
+  return options.effectiveSpeed ?? options.speed ?? "standard";
+}
 
 function resolveUsageNumber(value: number | undefined): number {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -68,17 +102,33 @@ export function estimateCallCostUsd({
   imageSize,
   imageQuality,
   provider,
+  speed,
+  effectiveSpeed,
+  effectiveServiceTier,
 }: EstimateCallCostOptions): number | null {
+  if (isRemovedServingAlias(modelId) || (pricingModelId && isRemovedServingAlias(pricingModelId))) {
+    return null;
+  }
+  const pricingSpeed = resolvePricingSpeed({
+    provider,
+    speed,
+    effectiveSpeed,
+    effectiveServiceTier,
+  });
+  if (pricingSpeed === undefined) return null;
   const pricingModelIds = resolvePricingModelIds(modelId, pricingModelId);
   const useVercelPricing =
     provider === "vercel" ||
     (provider === undefined && modelId.includes("/") && isVercelModelId(modelId));
   if (useVercelPricing) {
+    // The default catalogue does not identify prices for faster serving tiers.
+    if (pricingSpeed !== "standard") return null;
     const pricing = resolvePricing(pricingModelIds, getVercelPricing);
     return pricing ? estimateTokenCostUsd(pricing, tokens) : null;
   }
   const openAiImagePricing = resolvePricing(pricingModelIds, getOpenAiImagePricing);
   if (openAiImagePricing) {
+    if (pricingSpeed !== "standard") return null;
     return estimateOpenAiImageCostUsd({
       pricing: openAiImagePricing,
       tokens,
@@ -90,6 +140,7 @@ export function estimateCallCostUsd({
 
   const imagePreviewPricing = resolvePricing(pricingModelIds, getGeminiImagePricing);
   if (imagePreviewPricing) {
+    if (pricingSpeed !== "standard") return null;
     const promptTokenTotal =
       resolveUsageNumber(tokens?.promptTokens) + resolveUsageNumber(tokens?.toolUsePromptTokens);
     const cachedTokens = resolveUsageNumber(tokens?.cachedTokens);
@@ -134,12 +185,13 @@ export function estimateCallCostUsd({
     provider === "xai" ||
     (provider === undefined && pricingModelIds.some((id) => id.startsWith("grok-")))
   ) {
+    if (pricingSpeed !== "standard") return null;
     const pricing = resolvePricing(pricingModelIds, (id) => getXaiPricing(id, promptTokenTotal));
     return pricing ? estimateTokenCostUsd(pricing, tokens) : null;
   }
 
   const anthropicPricing = resolvePricing(pricingModelIds, (id) =>
-    getAnthropicPricing(id, promptTokenTotal),
+    getAnthropicPricing(id, promptTokenTotal, pricingSpeed),
   );
   if (anthropicPricing) {
     const cacheReadTokens = Math.min(promptTokenTotal, cachedTokens);
@@ -168,6 +220,7 @@ export function estimateCallCostUsd({
 
   const geminiPricing = resolvePricing(pricingModelIds, getGeminiProPricing);
   if (geminiPricing) {
+    if (pricingSpeed !== "standard") return null;
     const useHighTier = promptTokenTotal > geminiPricing.threshold;
     const inputRate = useHighTier ? geminiPricing.inputRateHigh : geminiPricing.inputRateLow;
     const cachedRate = useHighTier ? geminiPricing.cachedRateHigh : geminiPricing.cachedRateLow;
@@ -181,6 +234,7 @@ export function estimateCallCostUsd({
 
   const openModelPricing = resolvePricing(pricingModelIds, getFireworksPricing);
   if (openModelPricing) {
+    if (pricingSpeed !== "standard") return null;
     const inputCost = nonCachedPrompt * openModelPricing.inputRate;
     const cachedCost = cachedTokens * openModelPricing.cachedRate;
     const outputTokens = responseTokens + thinkingTokens;
@@ -188,7 +242,7 @@ export function estimateCallCostUsd({
     return inputCost + cachedCost + outputCost;
   }
 
-  const openAiPricing = resolvePricing(pricingModelIds, getOpenAiPricing);
+  const openAiPricing = resolvePricing(pricingModelIds, (id) => getOpenAiPricing(id, pricingSpeed));
   if (openAiPricing) {
     const cacheWriteTokens = Math.min(nonCachedPrompt, resolveUsageNumber(tokens.cacheWriteTokens));
     const longInput = openAiPricing.longInput;
@@ -222,9 +276,18 @@ export async function resolveCallCostUsd(
   if (typeof reported === "number" && Number.isFinite(reported) && reported >= 0) {
     return { costUsd: reported, costSource: "reported" };
   }
+  if (
+    isRemovedServingAlias(options.modelId) ||
+    (options.pricingModelId && isRemovedServingAlias(options.pricingModelId))
+  ) {
+    return { costUsd: null, costSource: "unknown" };
+  }
   if (options.provider === "vercel") {
     // There is no value in fetching prices when usage is absent.
     if (!options.tokens) return { costUsd: null, costSource: "unknown" };
+    if (resolvePricingSpeed(options) !== "standard") {
+      return { costUsd: null, costSource: "unknown" };
+    }
     for (const modelId of resolvePricingModelIds(options.modelId, options.pricingModelId)) {
       const resolved = await resolveVercelPricing(modelId);
       if (resolved) {

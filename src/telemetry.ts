@@ -1,7 +1,7 @@
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 import type { LlmCostSource, LlmUsageTokens } from "./utils/cost.js";
 import type { LlmModelId, LlmProvider, LlmStreamEvent } from "./llm.js";
-import type { LlmAccess } from "./model-selection.js";
+import type { LlmAccess, LlmSpeed } from "./model-selection.js";
 
 export type LlmTelemetryOperation =
   | "generateText"
@@ -17,6 +17,7 @@ type LlmTelemetryBaseEvent = {
   readonly provider: LlmProvider;
   readonly access: LlmAccess;
   readonly model: LlmModelId;
+  readonly requestedSpeed?: LlmSpeed;
 };
 
 export type LlmCallStartedTelemetryEvent = LlmTelemetryBaseEvent & {
@@ -41,6 +42,8 @@ export type LlmCallCompletedTelemetryEvent = LlmTelemetryBaseEvent & {
   readonly success: boolean;
   readonly durationMs: number;
   readonly modelVersion?: string;
+  readonly effectiveSpeed?: LlmSpeed;
+  readonly serviceTier?: string;
   readonly blocked?: boolean;
   readonly usage?: LlmUsageTokens;
   readonly costUsd?: number | null;
@@ -66,6 +69,7 @@ type AgentTelemetryBaseEvent = {
   readonly provider: LlmProvider;
   readonly access: LlmAccess;
   readonly model: LlmModelId;
+  readonly requestedSpeed?: LlmSpeed;
 };
 
 export type AgentRunStartedTelemetryEvent = AgentTelemetryBaseEvent & {
@@ -89,6 +93,9 @@ export type AgentRunCompletedTelemetryEvent = AgentTelemetryBaseEvent & {
   readonly stepCount?: number;
   readonly toolCallCount?: number;
   readonly totalCostUsd?: number | null;
+  /** Serving configuration of the final model step, when reported. */
+  readonly effectiveSpeed?: LlmSpeed;
+  readonly serviceTier?: string;
   readonly usage?: LlmUsageTokens;
   readonly uploadCount?: number;
   readonly uploadBytes?: number;

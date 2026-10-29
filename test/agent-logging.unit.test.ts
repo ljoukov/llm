@@ -99,6 +99,7 @@ describe("agent logging", () => {
       const call = session.startLlmCall({
         provider: "openai",
         modelId: "gpt-6-luna",
+        requestedSpeed: "fast",
         requestText: "hello",
         requestMetadata: {
           image_url: "data:image/png;base64,QUJDRA==",
@@ -142,6 +143,9 @@ describe("agent logging", () => {
           modelId: "incorrect-transport-version",
           costUsd: 0.123,
           costSource: "estimate",
+          requestedSpeed: "standard",
+          effectiveSpeed: "standard",
+          serviceTier: "default",
         },
       });
       await session.flush();
@@ -185,6 +189,10 @@ describe("agent logging", () => {
       expect(requestMetadata.request).toEqual({
         image_url: "data:image/png;base64,...",
       });
+      expect(requestMetadata).toMatchObject({
+        modelId: "gpt-6-luna",
+        requestedSpeed: "fast",
+      });
 
       const responseMetadata = JSON.parse(
         await fs.readFile(path.join(callDir, "response.metadata.json"), "utf8"),
@@ -197,6 +205,9 @@ describe("agent logging", () => {
         transportProvider: "responses-api",
         costUsd: 0.123,
         costSource: "estimate",
+        requestedSpeed: "fast",
+        effectiveSpeed: "standard",
+        serviceTier: "default",
       });
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
@@ -450,6 +461,34 @@ describe("agent logging", () => {
       vi.useRealTimers();
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it("logs requested and actual serving speed separately from the model version", () => {
+    const lines: string[] = [];
+    const logger = createAgentStreamEventLogger({ append: (line) => lines.push(line) });
+    const serving = {
+      requestedSpeed: "fast" as const,
+      effectiveSpeed: "standard" as const,
+      serviceTier: "default",
+    };
+
+    logger.appendEvent({ type: "model", modelVersion: "gpt-6.1-sol", ...serving });
+    logger.appendEvent({
+      type: "usage",
+      modelVersion: "gpt-6.1-sol",
+      usage: { promptTokens: 1, responseTokens: 1 },
+      costUsd: 0.000012,
+      ...serving,
+    });
+    logger.flush();
+
+    expect(lines[0]).toBe(
+      "model: gpt-6.1-sol requestedSpeed=fast effectiveSpeed=standard serviceTier=default",
+    );
+    expect(lines[1]).toContain(
+      "modelVersion=gpt-6.1-sol requestedSpeed=fast effectiveSpeed=standard serviceTier=default",
+    );
+    expect(lines.join("\n")).not.toContain("gpt-6.1-sol-fast");
   });
 
   it("throttles thought delta log lines and flushes before response deltas", () => {

@@ -13,6 +13,7 @@ import {
 
 let capturedRequest: any = null;
 let chatGptCallCount = 0;
+let finalResponseServiceTierOverride: string | undefined;
 let failFirstTerminated = false;
 let failFirstFileDownload = false;
 let emitChatGptDeltas = true;
@@ -53,6 +54,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           total_tokens: 16,
         },
         model: options.request.model,
+        serviceTier: finalResponseServiceTierOverride ?? options.request.service_tier,
         status: "completed",
         blocked: false,
       };
@@ -64,6 +66,7 @@ describe("streamText (ChatGPT)", () => {
   beforeEach(() => {
     capturedRequest = null;
     chatGptCallCount = 0;
+    finalResponseServiceTierOverride = undefined;
     failFirstTerminated = false;
     failFirstFileDownload = false;
     emitChatGptDeltas = true;
@@ -252,21 +255,6 @@ describe("streamText (ChatGPT)", () => {
     expect(chatGptCallCount).toBe(2);
   });
 
-  it("maps gpt-6-sol-fast to gpt-6-sol with priority service tier", async () => {
-    const { generateText } = await import("../src/llm.js");
-
-    const result = await generateText({
-      provider: "openai",
-      access: "subscription",
-      model: "gpt-6-sol-fast",
-      input: "hi",
-    });
-
-    expect(capturedRequest?.model).toBe("gpt-6-sol");
-    expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("gpt-6-sol-fast");
-  });
-
   it("maps thinkingLevel=max to ChatGPT max reasoning effort", async () => {
     const { generateText } = await import("../src/llm.js");
 
@@ -296,39 +284,49 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it.each([
-    ["gpt-6.1-sol-fast", "gpt-6.1-sol"],
-    ["gpt-6.1-terra-fast", "gpt-6.1-terra"],
-    ["gpt-6-astra-fast", "gpt-6-astra"],
-    ["gpt-6-sol-fast", "gpt-6-sol"],
-    ["gpt-6-luna-fast", "gpt-6-luna"],
-    ["gpt-5.6-sol-fast", "gpt-5.6-sol"],
-    ["gpt-5.6-terra-fast", "gpt-5.6-terra"],
-    ["gpt-5.6-luna-fast", "gpt-5.6-luna"],
-  ] as const)("maps %s to %s with priority service tier", async (model, providerModel) => {
-    const { generateText } = await import("../src/llm.js");
-
-    await generateText({ provider: "openai", access: "subscription", model, input: "hi" });
-
-    expect(capturedRequest?.model).toBe(providerModel);
-    expect(capturedRequest?.service_tier).toBe("priority");
-  });
-
-  it.each([
-    ["gpt-6.1-terra", undefined, 0.00004],
-    ["gpt-6.1-terra-fast", "priority", 0.00008],
-  ] as const)("routes %s through ChatGPT and preserves subscription cost provenance", async (model, serviceTier, apiEquivalentCost) => {
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+  ] as const)("requests fast serving without changing %s", async (model) => {
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
       provider: "openai",
       access: "subscription",
       model,
+      speed: "fast",
+      input: "hi",
+    });
+
+    expect(capturedRequest?.model).toBe(model);
+    expect(capturedRequest?.service_tier).toBe("priority");
+    expect(result.modelVersion).toBe(model);
+    expect(result.requestedSpeed).toBe("fast");
+    expect(result.effectiveSpeed).toBe("fast");
+  });
+
+  it.each([
+    [undefined, undefined, 0.00004],
+    ["standard", "default", 0.00004],
+    ["fast", "priority", 0.00008],
+  ] as const)("routes Terra speed=%s and preserves subscription cost provenance", async (speed, serviceTier, apiEquivalentCost) => {
+    const { generateText } = await import("../src/llm.js");
+
+    const result = await generateText({
+      model: "openai:subscription:gpt-6.1-terra",
+      speed,
       input: "hi",
     });
 
     expect(capturedRequest?.model).toBe("gpt-6.1-terra");
     expect(capturedRequest?.service_tier).toBe(serviceTier);
-    expect(result.modelVersion).toBe(model);
+    expect(result.model).toBe("gpt-6.1-terra");
+    expect(result.modelVersion).toBe("gpt-6.1-terra");
     expect(result.provider).toBe("openai");
     expect(result.access).toBe("subscription");
     expect(result.costUsd).toBeNull();
@@ -336,19 +334,49 @@ describe("streamText (ChatGPT)", () => {
     expect(result.apiEquivalentCostUsd).toBeCloseTo(apiEquivalentCost, 10);
   });
 
-  it("maps gpt-6.1-sol-fast to gpt-6.1-sol with priority service tier", async () => {
+  it("requests ultrafast subscription serving while preserving the base model", async () => {
     const { generateText } = await import("../src/llm.js");
-
     const result = await generateText({
-      provider: "openai",
-      access: "subscription",
-      model: "gpt-6.1-sol-fast",
+      model: "openai:subscription:gpt-6.1-sol",
+      speed: "ultrafast",
       input: "hi",
     });
-
     expect(capturedRequest?.model).toBe("gpt-6.1-sol");
-    expect(capturedRequest?.service_tier).toBe("priority");
-    expect(result.modelVersion).toBe("gpt-6.1-sol-fast");
+    expect(capturedRequest?.service_tier).toBe("ultrafast");
+    expect(result).toMatchObject({
+      modelVersion: "gpt-6.1-sol",
+      requestedSpeed: "ultrafast",
+      effectiveSpeed: "ultrafast",
+    });
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.00048, 10);
+  });
+
+  it("prices the actual standard tier when requested fast serving falls back", async () => {
+    finalResponseServiceTierOverride = "default";
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({
+      model: "openai:subscription:gpt-6.1-terra",
+      speed: "fast",
+      input: "hi",
+    });
+    expect(result).toMatchObject({
+      requestedSpeed: "fast",
+      effectiveSpeed: "standard",
+      serviceTier: "default",
+    });
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.00004, 10);
+  });
+
+  it.each([
+    "gpt-6.1-sol-fast",
+    "chatgpt-gpt-6.1-sol",
+    "chatgpt-gpt-6.1-sol-fast",
+  ])("rejects removed subscription alias %s", async (model) => {
+    const { generateText } = await import("../src/llm.js");
+    await expect(
+      generateText({ provider: "openai", access: "subscription", model, input: "hi" } as never),
+    ).rejects.toThrow();
+    expect(capturedRequest).toBeNull();
   });
 
   it("rejects the OpenAI shell tool for ChatGPT-authenticated models", async () => {
@@ -387,7 +415,8 @@ describe("streamText (ChatGPT)", () => {
 
     expect(capturedRequest?.model).toBe("private-model");
     expect(capturedRequest?.service_tier).toBeUndefined();
-    expect(result.modelVersion).toBe("experimental-chatgpt-private-model");
+    expect(result.model).toBe("experimental-chatgpt-private-model");
+    expect(result.modelVersion).toBe("private-model");
   });
 
   it("maps mediaResolution=original to ChatGPT image detail on gpt-6-sol", async () => {

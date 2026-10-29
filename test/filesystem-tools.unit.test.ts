@@ -24,16 +24,11 @@ describe("filesystemTools profiles", () => {
   it("resolves profile by model when profile=auto", () => {
     expect(resolveFilesystemToolProfile("gpt-6-astra")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-5.6")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-5.6-sol-fast")).toBe("codex");
+    expect(resolveFilesystemToolProfile("gpt-5.6-sol")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-5.6-terra")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-5.6-luna-fast")).toBe("codex");
+    expect(resolveFilesystemToolProfile("gpt-5.6-luna")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-6.1-sol")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-6.1-sol-fast")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-6.1-sol")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-6.1-sol-fast")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-6-sol")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-6-sol")).toBe("codex");
-    expect(resolveFilesystemToolProfile("gpt-6-sol-fast")).toBe("codex");
     expect(resolveFilesystemToolProfile("gpt-6-luna")).toBe("codex");
     expect(resolveFilesystemToolProfile("experimental-chatgpt-private-model")).toBe("codex");
     expect(resolveFilesystemToolProfile("gemini-2.5-pro")).toBe("gemini");

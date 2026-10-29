@@ -200,6 +200,7 @@ export type ChatGptCodexImageGenerationCall = {
 };
 
 export type ChatGptCodexCollectedResponse = {
+  serviceTier?: string;
   text: string;
   reasoningText: string;
   reasoningSummaryText: string;
@@ -576,6 +577,7 @@ async function collectChatGptCodexStream(options: {
   let reasoningSummaryText = "";
   let usage: ChatGptCodexUsage | undefined;
   let responseId: string | undefined;
+  let serviceTier: string | undefined;
   let model: string | undefined;
   let status: string | undefined;
   let blocked = false;
@@ -670,6 +672,8 @@ async function collectChatGptCodexStream(options: {
         usage = response.usage as ChatGptCodexUsage | undefined;
         responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
+        serviceTier =
+          typeof response.service_tier === "string" ? response.service_tier : serviceTier;
         status = typeof response.status === "string" ? response.status : undefined;
       }
       continue;
@@ -680,6 +684,8 @@ async function collectChatGptCodexStream(options: {
         usage = response.usage as ChatGptCodexUsage | undefined;
         responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
+        serviceTier =
+          typeof response.service_tier === "string" ? response.service_tier : serviceTier;
         status = typeof response.status === "string" ? response.status : undefined;
       }
       continue;
@@ -690,6 +696,8 @@ async function collectChatGptCodexStream(options: {
         usage = response.usage as ChatGptCodexUsage | undefined;
         responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
+        serviceTier =
+          typeof response.service_tier === "string" ? response.service_tier : serviceTier;
         status = typeof response.status === "string" ? response.status : undefined;
       }
     }
@@ -719,6 +727,7 @@ async function collectChatGptCodexStream(options: {
     imageGenerationCalls: orderedImageGenerationCalls,
     usage,
     id: responseId,
+    serviceTier,
     model,
     status,
     blocked,

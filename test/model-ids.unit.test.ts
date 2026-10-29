@@ -117,16 +117,16 @@ describe("model id lists", () => {
   it("keeps new API and subscription routes explicit", () => {
     for (const model of ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
       expect(isOpenAiModelId(model)).toBe(true);
-      expect(isOpenAiModelId(model + "-fast")).toBe(true);
+      expect(isOpenAiModelId(`${model}-fast`)).toBe(false);
       expect(isOpenAiSubscriptionModelId(model)).toBe(true);
-      expect(isOpenAiSubscriptionModelId(model + "-fast")).toBe(true);
+      expect(isOpenAiSubscriptionModelId(`${model}-fast`)).toBe(false);
     }
     expect(isOpenAiModelId("gpt-6-arbitrary")).toBe(false);
     expect(isOpenAiSubscriptionModelId("chatgpt-arbitrary-model")).toBe(false);
   });
 
   it("supports GPT-6.1 Terra only through subscription access", () => {
-    for (const model of ["gpt-6.1-terra", "gpt-6.1-terra-fast"]) {
+    for (const model of ["gpt-6.1-terra"]) {
       expect(isOpenAiSubscriptionModelId(model)).toBe(true);
       expect(isOpenAiModelId(model)).toBe(false);
       expect(isLlmTextModelId(model)).toBe(true);
@@ -139,39 +139,23 @@ describe("model id lists", () => {
   it("defines provider model ids as explicit const lists", () => {
     expect(OPENAI_MODEL_IDS).toEqual([
       "gpt-6.1-sol",
-      "gpt-6.1-sol-fast",
       "gpt-6-astra",
-      "gpt-6-astra-fast",
       "gpt-6-sol",
-      "gpt-6-sol-fast",
       "gpt-6-luna",
-      "gpt-6-luna-fast",
       "gpt-5.6",
-      "gpt-5.6-fast",
       "gpt-5.6-sol",
-      "gpt-5.6-sol-fast",
       "gpt-5.6-terra",
-      "gpt-5.6-terra-fast",
       "gpt-5.6-luna",
-      "gpt-5.6-luna-fast",
     ]);
     expect(OPENAI_SUBSCRIPTION_MODEL_IDS).toEqual([
       "gpt-6.1-sol",
-      "gpt-6.1-sol-fast",
       "gpt-6.1-terra",
-      "gpt-6.1-terra-fast",
       "gpt-6-astra",
-      "gpt-6-astra-fast",
       "gpt-6-sol",
-      "gpt-6-sol-fast",
       "gpt-6-luna",
-      "gpt-6-luna-fast",
       "gpt-5.6-sol",
-      "gpt-5.6-sol-fast",
       "gpt-5.6-terra",
-      "gpt-5.6-terra-fast",
       "gpt-5.6-luna",
-      "gpt-5.6-luna-fast",
     ]);
     expect(FIREWORKS_MODEL_IDS).toEqual(["deepseek-v4.1-flash-1017", "glm-5.3", "kimi-k3"]);
     expect(ANTHROPIC_MODEL_IDS).toEqual([
@@ -268,7 +252,17 @@ describe("model id lists", () => {
   });
 
   it("rejects removed model aliases", () => {
+    for (const model of new Set([...OPENAI_MODEL_IDS, ...OPENAI_SUBSCRIPTION_MODEL_IDS])) {
+      const alias = `${model}-fast`;
+      expect(isOpenAiModelId(alias)).toBe(false);
+      expect(isOpenAiSubscriptionModelId(alias)).toBe(false);
+      expect(isLlmModelId(alias)).toBe(false);
+    }
     for (const alias of [
+      "gpt-6.1-sol-fast",
+      "gpt-6.1-terra-fast",
+      "gpt-6-astra-fast",
+      "gpt-5.6-fast",
       "chatgpt-gpt-6.1-sol",
       "chatgpt-gpt-6.1-sol-fast",
       "chatgpt-gpt-6.1-terra",

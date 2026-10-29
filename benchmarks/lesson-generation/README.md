@@ -14,6 +14,15 @@ Spark-style lesson creation benchmark focused on generation + verification loops
 
 Model arguments accept known native IDs or explicit `provider:access:model` selections, such as `vercel:api:reflection/beam-free`. Reports preserve the full selection. Unknown or unavailable costs are recorded as `null` and displayed as `unknown`; totals remain unknown whenever any included call has unknown cost. Projections use API-equivalent rates, including for subscription selections, and do not represent a subscription charge.
 
+Inference speed is independent of the model ID. Use `--speed standard|fast|ultrafast` for the tested agent and
+`--grader-speed standard|fast|ultrafast` for its grader. Omission preserves the provider default. Unsupported
+model/speed combinations fail before calls start; projections and reports use the selected speeds.
+`--merge-latest` requires the same agent and grader speed settings as the saved run.
+
+```bash
+npx tsx benchmarks/lesson-generation/run.ts --models openai:subscription:gpt-6.1-sol --speed fast --estimate-only
+```
+
 ## Run
 
 ```bash
