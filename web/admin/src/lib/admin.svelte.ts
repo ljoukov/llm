@@ -16,6 +16,7 @@ export class Admin {
   testKeyValue = $state(''); testingKey = $state(false); keyTestResult = $state<KeyTestResult | null>(null);
   renameOpen = $state(false); renaming = $state<Subscription | null>(null); renamedLabel = $state('');
   confirmOpen = $state(false); confirmTitle = $state(''); confirmText = $state(''); confirmLabel = $state('Continue');
+  confirming = $state(false); confirmError = $state('');
   confirmation: (() => Promise<void>) | null = null;
   timer?: ReturnType<typeof setTimeout>;
   private keyTestSequence = 0;
@@ -77,15 +78,32 @@ export class Admin {
       this.keyTestResult = { ok: false, code: 'check_failed', message: error instanceof Error ? error.message : 'The key check could not be completed.', checkedAt: Date.now(), durationMs: 0 };
     } finally { if (sequence === this.keyTestSequence) this.testingKey = false; }
   }
-  confirm(title: string, description: string, label: string, action: () => Promise<void>) { this.keyOpen = false; this.confirmTitle = title; this.confirmText = description; this.confirmLabel = label; this.confirmation = action; this.confirmOpen = true; }
+  confirm(title: string, description: string, label: string, action: () => Promise<void>) { if (this.confirming) return; this.keyOpen = false; this.confirmError = ''; this.confirmTitle = title; this.confirmText = description; this.confirmLabel = label; this.confirmation = action; this.confirmOpen = true; }
+  async runConfirmation() {
+    const action = this.confirmation;
+    if (!action || this.confirming) return;
+    this.confirming = true; this.busy = true; this.confirmError = '';
+    try {
+      await action();
+      this.confirmOpen = false;
+      this.confirmation = null;
+    } catch (error) {
+      this.confirmError = error instanceof Error ? error.message : 'The action could not be completed. Try again.';
+      this.report(error);
+      return;
+    } finally { this.confirming = false; this.busy = false; }
+    // The mutation has succeeded. A refresh failure must not reopen its confirmation
+    // or hide a replacement key that has already been issued.
+    await this.perform(() => this.load());
+  }
   async checkConnection(account: Subscription) { await this.perform(async () => { const result = await api<{ modelCount: number }>(`/v1/accounts/${encodeURIComponent(account.accountId)}/check`, { method: "POST" }); toast.success(`Grok connected · ${result.modelCount} models available.`); }); }
   async checkQuota(account: Subscription) { await this.perform(async () => { try { this.quotas[account.accountId] = await api<Quota>(`/v1/accounts/${encodeURIComponent(account.accountId)}/usage`, { method: 'POST' }); } catch (error) { this.quotas[account.accountId] = { error: error instanceof Error ? error.message : 'Limits unavailable.' }; } }); }
   async toggleAccount(account: Subscription) { await this.perform(async () => { await api(`/v1/accounts/${encodeURIComponent(account.accountId)}`, { method: 'PATCH', body: JSON.stringify({ enabled: !account.enabled }) }); await this.load(); }); }
   async refreshAccount(account: Subscription) { await this.perform(async () => { await api('/v1/refresh', { method: 'POST', body: JSON.stringify({ accountId: account.accountId }) }); await this.load(); toast.success('Token refreshed.'); }); }
   rename(account: Subscription) { this.renaming = account; this.renamedLabel = account.label || ''; this.renameOpen = true; }
   async saveLabel() { await this.perform(async () => { if (!this.renaming) return; await api(`/v1/accounts/${encodeURIComponent(this.renaming.accountId)}`, { method: 'PATCH', body: JSON.stringify({ label: this.renamedLabel }) }); this.renameOpen = false; await this.load(); }); }
-  removeAccount(account: Subscription) { this.confirm('Remove subscription?', 'This removes the stored login. Keys restricted to this account lose access. You can connect it again later.', 'Remove subscription', async () => { await api(`/v1/accounts/${encodeURIComponent(account.accountId)}`, { method: 'DELETE' }); await this.load(); toast.success('Subscription removed.'); }); }
-  rotateKey(key: ApiKey) { this.confirm('Rotate API key?', 'The current key will stop working. Save its replacement and update your application.', 'Rotate key', async () => { const result = await api<{ token: string }>(`/v1/clients/${encodeURIComponent(key.id)}/rotate`, { method: 'POST' }); await this.load(); this.secret = result.token; this.secretKeyId = key.id; this.keyTestResult = null; this.secretOpen = true; }); }
-  removeKey(key: ApiKey) { this.confirm('Delete API key?', 'New grants stop immediately. Tokens already issued remain valid until expiry. Activity history is retained.', 'Delete key', async () => { await api(`/v1/clients/${encodeURIComponent(key.id)}`, { method: 'DELETE' }); await this.load(); toast.success('API key deleted.'); }); }
+  removeAccount(account: Subscription) { this.confirm('Remove subscription?', 'This removes the stored login. Keys restricted to this account lose access. You can connect it again later.', 'Remove subscription', async () => { await api(`/v1/accounts/${encodeURIComponent(account.accountId)}`, { method: 'DELETE' }); this.accounts = this.accounts.filter((item) => item.accountId !== account.accountId); delete this.quotas[account.accountId]; toast.success('Subscription removed.'); }); }
+  rotateKey(key: ApiKey) { this.confirm('Rotate API key?', 'The current key will stop working. Save its replacement and update your application.', 'Rotate key', async () => { const result = await api<{ token: string }>(`/v1/clients/${encodeURIComponent(key.id)}/rotate`, { method: 'POST' }); this.secret = result.token; this.secretKeyId = key.id; this.keyTestResult = null; this.secretOpen = true; }); }
+  removeKey(key: ApiKey) { this.confirm('Delete API key?', 'New grants stop immediately. Tokens already issued remain valid until expiry. Activity history is retained.', 'Delete key', async () => { await api(`/v1/clients/${encodeURIComponent(key.id)}`, { method: 'DELETE' }); this.keys = this.keys.filter((item) => item.id !== key.id); if (this.editing?.id === key.id) this.editing = null; toast.success('API key deleted.'); }); }
   async copy(value: string) { try { await navigator.clipboard.writeText(value); toast.success('Copied.'); } catch (error) { this.report(error); } }
 }

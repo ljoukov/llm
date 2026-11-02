@@ -9,6 +9,7 @@
   import { Switch } from '#lib/components/ui/switch/index.js';
   import { Separator } from '#lib/components/ui/separator/index.js';
   import * as Dialog from '#lib/components/ui/dialog/index.js';
+  import * as Alert from '#lib/components/ui/alert/index.js';
   import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
   import * as Card from '#lib/components/ui/card/index.js';
   let { a }: { a: Admin } = $props();
@@ -41,5 +42,14 @@
     <Dialog.Footer><Button variant="outline" onclick={() => { a.keyTestOpen = false; }}>Done</Button></Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
-<AlertDialog.Root bind:open={a.confirmOpen}><AlertDialog.Content><AlertDialog.Header><AlertDialog.Title>{a.confirmTitle}</AlertDialog.Title><AlertDialog.Description>{a.confirmText}</AlertDialog.Description></AlertDialog.Header><AlertDialog.Footer><AlertDialog.Cancel>Cancel</AlertDialog.Cancel><AlertDialog.Action onclick={() => { if (a.confirmation) void a.perform(a.confirmation); }}>{a.confirmLabel}</AlertDialog.Action></AlertDialog.Footer></AlertDialog.Content></AlertDialog.Root>
+<AlertDialog.Root bind:open={a.confirmOpen}>
+  <AlertDialog.Content aria-busy={a.confirming} onEscapeKeydown={(event) => { if (a.confirming) event.preventDefault(); }} onInteractOutside={(event) => { if (a.confirming) event.preventDefault(); }}>
+    <AlertDialog.Header><AlertDialog.Title>{a.confirmTitle}</AlertDialog.Title><AlertDialog.Description>{a.confirmText}</AlertDialog.Description></AlertDialog.Header>
+    {#if a.confirmError}<Alert.Root variant="destructive"><Alert.Title>Action failed</Alert.Title><Alert.Description>{a.confirmError}</Alert.Description></Alert.Root>{/if}
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel disabled={a.confirming}>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action disabled={a.confirming} onclick={(event) => { event.preventDefault(); void a.runConfirmation(); }}>{a.confirming ? 'Working…' : a.confirmLabel}</AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
 <Dialog.Root bind:open={a.renameOpen}><Dialog.Content><Dialog.Header><Dialog.Title>Rename subscription</Dialog.Title><Dialog.Description>Choose a label to help you recognize this account.</Dialog.Description></Dialog.Header><form class="space-y-5" onsubmit={(event) => { event.preventDefault(); void a.saveLabel(); }}><div class="space-y-2"><Label for="account-label">Label</Label><Input id="account-label" bind:value={a.renamedLabel} maxlength={100} /></div><Dialog.Footer><Button type="submit" disabled={a.busy}>Save label</Button></Dialog.Footer></form></Dialog.Content></Dialog.Root>
