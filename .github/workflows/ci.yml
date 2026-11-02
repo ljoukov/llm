@@ -25,3 +25,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+
+  dashboard:
+    name: dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/admin/package-lock.json
+      - run: npm --prefix web/admin ci
+      - run: npm run dashboard:check
+      - run: npm run dashboard:build

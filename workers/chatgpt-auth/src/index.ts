@@ -1,3 +1,14 @@
+import {
+  authenticateSession,
+  handleAdminSession,
+  handleAdminConfig,
+  handleGoogleLogin,
+  handleAdminTicket,
+  handleDeviceLogin,
+  protectResponse,
+  serveDashboard,
+} from "./admin.js";
+
 type D1Result = {
   readonly meta?: { readonly changes?: number };
 };
@@ -36,17 +47,27 @@ type StoredTokenState = TokenState & {
   lockUntil: number | null;
 };
 
-type Principal = {
+export type Principal = {
   id: string;
   name: string;
   kind: "admin" | "client";
+  accountIds?: readonly string[] | null;
+  email?: string;
 };
 
-type Env = {
+export type Env = {
   CHATGPT_AUTH_API_KEY: string;
   CHATGPT_AUTH_DB: D1Database;
   CHATGPT_AUTH_LOG_EMAIL?: string;
   CHATGPT_AUTH_AUDIT_RETENTION_DAYS?: string;
+  CHATGPT_CODEX_PROXY_URL?: string;
+  CHATGPT_CODEX_PROXY_API_KEY?: string;
+  ADMIN_GOOGLE_CLIENT_ID?: string;
+  ADMIN_GOOGLE_CLIENT_SECRET?: string;
+  ADMIN_BASE_URL?: string;
+  ADMIN_ALLOWED_EMAILS?: string;
+  ADMIN_ALLOW_KEY_LOGIN?: string;
+  ASSETS?: { fetch(request: Request): Promise<Response> };
 };
 
 const OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -156,8 +177,34 @@ function extractChatGptAccountIdFromJwt(token: string): string | undefined {
 function extractEmailFromJwt(token: string): string | undefined {
   const payload = decodeJwtPayload(token);
   if (!payload || typeof payload !== "object") return undefined;
-  const email = (payload as { email?: unknown }).email;
+  const profile = (payload as { "https://api.openai.com/profile"?: { email?: unknown } })[
+    "https://api.openai.com/profile"
+  ];
+  const email = (payload as { email?: unknown }).email ?? profile?.email;
   return typeof email === "string" && email.includes("@") ? email : undefined;
+}
+
+function extractAccountDetails(
+  idToken: string,
+  accessToken: string,
+): { name: string | null; plan: string | null } {
+  const id = decodeJwtPayload(idToken) as Record<string, unknown> | null;
+  const access = decodeJwtPayload(accessToken) as Record<string, unknown> | null;
+  const claims = [id, access].filter((item) => item && typeof item === "object") as Record<
+    string,
+    unknown
+  >[];
+  let name: string | null = null;
+  let plan: string | null = null;
+  for (const claim of claims) {
+    const auth = claim["https://api.openai.com/auth"] as Record<string, unknown> | undefined;
+    const profile = claim["https://api.openai.com/profile"] as Record<string, unknown> | undefined;
+    const candidateName = claim.name ?? profile?.name;
+    if (!name && typeof candidateName === "string" && candidateName.trim())
+      name = candidateName.trim();
+    if (!plan && typeof auth?.chatgpt_plan_type === "string") plan = auth.chatgpt_plan_type;
+  }
+  return { name, plan };
 }
 
 function shouldLogFullEmail(env: Env): boolean {
@@ -185,7 +232,10 @@ function rowToState(row: Record<string, unknown>): StoredTokenState {
     idToken: row.id_token ? String(row.id_token) : undefined,
     expiresAt: Number(row.expires_at ?? 0),
     accountId: String(row.account_id ?? ""),
-    email: row.email ? String(row.email) : undefined,
+    email: row.email
+      ? String(row.email)
+      : (extractEmailFromJwt(String(row.id_token ?? "")) ??
+        extractEmailFromJwt(String(row.access_token ?? ""))),
     label: row.label ? String(row.label) : undefined,
     enabled: Number(row.enabled ?? 1) !== 0,
     updatedAt: Number(row.updated_at ?? 0),
@@ -272,6 +322,7 @@ async function updateRefreshedState(env: Env, id: string, state: TokenState): Pr
 async function selectNextStateFromD1(
   env: Env,
   excludedIds: readonly string[],
+  accountIds: readonly string[] | null = null,
 ): Promise<StoredTokenState | null> {
   const exclusionClause =
     excludedIds.length > 0 ? `AND id NOT IN (${excludedIds.map(() => "?").join(", ")})` : "";
@@ -281,12 +332,13 @@ async function selectNextStateFromD1(
      WHERE id = (
        SELECT id FROM chatgpt_auth_state
        WHERE enabled = 1 ${exclusionClause}
+         ${accountIds === null ? "" : "AND id IN (SELECT value FROM json_each(?))"}
        ORDER BY last_selected_at ASC, selection_count ASC, id ASC
        LIMIT 1
      )
      RETURNING ${ACCOUNT_COLUMNS}`,
   )
-    .bind(nowMs(), ...excludedIds)
+    .bind(nowMs(), ...excludedIds, ...(accountIds === null ? [] : [JSON.stringify(accountIds)]))
     .first<Record<string, unknown>>();
   return row ? rowToState(row) : null;
 }
@@ -323,8 +375,7 @@ async function oauthRefresh(refreshToken: string): Promise<{
     body: params.toString(),
   });
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`ChatGPT OAuth refresh failed (${response.status}): ${body}`);
+    throw new Error(`ChatGPT OAuth refresh failed (${response.status}).`);
   }
   const payload = (await response.json()) as Record<string, unknown>;
   const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
@@ -371,7 +422,10 @@ async function refreshIfNeeded(
       idToken,
       expiresAt: now + refreshed.expiresIn * 1000,
       accountId,
-      email: extractEmailFromJwt(idToken ?? "") ?? latest.email,
+      email:
+        extractEmailFromJwt(idToken ?? "") ??
+        extractEmailFromJwt(refreshed.accessToken) ??
+        latest.email,
       label: latest.label,
       updatedAt: now,
     };
@@ -407,7 +461,12 @@ function normalizeSeedInput(input: Record<string, unknown>): TokenState {
   const idToken = source.idToken ?? source.id_token ?? input.idToken ?? input.id_token;
   const accountIdInput =
     source.accountId ?? source.account_id ?? input.accountId ?? input.account_id;
-  const expiresAtRaw = input.expiresAt ?? input.expires_at ?? input.expires;
+  const accessClaims = typeof accessToken === "string" ? decodeJwtPayload(accessToken) : null;
+  const jwtExpiry =
+    accessClaims && typeof accessClaims === "object"
+      ? (accessClaims as { exp?: unknown }).exp
+      : undefined;
+  const expiresAtRaw = input.expiresAt ?? input.expires_at ?? input.expires ?? jwtExpiry;
   const parsedExpiresAt = Number.parseFloat(String(expiresAtRaw ?? "NaN"));
   const now = nowMs();
   const expiresAt =
@@ -443,7 +502,8 @@ function normalizeSeedInput(input: Record<string, unknown>): TokenState {
     accountId: accountId.trim(),
     email:
       (typeof emailInput === "string" && emailInput.trim()) ||
-      extractEmailFromJwt(normalizedIdToken ?? ""),
+      extractEmailFromJwt(normalizedIdToken ?? "") ||
+      extractEmailFromJwt(accessToken),
     label: typeof label === "string" && label.trim() ? label.trim() : undefined,
     updatedAt: now,
   };
@@ -459,6 +519,7 @@ function accountMetadata(state: StoredTokenState): Record<string, unknown> {
     accountId: state.accountId,
     email: state.email ?? null,
     label: state.label ?? null,
+    ...extractAccountDetails(state.idToken ?? "", state.accessToken),
     enabled: state.enabled,
     expiresAt: state.expiresAt,
     expiresInMs: Math.max(0, state.expiresAt - now),
@@ -491,12 +552,17 @@ async function authenticate(request: Request, env: Env): Promise<Principal | nul
   }
   const tokenHash = await sha256Hex(token);
   const row = await env.CHATGPT_AUTH_DB.prepare(
-    "SELECT id, name FROM chatgpt_auth_clients WHERE token_hash = ?1 AND enabled = 1",
+    "SELECT id, name, account_ids FROM chatgpt_auth_clients WHERE token_hash = ?1 AND enabled = 1 AND deleted_at IS NULL",
   )
     .bind(tokenHash)
     .first<Record<string, unknown>>();
   if (!row) return null;
-  return { id: String(row.id), name: String(row.name), kind: "client" };
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    kind: "client",
+    accountIds: parseAccountIds(row.account_ids),
+  };
 }
 
 async function markPrincipalUsed(env: Env, principal: Principal): Promise<void> {
@@ -639,7 +705,7 @@ async function handleToken(request: Request, env: Env, principal: Principal): Pr
   const attemptedIds: string[] = [];
 
   while (true) {
-    let state = await selectNextStateFromD1(env, attemptedIds);
+    let state = await selectNextStateFromD1(env, attemptedIds, principal.accountIds ?? null);
     if (!state) break;
     attemptedIds.push(state.id);
     let refreshed = false;
@@ -680,7 +746,7 @@ async function handleToken(request: Request, env: Env, principal: Principal): Pr
   return json(
     {
       error: "no_usable_account",
-      message: "No enabled account has a usable access token.",
+      message: "No permitted, enabled subscription has a usable access token.",
       attemptedAccounts: attemptedIds.length,
     },
     { status: 503 },
@@ -741,8 +807,8 @@ function generateClientToken(): string {
 
 async function listClients(env: Env): Promise<readonly Record<string, unknown>[]> {
   const result = await env.CHATGPT_AUTH_DB.prepare(
-    `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count
-     FROM chatgpt_auth_clients ORDER BY name, id`,
+    `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count, account_ids
+     FROM chatgpt_auth_clients WHERE deleted_at IS NULL ORDER BY name, id`,
   ).all<Record<string, unknown>>();
   return result.results ?? [];
 }
@@ -757,7 +823,36 @@ function clientMetadata(row: Record<string, unknown>): Record<string, unknown> {
     updatedAt: Number(row.updated_at),
     lastUsedAt: row.last_used_at == null ? null : Number(row.last_used_at),
     requestCount: Number(row.request_count ?? 0),
+    accountIds: parseAccountIds(row.account_ids),
   };
+}
+
+function parseAccountIds(value: unknown): readonly string[] | null {
+  if (value === null || value === undefined) return null;
+  try {
+    const parsed = JSON.parse(String(value)) as unknown;
+    return Array.isArray(parsed) && parsed.every((id) => typeof id === "string") ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function validateAccountIds(env: Env, value: unknown): Promise<string[] | null> {
+  if (value === undefined || value === null) return null;
+  if (
+    !Array.isArray(value) ||
+    value.length > 100 ||
+    value.some((id) => typeof id !== "string" || !id.trim())
+  ) {
+    throw new Error(
+      "accountIds must be null (all subscriptions) or an array of subscription account IDs.",
+    );
+  }
+  const ids = [...new Set(value as string[])];
+  const available = new Set((await listStatesFromD1(env)).map((state) => state.accountId));
+  if (ids.some((id) => !available.has(id)))
+    throw new Error("One or more selected subscriptions no longer exist.");
+  return ids;
 }
 
 async function handleClients(request: Request, env: Env): Promise<Response> {
@@ -768,21 +863,41 @@ async function handleClients(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const name = validateClientName(body?.name);
   if (!name) return badRequest("name must be a non-empty string of at most 100 characters.");
+  let accountIds: string[] | null;
+  try {
+    accountIds = await validateAccountIds(env, body?.accountIds);
+  } catch (error) {
+    return badRequest((error as Error).message);
+  }
   const token = generateClientToken();
   const tokenHash = await sha256Hex(token);
   const id = `client_${crypto.randomUUID()}`;
   const now = nowMs();
   await env.CHATGPT_AUTH_DB.prepare(
     `INSERT INTO chatgpt_auth_clients
-       (id, name, token_hash, token_prefix, enabled, created_at, updated_at, request_count)
-     VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5, 0)`,
+       (id, name, token_hash, token_prefix, enabled, created_at, updated_at, request_count, account_ids)
+     VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5, 0, ?6)`,
   )
-    .bind(id, name, tokenHash, token.slice(0, 13), now)
+    .bind(
+      id,
+      name,
+      tokenHash,
+      token.slice(0, 13),
+      now,
+      accountIds === null ? null : JSON.stringify(accountIds),
+    )
     .run();
   return json(
     {
       ok: true,
-      client: { id, name, tokenPrefix: token.slice(0, 13), enabled: true, createdAt: now },
+      client: {
+        id,
+        name,
+        tokenPrefix: token.slice(0, 13),
+        enabled: true,
+        createdAt: now,
+        accountIds,
+      },
       token,
       warning: "This token is shown only once. Store it as a secret.",
     },
@@ -792,8 +907,8 @@ async function handleClients(request: Request, env: Env): Promise<Response> {
 
 async function readClient(env: Env, id: string): Promise<Record<string, unknown> | null> {
   return env.CHATGPT_AUTH_DB.prepare(
-    `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count
-     FROM chatgpt_auth_clients WHERE id = ?1`,
+    `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count, account_ids
+     FROM chatgpt_auth_clients WHERE id = ?1 AND deleted_at IS NULL`,
   )
     .bind(id)
     .first<Record<string, unknown>>();
@@ -804,7 +919,7 @@ async function handleClient(request: Request, env: Env, id: string): Promise<Res
   if (!current) return notFound(`Client ${id} was not found.`);
   if (request.method === "DELETE") {
     await env.CHATGPT_AUTH_DB.prepare(
-      "UPDATE chatgpt_auth_clients SET enabled = 0, updated_at = ?1 WHERE id = ?2",
+      "UPDATE chatgpt_auth_clients SET enabled = 0, updated_at = ?1, deleted_at = ?1 WHERE id = ?2",
     )
       .bind(nowMs(), id)
       .run();
@@ -819,10 +934,25 @@ async function handleClient(request: Request, env: Env, id: string): Promise<Res
     return badRequest("enabled must be a boolean.");
   }
   const enabled = typeof body.enabled === "boolean" ? body.enabled : Number(current.enabled) !== 0;
+  let accountIds: readonly string[] | null;
+  try {
+    accountIds =
+      body.accountIds === undefined
+        ? parseAccountIds(current.account_ids)
+        : await validateAccountIds(env, body.accountIds);
+  } catch (error) {
+    return badRequest((error as Error).message);
+  }
   await env.CHATGPT_AUTH_DB.prepare(
-    "UPDATE chatgpt_auth_clients SET name = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
+    "UPDATE chatgpt_auth_clients SET name = ?1, enabled = ?2, updated_at = ?3, account_ids = ?4 WHERE id = ?5",
   )
-    .bind(name, enabled ? 1 : 0, nowMs(), id)
+    .bind(
+      name,
+      enabled ? 1 : 0,
+      nowMs(),
+      accountIds === null ? null : JSON.stringify(accountIds),
+      id,
+    )
     .run();
   const updated = await readClient(env, id);
   return json({ ok: true, client: updated ? clientMetadata(updated) : null });
@@ -848,6 +978,74 @@ async function handleRotateClient(request: Request, env: Env, id: string): Promi
     token,
     tokenPrefix: token.slice(0, 13),
     warning: "This token is shown only once. Store it as a secret.",
+  });
+}
+
+async function handleTestClient(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return methodNotAllowed();
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const token = typeof body?.token === "string" ? body.token.trim() : "";
+  if (!token || token.length > 4096 || !/^[\x21-\x7e]+$/u.test(token))
+    return badRequest("Paste the API key you want to test.");
+  if (body?.clientId !== undefined && typeof body.clientId !== "string")
+    return badRequest("clientId must be a string.");
+  const started = performance.now();
+  const result = (value: Record<string, unknown>) =>
+    json({ ...value, checkedAt: nowMs(), durationMs: Math.round(performance.now() - started) });
+  // Authenticate only the supplied key. The administrator's cookie must never satisfy this check.
+  const probe = new Request(new URL("/v1/token", request.url), {
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(request.headers.has("cf-ray") ? { "cf-ray": request.headers.get("cf-ray")! } : {}),
+    },
+  });
+  const principal = await authenticate(probe, env);
+  if (!principal) {
+    const disabled = await env.CHATGPT_AUTH_DB.prepare(
+      "SELECT id FROM chatgpt_auth_clients WHERE token_hash = ?1 AND enabled = 0 AND deleted_at IS NULL",
+    )
+      .bind(await sha256Hex(token))
+      .first();
+    return result({
+      ok: false,
+      code: disabled ? "key_disabled" : "invalid_key",
+      message: disabled
+        ? "This API key is disabled."
+        : "This API key is invalid or has been revoked.",
+    });
+  }
+  if (principal.kind !== "client")
+    return result({ ok: false, code: "admin_key", message: "Use a named API key for this check." });
+  if (body?.clientId && body.clientId !== principal.id)
+    return result({
+      ok: false,
+      code: "wrong_key",
+      message: "The pasted key belongs to a different API key. Paste the key for this application.",
+    });
+  const client = { id: principal.id, name: principal.name };
+  const grant = await handleToken(probe, env, principal);
+  const payload = (await grant.json()) as Record<string, unknown>;
+  if (!grant.ok)
+    return result({
+      ok: false,
+      code: "no_usable_subscription",
+      message:
+        "The key is valid, but none of its permitted subscriptions can issue a token. Check its subscription selection, enabled accounts, and saved logins.",
+      client,
+    });
+  const account = await readStateFromD1(env, String(payload.accountId));
+  return result({
+    ok: true,
+    code: "ready",
+    message: "The key authenticated and successfully obtained a subscription token.",
+    client,
+    subscription: {
+      accountId: payload.accountId,
+      email: account?.email ?? null,
+      label: account?.label ?? null,
+      plan: account ? extractAccountDetails(account.idToken ?? "", account.accessToken).plan : null,
+    },
+    expiresAt: payload.expiresAt,
   });
 }
 
@@ -884,6 +1082,136 @@ async function handleEvents(request: Request, env: Env): Promise<Response> {
   });
 }
 
+async function handleStats(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowed();
+  const raw = Number(new URL(request.url).searchParams.get("days") ?? 7);
+  const days = Number.isFinite(raw) ? Math.max(1, Math.min(30, Math.floor(raw))) : 7;
+  const since = nowMs() - days * 86_400_000;
+  const results = await Promise.all([
+    env.CHATGPT_AUTH_DB.prepare(`SELECT COUNT(*) AS events,
+      SUM(CASE WHEN outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
+      SUM(CASE WHEN outcome != 'issued' THEN 1 ELSE 0 END) AS failures
+      FROM chatgpt_auth_token_events WHERE occurred_at >= ?1`)
+      .bind(since)
+      .first(),
+    env.CHATGPT_AUTH_DB.prepare(`SELECT strftime('%Y-%m-%d', occurred_at / 1000, 'unixepoch') AS day,
+      SUM(CASE WHEN outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
+      SUM(CASE WHEN outcome != 'issued' THEN 1 ELSE 0 END) AS failures
+      FROM chatgpt_auth_token_events WHERE occurred_at >= ?1 GROUP BY day ORDER BY day`)
+      .bind(since)
+      .all(),
+    env.CHATGPT_AUTH_DB.prepare(`SELECT e.client_id AS id, COALESCE(c.name, e.client_id) AS name,
+      SUM(CASE WHEN e.outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
+      SUM(CASE WHEN e.outcome != 'issued' THEN 1 ELSE 0 END) AS failures,
+      MAX(e.occurred_at) AS lastUsedAt FROM chatgpt_auth_token_events e
+      LEFT JOIN chatgpt_auth_clients c ON c.id = e.client_id
+      WHERE e.occurred_at >= ?1 GROUP BY e.client_id ORDER BY issued DESC`)
+      .bind(since)
+      .all(),
+    env.CHATGPT_AUTH_DB.prepare(`SELECT e.account_id AS id,
+      COALESCE(s.label, s.email, e.account_id, 'No subscription') AS name,
+      SUM(CASE WHEN e.outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
+      SUM(CASE WHEN e.outcome != 'issued' THEN 1 ELSE 0 END) AS failures
+      FROM chatgpt_auth_token_events e LEFT JOIN chatgpt_auth_state s ON s.id = e.account_id
+      WHERE e.occurred_at >= ?1 GROUP BY e.account_id ORDER BY issued DESC`)
+      .bind(since)
+      .all(),
+  ]);
+  return json({
+    days,
+    since,
+    totals: results[0],
+    daily: results[1].results ?? [],
+    byKey: results[2].results ?? [],
+    bySubscription: results[3].results ?? [],
+    measurement:
+      "Token grants and failed selections, not model-token consumption or billing. History starts after the multi-account upgrade.",
+  });
+}
+
+async function handleSubscriptionUsage(request: Request, env: Env, id: string): Promise<Response> {
+  if (request.method !== "POST") return methodNotAllowed();
+  const current = await readStateFromD1(env, id);
+  if (!current) return notFound("Subscription not found.");
+  const { state } = await refreshIfNeeded(env, id, {
+    withinMs: ACCESS_TOKEN_EXPIRY_SAFETY_MS,
+    reason: "usage_check",
+  });
+  const proxyUrl = env.CHATGPT_CODEX_PROXY_URL?.trim();
+  const proxyKey = env.CHATGPT_CODEX_PROXY_API_KEY?.trim();
+  if (proxyUrl && !proxyKey)
+    return json(
+      { error: "usage_proxy_not_configured", message: "The usage proxy secret is missing." },
+      { status: 503 },
+    );
+  if (proxyUrl && new URL(proxyUrl).protocol !== "https:")
+    return badRequest("The usage proxy must use HTTPS.");
+  const response = proxyUrl
+    ? await fetch(new URL("/api/codex/usage", proxyUrl), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${proxyKey}`,
+          "x-codex-proxy-auth": proxyKey!,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ accessToken: state.accessToken, accountId: state.accountId }),
+        signal: AbortSignal.timeout(25_000),
+      })
+    : await fetch("https://chatgpt.com/backend-api/wham/usage", {
+        headers: {
+          Authorization: `Bearer ${state.accessToken}`,
+          "chatgpt-account-id": state.accountId,
+          "User-Agent": "codex-cli",
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(20_000),
+      });
+  if (!response.ok)
+    return json(
+      {
+        error: "usage_unavailable",
+        message: `Subscription limits are unavailable (HTTP ${response.status}).`,
+      },
+      { status: 502 },
+    );
+  const data = (await response.json()) as Record<string, unknown>;
+  if (typeof data.account_id === "string" && data.account_id !== state.accountId)
+    return json(
+      {
+        error: "usage_account_mismatch",
+        message: "Usage response does not match the selected subscription.",
+      },
+      { status: 502 },
+    );
+  if (typeof data.email === "string" && data.email.includes("@")) {
+    await env.CHATGPT_AUTH_DB.prepare("UPDATE chatgpt_auth_state SET email = ?1 WHERE id = ?2")
+      .bind(data.email, current.id)
+      .run();
+  }
+  const limits =
+    data.rate_limit && typeof data.rate_limit === "object"
+      ? (data.rate_limit as Record<string, unknown>)
+      : {};
+  function window(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Record<string, unknown>;
+    const percent = typeof item.used_percent === "number" ? item.used_percent : Number.NaN;
+    return {
+      usedPercent: Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null,
+      resetAt: Number(item.reset_at) > 0 ? Number(item.reset_at) * 1000 : null,
+      windowSeconds: Number(item.limit_window_seconds) || null,
+    };
+  }
+  return json({
+    accountId: id,
+    checkedAt: nowMs(),
+    plan: typeof data.plan_type === "string" ? data.plan_type : null,
+    limitReached: limits.limit_reached === true,
+    primary: window(limits.primary_window),
+    secondary: window(limits.secondary_window),
+  });
+}
+
 function pathIdentifier(path: string, prefix: string): string | null {
   if (!path.startsWith(prefix)) return null;
   const encoded = path.slice(prefix.length);
@@ -903,6 +1231,18 @@ function auditRetentionDays(env: Env): number {
 }
 
 async function runScheduledMaintenance(env: Env): Promise<void> {
+  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_admin_sessions WHERE expires_at < ?1")
+    .bind(nowMs())
+    .run();
+  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_login_attempts WHERE expires_at < ?1")
+    .bind(nowMs())
+    .run();
+  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_login_limits WHERE expires_at < ?1")
+    .bind(nowMs())
+    .run();
+  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_google_logins WHERE expires_at < ?1")
+    .bind(nowMs())
+    .run();
   const states = await listStatesFromD1(env, true);
   for (const state of states) {
     try {
@@ -922,34 +1262,18 @@ async function runScheduledMaintenance(env: Env): Promise<void> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
-      const principal = await authenticate(request, env);
-      if (!principal) return unauthorized();
-      const url = new URL(request.url);
-      const path = url.pathname;
-
-      if (path === "/v1/token") return handleToken(request, env, principal);
-      if (principal.kind !== "admin") return forbidden();
-
-      if (path === "/v1/health") return handleHealth(request, env);
-      if (path === "/v1/seed") return handleSeed(request, env);
-      if (path === "/v1/accounts") return handleAccounts(request, env);
-      if (path === "/v1/refresh") return handleForceRefresh(request, env);
-      if (path === "/v1/clients") return handleClients(request, env);
-      if (path === "/v1/events") return handleEvents(request, env);
-
-      const rotateMatch = /^\/v1\/clients\/([^/]+)\/rotate$/u.exec(path);
-      if (rotateMatch?.[1]) {
-        return handleRotateClient(request, env, decodeURIComponent(rotateMatch[1]));
-      }
-      const accountId = pathIdentifier(path, "/v1/accounts/");
-      if (accountId) return handleAccount(request, env, accountId);
-      const clientId = pathIdentifier(path, "/v1/clients/");
-      if (clientId) return handleClient(request, env, clientId);
-
-      return json({ error: "not_found" }, { status: 404 });
+      return protectResponse(await handleRequest(request, env));
     } catch (error) {
       console.log(`[request] failed: ${(error as Error).message}`);
-      return json({ error: "internal_error", message: (error as Error).message }, { status: 500 });
+      return protectResponse(
+        json(
+          {
+            error: "internal_error",
+            message: "The request could not be completed. Check the Worker logs.",
+          },
+          { status: 500 },
+        ),
+      );
     }
   },
 
@@ -957,3 +1281,75 @@ export default {
     context.waitUntil(runScheduledMaintenance(env));
   },
 };
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const page = await serveDashboard(request, env);
+    if (page) return page;
+    if (path === "/admin/config") return handleAdminConfig(request, env);
+    if (path === "/auth" || path === "/auth/callback") return handleGoogleLogin(request, env);
+    if (path === "/admin/session") return handleAdminSession(request, env);
+    const bearer = getAuthToken(request);
+    const principal = bearer
+      ? await authenticate(request, env)
+      : await authenticateSession(request, env);
+    if (!principal) return unauthorized();
+    if (
+      !bearer &&
+      !["GET", "HEAD"].includes(request.method) &&
+      request.headers.get("origin") !== url.origin
+    ) {
+      return forbidden();
+    }
+
+    if (path === "/v1/token") return handleToken(request, env, principal);
+    if (principal.kind !== "admin") return forbidden();
+
+    if (path === "/v1/session")
+      return request.method === "GET"
+        ? json({ ok: true, role: "admin", email: principal.email ?? null })
+        : methodNotAllowed();
+    if (path === "/v1/admin-links") return handleAdminTicket(request, env);
+    if (path.startsWith("/v1/login/"))
+      return handleDeviceLogin(request, env, async (body) => {
+        const state = normalizeSeedInput(body);
+        await upsertSeedState(env, state);
+        const saved = await readStateFromD1(env, state.accountId);
+        if (!saved) throw new Error("Could not save the subscription.");
+        return accountMetadata(saved);
+      });
+    if (path === "/v1/stats") return handleStats(request, env);
+    const usageMatch = /^\/v1\/accounts\/([^/]+)\/usage$/u.exec(path);
+    if (usageMatch?.[1])
+      return handleSubscriptionUsage(request, env, decodeURIComponent(usageMatch[1]));
+    if (path === "/v1/health") return handleHealth(request, env);
+    if (path === "/v1/seed") return handleSeed(request, env);
+    if (path === "/v1/accounts") return handleAccounts(request, env);
+    if (path === "/v1/refresh") return handleForceRefresh(request, env);
+    if (path === "/v1/clients") return handleClients(request, env);
+    if (path === "/v1/clients/test") return handleTestClient(request, env);
+    if (path === "/v1/events") return handleEvents(request, env);
+
+    const rotateMatch = /^\/v1\/clients\/([^/]+)\/rotate$/u.exec(path);
+    if (rotateMatch?.[1]) {
+      return handleRotateClient(request, env, decodeURIComponent(rotateMatch[1]));
+    }
+    const accountId = pathIdentifier(path, "/v1/accounts/");
+    if (accountId) return handleAccount(request, env, accountId);
+    const clientId = pathIdentifier(path, "/v1/clients/");
+    if (clientId) return handleClient(request, env, clientId);
+
+    return json({ error: "not_found" }, { status: 404 });
+  } catch (error) {
+    console.log(`[request] failed: ${(error as Error).message}`);
+    return json(
+      {
+        error: "internal_error",
+        message: "The request could not be completed. Check the Worker logs.",
+      },
+      { status: 500 },
+    );
+  }
+}

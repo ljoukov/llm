@@ -1,0 +1,17 @@
+{
+  "name": "llm-subscription-admin",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-02-14",
+  "assets": { "directory": "../../web/admin/build", "binding": "ASSETS", "run_worker_first": true },
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "vars": { "CHATGPT_AUTH_LOG_EMAIL": "0", "CHATGPT_AUTH_AUDIT_RETENTION_DAYS": "30" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "d1_databases": [
+    {
+      "binding": "CHATGPT_AUTH_DB",
+      "database_name": "subscription-auth",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "remote": true
+    }
+  ]
+}

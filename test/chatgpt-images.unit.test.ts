@@ -69,9 +69,9 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 describe("ChatGPT Codex Images transport", () => {
   beforeEach(() => {
-    delete process.env.CHATGPT_CODEX_IMAGES_ENDPOINT;
-    delete process.env.CHATGPT_CODEX_PROXY_URL;
-    delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+    process.env.CHATGPT_CODEX_IMAGES_ENDPOINT = "";
+    process.env.CHATGPT_CODEX_PROXY_URL = "";
+    process.env.CHATGPT_CODEX_PROXY_API_KEY = "";
     configureChatGptCodexProxy(null);
     chatGptAuthMock.getChatGptAuthProfile.mockClear();
   });

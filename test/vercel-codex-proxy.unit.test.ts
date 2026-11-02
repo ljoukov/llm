@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleCodexImagesRequest,
   handleCodexResponsesRequest,
+  handleCodexUsageRequest,
   handleHealthRequest,
 } from "../vercel/codex-proxy/src/handler.js";
 
@@ -33,6 +34,117 @@ describe("vercel codex proxy", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "unauthorized" });
+  });
+
+  it("requires proxy authorization and a valid POST body for subscription usage", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(
+      (
+        await handleCodexUsageRequest(
+          new Request("https://proxy.example/api/codex/usage", { method: "POST", body: "invalid" }),
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await handleCodexUsageRequest(
+          new Request("https://proxy.example/api/codex/usage", {
+            headers: { authorization: "Bearer proxy-key" },
+          }),
+        )
+      ).status,
+    ).toBe(405);
+    for (const body of ["invalid", "null", "[]", '{"accessToken":"token"}']) {
+      const result = await handleCodexUsageRequest(
+        new Request("https://proxy.example/api/codex/usage", {
+          method: "POST",
+          headers: { authorization: "Bearer proxy-key" },
+          body,
+        }),
+      );
+      expect(result.status).toBe(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("looks up the selected account without selecting another pool account or leaking credentials", async () => {
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe("https://chatgpt.com/backend-api/wham/usage");
+      expect(init?.method).toBe("GET");
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer selected-access");
+      expect(headers.get("chatgpt-account-id")).toBe("selected-account");
+      expect(headers.get("x-codex-proxy-auth")).toBeNull();
+      expect(headers.get("cookie")).toBeNull();
+      expect(headers.get("cf-ray")).toBeNull();
+      return Response.json({
+        account_id: "selected-account",
+        email: "owner@example.com",
+        plan_type: "pro",
+        access_token: "must-not-leak",
+        rate_limit: {
+          limit_reached: false,
+          primary_window: {
+            used_percent: 31,
+            reset_at: 1800000000,
+            limit_window_seconds: 18000,
+            refresh_token: "also-private",
+          },
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await handleCodexUsageRequest(
+      new Request("https://proxy.example/api/codex/usage", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer proxy-key",
+          cookie: "must-not-forward",
+          "cf-ray": "must-not-forward",
+        },
+        body: JSON.stringify({
+          accessToken: "selected-access",
+          accountId: "selected-account",
+          upstreamUrl: "https://untrusted.example",
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      account_id: "selected-account",
+      email: "owner@example.com",
+      plan_type: "pro",
+      rate_limit: { primary_window: { used_percent: 31 } },
+    });
+    for (const secret of ["selected-access", "proxy-key", "must-not-leak", "also-private"])
+      expect(text).not.toContain(secret);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a mismatched usage account and sanitizes upstream failures", async () => {
+    const request = () =>
+      new Request("https://proxy.example/api/codex/usage", {
+        method: "POST",
+        headers: { authorization: "Bearer proxy-key" },
+        body: JSON.stringify({ accessToken: "access", accountId: "selected-account" }),
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ account_id: "wrong-account", email: "wrong@example.com" })),
+    );
+    const mismatch = await handleCodexUsageRequest(request());
+    expect(mismatch.status).toBe(502);
+    expect(await mismatch.text()).not.toContain("wrong@example.com");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("private upstream error", { status: 403 })),
+    );
+    const failed = await handleCodexUsageRequest(request());
+    expect(failed.status).toBe(502);
+    expect(await failed.text()).not.toContain("private upstream error");
   });
 
   it("fetches a ChatGPT token and streams the upstream Codex response", async () => {

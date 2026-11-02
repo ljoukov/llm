@@ -302,6 +302,7 @@ export async function handleHealthRequest(request: Request): Promise<Response> {
 
   return json({
     ok: true,
+    supportsSubscriptionUsage: true,
     upstreamUrl: resolveUpstreamUrl(),
     hasProxyApiKey: Boolean(getEnv(CODEX_PROXY_API_KEY_ENV)),
     hasTokenProviderUrl: Boolean(getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV)),
@@ -310,6 +311,96 @@ export async function handleHealthRequest(request: Request): Promise<Response> {
     ),
     tokenProviderStore: getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV) ?? "kv",
   });
+}
+
+export async function handleCodexUsageRequest(request: Request): Promise<Response> {
+  if (!isAuthorized(request)) return unauthorized();
+  if (request.method !== "POST") return methodNotAllowed();
+  const text = await request.text();
+  if (text.length > 65_536) return json({ error: "request_too_large" }, { status: 413 });
+  let body: Record<string, unknown> | null;
+  try {
+    body = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (
+    !body ||
+    Array.isArray(body) ||
+    typeof body.accessToken !== "string" ||
+    !body.accessToken.trim() ||
+    typeof body.accountId !== "string" ||
+    !body.accountId.trim() ||
+    body.accountId.length > 200
+  ) {
+    return json(
+      {
+        error: "invalid_usage_request",
+        message: "A subscription access token and account ID are required.",
+      },
+      { status: 400 },
+    );
+  }
+  const accountId = body.accountId.trim();
+  try {
+    const response = await fetch("https://chatgpt.com/backend-api/wham/usage", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${body.accessToken.trim()}`,
+        "chatgpt-account-id": accountId,
+        "User-Agent": "codex-cli",
+        Accept: "application/json",
+      },
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(20_000)]),
+    });
+    if (!response.ok)
+      return json(
+        {
+          error: "usage_upstream_failed",
+          upstreamStatus: response.status,
+          message: `ChatGPT usage lookup failed (HTTP ${response.status}).`,
+        },
+        { status: 502 },
+      );
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (typeof payload.account_id === "string" && payload.account_id !== accountId) {
+      return json({ error: "usage_account_mismatch" }, { status: 502 });
+    }
+    const rateLimit =
+      payload.rate_limit && typeof payload.rate_limit === "object"
+        ? (payload.rate_limit as Record<string, unknown>)
+        : {};
+    function window(value: unknown): Record<string, number | null> | null {
+      if (!value || typeof value !== "object") return null;
+      const item = value as Record<string, unknown>;
+      const finite = (key: string) =>
+        typeof item[key] === "number" && Number.isFinite(item[key]) ? Number(item[key]) : null;
+      return {
+        used_percent: finite("used_percent"),
+        reset_at: finite("reset_at"),
+        limit_window_seconds: finite("limit_window_seconds"),
+      };
+    }
+    return json({
+      account_id: accountId,
+      email: typeof payload.email === "string" ? payload.email : null,
+      plan_type: typeof payload.plan_type === "string" ? payload.plan_type : null,
+      rate_limit: {
+        allowed: rateLimit.allowed === true,
+        limit_reached: rateLimit.limit_reached === true,
+        primary_window: window(rateLimit.primary_window),
+        secondary_window: window(rateLimit.secondary_window),
+      },
+    });
+  } catch {
+    return json(
+      {
+        error: "usage_upstream_unavailable",
+        message: "ChatGPT usage lookup could not be completed.",
+      },
+      { status: 502 },
+    );
+  }
 }
 
 export async function handleCodexResponsesRequest(request: Request): Promise<Response> {

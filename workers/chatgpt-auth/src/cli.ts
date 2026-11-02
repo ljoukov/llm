@@ -12,6 +12,7 @@ import {
   readChatGptAuthProfileFromFile,
   type ChatGptAuthProfile,
 } from "../../../src/openai/chatgpt-auth.js";
+import { loadLocalEnv } from "../../../src/utils/env.js";
 
 type ProviderConfig = {
   baseUrl: string;
@@ -198,6 +199,35 @@ const program = new Command()
   .description("Manage the Cloudflare ChatGPT subscription-token pool.");
 
 program
+  .command("dashboard")
+  .description("Open the web dashboard with a one-time admin sign-in link.")
+  .option("--no-open", "Print the link without opening a browser")
+  .action(async (options: { open: boolean }) => {
+    const result = await providerRequest("/v1/admin-links", { method: "POST" });
+    const url = String(result.url);
+    const expected = new URL(resolveProviderConfig().baseUrl);
+    if (new URL(url).origin !== expected.origin) throw new Error("Unexpected dashboard URL.");
+    console.log(`One-time dashboard sign-in link (expires in 60 seconds):\n${url}`);
+    if (options.open) {
+      const command =
+        process.platform === "darwin"
+          ? "open"
+          : process.platform === "win32"
+            ? "rundll32"
+            : "xdg-open";
+      const child = spawn(
+        command,
+        process.platform === "win32" ? ["url.dll,FileProtocolHandler", url] : [url],
+        { stdio: "ignore", detached: true },
+      );
+      child.on("error", () =>
+        console.error("Could not open a browser. Use the sign-in link above."),
+      );
+      child.unref();
+    }
+  });
+
+program
   .command("login")
   .description("Log in through Codex in an isolated temporary store and add the account.")
   .option("--label <label>", "Human-readable account label")
@@ -260,13 +290,54 @@ const client = program.command("client").description("Manage named token-provide
 
 client.command("list").action(async () => printClients(await providerRequest("/v1/clients")));
 
-client.command("create <name>").action(async (name: string) => {
-  const result = await providerRequest("/v1/clients", {
-    method: "POST",
-    body: JSON.stringify({ name }),
+client
+  .command("create <name>")
+  .option(
+    "--accounts <ids>",
+    "Restrict to comma-separated subscription account IDs; omit for all enabled accounts",
+  )
+  .action(async (name: string, options: { accounts?: string }) => {
+    const result = await providerRequest("/v1/clients", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        ...(options.accounts !== undefined
+          ? {
+              accountIds: options.accounts
+                .split(",")
+                .map((id) => id.trim())
+                .filter(Boolean),
+            }
+          : {}),
+      }),
+    });
+    printOneTimeClientToken(result);
   });
-  printOneTimeClientToken(result);
-});
+
+client
+  .command("scope <client-id>")
+  .description("Select which subscriptions a key can use.")
+  .option(
+    "--accounts <ids>",
+    "Comma-separated account IDs; an empty string grants no subscriptions",
+  )
+  .option("--all", "Allow all enabled subscriptions, including future additions")
+  .action(async (clientId: string, options: { accounts?: string; all?: boolean }) => {
+    if ((options.accounts !== undefined) === Boolean(options.all))
+      throw new Error("Choose either --accounts or --all.");
+    await providerRequest(`/v1/clients/${encodeURIComponent(clientId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        accountIds: options.all
+          ? null
+          : options.accounts
+              ?.split(",")
+              .map((id) => id.trim())
+              .filter(Boolean),
+      }),
+    });
+    console.log(`Updated subscription access for ${clientId}.`);
+  });
 
 client.command("rename <client-id> <name>").action(async (clientId: string, name: string) => {
   await providerRequest(`/v1/clients/${encodeURIComponent(clientId)}`, {
@@ -306,6 +377,8 @@ program
     if (options.client) query.set("clientId", options.client);
     printEvents(await providerRequest(`/v1/events?${query}`));
   });
+
+loadLocalEnv();
 
 program.parseAsync().catch((error: unknown) => {
   console.error((error as Error).message);

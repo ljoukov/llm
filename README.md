@@ -309,6 +309,15 @@ top-level request and do not read the local Codex auth store. The included Worke
 subscription accounts and records which named caller received which account. See
 `workers/chatgpt-auth/README.md` for browser-assisted account login and caller-management commands.
 
+The token provider also serves a responsive SvelteKit and shadcn-svelte admin dashboard with Google
+sign-in, an environment-based email allowlist, and light/dark themes. Google sign-in uses server-side
+redirects through `/auth`; deployment URLs, Google credentials, allowlisted emails, and resource IDs
+stay in private configuration. Run
+`npm run chatgpt-auth -- dashboard` from this repository to open it with a one-time admin sign-in
+link. Add subscriptions through browser approval or auth-file import, create keys with individually
+selected subscriptions, rotate/revoke keys, and inspect grant activity and subscription usage limits.
+Grant statistics describe token-provider activity rather than model-token consumption or billing.
+
 If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, OpenAI subscription text and image requests are sent
 through that proxy and the local process does not need access to the Codex auth store or token provider. The Vercel
 proxy fetches short-lived ChatGPT access tokens from `workers/chatgpt-auth`; it streams Responses traffic and forwards

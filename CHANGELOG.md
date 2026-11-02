@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Add a web dashboard to the ChatGPT token provider for browser-assisted subscription login,
+  auth-file import, named API keys, per-key subscription selections, key rotation/deletion, and
+  grant statistics. Subscription usage windows can be checked separately from grant counts.
+- Add secure admin sessions and one-time dashboard sign-in links via
+  `npm run chatgpt-auth -- dashboard`. The management CLI now reads `.env.local` and `.env`.
+- Use SvelteKit and shadcn-svelte for responsive light/dark administration, with server-side Google
+  OAuth, PKCE, verified email allowlisting, and private deployment configuration.
+- Add an authenticated Vercel usage relay for subscription limits on networks that block Cloudflare,
+  and recover subscription email, name, and plan from identity metadata.
+- Add API key checks that verify authentication and scoped subscription token issuance, with
+  clear failure reasons and no subscription-token disclosure. Fix profile email clipping and add
+  shield favicons for browsers and iPhone home screens.
+- Preserve existing callers' access to all enabled subscriptions; explicit empty key selections
+  grant no subscription access. Apply Worker migrations 0002 through 0004 when upgrading.
+
 ## 13.0.0 — 2026-10-29
 
 ### Claude subscription tokens in headless environments
