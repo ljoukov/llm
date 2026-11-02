@@ -2,16 +2,14 @@ declare const process: {
   readonly env: Record<string, string | undefined>;
 };
 
-const CODEX_PROXY_API_KEY_ENV = "CODEX_PROXY_API_KEY";
-const CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_URL";
-const CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY";
-const CHATGPT_AUTH_API_KEY_ENV = "CHATGPT_AUTH_API_KEY";
-const CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_STORE";
-const CHATGPT_CODEX_UPSTREAM_URL_ENV = "CHATGPT_CODEX_UPSTREAM_URL";
-const CHATGPT_CODEX_IMAGES_UPSTREAM_URL_ENV = "CHATGPT_CODEX_IMAGES_UPSTREAM_URL";
+const LLM_PROXY_API_KEY_ENV = "LLM_PROXY_API_KEY";
+const LLM_AUTH_URL_ENV = "LLM_AUTH_URL";
+const LLM_AUTH_API_KEY_ENV = "LLM_AUTH_API_KEY";
+const LLM_PROXY_OPENAI_UPSTREAM_URL_ENV = "LLM_PROXY_OPENAI_UPSTREAM_URL";
+const LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL_ENV = "LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL";
 
-const DEFAULT_CHATGPT_CODEX_UPSTREAM_URL = "https://chatgpt.com/backend-api/codex/responses";
-const DEFAULT_CHATGPT_CODEX_IMAGES_UPSTREAM_URL =
+const DEFAULT_LLM_PROXY_OPENAI_UPSTREAM_URL = "https://chatgpt.com/backend-api/codex/responses";
+const DEFAULT_LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL =
   "https://chatgpt.com/backend-api/codex/images/generations";
 const DEFAULT_OPENAI_BETA_HEADER = "responses=experimental";
 
@@ -42,6 +40,7 @@ type StreamingRequestInit = RequestInit & {
 };
 
 type TokenProviderResponse = {
+  readonly provider?: unknown;
   readonly accessToken?: unknown;
   readonly access_token?: unknown;
   readonly accountId?: unknown;
@@ -80,11 +79,11 @@ function getBearer(request: Request): string | null {
 }
 
 function getProxyAuthToken(request: Request): string | null {
-  return getBearer(request) ?? request.headers.get("x-codex-proxy-auth")?.trim() ?? null;
+  return getBearer(request) ?? request.headers.get("x-llm-proxy-auth")?.trim() ?? null;
 }
 
 function isAuthorized(request: Request): boolean {
-  const expected = getEnv(CODEX_PROXY_API_KEY_ENV);
+  const expected = getEnv(LLM_PROXY_API_KEY_ENV);
   const actual = getProxyAuthToken(request);
   return Boolean(expected && actual && actual === expected);
 }
@@ -112,18 +111,14 @@ function resolveTokenProviderConfig():
   | {
       readonly url: string;
       readonly apiKey: string;
-      readonly store: string;
     }
   | Response {
-  const tokenProviderUrl = getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV);
-  const tokenProviderApiKey =
-    getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV) ?? getEnv(CHATGPT_AUTH_API_KEY_ENV);
+  const tokenProviderUrl = getEnv(LLM_AUTH_URL_ENV);
+  const tokenProviderApiKey = getEnv(LLM_AUTH_API_KEY_ENV);
 
   const missing = [
-    ...(tokenProviderUrl ? [] : [CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV]),
-    ...(tokenProviderApiKey
-      ? []
-      : [`${CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV} or ${CHATGPT_AUTH_API_KEY_ENV}`]),
+    ...(tokenProviderUrl ? [] : [LLM_AUTH_URL_ENV]),
+    ...(tokenProviderApiKey ? [] : [LLM_AUTH_API_KEY_ENV]),
   ];
   if (missing.length > 0) {
     return missingConfigResponse(missing);
@@ -135,12 +130,11 @@ function resolveTokenProviderConfig():
   return {
     url: tokenProviderUrl,
     apiKey: tokenProviderApiKey,
-    store: getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV) ?? "kv",
   };
 }
 
 function resolveUpstreamUrl(): string {
-  return getEnv(CHATGPT_CODEX_UPSTREAM_URL_ENV) ?? DEFAULT_CHATGPT_CODEX_UPSTREAM_URL;
+  return getEnv(LLM_PROXY_OPENAI_UPSTREAM_URL_ENV) ?? DEFAULT_LLM_PROXY_OPENAI_UPSTREAM_URL;
 }
 
 function replaceCodexEndpointResource(
@@ -162,10 +156,10 @@ function replaceCodexEndpointResource(
 
 function resolveImagesUpstreamUrl(operation: "generations" | "edits"): string {
   const configured =
-    getEnv(CHATGPT_CODEX_IMAGES_UPSTREAM_URL_ENV) ??
-    (getEnv(CHATGPT_CODEX_UPSTREAM_URL_ENV)
+    getEnv(LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL_ENV) ??
+    (getEnv(LLM_PROXY_OPENAI_UPSTREAM_URL_ENV)
       ? resolveUpstreamUrl()
-      : DEFAULT_CHATGPT_CODEX_IMAGES_UPSTREAM_URL);
+      : DEFAULT_LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL);
   return replaceCodexEndpointResource(configured, `images/${operation}`);
 }
 
@@ -177,24 +171,25 @@ async function fetchChatGptCodexToken(): Promise<ChatGptCodexToken | Response> {
 
   const base = config.url.replace(/\/+$/u, "");
   const url = new URL(`${base}/v1/token`);
-  url.searchParams.set("store", config.store);
+  url.searchParams.set("provider", "openai");
 
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
-      "x-chatgpt-auth": config.apiKey,
+      "x-llm-auth": config.apiKey,
       Accept: "application/json",
     },
+    redirect: "error",
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {
-    const body = await response.text();
     return json(
       {
         error: "token_provider_failed",
         status: response.status,
-        message: body,
+        message: "Subscription token service request failed.",
       },
       { status: 502 },
     );
@@ -204,6 +199,16 @@ async function fetchChatGptCodexToken(): Promise<ChatGptCodexToken | Response> {
   const accessToken = payload?.accessToken ?? payload?.access_token;
   const accountId = payload?.accountId ?? payload?.account_id;
   const expiresAt = payload?.expiresAt ?? payload?.expires_at;
+
+  if (payload?.provider !== "openai") {
+    return json(
+      {
+        error: "token_provider_invalid_response",
+        message: "Expected an OpenAI subscription token.",
+      },
+      { status: 502 },
+    );
+  }
 
   if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
     return json(
@@ -249,8 +254,8 @@ function buildUpstreamHeaders(
     if (
       HOP_BY_HOP_HEADERS.has(lower) ||
       lower === "authorization" ||
-      lower === "x-codex-proxy-auth" ||
-      lower === "x-chatgpt-auth" ||
+      lower === "x-llm-proxy-auth" ||
+      lower === "x-llm-auth" ||
       lower === "x-api-key" ||
       !CHATGPT_UPSTREAM_HEADER_ALLOWLIST.has(lower)
     ) {
@@ -283,7 +288,9 @@ function buildClientHeaders(upstreamHeaders: Headers): Headers {
   const headers = new Headers();
   for (const [name, value] of upstreamHeaders) {
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lower)) {
+    // fetch decodes the upstream body; forwarding its original encoding would
+    // make the downstream client try to decompress the decoded bytes again.
+    if (HOP_BY_HOP_HEADERS.has(lower) || lower === "content-encoding") {
       continue;
     }
     headers.set(name, value);
@@ -304,12 +311,9 @@ export async function handleHealthRequest(request: Request): Promise<Response> {
     ok: true,
     supportsSubscriptionUsage: true,
     upstreamUrl: resolveUpstreamUrl(),
-    hasProxyApiKey: Boolean(getEnv(CODEX_PROXY_API_KEY_ENV)),
-    hasTokenProviderUrl: Boolean(getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV)),
-    hasTokenProviderApiKey: Boolean(
-      getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV) ?? getEnv(CHATGPT_AUTH_API_KEY_ENV),
-    ),
-    tokenProviderStore: getEnv(CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV) ?? "kv",
+    hasProxyApiKey: Boolean(getEnv(LLM_PROXY_API_KEY_ENV)),
+    hasTokenProviderUrl: Boolean(getEnv(LLM_AUTH_URL_ENV)),
+    hasTokenProviderApiKey: Boolean(getEnv(LLM_AUTH_API_KEY_ENV)),
   });
 }
 

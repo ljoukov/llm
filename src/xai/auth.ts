@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { getRemoteSubscriptionToken } from "../subscription-auth.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 
 const XAI_ISSUER = "https://auth.x.ai";
@@ -23,6 +24,7 @@ type GrokCredential = {
 export type XaiSubscriptionAuth = {
   token: string;
   clientVersion: string;
+  accountId?: string;
 };
 
 const authState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.xaiSubscriptionAuth"), () => ({
@@ -212,10 +214,17 @@ async function refreshWithCli(): Promise<void> {
   }
 }
 
-/** Reuse Grok CLI login; only the official CLI may rotate its refresh tokens. */
+/** Prefer the remote service; local CLI sessions keep CLI-owned refresh rotation. */
 export async function getXaiSubscriptionAuth(
-  options: { forceRefresh?: boolean } = {},
+  options: { forceRefresh?: boolean; accountId?: string } = {},
 ): Promise<XaiSubscriptionAuth> {
+  const remote = await getRemoteSubscriptionToken("xai", options);
+  if (remote)
+    return {
+      token: remote.accessToken,
+      clientVersion: remote.clientVersion!,
+      accountId: remote.accountId,
+    };
   let credential = await readCredential();
   const clientVersion = await getClientVersion();
   if (options.forceRefresh || !isUsable(credential)) {

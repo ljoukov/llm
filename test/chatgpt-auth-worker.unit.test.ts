@@ -4,7 +4,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
-import worker from "../workers/chatgpt-auth/src/index.js";
+import worker from "../workers/llm-auth/src/index.js";
 
 const openDatabases: DatabaseSync[] = [];
 
@@ -12,7 +12,7 @@ class MemoryD1 {
   readonly database = new DatabaseSync(":memory:");
   constructor() {
     openDatabases.push(this.database);
-    const migrations = new URL("../workers/chatgpt-auth/migrations/", import.meta.url);
+    const migrations = new URL("../workers/llm-auth/migrations/", import.meta.url);
     for (const name of fs
       .readdirSync(migrations)
       .filter((name) => name.endsWith(".sql"))
@@ -70,7 +70,7 @@ type JsonObject = Record<string, any>;
 describe("chatgpt-auth worker", () => {
   it("tests the pasted caller key with its real scope without exposing subscription credentials", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database };
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database };
     for (const accountId of ["a", "b"]) {
       await worker.fetch(
         adminRequest("/v1/seed", {
@@ -214,7 +214,7 @@ describe("chatgpt-auth worker", () => {
       subscription: { accountId: "b" },
     });
     database.database
-      .prepare("UPDATE chatgpt_auth_state SET expires_at = ? WHERE id = ?")
+      .prepare("UPDATE llm_auth_state SET expires_at = ? WHERE id = ?")
       .run(Date.now() - 60000, "b");
     vi.stubGlobal(
       "fetch",
@@ -232,7 +232,7 @@ describe("chatgpt-auth worker", () => {
   });
 
   it("keeps admin cookies separate from a failed pasted-key check and rejects cross-origin checks", async () => {
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: new MemoryD1() };
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: new MemoryD1() };
     const login = await worker.fetch(
       new Request("https://auth.example/admin/session", {
         method: "POST",
@@ -268,8 +268,8 @@ describe("chatgpt-auth worker", () => {
   it("uses a Google redirect with PKCE and admits only verified allowlisted identities", async () => {
     const database = new MemoryD1();
     const env = {
-      CHATGPT_AUTH_API_KEY: "admin-secret",
-      CHATGPT_AUTH_DB: database,
+      LLM_AUTH_ADMIN_API_KEY: "admin-secret",
+      LLM_AUTH_DB: database,
       ADMIN_BASE_URL: "https://auth.example",
       ADMIN_GOOGLE_CLIENT_ID: "test-client",
       ADMIN_GOOGLE_CLIENT_SECRET: "private-google-secret",
@@ -379,7 +379,7 @@ describe("chatgpt-auth worker", () => {
       if (scenario === "nonce") nonce = "wrong-nonce";
       const denied = await callback(next);
       expect(denied.headers.get("location")).toContain("auth_error=");
-      expect(denied.headers.get("set-cookie")).not.toContain("__Host-chatgpt_admin=");
+      expect(denied.headers.get("set-cookie")).not.toContain("__Host-llm_admin=");
     }
     const stateFlow = await begin();
     const before = exchanges;
@@ -388,9 +388,7 @@ describe("chatgpt-auth worker", () => {
     expect(
       Number(
         database.database
-          .prepare(
-            "SELECT COUNT(*) AS count FROM chatgpt_auth_admin_sessions WHERE kind = 'session'",
-          )
+          .prepare("SELECT COUNT(*) AS count FROM llm_auth_admin_sessions WHERE kind = 'session'")
           .get()?.count,
       ),
     ).toBe(1);
@@ -409,13 +407,10 @@ describe("chatgpt-auth worker", () => {
     const db = new DatabaseSync(":memory:");
     openDatabases.push(db);
     const migration = (name: string) =>
-      fs.readFileSync(
-        new URL(`../workers/chatgpt-auth/migrations/${name}`, import.meta.url),
-        "utf8",
-      );
-    db.exec(migration("0001_init.sql"));
+      fs.readFileSync(new URL(`../workers/llm-auth/migrations/${name}`, import.meta.url), "utf8");
+    db.exec(migration("0101_init.sql"));
     db.prepare(
-      "INSERT INTO chatgpt_auth_state (id, access_token, refresh_token, expires_at, account_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO llm_auth_state (id, access_token, refresh_token, expires_at, account_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(
       "default",
       "original-access",
@@ -424,10 +419,10 @@ describe("chatgpt-auth worker", () => {
       "original-account",
       Date.now(),
     );
-    db.exec(migration("0002_multi_account_and_clients.sql"));
-    db.exec(migration("0003_admin_dashboard.sql"));
+    db.exec(migration("0102_multi_account_and_clients.sql"));
+    db.exec(migration("0103_admin_dashboard.sql"));
     expect(
-      db.prepare("SELECT id, access_token, refresh_token, enabled FROM chatgpt_auth_state").get(),
+      db.prepare("SELECT id, access_token, refresh_token, enabled FROM llm_auth_state").get(),
     ).toMatchObject({
       id: "original-account",
       access_token: "original-access",
@@ -438,7 +433,7 @@ describe("chatgpt-auth worker", () => {
 
   it("rotates subscription accounts and audits named callers", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     const expiresAt = Date.now() + 4 * 60 * 60 * 1000;
 
     for (const suffix of ["b", "a"]) {
@@ -518,7 +513,7 @@ describe("chatgpt-auth worker", () => {
 
   it("skips disabled subscription accounts", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     const expiresAt = Date.now() + 4 * 60 * 60 * 1000;
     for (const accountId of ["acct_a", "acct_b"]) {
       await worker.fetch(
@@ -552,7 +547,7 @@ describe("chatgpt-auth worker", () => {
 
   it("enforces per-key subscription selection, including empty scopes and disabled accounts", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     for (const accountId of ["a", "b"]) {
       await worker.fetch(
         adminRequest("/v1/seed", {
@@ -578,7 +573,7 @@ describe("chatgpt-auth worker", () => {
     );
     const tokenRequest = () =>
       worker.fetch(
-        new Request("https://auth.example/v1/token?accountId=a", {
+        new Request("https://auth.example/v1/token", {
           headers: { authorization: `Bearer ${created.token}` },
         }),
         env,
@@ -616,15 +611,13 @@ describe("chatgpt-auth worker", () => {
     expect(
       (await readJson(await worker.fetch(adminRequest("/v1/clients"), env))).clients[0].accountIds,
     ).toBeNull();
-    database.database
-      .prepare("UPDATE chatgpt_auth_clients SET account_ids = ?")
-      .run("invalid-json");
+    database.database.prepare("UPDATE llm_auth_clients SET account_ids = ?").run("invalid-json");
     expect((await tokenRequest()).status).toBe(503);
   });
 
   it("rotates keys without widening access and permanently revokes deleted keys", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     const created = await readJson(
       await worker.fetch(
         adminRequest("/v1/clients", {
@@ -674,7 +667,7 @@ describe("chatgpt-auth worker", () => {
 
   it("uses secure admin sessions, rejects cross-origin writes, and consumes sign-in tickets once", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     const sessionRequest = (body: unknown, origin = "https://auth.example") =>
       worker.fetch(
         new Request("https://auth.example/admin/session", {
@@ -743,7 +736,7 @@ describe("chatgpt-auth worker", () => {
 
   it("expires sessions and invalidates them when the admin secret changes", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database };
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database };
     const login = await worker.fetch(
       new Request("https://auth.example/admin/session", {
         method: "POST",
@@ -753,12 +746,12 @@ describe("chatgpt-auth worker", () => {
       env,
     );
     const headers = { cookie: login.headers.get("set-cookie")?.split(";")[0] ?? "" };
-    env.CHATGPT_AUTH_API_KEY = "new-secret";
+    env.LLM_AUTH_ADMIN_API_KEY = "new-secret";
     expect(
       (await worker.fetch(new Request("https://auth.example/v1/session", { headers }), env)).status,
     ).toBe(401);
-    env.CHATGPT_AUTH_API_KEY = "admin-secret";
-    database.database.prepare("UPDATE chatgpt_auth_admin_sessions SET expires_at = 0").run();
+    env.LLM_AUTH_ADMIN_API_KEY = "admin-secret";
+    database.database.prepare("UPDATE llm_auth_admin_sessions SET expires_at = 0").run();
     expect(
       (await worker.fetch(new Request("https://auth.example/v1/session", { headers }), env)).status,
     ).toBe(401);
@@ -766,7 +759,7 @@ describe("chatgpt-auth worker", () => {
 
   it("aggregates grants by key and account without exposing credentials", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     await worker.fetch(
       adminRequest("/v1/seed", {
         method: "POST",
@@ -816,7 +809,7 @@ describe("chatgpt-auth worker", () => {
 
   it("completes device sign-in server-side with polling limits and sanitized responses", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     let approved = false;
     const requests: string[] = [];
     vi.stubGlobal(
@@ -864,10 +857,10 @@ describe("chatgpt-auth worker", () => {
       worker.fetch(adminRequest(`/v1/login/${started.id}/poll`, { method: "POST" }), env);
     expect((await readJson(await poll())).status).toBe("pending");
     expect(requests).toHaveLength(1);
-    database.database.prepare("UPDATE chatgpt_auth_login_attempts SET next_poll_at = 0").run();
+    database.database.prepare("UPDATE llm_auth_login_attempts SET next_poll_at = 0").run();
     expect((await readJson(await poll())).status).toBe("pending");
     approved = true;
-    database.database.prepare("UPDATE chatgpt_auth_login_attempts SET next_poll_at = 0").run();
+    database.database.prepare("UPDATE llm_auth_login_attempts SET next_poll_at = 0").run();
     const completed = await readJson(await poll());
     expect(completed.status).toBe("completed");
     expect(completed.account).toMatchObject({
@@ -877,7 +870,7 @@ describe("chatgpt-auth worker", () => {
     expect(JSON.stringify(completed)).not.toContain("private-refresh");
     expect(
       database.database
-        .prepare("SELECT device_auth_id, user_code FROM chatgpt_auth_login_attempts")
+        .prepare("SELECT device_auth_id, user_code FROM llm_auth_login_attempts")
         .get(),
     ).toMatchObject({ device_auth_id: null, user_code: null });
     const count = requests.length;
@@ -887,7 +880,7 @@ describe("chatgpt-auth worker", () => {
 
   it("sanitizes subscription-limit responses and imports JWT expiry correctly", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     const exp = Math.floor(Date.now() / 1000) + 7200;
     const seeded = await readJson(
       await worker.fetch(
@@ -927,7 +920,7 @@ describe("chatgpt-auth worker", () => {
 
   it("recovers migrated subscription email, name, and plan from identity claims", async () => {
     const database = new MemoryD1();
-    const env = { CHATGPT_AUTH_API_KEY: "admin-secret", CHATGPT_AUTH_DB: database } as never;
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: database } as never;
     const access = makeJwt({
       "https://api.openai.com/profile": { email: "owner@example.com" },
       "https://api.openai.com/auth": { chatgpt_account_id: "account", chatgpt_plan_type: "pro" },
@@ -944,7 +937,7 @@ describe("chatgpt-auth worker", () => {
       }),
       env,
     );
-    database.database.prepare("UPDATE chatgpt_auth_state SET email = NULL").run();
+    database.database.prepare("UPDATE llm_auth_state SET email = NULL").run();
     const response = await worker.fetch(adminRequest("/v1/accounts"), env);
     const text = await response.text();
     expect(JSON.parse(text).accounts[0]).toMatchObject({
@@ -959,10 +952,10 @@ describe("chatgpt-auth worker", () => {
   it("proxies usage for exactly the selected subscription and backfills email", async () => {
     const database = new MemoryD1();
     const env = {
-      CHATGPT_AUTH_API_KEY: "admin-secret",
-      CHATGPT_AUTH_DB: database,
-      CHATGPT_CODEX_PROXY_URL: "https://proxy.example/api/codex/responses",
-      CHATGPT_CODEX_PROXY_API_KEY: "usage-proxy-key",
+      LLM_AUTH_ADMIN_API_KEY: "admin-secret",
+      LLM_AUTH_DB: database,
+      LLM_PROXY_URL: "https://proxy.example/api/codex/responses",
+      LLM_PROXY_API_KEY: "usage-proxy-key",
     };
     for (const accountId of ["a", "b"])
       await worker.fetch(
@@ -1006,19 +999,19 @@ describe("chatgpt-auth worker", () => {
     expect(text).not.toContain("access-b");
     expect(text).not.toContain("usage-proxy-key");
     expect(
-      database.database.prepare("SELECT email FROM chatgpt_auth_state WHERE id = 'b'").get(),
+      database.database.prepare("SELECT email FROM llm_auth_state WHERE id = 'b'").get(),
     ).toMatchObject({ email: "b@example.com" });
     expect(
-      database.database.prepare("SELECT email FROM chatgpt_auth_state WHERE id = 'a'").get(),
+      database.database.prepare("SELECT email FROM llm_auth_state WHERE id = 'a'").get(),
     ).toMatchObject({ email: null });
   });
 
   it("fails closed when the configured usage proxy has no secret", async () => {
     const database = new MemoryD1();
     const env = {
-      CHATGPT_AUTH_API_KEY: "admin-secret",
-      CHATGPT_AUTH_DB: database,
-      CHATGPT_CODEX_PROXY_URL: "https://proxy.example",
+      LLM_AUTH_ADMIN_API_KEY: "admin-secret",
+      LLM_AUTH_DB: database,
+      LLM_PROXY_URL: "https://proxy.example",
     };
     await worker.fetch(
       adminRequest("/v1/seed", {
@@ -1039,5 +1032,189 @@ describe("chatgpt-auth worker", () => {
         .status,
     ).toBe(503);
     expect(mocked).not.toHaveBeenCalled();
+  });
+});
+
+describe("multi-provider subscription service", () => {
+  const grok = (extra: Record<string, unknown> = {}) => ({
+    provider: "xai",
+    clientVersion: "1.0.67",
+    auth: {
+      auth_mode: "oidc",
+      oidc_issuer: "https://auth.x.ai",
+      oidc_client_id: "b1a00492-073a-47ea-816f-4c329264a828",
+      user_id: "grok-person",
+      email: "grok@example.com",
+      key: "grok-access",
+      refresh_token: "grok-refresh",
+      expires_at: new Date(Date.now() + 7200_000).toISOString(),
+      ...extra,
+    },
+  });
+  it("filters provider pools before selection and never broadens a key's scope on cross-provider or forced-refresh requests", async () => {
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: new MemoryD1() };
+    expect(
+      (
+        await worker.fetch(
+          adminRequest("/v1/seed", { method: "POST", body: JSON.stringify(grok()) }),
+          env,
+        )
+      ).status,
+    ).toBe(200);
+    await worker.fetch(
+      adminRequest("/v1/seed", {
+        method: "POST",
+        body: JSON.stringify({
+          accountId: "openai-person",
+          accessToken: "openai-access",
+          refreshToken: "openai-refresh",
+          expiresAt: Date.now() + 7200_000,
+        }),
+      }),
+      env,
+    );
+    const key = await readJson(
+      await worker.fetch(
+        adminRequest("/v1/clients", {
+          method: "POST",
+          body: JSON.stringify({ name: "Grok only", accountIds: ["xai:grok-person"] }),
+        }),
+        env,
+      ),
+    );
+    const grant = (query: string) =>
+      worker.fetch(
+        new Request(`https://auth.example/v1/token?${query}`, {
+          headers: { authorization: `Bearer ${key.token}` },
+        }),
+        env,
+      );
+    expect(await readJson(await grant("provider=xai"))).toMatchObject({
+      provider: "xai",
+      accessToken: "grok-access",
+      clientVersion: "1.0.67",
+    });
+    expect((await grant("provider=openai")).status).toBe(503);
+    expect((await grant("provider=xai&accountId=openai-person&refresh=1")).status).toBe(503);
+    expect((await grant("provider=google")).status).toBe(400);
+    const catalogFetch = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).toBe("https://cli-chat-proxy.grok.com/v1/models");
+      expect(new Headers(init.headers).get("authorization")).toBe("Bearer grok-access");
+      expect(init.redirect).toBe("manual");
+      return Response.json({ data: [{ id: "grok-4.7" }] });
+    });
+    vi.stubGlobal("fetch", catalogFetch);
+    expect(
+      await readJson(
+        await worker.fetch(
+          adminRequest("/v1/accounts/xai%3Agrok-person/check", { method: "POST" }),
+          env,
+        ),
+      ),
+    ).toMatchObject({ ok: true, provider: "xai", modelCount: 1 });
+    const listed = await readJson(await worker.fetch(adminRequest("/v1/accounts"), env));
+    expect(listed.accounts.map((a: JsonObject) => a.provider).sort()).toEqual(["openai", "xai"]);
+    expect(JSON.stringify(listed)).not.toContain("grok-refresh");
+    expect(
+      (
+        await worker.fetch(
+          adminRequest("/v1/accounts/xai%3Agrok-person/usage", { method: "POST" }),
+          env,
+        )
+      ).status,
+    ).toBe(501);
+  });
+  it("refreshes Grok at its pinned issuer, persists rotation once, and rejects API-key and foreign-issuer imports", async () => {
+    const env = { LLM_AUTH_ADMIN_API_KEY: "admin-secret", LLM_AUTH_DB: new MemoryD1() };
+    for (const invalid of [{ auth_mode: "api_key" }, { oidc_issuer: "https://foreign.example" }])
+      expect(
+        (
+          await worker.fetch(
+            adminRequest("/v1/seed", { method: "POST", body: JSON.stringify(grok(invalid)) }),
+            env,
+          )
+        ).status,
+      ).toBe(400);
+    await worker.fetch(
+      adminRequest("/v1/seed", {
+        method: "POST",
+        body: JSON.stringify(grok({ expires_at: new Date(Date.now() - 1000).toISOString() })),
+      }),
+      env,
+    );
+    const refresh = vi.fn(async (input: string, init: RequestInit) => {
+      expect(input).toBe("https://auth.x.ai/oauth2/token");
+      expect(init.redirect).toBe("manual");
+      const body = new URLSearchParams(String(init.body));
+      expect(body.get("refresh_token")).toBe("grok-refresh");
+      expect(body.get("client_id")).toBe("b1a00492-073a-47ea-816f-4c329264a828");
+      return Response.json({
+        access_token: "rotated-access",
+        refresh_token: "rotated-refresh",
+        expires_in: 7200,
+      });
+    });
+    vi.stubGlobal("fetch", refresh);
+    const response = await worker.fetch(adminRequest("/v1/token?provider=xai"), env);
+    expect(await readJson(response)).toMatchObject({
+      provider: "xai",
+      accessToken: "rotated-access",
+      refreshed: true,
+    });
+    await worker.fetch(adminRequest("/v1/token?provider=xai"), env);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(
+      env.LLM_AUTH_DB.database
+        .prepare("SELECT refresh_token FROM llm_auth_state WHERE provider='xai'")
+        .get(),
+    ).toMatchObject({ refresh_token: "rotated-refresh" });
+  });
+  it("completes Grok device login with server-owned credentials and enforces poll intervals", async () => {
+    const env = {
+      LLM_AUTH_ADMIN_API_KEY: "admin-secret",
+      LLM_AUTH_DB: new MemoryD1(),
+      LLM_AUTH_GROK_CLIENT_VERSION: "1.0.67",
+    };
+    const upstream = vi.fn(async (input: string, init: RequestInit) => {
+      if (input.endsWith("/device/code"))
+        expect(new URLSearchParams(String(init.body)).get("scope")).toContain("api:access");
+      if (input.endsWith("/device/code"))
+        return Response.json({
+          device_code: "private-device-code",
+          user_code: "ABCD-EFGH",
+          verification_uri: "https://auth.x.ai/device",
+          expires_in: 900,
+          interval: 5,
+        });
+      if (input.endsWith("/userinfo"))
+        return Response.json({ sub: "person", email: "person@example.com" });
+      return Response.json({
+        access_token: "device-access",
+        refresh_token: "device-refresh",
+        expires_in: 7200,
+      });
+    });
+    vi.stubGlobal("fetch", upstream);
+    const started = await readJson(
+      await worker.fetch(
+        adminRequest("/v1/login/start", {
+          method: "POST",
+          body: JSON.stringify({ provider: "xai" }),
+        }),
+        env,
+      ),
+    );
+    expect(started).toMatchObject({ provider: "xai", userCode: "ABCD-EFGH" });
+    expect(JSON.stringify(started)).not.toContain("private-device-code");
+    const poll = () =>
+      worker.fetch(adminRequest(`/v1/login/${started.id}/poll`, { method: "POST" }), env);
+    expect(await readJson(await poll())).toMatchObject({ status: "pending" });
+    expect(upstream).toHaveBeenCalledTimes(1);
+    env.LLM_AUTH_DB.database.prepare("UPDATE llm_auth_login_attempts SET next_poll_at=0").run();
+    expect(await readJson(await poll())).toMatchObject({
+      status: "completed",
+      account: { provider: "xai", accountId: "xai:person" },
+    });
+    expect(upstream).toHaveBeenCalledTimes(3);
   });
 });

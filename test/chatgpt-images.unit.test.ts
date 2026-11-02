@@ -35,8 +35,8 @@ import {
 
 const originalEnv = {
   imagesEndpoint: process.env.CHATGPT_CODEX_IMAGES_ENDPOINT,
-  proxyUrl: process.env.CHATGPT_CODEX_PROXY_URL,
-  proxyApiKey: process.env.CHATGPT_CODEX_PROXY_API_KEY,
+  proxyUrl: process.env.LLM_PROXY_URL,
+  proxyApiKey: process.env.LLM_PROXY_API_KEY,
 };
 
 const generatedBytes = Buffer.from("generated-image");
@@ -70,8 +70,8 @@ function restoreEnv(name: string, value: string | undefined): void {
 describe("ChatGPT Codex Images transport", () => {
   beforeEach(() => {
     process.env.CHATGPT_CODEX_IMAGES_ENDPOINT = "";
-    process.env.CHATGPT_CODEX_PROXY_URL = "";
-    process.env.CHATGPT_CODEX_PROXY_API_KEY = "";
+    process.env.LLM_PROXY_URL = "";
+    process.env.LLM_PROXY_API_KEY = "";
     configureChatGptCodexProxy(null);
     chatGptAuthMock.getChatGptAuthProfile.mockClear();
   });
@@ -80,8 +80,8 @@ describe("ChatGPT Codex Images transport", () => {
     vi.unstubAllGlobals();
     configureChatGptCodexProxy(null);
     restoreEnv("CHATGPT_CODEX_IMAGES_ENDPOINT", originalEnv.imagesEndpoint);
-    restoreEnv("CHATGPT_CODEX_PROXY_URL", originalEnv.proxyUrl);
-    restoreEnv("CHATGPT_CODEX_PROXY_API_KEY", originalEnv.proxyApiKey);
+    restoreEnv("LLM_PROXY_URL", originalEnv.proxyUrl);
+    restoreEnv("LLM_PROXY_API_KEY", originalEnv.proxyApiKey);
   });
 
   const directCases: ReadonlyArray<{
@@ -130,7 +130,7 @@ describe("ChatGPT Codex Images transport", () => {
         expect(headers.get("accept")).toBe("application/json");
         expect(headers.get("content-type")).toBe("application/json");
         expect(headers.get("openai-beta")).toBeNull();
-        expect(headers.get("x-codex-proxy-auth")).toBeNull();
+        expect(headers.get("x-llm-proxy-auth")).toBeNull();
         return imageResponse();
       });
       vi.stubGlobal("fetch", fetchMock);
@@ -178,7 +178,7 @@ describe("ChatGPT Codex Images transport", () => {
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe("Bearer proxy-key");
-      expect(headers.get("x-codex-proxy-auth")).toBe("proxy-key");
+      expect(headers.get("x-llm-proxy-auth")).toBe("proxy-key");
       expect(headers.get("chatgpt-account-id")).toBeNull();
       expect(headers.get("accept")).toBe("application/json");
       expect(headers.get("openai-beta")).toBeNull();
@@ -239,8 +239,8 @@ describe("ChatGPT Codex Images transport", () => {
 describe("ChatGPT subscription image wrappers", () => {
   beforeEach(() => {
     delete process.env.CHATGPT_CODEX_IMAGES_ENDPOINT;
-    delete process.env.CHATGPT_CODEX_PROXY_URL;
-    delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+    delete process.env.LLM_PROXY_URL;
+    delete process.env.LLM_PROXY_API_KEY;
     configureChatGptCodexProxy(null);
     chatGptAuthMock.getChatGptAuthProfile.mockClear();
     openAiImagesMock.generate.mockReset();
@@ -363,8 +363,8 @@ describe("ChatGPT subscription image wrappers", () => {
     vi.unstubAllGlobals();
     configureChatGptCodexProxy(null);
     restoreEnv("CHATGPT_CODEX_IMAGES_ENDPOINT", originalEnv.imagesEndpoint);
-    restoreEnv("CHATGPT_CODEX_PROXY_URL", originalEnv.proxyUrl);
-    restoreEnv("CHATGPT_CODEX_PROXY_API_KEY", originalEnv.proxyApiKey);
+    restoreEnv("LLM_PROXY_URL", originalEnv.proxyUrl);
+    restoreEnv("LLM_PROXY_API_KEY", originalEnv.proxyApiKey);
   });
 
   it("uses automatic service controls and the edit endpoint for style images", async () => {

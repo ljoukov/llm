@@ -37,8 +37,8 @@ describe("chatgpt-auth", () => {
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
 
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "";
-    process.env.CHATGPT_AUTH_API_KEY = "";
+    process.env.LLM_AUTH_URL = "";
+    process.env.LLM_AUTH_API_KEY = "";
 
     const expSeconds = Math.floor(Date.now() / 1000) + 3600;
     const { dir, authPath } = makeTempCodexHome();
@@ -62,8 +62,8 @@ describe("chatgpt-auth", () => {
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
 
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "";
-    process.env.CHATGPT_AUTH_API_KEY = "";
+    process.env.LLM_AUTH_URL = "";
+    process.env.LLM_AUTH_API_KEY = "";
 
     const expiredExpSeconds = Math.floor(Date.now() / 1000) - 60;
     const { dir, authPath } = makeTempCodexHome();
@@ -118,9 +118,8 @@ describe("chatgpt-auth", () => {
     vi.resetModules();
     resetRuntimeSingletonsForTesting();
 
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "https://example.invalid";
-    process.env.CHATGPT_AUTH_API_KEY = "k_test";
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_STORE = "kv";
+    process.env.LLM_AUTH_URL = "https://example.invalid";
+    process.env.LLM_AUTH_API_KEY = "k_test";
 
     const { dir, authPath } = makeTempCodexHome();
     process.env.CODEX_HOME = dir;
@@ -136,10 +135,11 @@ describe("chatgpt-auth", () => {
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input);
       expect(url).toContain("/v1/token");
-      expect(url).toContain("store=kv");
+      expect(url).toContain("provider=openai");
       requestNumber += 1;
       return new Response(
         JSON.stringify({
+          provider: "openai",
           accessToken: `at_test_${requestNumber}`,
           accountId: `acct_test_${requestNumber}`,
           expiresAt: Date.now() + 60_000,

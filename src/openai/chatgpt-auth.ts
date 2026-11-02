@@ -5,16 +5,9 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { getRemoteSubscriptionToken } from "../subscription-auth.js";
 import { loadLocalEnv } from "../utils/env.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
-
-// Optional: fetch access tokens from a centralized token provider over HTTPS (for example a Cloudflare Worker).
-const CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_URL";
-const CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_STORE";
-
-// Used both for local storage and as the shared secret for `CHATGPT_AUTH_TOKEN_PROVIDER_URL`.
-const CHATGPT_AUTH_API_KEY_ENV = "CHATGPT_AUTH_API_KEY";
-const CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV = "CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY";
 
 const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
@@ -67,60 +60,6 @@ const chatGptAuthState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptAut
   cachedProfile: null as ChatGptAuthProfile | null,
   refreshPromise: null as Promise<ChatGptAuthProfile> | null,
 }));
-
-async function fetchChatGptAuthProfileFromTokenProvider(options: {
-  baseUrl: string;
-  apiKey: string;
-  store?: string;
-}): Promise<ChatGptAuthProfile> {
-  const base = options.baseUrl.replace(/\/+$/u, "");
-  const store = options.store?.trim() ? options.store.trim() : "kv";
-  const url = new URL(`${base}/v1/token`);
-  url.searchParams.set("store", store);
-
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${options.apiKey}`,
-      "x-chatgpt-auth": options.apiKey,
-      Accept: "application/json",
-    },
-  });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`ChatGPT token provider request failed (${response.status}): ${body}`);
-  }
-
-  const payload = (await response.json()) as unknown;
-  if (!payload || typeof payload !== "object") {
-    throw new Error("ChatGPT token provider returned invalid JSON.");
-  }
-  const accessToken =
-    (payload as { accessToken?: unknown; access_token?: unknown }).accessToken ??
-    (payload as { accessToken?: unknown; access_token?: unknown }).access_token;
-  const accountId =
-    (payload as { accountId?: unknown; account_id?: unknown }).accountId ??
-    (payload as { accountId?: unknown; account_id?: unknown }).account_id;
-  const expiresAt =
-    (payload as { expiresAt?: unknown; expires_at?: unknown }).expiresAt ??
-    (payload as { expiresAt?: unknown; expires_at?: unknown }).expires_at;
-
-  if (typeof accessToken !== "string" || accessToken.trim().length === 0) {
-    throw new Error("ChatGPT token provider response missing accessToken.");
-  }
-  if (typeof accountId !== "string" || accountId.trim().length === 0) {
-    throw new Error("ChatGPT token provider response missing accountId.");
-  }
-  const expires = normalizeEpochMillis(expiresAt) ?? Date.now() + 5 * 60_000;
-
-  // In token-provider mode we do not refresh locally (the provider owns token rotation).
-  return {
-    access: accessToken,
-    refresh: "token_provider",
-    expires,
-    accountId,
-  };
-}
 
 export function encodeChatGptAuthJson(profile: ChatGptAuthProfile): string {
   const payload = {
@@ -193,25 +132,14 @@ export async function refreshChatGptOauthToken(
 export async function getChatGptAuthProfile(): Promise<ChatGptAuthProfile> {
   loadLocalEnv();
 
-  const tokenProviderUrl = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV];
-  const tokenProviderKey =
-    process.env[CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY_ENV] ?? process.env[CHATGPT_AUTH_API_KEY_ENV];
-  if (
-    tokenProviderUrl &&
-    tokenProviderUrl.trim().length > 0 &&
-    tokenProviderKey &&
-    tokenProviderKey.trim().length > 0
-  ) {
-    // The provider may own a pool of accounts. Fetch for every top-level request so
-    // concurrent callers can receive different accounts; caching here would pin the
-    // entire process to one subscription until its access token expired.
-    const store = process.env[CHATGPT_AUTH_TOKEN_PROVIDER_STORE_ENV];
-    return fetchChatGptAuthProfileFromTokenProvider({
-      baseUrl: tokenProviderUrl,
-      apiKey: tokenProviderKey,
-      store: store ?? undefined,
-    });
-  }
+  const remote = await getRemoteSubscriptionToken("openai");
+  if (remote)
+    return {
+      access: remote.accessToken,
+      refresh: "token_provider",
+      expires: remote.expiresAt,
+      accountId: remote.accountId,
+    };
 
   if (chatGptAuthState.cachedProfile && !isExpired(chatGptAuthState.cachedProfile)) {
     return chatGptAuthState.cachedProfile;
@@ -257,7 +185,7 @@ export function readChatGptAuthProfileFromFile(authPath: string): ChatGptAuthPro
     raw = fs.readFileSync(authPath, "utf8");
   } catch {
     throw new Error(
-      `ChatGPT auth not configured. Set ${CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV}+${CHATGPT_AUTH_API_KEY_ENV} or login via Codex to create ${authPath}.`,
+      `ChatGPT auth not configured. Set LLM_AUTH_URL+LLM_AUTH_API_KEY or login via Codex to create ${authPath}.`,
     );
   }
 
@@ -273,7 +201,7 @@ export function readChatGptAuthProfileFromFile(authPath: string): ChatGptAuthPro
   const tokens = parsed.tokens;
   if (!tokens) {
     throw new Error(
-      `Codex auth store at ${authPath} is missing tokens. Re-login via Codex, or configure ${CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV}.`,
+      `Codex auth store at ${authPath} is missing tokens. Re-login via Codex, or configure LLM_AUTH_URL.`,
     );
   }
 
@@ -282,7 +210,7 @@ export function readChatGptAuthProfileFromFile(authPath: string): ChatGptAuthPro
   const idToken = tokens.id_token ?? tokens.idToken ?? undefined;
   if (!access || !refresh) {
     throw new Error(
-      `Codex auth store at ${authPath} is missing access_token/refresh_token. Re-login via Codex, or configure ${CHATGPT_AUTH_TOKEN_PROVIDER_URL_ENV}.`,
+      `Codex auth store at ${authPath} is missing access_token/refresh_token. Re-login via Codex, or configure LLM_AUTH_URL.`,
     );
   }
 

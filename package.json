@@ -1,6 +1,6 @@
 {
   "name": "@ljoukov/llm",
-  "version": "13.0.0",
+  "version": "14.0.0",
   "description": "Unified typed model routing for OpenAI, Anthropic, Google, xAI, Fireworks and Vercel AI Gateway, with API/subscription access, streaming, tools and usage/cost metrics.",
   "license": "MIT",
   "repository": {
@@ -57,8 +57,8 @@
     "bench:subagent-loop": "tsx benchmarks/subagent-loop/run.ts",
     "bench:lesson-generation": "tsx benchmarks/lesson-generation/run.ts",
     "example:cli-chat": "tsx examples/cli-chat.ts",
-    "chatgpt-auth": "tsx workers/chatgpt-auth/src/cli.ts",
-    "chatgpt-auth:config": "node --import tsx workers/chatgpt-auth/src/config.ts",
+    "llm-auth": "tsx workers/llm-auth/src/cli.ts",
+    "llm-auth:config": "node --import tsx workers/llm-auth/src/config.ts",
     "dashboard:check": "npm --prefix web/admin run check",
     "dashboard:build": "npm --prefix web/admin run build",
     "test": "npm run test:unit",
@@ -68,11 +68,12 @@
     "test:integration:openai-models": "vitest run --config vitest.integration.config.ts test/openai-models.integration.test.ts",
     "test:integration:bun": "bunx vitest run --config vitest.integration.config.ts",
     "test:integration:runtimes": "npm run test:integration:node && npm run test:integration:bun",
-    "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck:vercel-codex-proxy",
-    "typecheck:vercel-codex-proxy": "tsc -p vercel/codex-proxy/tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck:llm-proxy",
+    "typecheck:llm-proxy": "tsc -p vercel/llm-proxy/tsconfig.json --noEmit",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run build",
     "prepack": "npm run verify",
     "test:integration:new-models": "vitest run --config vitest.integration.config.ts test/new-models.integration.test.ts",
+    "test:integration:grok-subscription": "vitest run --config vitest.integration.config.ts test/xai-subscription.integration.test.ts",
     "test:integration:claude-subscription": "vitest run --config vitest.integration.config.ts test/claude-subscription.integration.test.ts"
   },
   "dependencies": {

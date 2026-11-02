@@ -5,19 +5,18 @@ import {
   handleCodexResponsesRequest,
   handleCodexUsageRequest,
   handleHealthRequest,
-} from "../vercel/codex-proxy/src/handler.js";
+} from "../vercel/llm-proxy/src/handler.js";
 
 describe("vercel codex proxy", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    process.env.CODEX_PROXY_API_KEY = "proxy-key";
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL = "https://auth-worker.example";
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY = "worker-key";
-    delete process.env.CHATGPT_AUTH_API_KEY;
-    delete process.env.CHATGPT_AUTH_TOKEN_PROVIDER_STORE;
-    delete process.env.CHATGPT_CODEX_UPSTREAM_URL;
-    delete process.env.CHATGPT_CODEX_IMAGES_UPSTREAM_URL;
+    process.env.LLM_PROXY_API_KEY = "proxy-key";
+    process.env.LLM_AUTH_URL = "https://auth-worker.example";
+    process.env.LLM_AUTH_API_KEY = "worker-key";
+    delete process.env.LLM_AUTH_ADMIN_API_KEY;
+    delete process.env.LLM_PROXY_OPENAI_UPSTREAM_URL;
+    delete process.env.LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL;
   });
 
   afterEach(() => {
@@ -34,6 +33,28 @@ describe("vercel codex proxy", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: "unauthorized" });
+  });
+
+  it("never forwards a token for another provider to ChatGPT", async () => {
+    const upstream = vi.fn(async () =>
+      Response.json({
+        provider: "xai",
+        accessToken: "grok-secret",
+        accountId: "grok-account",
+        expiresAt: Date.now() + 3600000,
+      }),
+    );
+    vi.stubGlobal("fetch", upstream);
+    const response = await handleCodexResponsesRequest(
+      new Request("https://proxy.example/api/codex/responses", {
+        method: "POST",
+        headers: { authorization: "Bearer proxy-key", "content-type": "application/json" },
+        body: JSON.stringify({ model: "gpt-6-luna", input: "hello" }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(await response.text()).not.toContain("grok-secret");
   });
 
   it("requires proxy authorization and a valid POST body for subscription usage", async () => {
@@ -75,7 +96,7 @@ describe("vercel codex proxy", () => {
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe("Bearer selected-access");
       expect(headers.get("chatgpt-account-id")).toBe("selected-account");
-      expect(headers.get("x-codex-proxy-auth")).toBeNull();
+      expect(headers.get("x-llm-proxy-auth")).toBeNull();
       expect(headers.get("cookie")).toBeNull();
       expect(headers.get("cf-ray")).toBeNull();
       return Response.json({
@@ -148,17 +169,18 @@ describe("vercel codex proxy", () => {
   });
 
   it("fetches a ChatGPT token and streams the upstream Codex response", async () => {
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_STORE = "d1";
-    process.env.CHATGPT_CODEX_UPSTREAM_URL = "https://chatgpt.example/backend-api/codex/responses";
+    process.env.LLM_PROXY_OPENAI_UPSTREAM_URL =
+      "https://chatgpt.example/backend-api/codex/responses";
 
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith("https://auth-worker.example/v1/token")) {
-        expect(url).toBe("https://auth-worker.example/v1/token?store=d1");
+        expect(url).toBe("https://auth-worker.example/v1/token?provider=openai");
         const headers = new Headers(init?.headers);
         expect(headers.get("authorization")).toBe("Bearer worker-key");
-        expect(headers.get("x-chatgpt-auth")).toBe("worker-key");
+        expect(headers.get("x-llm-auth")).toBe("worker-key");
         return Response.json({
+          provider: "openai",
           accessToken: "chatgpt-access",
           accountId: "chatgpt-account",
           expiresAt: Date.now() + 60_000,
@@ -171,7 +193,7 @@ describe("vercel codex proxy", () => {
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe("Bearer chatgpt-access");
       expect(headers.get("chatgpt-account-id")).toBe("chatgpt-account");
-      expect(headers.get("x-codex-proxy-auth")).toBeNull();
+      expect(headers.get("x-llm-proxy-auth")).toBeNull();
       expect(headers.get("openai-beta")).toBe("responses=experimental");
       expect(headers.get("cf-connecting-ip")).toBeNull();
       expect(headers.get("cf-ray")).toBeNull();
@@ -215,8 +237,7 @@ describe("vercel codex proxy", () => {
   });
 
   it("forwards image generation as JSON to an endpoint derived from the Codex responses URL", async () => {
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_STORE = "d1";
-    process.env.CHATGPT_CODEX_UPSTREAM_URL =
+    process.env.LLM_PROXY_OPENAI_UPSTREAM_URL =
       "https://chatgpt.example/backend-api/codex/responses?workspace=test";
     const requestBody = {
       model: "gpt-image-2",
@@ -230,6 +251,7 @@ describe("vercel codex proxy", () => {
       const url = String(input);
       if (url.startsWith("https://auth-worker.example/v1/token")) {
         return Response.json({
+          provider: "openai",
           accessToken: "chatgpt-access",
           accountId: "chatgpt-account",
           expiresAt: Date.now() + 60_000,
@@ -247,7 +269,7 @@ describe("vercel codex proxy", () => {
       expect(headers.get("openai-beta")).toBeNull();
       expect(headers.get("authorization")).toBe("Bearer chatgpt-access");
       expect(headers.get("chatgpt-account-id")).toBe("chatgpt-account");
-      expect(headers.get("x-codex-proxy-auth")).toBeNull();
+      expect(headers.get("x-llm-proxy-auth")).toBeNull();
       expect(headers.get("originator")).toBe("llm-vercel-codex-proxy");
       await expect(new Response(init?.body).json()).resolves.toEqual(requestBody);
 
@@ -258,7 +280,7 @@ describe("vercel codex proxy", () => {
           quality: "high",
           size: "1024x1024",
         },
-        { status: 201 },
+        { status: 201, headers: { "content-encoding": "br" } },
       );
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -270,7 +292,7 @@ describe("vercel codex proxy", () => {
           authorization: "Bearer proxy-key",
           "content-type": "application/json",
           "openai-beta": "responses=experimental",
-          "x-codex-proxy-auth": "must-not-forward",
+          "x-llm-proxy-auth": "must-not-forward",
         },
         body: JSON.stringify(requestBody),
       }),
@@ -278,6 +300,7 @@ describe("vercel codex proxy", () => {
     );
 
     expect(response.status).toBe(201);
+    expect(response.headers.get("content-encoding")).toBeNull();
     expect(response.headers.get("content-type")).toContain("application/json");
     await expect(response.json()).resolves.toMatchObject({
       data: [{ b64_json: "generated-image" }],
@@ -286,7 +309,7 @@ describe("vercel codex proxy", () => {
   });
 
   it("forwards image edits to the configured images upstream without Responses headers", async () => {
-    process.env.CHATGPT_CODEX_IMAGES_UPSTREAM_URL =
+    process.env.LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL =
       "https://images.example/backend-api/codex/images/generations?region=iad";
     const requestBody = {
       model: "gpt-image-2",
@@ -303,6 +326,7 @@ describe("vercel codex proxy", () => {
         const headers = new Headers(init?.headers);
         expect(headers.get("authorization")).toBe("Bearer worker-key");
         return Response.json({
+          provider: "openai",
           access_token: "chatgpt-edit-access",
           account_id: "chatgpt-edit-account",
           expires_at: Math.floor(Date.now() / 1000) + 60,
@@ -317,7 +341,7 @@ describe("vercel codex proxy", () => {
       expect(headers.get("openai-beta")).toBeNull();
       expect(headers.get("authorization")).toBe("Bearer chatgpt-edit-access");
       expect(headers.get("chatgpt-account-id")).toBe("chatgpt-edit-account");
-      expect(headers.get("x-codex-proxy-auth")).toBeNull();
+      expect(headers.get("x-llm-proxy-auth")).toBeNull();
       await expect(new Response(init?.body).json()).resolves.toEqual(requestBody);
 
       return Response.json({

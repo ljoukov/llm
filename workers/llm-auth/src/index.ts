@@ -29,6 +29,9 @@ type WorkerExecutionContext = {
 };
 
 type TokenState = {
+  provider?: "openai" | "xai";
+  oauthClientId?: string;
+  clientVersion?: string;
   accessToken: string;
   refreshToken: string;
   idToken?: string;
@@ -56,12 +59,13 @@ export type Principal = {
 };
 
 export type Env = {
-  CHATGPT_AUTH_API_KEY: string;
-  CHATGPT_AUTH_DB: D1Database;
-  CHATGPT_AUTH_LOG_EMAIL?: string;
-  CHATGPT_AUTH_AUDIT_RETENTION_DAYS?: string;
-  CHATGPT_CODEX_PROXY_URL?: string;
-  CHATGPT_CODEX_PROXY_API_KEY?: string;
+  LLM_AUTH_ADMIN_API_KEY: string;
+  LLM_AUTH_DB: D1Database;
+  LLM_AUTH_LOG_EMAIL?: string;
+  LLM_AUTH_AUDIT_RETENTION_DAYS?: string;
+  LLM_AUTH_GROK_CLIENT_VERSION?: string;
+  LLM_PROXY_URL?: string;
+  LLM_PROXY_API_KEY?: string;
   ADMIN_GOOGLE_CLIENT_ID?: string;
   ADMIN_GOOGLE_CLIENT_SECRET?: string;
   ADMIN_BASE_URL?: string;
@@ -121,7 +125,7 @@ function getBearer(request: Request): string | null {
 function getAuthToken(request: Request): string | null {
   const bearer = getBearer(request);
   if (bearer) return bearer;
-  const alternate = request.headers.get("x-chatgpt-auth") ?? request.headers.get("x-api-key") ?? "";
+  const alternate = request.headers.get("x-llm-auth") ?? request.headers.get("x-api-key") ?? "";
   return alternate.trim().length > 0 ? alternate.trim() : null;
 }
 
@@ -208,7 +212,7 @@ function extractAccountDetails(
 }
 
 function shouldLogFullEmail(env: Env): boolean {
-  const value = String(env.CHATGPT_AUTH_LOG_EMAIL ?? "")
+  const value = String(env.LLM_AUTH_LOG_EMAIL ?? "")
     .trim()
     .toLowerCase();
   return value === "1" || value === "true" || value === "yes";
@@ -226,6 +230,9 @@ function formatEmailForLogs(email: string, env: Env): string {
 
 function rowToState(row: Record<string, unknown>): StoredTokenState {
   return {
+    provider: row.provider === "xai" ? "xai" : "openai",
+    oauthClientId: row.oauth_client_id ? String(row.oauth_client_id) : undefined,
+    clientVersion: row.client_version ? String(row.client_version) : undefined,
     id: String(row.id ?? row.account_id ?? ""),
     accessToken: String(row.access_token ?? ""),
     refreshToken: String(row.refresh_token ?? ""),
@@ -247,11 +254,11 @@ function rowToState(row: Record<string, unknown>): StoredTokenState {
 }
 
 const ACCOUNT_COLUMNS = `id, access_token, refresh_token, id_token, expires_at, account_id,
-  email, label, enabled, updated_at, last_selected_at, selection_count, lock_until`;
+  email, label, enabled, updated_at, last_selected_at, selection_count, lock_until, provider, oauth_client_id, client_version`;
 
 async function readStateFromD1(env: Env, id: string): Promise<StoredTokenState | null> {
-  const row = await env.CHATGPT_AUTH_DB.prepare(
-    `SELECT ${ACCOUNT_COLUMNS} FROM chatgpt_auth_state WHERE id = ?1`,
+  const row = await env.LLM_AUTH_DB.prepare(
+    `SELECT ${ACCOUNT_COLUMNS} FROM llm_auth_state WHERE id = ?1`,
   )
     .bind(id)
     .first<Record<string, unknown>>();
@@ -259,8 +266,8 @@ async function readStateFromD1(env: Env, id: string): Promise<StoredTokenState |
 }
 
 async function listStatesFromD1(env: Env, enabledOnly = false): Promise<StoredTokenState[]> {
-  const result = await env.CHATGPT_AUTH_DB.prepare(
-    `SELECT ${ACCOUNT_COLUMNS} FROM chatgpt_auth_state
+  const result = await env.LLM_AUTH_DB.prepare(
+    `SELECT ${ACCOUNT_COLUMNS} FROM llm_auth_state
      ${enabledOnly ? "WHERE enabled = 1" : ""}
      ORDER BY COALESCE(label, email, account_id), account_id`,
   ).all<Record<string, unknown>>();
@@ -268,19 +275,20 @@ async function listStatesFromD1(env: Env, enabledOnly = false): Promise<StoredTo
 }
 
 async function upsertSeedState(env: Env, state: TokenState): Promise<void> {
-  await env.CHATGPT_AUTH_DB.prepare(
-    `INSERT INTO chatgpt_auth_state
+  await env.LLM_AUTH_DB.prepare(
+    `INSERT INTO llm_auth_state
        (id, access_token, refresh_token, id_token, expires_at, account_id, email, label,
-        enabled, updated_at, lock_until, last_selected_at, selection_count)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, NULL, 0, 0)
+        enabled, updated_at, lock_until, last_selected_at, selection_count, provider, oauth_client_id, client_version)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, NULL, 0, 0, ?10, ?11, ?12)
      ON CONFLICT(id) DO UPDATE SET
+       provider=excluded.provider, oauth_client_id=excluded.oauth_client_id, client_version=excluded.client_version,
        access_token=excluded.access_token,
        refresh_token=excluded.refresh_token,
        id_token=excluded.id_token,
        expires_at=excluded.expires_at,
        account_id=excluded.account_id,
-       email=COALESCE(excluded.email, chatgpt_auth_state.email),
-       label=COALESCE(excluded.label, chatgpt_auth_state.label),
+       email=COALESCE(excluded.email, llm_auth_state.email),
+       label=COALESCE(excluded.label, llm_auth_state.label),
        enabled=1,
        updated_at=excluded.updated_at,
        lock_until=NULL`,
@@ -295,13 +303,16 @@ async function upsertSeedState(env: Env, state: TokenState): Promise<void> {
       state.email ?? null,
       state.label ?? null,
       state.updatedAt,
+      state.provider ?? "openai",
+      state.oauthClientId ?? null,
+      state.clientVersion ?? null,
     )
     .run();
 }
 
 async function updateRefreshedState(env: Env, id: string, state: TokenState): Promise<void> {
-  await env.CHATGPT_AUTH_DB.prepare(
-    `UPDATE chatgpt_auth_state SET
+  await env.LLM_AUTH_DB.prepare(
+    `UPDATE llm_auth_state SET
        access_token=?1, refresh_token=?2, id_token=?3, expires_at=?4, account_id=?5,
        email=?6, updated_at=?7, lock_until=NULL
      WHERE id=?8`,
@@ -323,29 +334,35 @@ async function selectNextStateFromD1(
   env: Env,
   excludedIds: readonly string[],
   accountIds: readonly string[] | null = null,
+  provider: "openai" | "xai" = "openai",
 ): Promise<StoredTokenState | null> {
   const exclusionClause =
     excludedIds.length > 0 ? `AND id NOT IN (${excludedIds.map(() => "?").join(", ")})` : "";
-  const row = await env.CHATGPT_AUTH_DB.prepare(
-    `UPDATE chatgpt_auth_state
+  const row = await env.LLM_AUTH_DB.prepare(
+    `UPDATE llm_auth_state
      SET last_selected_at = ?, selection_count = selection_count + 1
      WHERE id = (
-       SELECT id FROM chatgpt_auth_state
-       WHERE enabled = 1 ${exclusionClause}
+       SELECT id FROM llm_auth_state
+       WHERE enabled = 1 AND provider = ? ${exclusionClause}
          ${accountIds === null ? "" : "AND id IN (SELECT value FROM json_each(?))"}
        ORDER BY last_selected_at ASC, selection_count ASC, id ASC
        LIMIT 1
      )
      RETURNING ${ACCOUNT_COLUMNS}`,
   )
-    .bind(nowMs(), ...excludedIds, ...(accountIds === null ? [] : [JSON.stringify(accountIds)]))
+    .bind(
+      nowMs(),
+      provider,
+      ...excludedIds,
+      ...(accountIds === null ? [] : [JSON.stringify(accountIds)]),
+    )
     .first<Record<string, unknown>>();
   return row ? rowToState(row) : null;
 }
 
 async function tryAcquireRefreshLock(env: Env, id: string, now: number): Promise<boolean> {
-  const result = await env.CHATGPT_AUTH_DB.prepare(
-    `UPDATE chatgpt_auth_state SET lock_until = ?1
+  const result = await env.LLM_AUTH_DB.prepare(
+    `UPDATE llm_auth_state SET lock_until = ?1
      WHERE id = ?2 AND (lock_until IS NULL OR lock_until < ?3)`,
   )
     .bind(now + LOCK_TTL_MS, id, now)
@@ -354,12 +371,16 @@ async function tryAcquireRefreshLock(env: Env, id: string, now: number): Promise
 }
 
 async function releaseRefreshLock(env: Env, id: string): Promise<void> {
-  await env.CHATGPT_AUTH_DB.prepare("UPDATE chatgpt_auth_state SET lock_until = NULL WHERE id = ?1")
+  await env.LLM_AUTH_DB.prepare("UPDATE llm_auth_state SET lock_until = NULL WHERE id = ?1")
     .bind(id)
     .run();
 }
 
-async function oauthRefresh(refreshToken: string): Promise<{
+async function oauthRefresh(
+  refreshToken: string,
+  provider = "openai",
+  clientId = OAUTH_CLIENT_ID,
+): Promise<{
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
@@ -367,15 +388,20 @@ async function oauthRefresh(refreshToken: string): Promise<{
 }> {
   const params = new URLSearchParams();
   params.set("grant_type", "refresh_token");
-  params.set("client_id", OAUTH_CLIENT_ID);
+  params.set("client_id", clientId);
   params.set("refresh_token", refreshToken);
-  const response = await fetch(OAUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
+  const response = await fetch(
+    provider === "xai" ? "https://auth.x.ai/oauth2/token" : OAUTH_TOKEN_URL,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+      redirect: "manual",
+      signal: AbortSignal.timeout(45_000),
+    },
+  );
   if (!response.ok) {
-    throw new Error(`ChatGPT OAuth refresh failed (${response.status}).`);
+    throw new Error(`${provider} OAuth refresh failed (${response.status}).`);
   }
   const payload = (await response.json()) as Record<string, unknown>;
   const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
@@ -383,7 +409,7 @@ async function oauthRefresh(refreshToken: string): Promise<{
   const expiresIn = Number.parseFloat(String(payload.expires_in ?? "NaN"));
   const idToken = typeof payload.id_token === "string" ? payload.id_token : undefined;
   if (!accessToken || !refreshTokenValue || !Number.isFinite(expiresIn) || expiresIn <= 0) {
-    throw new Error("ChatGPT OAuth refresh returned an unexpected payload.");
+    throw new Error(`${provider} OAuth refresh returned an unexpected payload.`);
   }
   return { accessToken, refreshToken: refreshTokenValue, expiresIn, idToken };
 }
@@ -410,13 +436,22 @@ async function refreshIfNeeded(
     if (!shouldRefreshWithin(latest, now, options.withinMs)) {
       return { state: latest, refreshed: false };
     }
-    const refreshed = await oauthRefresh(latest.refreshToken);
+    const refreshed = await oauthRefresh(
+      latest.refreshToken,
+      latest.provider,
+      latest.oauthClientId,
+    );
     const idToken = refreshed.idToken ?? latest.idToken;
     const accountId =
-      extractChatGptAccountIdFromJwt(idToken ?? "") ??
-      extractChatGptAccountIdFromJwt(refreshed.accessToken) ??
-      latest.accountId;
+      latest.provider === "xai"
+        ? latest.accountId
+        : (extractChatGptAccountIdFromJwt(idToken ?? "") ??
+          extractChatGptAccountIdFromJwt(refreshed.accessToken) ??
+          latest.accountId);
     const newState: TokenState = {
+      provider: latest.provider,
+      oauthClientId: latest.oauthClientId,
+      clientVersion: latest.clientVersion,
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
       idToken,
@@ -444,7 +479,60 @@ async function refreshIfNeeded(
   }
 }
 
+const GROK_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
+function normalizeGrokSeed(input: Record<string, unknown>): TokenState {
+  const document =
+    input.auth && typeof input.auth === "object" ? (input.auth as Record<string, unknown>) : input;
+  const scope = `https://auth.x.ai::${GROK_CLIENT_ID}`;
+  const credential = (document[scope] ?? document) as Record<string, unknown>;
+  if (
+    !credential ||
+    typeof credential !== "object" ||
+    credential.auth_mode !== "oidc" ||
+    credential.oidc_issuer !== "https://auth.x.ai" ||
+    credential.oidc_client_id !== GROK_CLIENT_ID
+  )
+    throw new Error("Import an official Grok account login from auth.x.ai.");
+  const accessToken = credential.key;
+  const refreshToken = credential.refresh_token;
+  if (
+    typeof accessToken !== "string" ||
+    !/^[!-~]+$/u.test(accessToken) ||
+    typeof refreshToken !== "string" ||
+    !/^[!-~]+$/u.test(refreshToken)
+  )
+    throw new Error("Grok import requires account access and refresh tokens.");
+  const claims = decodeJwtPayload(accessToken) as Record<string, unknown> | null;
+  const userId = credential.user_id ?? claims?.sub;
+  if (typeof userId !== "string" || !userId || userId.length > 200)
+    throw new Error("Grok import requires a user ID.");
+  const expiresAt = Date.parse(String(credential.expires_at ?? ""));
+  if (!Number.isFinite(expiresAt)) throw new Error("Grok import requires a valid expires_at.");
+  if (
+    typeof input.clientVersion !== "string" ||
+    !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u.test(input.clientVersion)
+  )
+    throw new Error("Grok import requires the installed CLI clientVersion.");
+  if (input.label !== undefined && (typeof input.label !== "string" || input.label.length > 100))
+    throw new Error("Invalid subscription label.");
+  return {
+    provider: "xai",
+    oauthClientId: GROK_CLIENT_ID,
+    clientVersion: input.clientVersion,
+    accountId: `xai:${userId}`,
+    accessToken,
+    refreshToken,
+    expiresAt: Math.min(expiresAt, typeof claims?.exp === "number" ? claims.exp * 1000 : expiresAt),
+    email: typeof credential.email === "string" ? credential.email : undefined,
+    label: typeof input.label === "string" ? input.label.trim() : undefined,
+    updatedAt: nowMs(),
+  };
+}
+
 function normalizeSeedInput(input: Record<string, unknown>): TokenState {
+  if (input.provider === "xai") return normalizeGrokSeed(input);
+  if (input.provider !== undefined && input.provider !== "openai")
+    throw new Error("Unsupported subscription provider.");
   const nestedTokens =
     input.tokens && typeof input.tokens === "object"
       ? (input.tokens as Record<string, unknown>)
@@ -509,13 +597,10 @@ function normalizeSeedInput(input: Record<string, unknown>): TokenState {
   };
 }
 
-function redactTokenPreview(token: string): string {
-  return token.length <= 16 ? "<redacted>" : `${token.slice(0, 8)}...${token.slice(-4)}`;
-}
-
 function accountMetadata(state: StoredTokenState): Record<string, unknown> {
   const now = nowMs();
   return {
+    provider: state.provider ?? "openai",
     accountId: state.accountId,
     email: state.email ?? null,
     label: state.label ?? null,
@@ -547,12 +632,12 @@ async function tokensEqual(left: string, right: string): Promise<boolean> {
 async function authenticate(request: Request, env: Env): Promise<Principal | null> {
   const token = getAuthToken(request);
   if (!token) return null;
-  if (env.CHATGPT_AUTH_API_KEY && (await tokensEqual(token, env.CHATGPT_AUTH_API_KEY))) {
+  if (env.LLM_AUTH_ADMIN_API_KEY && (await tokensEqual(token, env.LLM_AUTH_ADMIN_API_KEY))) {
     return { id: "admin", name: "Admin", kind: "admin" };
   }
   const tokenHash = await sha256Hex(token);
-  const row = await env.CHATGPT_AUTH_DB.prepare(
-    "SELECT id, name, account_ids FROM chatgpt_auth_clients WHERE token_hash = ?1 AND enabled = 1 AND deleted_at IS NULL",
+  const row = await env.LLM_AUTH_DB.prepare(
+    "SELECT id, name, account_ids FROM llm_auth_clients WHERE token_hash = ?1 AND enabled = 1 AND deleted_at IS NULL",
   )
     .bind(tokenHash)
     .first<Record<string, unknown>>();
@@ -567,8 +652,8 @@ async function authenticate(request: Request, env: Env): Promise<Principal | nul
 
 async function markPrincipalUsed(env: Env, principal: Principal): Promise<void> {
   if (principal.kind !== "client") return;
-  await env.CHATGPT_AUTH_DB.prepare(
-    `UPDATE chatgpt_auth_clients
+  await env.LLM_AUTH_DB.prepare(
+    `UPDATE llm_auth_clients
      SET last_used_at = ?1, request_count = request_count + 1, updated_at = ?1
      WHERE id = ?2`,
   )
@@ -583,8 +668,8 @@ async function recordTokenEvent(
   accountId: string | null,
   outcome: string,
 ): Promise<void> {
-  await env.CHATGPT_AUTH_DB.prepare(
-    `INSERT INTO chatgpt_auth_token_events
+  await env.LLM_AUTH_DB.prepare(
+    `INSERT INTO llm_auth_token_events
        (occurred_at, client_id, account_id, outcome, request_id)
      VALUES (?1, ?2, ?3, ?4, ?5)`,
   )
@@ -638,8 +723,6 @@ async function handleSeed(request: Request, env: Env): Promise<Response> {
   return json({
     ok: true,
     ...accountMetadata(stored),
-    accessTokenPreview: redactTokenPreview(stored.accessToken),
-    refreshTokenPreview: redactTokenPreview(stored.refreshToken),
   });
 }
 
@@ -653,9 +736,7 @@ async function handleAccount(request: Request, env: Env, accountId: string): Pro
   const current = await readStateFromD1(env, accountId);
   if (!current) return notFound(`Account ${accountId} was not found.`);
   if (request.method === "DELETE") {
-    await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_state WHERE id = ?1")
-      .bind(accountId)
-      .run();
+    await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_state WHERE id = ?1").bind(accountId).run();
     return json({ ok: true, accountId });
   }
   if (request.method !== "PATCH") return methodNotAllowed();
@@ -678,8 +759,8 @@ async function handleAccount(request: Request, env: Env, accountId: string): Pro
         ? body.label.trim() || null
         : (current.label ?? null);
   const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
-  await env.CHATGPT_AUTH_DB.prepare(
-    "UPDATE chatgpt_auth_state SET label = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
+  await env.LLM_AUTH_DB.prepare(
+    "UPDATE llm_auth_state SET label = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
   )
     .bind(label, enabled ? 1 : 0, nowMs(), accountId)
     .run();
@@ -700,19 +781,31 @@ async function handleHealth(request: Request, env: Env): Promise<Response> {
 
 async function handleToken(request: Request, env: Env, principal: Principal): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed();
+  const params = new URL(request.url).searchParams;
+  const provider = params.get("provider") ?? "openai";
+  if (provider !== "openai" && provider !== "xai")
+    return badRequest("provider must be openai or xai.");
+  const requestedId = params.get("accountId");
+  const allowed = principal.accountIds ?? null;
+  const accountIds = requestedId
+    ? allowed === null || allowed.includes(requestedId)
+      ? [requestedId]
+      : []
+    : allowed;
+  const forceRefresh = params.get("refresh") === "1";
   await markPrincipalUsed(env, principal);
   const start = performance.now();
   const attemptedIds: string[] = [];
 
   while (true) {
-    let state = await selectNextStateFromD1(env, attemptedIds, principal.accountIds ?? null);
+    let state = await selectNextStateFromD1(env, attemptedIds, accountIds, provider);
     if (!state) break;
     attemptedIds.push(state.id);
     let refreshed = false;
-    if (shouldRefreshWithin(state, nowMs(), REFRESH_WITHIN_MS)) {
+    if (forceRefresh || shouldRefreshWithin(state, nowMs(), REFRESH_WITHIN_MS)) {
       try {
         const result = await refreshIfNeeded(env, state.id, {
-          withinMs: REFRESH_WITHIN_MS,
+          withinMs: forceRefresh ? Number.POSITIVE_INFINITY : REFRESH_WITHIN_MS,
           reason: "on_request",
         });
         state = result.state;
@@ -732,8 +825,10 @@ async function handleToken(request: Request, env: Env, principal: Principal): Pr
 
     await recordTokenEvent(env, request, principal, state.accountId, "issued");
     return json({
+      provider,
       accessToken: state.accessToken,
       accountId: state.accountId,
+      ...(state.clientVersion ? { clientVersion: state.clientVersion } : {}),
       expiresAt: state.expiresAt,
       refreshed,
       caller: { id: principal.id, name: principal.name },
@@ -802,13 +897,13 @@ function validateClientName(value: unknown): string | null {
 }
 
 function generateClientToken(): string {
-  return `cgptc_${base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)))}`;
+  return `llmc_${base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)))}`;
 }
 
 async function listClients(env: Env): Promise<readonly Record<string, unknown>[]> {
-  const result = await env.CHATGPT_AUTH_DB.prepare(
+  const result = await env.LLM_AUTH_DB.prepare(
     `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count, account_ids
-     FROM chatgpt_auth_clients WHERE deleted_at IS NULL ORDER BY name, id`,
+     FROM llm_auth_clients WHERE deleted_at IS NULL ORDER BY name, id`,
   ).all<Record<string, unknown>>();
   return result.results ?? [];
 }
@@ -873,8 +968,8 @@ async function handleClients(request: Request, env: Env): Promise<Response> {
   const tokenHash = await sha256Hex(token);
   const id = `client_${crypto.randomUUID()}`;
   const now = nowMs();
-  await env.CHATGPT_AUTH_DB.prepare(
-    `INSERT INTO chatgpt_auth_clients
+  await env.LLM_AUTH_DB.prepare(
+    `INSERT INTO llm_auth_clients
        (id, name, token_hash, token_prefix, enabled, created_at, updated_at, request_count, account_ids)
      VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5, 0, ?6)`,
   )
@@ -906,9 +1001,9 @@ async function handleClients(request: Request, env: Env): Promise<Response> {
 }
 
 async function readClient(env: Env, id: string): Promise<Record<string, unknown> | null> {
-  return env.CHATGPT_AUTH_DB.prepare(
+  return env.LLM_AUTH_DB.prepare(
     `SELECT id, name, token_prefix, enabled, created_at, updated_at, last_used_at, request_count, account_ids
-     FROM chatgpt_auth_clients WHERE id = ?1 AND deleted_at IS NULL`,
+     FROM llm_auth_clients WHERE id = ?1 AND deleted_at IS NULL`,
   )
     .bind(id)
     .first<Record<string, unknown>>();
@@ -918,8 +1013,8 @@ async function handleClient(request: Request, env: Env, id: string): Promise<Res
   const current = await readClient(env, id);
   if (!current) return notFound(`Client ${id} was not found.`);
   if (request.method === "DELETE") {
-    await env.CHATGPT_AUTH_DB.prepare(
-      "UPDATE chatgpt_auth_clients SET enabled = 0, updated_at = ?1, deleted_at = ?1 WHERE id = ?2",
+    await env.LLM_AUTH_DB.prepare(
+      "UPDATE llm_auth_clients SET enabled = 0, updated_at = ?1, deleted_at = ?1 WHERE id = ?2",
     )
       .bind(nowMs(), id)
       .run();
@@ -943,8 +1038,8 @@ async function handleClient(request: Request, env: Env, id: string): Promise<Res
   } catch (error) {
     return badRequest((error as Error).message);
   }
-  await env.CHATGPT_AUTH_DB.prepare(
-    "UPDATE chatgpt_auth_clients SET name = ?1, enabled = ?2, updated_at = ?3, account_ids = ?4 WHERE id = ?5",
+  await env.LLM_AUTH_DB.prepare(
+    "UPDATE llm_auth_clients SET name = ?1, enabled = ?2, updated_at = ?3, account_ids = ?4 WHERE id = ?5",
   )
     .bind(
       name,
@@ -963,8 +1058,8 @@ async function handleRotateClient(request: Request, env: Env, id: string): Promi
   const current = await readClient(env, id);
   if (!current) return notFound(`Client ${id} was not found.`);
   const token = generateClientToken();
-  await env.CHATGPT_AUTH_DB.prepare(
-    `UPDATE chatgpt_auth_clients
+  await env.LLM_AUTH_DB.prepare(
+    `UPDATE llm_auth_clients
      SET token_hash = ?1, token_prefix = ?2, enabled = 1, updated_at = ?3
      WHERE id = ?4`,
   )
@@ -993,7 +1088,13 @@ async function handleTestClient(request: Request, env: Env): Promise<Response> {
   const result = (value: Record<string, unknown>) =>
     json({ ...value, checkedAt: nowMs(), durationMs: Math.round(performance.now() - started) });
   // Authenticate only the supplied key. The administrator's cookie must never satisfy this check.
-  const probe = new Request(new URL("/v1/token", request.url), {
+  const probeUrl = new URL("/v1/token", request.url);
+  if (body?.provider !== undefined) {
+    if (body.provider !== "openai" && body.provider !== "xai")
+      return badRequest("Unsupported subscription provider.");
+    probeUrl.searchParams.set("provider", body.provider);
+  }
+  const probe = new Request(probeUrl, {
     headers: {
       authorization: `Bearer ${token}`,
       ...(request.headers.has("cf-ray") ? { "cf-ray": request.headers.get("cf-ray")! } : {}),
@@ -1001,8 +1102,8 @@ async function handleTestClient(request: Request, env: Env): Promise<Response> {
   });
   const principal = await authenticate(probe, env);
   if (!principal) {
-    const disabled = await env.CHATGPT_AUTH_DB.prepare(
-      "SELECT id FROM chatgpt_auth_clients WHERE token_hash = ?1 AND enabled = 0 AND deleted_at IS NULL",
+    const disabled = await env.LLM_AUTH_DB.prepare(
+      "SELECT id FROM llm_auth_clients WHERE token_hash = ?1 AND enabled = 0 AND deleted_at IS NULL",
     )
       .bind(await sha256Hex(token))
       .first();
@@ -1040,6 +1141,7 @@ async function handleTestClient(request: Request, env: Env): Promise<Response> {
     message: "The key authenticated and successfully obtained a subscription token.",
     client,
     subscription: {
+      provider: payload.provider,
       accountId: payload.accountId,
       email: account?.email ?? null,
       label: account?.label ?? null,
@@ -1057,12 +1159,12 @@ async function handleEvents(request: Request, env: Env): Promise<Response> {
     ? Math.max(1, Math.min(MAX_EVENT_PAGE_SIZE, requestedLimit))
     : 100;
   const clientId = url.searchParams.get("clientId")?.trim();
-  const result = await env.CHATGPT_AUTH_DB.prepare(
+  const result = await env.LLM_AUTH_DB.prepare(
     `SELECT e.id, e.occurred_at, e.client_id, e.account_id, e.outcome, e.request_id,
             COALESCE(c.name, CASE WHEN e.client_id = 'admin' THEN 'Admin' ELSE e.client_id END)
               AS client_name
-     FROM chatgpt_auth_token_events e
-     LEFT JOIN chatgpt_auth_clients c ON c.id = e.client_id
+     FROM llm_auth_token_events e
+     LEFT JOIN llm_auth_clients c ON c.id = e.client_id
      ${clientId ? "WHERE e.client_id = ?" : ""}
      ORDER BY e.occurred_at DESC, e.id DESC
      LIMIT ?`,
@@ -1088,31 +1190,31 @@ async function handleStats(request: Request, env: Env): Promise<Response> {
   const days = Number.isFinite(raw) ? Math.max(1, Math.min(30, Math.floor(raw))) : 7;
   const since = nowMs() - days * 86_400_000;
   const results = await Promise.all([
-    env.CHATGPT_AUTH_DB.prepare(`SELECT COUNT(*) AS events,
+    env.LLM_AUTH_DB.prepare(`SELECT COUNT(*) AS events,
       SUM(CASE WHEN outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
       SUM(CASE WHEN outcome != 'issued' THEN 1 ELSE 0 END) AS failures
-      FROM chatgpt_auth_token_events WHERE occurred_at >= ?1`)
+      FROM llm_auth_token_events WHERE occurred_at >= ?1`)
       .bind(since)
       .first(),
-    env.CHATGPT_AUTH_DB.prepare(`SELECT strftime('%Y-%m-%d', occurred_at / 1000, 'unixepoch') AS day,
+    env.LLM_AUTH_DB.prepare(`SELECT strftime('%Y-%m-%d', occurred_at / 1000, 'unixepoch') AS day,
       SUM(CASE WHEN outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
       SUM(CASE WHEN outcome != 'issued' THEN 1 ELSE 0 END) AS failures
-      FROM chatgpt_auth_token_events WHERE occurred_at >= ?1 GROUP BY day ORDER BY day`)
+      FROM llm_auth_token_events WHERE occurred_at >= ?1 GROUP BY day ORDER BY day`)
       .bind(since)
       .all(),
-    env.CHATGPT_AUTH_DB.prepare(`SELECT e.client_id AS id, COALESCE(c.name, e.client_id) AS name,
+    env.LLM_AUTH_DB.prepare(`SELECT e.client_id AS id, COALESCE(c.name, e.client_id) AS name,
       SUM(CASE WHEN e.outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
       SUM(CASE WHEN e.outcome != 'issued' THEN 1 ELSE 0 END) AS failures,
-      MAX(e.occurred_at) AS lastUsedAt FROM chatgpt_auth_token_events e
-      LEFT JOIN chatgpt_auth_clients c ON c.id = e.client_id
+      MAX(e.occurred_at) AS lastUsedAt FROM llm_auth_token_events e
+      LEFT JOIN llm_auth_clients c ON c.id = e.client_id
       WHERE e.occurred_at >= ?1 GROUP BY e.client_id ORDER BY issued DESC`)
       .bind(since)
       .all(),
-    env.CHATGPT_AUTH_DB.prepare(`SELECT e.account_id AS id,
+    env.LLM_AUTH_DB.prepare(`SELECT e.account_id AS id,
       COALESCE(s.label, s.email, e.account_id, 'No subscription') AS name,
       SUM(CASE WHEN e.outcome = 'issued' THEN 1 ELSE 0 END) AS issued,
       SUM(CASE WHEN e.outcome != 'issued' THEN 1 ELSE 0 END) AS failures
-      FROM chatgpt_auth_token_events e LEFT JOIN chatgpt_auth_state s ON s.id = e.account_id
+      FROM llm_auth_token_events e LEFT JOIN llm_auth_state s ON s.id = e.account_id
       WHERE e.occurred_at >= ?1 GROUP BY e.account_id ORDER BY issued DESC`)
       .bind(since)
       .all(),
@@ -1133,12 +1235,20 @@ async function handleSubscriptionUsage(request: Request, env: Env, id: string): 
   if (request.method !== "POST") return methodNotAllowed();
   const current = await readStateFromD1(env, id);
   if (!current) return notFound("Subscription not found.");
+  if (current.provider === "xai")
+    return json(
+      {
+        error: "usage_unavailable",
+        message: "Grok does not expose a supported subscription limits endpoint.",
+      },
+      { status: 501 },
+    );
   const { state } = await refreshIfNeeded(env, id, {
     withinMs: ACCESS_TOKEN_EXPIRY_SAFETY_MS,
     reason: "usage_check",
   });
-  const proxyUrl = env.CHATGPT_CODEX_PROXY_URL?.trim();
-  const proxyKey = env.CHATGPT_CODEX_PROXY_API_KEY?.trim();
+  const proxyUrl = env.LLM_PROXY_URL?.trim();
+  const proxyKey = env.LLM_PROXY_API_KEY?.trim();
   if (proxyUrl && !proxyKey)
     return json(
       { error: "usage_proxy_not_configured", message: "The usage proxy secret is missing." },
@@ -1151,7 +1261,7 @@ async function handleSubscriptionUsage(request: Request, env: Env, id: string): 
         method: "POST",
         headers: {
           Authorization: `Bearer ${proxyKey}`,
-          "x-codex-proxy-auth": proxyKey!,
+          "x-llm-proxy-auth": proxyKey!,
           "content-type": "application/json",
         },
         body: JSON.stringify({ accessToken: state.accessToken, accountId: state.accountId }),
@@ -1184,7 +1294,7 @@ async function handleSubscriptionUsage(request: Request, env: Env, id: string): 
       { status: 502 },
     );
   if (typeof data.email === "string" && data.email.includes("@")) {
-    await env.CHATGPT_AUTH_DB.prepare("UPDATE chatgpt_auth_state SET email = ?1 WHERE id = ?2")
+    await env.LLM_AUTH_DB.prepare("UPDATE llm_auth_state SET email = ?1 WHERE id = ?2")
       .bind(data.email, current.id)
       .run();
   }
@@ -1212,6 +1322,48 @@ async function handleSubscriptionUsage(request: Request, env: Env, id: string): 
   });
 }
 
+async function handleConnectionCheck(request: Request, env: Env, id: string): Promise<Response> {
+  if (request.method !== "POST") return methodNotAllowed();
+  const current = await readStateFromD1(env, id);
+  if (!current) return notFound("Subscription not found.");
+  if (current.provider !== "xai")
+    return badRequest("Use the ChatGPT limits check for this provider.");
+  const { state } = await refreshIfNeeded(env, id, {
+    withinMs: ACCESS_TOKEN_EXPIRY_SAFETY_MS,
+    reason: "connection_check",
+  });
+  const response = await fetch("https://cli-chat-proxy.grok.com/v1/models", {
+    headers: {
+      authorization: `Bearer ${state.accessToken}`,
+      "X-XAI-Token-Auth": "xai-grok-cli",
+      "x-grok-client-version": state.clientVersion ?? "",
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok)
+    return json(
+      {
+        error: "connection_failed",
+        message: `Grok rejected the connection check (HTTP ${response.status}).`,
+      },
+      { status: 502 },
+    );
+  const payload = (await response.json()) as { data?: unknown };
+  if (!Array.isArray(payload.data))
+    return json(
+      { error: "connection_failed", message: "Grok returned an invalid model catalog." },
+      { status: 502 },
+    );
+  return json({
+    ok: true,
+    provider: "xai",
+    accountId: id,
+    modelCount: payload.data.length,
+    checkedAt: nowMs(),
+  });
+}
+
 function pathIdentifier(path: string, prefix: string): string | null {
   if (!path.startsWith(prefix)) return null;
   const encoded = path.slice(prefix.length);
@@ -1224,23 +1376,23 @@ function pathIdentifier(path: string, prefix: string): string | null {
 }
 
 function auditRetentionDays(env: Env): number {
-  const configured = Number.parseInt(env.CHATGPT_AUTH_AUDIT_RETENTION_DAYS ?? "", 10);
+  const configured = Number.parseInt(env.LLM_AUTH_AUDIT_RETENTION_DAYS ?? "", 10);
   return Number.isFinite(configured)
     ? Math.max(1, Math.min(3650, configured))
     : DEFAULT_AUDIT_RETENTION_DAYS;
 }
 
 async function runScheduledMaintenance(env: Env): Promise<void> {
-  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_admin_sessions WHERE expires_at < ?1")
+  await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_admin_sessions WHERE expires_at < ?1")
     .bind(nowMs())
     .run();
-  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_login_attempts WHERE expires_at < ?1")
+  await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_login_attempts WHERE expires_at < ?1")
     .bind(nowMs())
     .run();
-  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_login_limits WHERE expires_at < ?1")
+  await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_login_limits WHERE expires_at < ?1")
     .bind(nowMs())
     .run();
-  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_google_logins WHERE expires_at < ?1")
+  await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_google_logins WHERE expires_at < ?1")
     .bind(nowMs())
     .run();
   const states = await listStatesFromD1(env, true);
@@ -1254,7 +1406,7 @@ async function runScheduledMaintenance(env: Env): Promise<void> {
     }
   }
   const cutoff = nowMs() - auditRetentionDays(env) * 24 * 60 * 60 * 1000;
-  await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_token_events WHERE occurred_at < ?1")
+  await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_token_events WHERE occurred_at < ?1")
     .bind(cutoff)
     .run();
 }
@@ -1321,6 +1473,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         return accountMetadata(saved);
       });
     if (path === "/v1/stats") return handleStats(request, env);
+    const connectionMatch = /^\/v1\/accounts\/([^/]+)\/check$/u.exec(path);
+    if (connectionMatch?.[1])
+      return handleConnectionCheck(request, env, decodeURIComponent(connectionMatch[1]));
     const usageMatch = /^\/v1\/accounts\/([^/]+)\/usage$/u.exec(path);
     if (usageMatch?.[1])
       return handleSubscriptionUsage(request, env, decodeURIComponent(usageMatch[1]));

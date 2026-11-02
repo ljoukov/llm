@@ -48,10 +48,8 @@ function hasCodexStore(): boolean {
 export function getIntegrationProviderAvailability(): IntegrationProviderAvailability {
   if (availabilityCache) return availabilityCache;
   loadLocalEnv();
-  const tokenProviderUrl = process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim();
-  const tokenProviderKey =
-    process.env.CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY?.trim() ||
-    process.env.CHATGPT_AUTH_API_KEY?.trim();
+  const tokenProviderUrl = process.env.LLM_AUTH_URL?.trim();
+  const tokenProviderKey = process.env.LLM_AUTH_API_KEY?.trim();
   availabilityCache = {
     openAi: Boolean(process.env.OPENAI_API_KEY?.trim()),
     google: Boolean(
@@ -101,7 +99,7 @@ function resolveCredentialHintForModel(ref: LlmModelRef): string {
   switch (ref.provider) {
     case "openai":
       return ref.access === "subscription"
-        ? "CHATGPT_AUTH_TOKEN_PROVIDER_URL + CHATGPT_AUTH_API_KEY (or CODEX auth store)"
+        ? "LLM_AUTH_URL + LLM_AUTH_ADMIN_API_KEY (or CODEX auth store)"
         : "OPENAI_API_KEY";
     case "anthropic":
       return ref.access === "subscription"

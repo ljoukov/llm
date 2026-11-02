@@ -1,12 +1,29 @@
 # Changelog
 
-## Unreleased
+## 14.0.0
+
+### Breaking: shared subscription authentication
+
+- Replace ChatGPT-specific token-service settings with `LLM_AUTH_URL`, `LLM_AUTH_API_KEY`, and
+  `LLM_AUTH_ADMIN_API_KEY`. Remove the old names, admin-key fallback for applications, and deprecated
+  store selection. Rename optional proxy settings to `LLM_PROXY_URL` / `LLM_PROXY_API_KEY`.
+- Use remote credentials before local Codex/Grok CLI stores; fail closed when the remote service is
+  configured but incomplete or unavailable. Existing local subscription access remains available
+  when remote configuration is absent.
+- Rename service and relay sources to `workers/llm-auth` and `vercel/llm-proxy`. New deployments use
+  isolated `llm_auth_*` tables and migration names; existing deployments can remain running.
+- Add Grok subscription accounts, device approval, isolated CLI onboarding, server-owned OAuth refresh,
+  provider-filtered account selection, and provider-specific API-key testing to the dashboard.
+- Keep Grok inference direct to xAI. The optional relay continues to serve OpenAI subscriptions only.
+- Add migration examples to the README. Provider API keys and native CLI environment names are unchanged.
+
+### Subscription dashboard
 
 - Add a web dashboard to the ChatGPT token provider for browser-assisted subscription login,
   auth-file import, named API keys, per-key subscription selections, key rotation/deletion, and
   grant statistics. Subscription usage windows can be checked separately from grant counts.
 - Add secure admin sessions and one-time dashboard sign-in links via
-  `npm run chatgpt-auth -- dashboard`. The management CLI now reads `.env.local` and `.env`.
+  `npm run llm-auth -- dashboard`. The management CLI now reads `.env.local` and `.env`.
 - Use SvelteKit and shadcn-svelte for responsive light/dark administration, with server-side Google
   OAuth, PKCE, verified email allowlisting, and private deployment configuration.
 - Add an authenticated Vercel usage relay for subscription limits on networks that block Cloudflare,

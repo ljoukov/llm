@@ -1,10 +1,11 @@
 import type { Env, Principal } from "./index.js";
 import { isAllowedAdminEmail, verifyGoogleIdentity } from "./google.js";
 
-const COOKIE = "__Host-chatgpt_admin";
-const GOOGLE_COOKIE = "__Host-chatgpt_google";
+const COOKIE = "__Host-llm_admin";
+const GOOGLE_COOKIE = "__Host-llm_google";
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const GROK_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 const AUTH_ORIGIN = "https://auth.openai.com";
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -89,10 +90,10 @@ export async function serveDashboard(request: Request, env: Env): Promise<Respon
 export async function authenticateSession(request: Request, env: Env): Promise<Principal | null> {
   const token = cookieToken(request);
   if (!token) return null;
-  const row = await env.CHATGPT_AUTH_DB.prepare(
-    "SELECT token_hash, email, google_audience FROM chatgpt_auth_admin_sessions WHERE token_hash = ?1 AND kind = 'session' AND expires_at > ?2 AND admin_key_hash = ?3",
+  const row = await env.LLM_AUTH_DB.prepare(
+    "SELECT token_hash, email, google_audience FROM llm_auth_admin_sessions WHERE token_hash = ?1 AND kind = 'session' AND expires_at > ?2 AND admin_key_hash = ?3",
   )
-    .bind(await hash(token), Date.now(), await hash(env.CHATGPT_AUTH_API_KEY))
+    .bind(await hash(token), Date.now(), await hash(env.LLM_AUTH_ADMIN_API_KEY))
     .first<{ email: string | null; google_audience: string | null }>();
   if (!row) return null;
   if (
@@ -115,12 +116,12 @@ async function issueSession(
   email: string | null = null,
 ): Promise<string> {
   const token = randomToken();
-  await env.CHATGPT_AUTH_DB.prepare(
-    "INSERT INTO chatgpt_auth_admin_sessions (token_hash, admin_key_hash, kind, expires_at, email, google_audience) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+  await env.LLM_AUTH_DB.prepare(
+    "INSERT INTO llm_auth_admin_sessions (token_hash, admin_key_hash, kind, expires_at, email, google_audience) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
   )
     .bind(
       await hash(token),
-      await hash(env.CHATGPT_AUTH_API_KEY),
+      await hash(env.LLM_AUTH_ADMIN_API_KEY),
       kind,
       Date.now() + (kind === "ticket" ? 60_000 : SESSION_MS),
       email,
@@ -175,8 +176,8 @@ export async function handleGoogleLogin(request: Request, env: Env): Promise<Res
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
       .replace(/=+$/u, "");
-    await env.CHATGPT_AUTH_DB.prepare(
-      "INSERT INTO chatgpt_auth_google_logins (token_hash, state_hash, nonce_hash, code_verifier, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+    await env.LLM_AUTH_DB.prepare(
+      "INSERT INTO llm_auth_google_logins (token_hash, state_hash, nonce_hash, code_verifier, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
     )
       .bind(await hash(token), await hash(state), await hash(nonce), verifier, Date.now() + 600_000)
       .run();
@@ -205,8 +206,8 @@ export async function handleGoogleLogin(request: Request, env: Env): Promise<Res
   const token = cookieToken(request, GOOGLE_COOKIE);
   const state = url.searchParams.get("state");
   if (!token || !state || !/^[a-f0-9]{64}$/u.test(state)) return failure("invalid_state");
-  const flow = await env.CHATGPT_AUTH_DB.prepare(
-    "DELETE FROM chatgpt_auth_google_logins WHERE token_hash = ?1 AND state_hash = ?2 AND expires_at > ?3 RETURNING nonce_hash, code_verifier",
+  const flow = await env.LLM_AUTH_DB.prepare(
+    "DELETE FROM llm_auth_google_logins WHERE token_hash = ?1 AND state_hash = ?2 AND expires_at > ?3 RETURNING nonce_hash, code_verifier",
   )
     .bind(await hash(token), await hash(state), Date.now())
     .first<{ nonce_hash: string; code_verifier: string }>();
@@ -257,9 +258,9 @@ export async function handleAdminTicket(request: Request, env: Env): Promise<Res
 
 async function isLoginRateLimited(request: Request, env: Env): Promise<boolean> {
   const now = Date.now();
-  const bucket = `${await hash(env.CHATGPT_AUTH_API_KEY + (request.headers.get("cf-connecting-ip") ?? "local"))}:${Math.floor(now / 600_000)}`;
-  const limit = await env.CHATGPT_AUTH_DB.prepare(
-    "INSERT INTO chatgpt_auth_login_limits (bucket, attempts, expires_at) VALUES (?1, 1, ?2) ON CONFLICT(bucket) DO UPDATE SET attempts = attempts + 1 RETURNING attempts",
+  const bucket = `${await hash(env.LLM_AUTH_ADMIN_API_KEY + (request.headers.get("cf-connecting-ip") ?? "local"))}:${Math.floor(now / 600_000)}`;
+  const limit = await env.LLM_AUTH_DB.prepare(
+    "INSERT INTO llm_auth_login_limits (bucket, attempts, expires_at) VALUES (?1, 1, ?2) ON CONFLICT(bucket) DO UPDATE SET attempts = attempts + 1 RETURNING attempts",
   )
     .bind(bucket, now + 600_000)
     .first<{ attempts: number }>();
@@ -272,9 +273,7 @@ export async function handleAdminSession(request: Request, env: Env): Promise<Re
   if (request.method === "DELETE") {
     const token = cookieToken(request);
     if (token)
-      await env.CHATGPT_AUTH_DB.prepare(
-        "DELETE FROM chatgpt_auth_admin_sessions WHERE token_hash = ?1",
-      )
+      await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_admin_sessions WHERE token_hash = ?1")
         .bind(await hash(token))
         .run();
     return json({ ok: true }, 200, { "set-cookie": cookie("", 0) });
@@ -289,19 +288,19 @@ export async function handleAdminSession(request: Request, env: Env): Promise<Re
     return json({ error: "Too many sign-in attempts. Try again in 10 minutes." }, 429);
   let authorized = false;
   if (typeof body.ticket === "string" && /^[a-f0-9]{64}$/u.test(body.ticket)) {
-    const used = await env.CHATGPT_AUTH_DB.prepare(
-      "DELETE FROM chatgpt_auth_admin_sessions WHERE token_hash = ?1 AND kind = 'ticket' AND expires_at > ?2 AND admin_key_hash = ?3 RETURNING token_hash",
+    const used = await env.LLM_AUTH_DB.prepare(
+      "DELETE FROM llm_auth_admin_sessions WHERE token_hash = ?1 AND kind = 'ticket' AND expires_at > ?2 AND admin_key_hash = ?3 RETURNING token_hash",
     )
-      .bind(await hash(body.ticket), now, await hash(env.CHATGPT_AUTH_API_KEY))
+      .bind(await hash(body.ticket), now, await hash(env.LLM_AUTH_ADMIN_API_KEY))
       .first();
     authorized = Boolean(used);
   } else if (
     typeof body.key === "string" &&
     body.key &&
-    env.CHATGPT_AUTH_API_KEY &&
+    env.LLM_AUTH_ADMIN_API_KEY &&
     (!env.ADMIN_GOOGLE_CLIENT_ID?.trim() || env.ADMIN_ALLOW_KEY_LOGIN === "1")
   ) {
-    authorized = (await hash(body.key.trim())) === (await hash(env.CHATGPT_AUTH_API_KEY));
+    authorized = (await hash(body.key.trim())) === (await hash(env.LLM_AUTH_ADMIN_API_KEY));
   }
   if (!authorized) return json({ error: "Invalid admin key or expired sign-in link." }, 401);
   const session = await issueSession(env, "session");
@@ -329,44 +328,72 @@ export async function handleDeviceLogin(
         (typeof body.label !== "string" || body.label.trim().length > 100))
     )
       return json({ error: "Provide a label of at most 100 characters." }, 400);
-    const response = await fetch(`${AUTH_ORIGIN}/api/accounts/deviceauth/usercode`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ client_id: CLIENT_ID }),
-      signal: AbortSignal.timeout(20_000),
-    });
+    const provider = body.provider ?? "openai";
+    if (provider !== "openai" && provider !== "xai")
+      return json({ error: "Unsupported subscription provider." }, 400);
+    if (provider === "xai" && !env.LLM_AUTH_GROK_CLIENT_VERSION)
+      return json({ error: "Grok CLI version is not configured." }, 503);
+    const response = await fetch(
+      provider === "xai"
+        ? "https://auth.x.ai/oauth2/device/code"
+        : `${AUTH_ORIGIN}/api/accounts/deviceauth/usercode`,
+      {
+        method: "POST",
+        headers: {
+          "content-type":
+            provider === "xai" ? "application/x-www-form-urlencoded" : "application/json",
+        },
+        body:
+          provider === "xai"
+            ? new URLSearchParams({
+                client_id: GROK_CLIENT_ID,
+                scope: "openid profile email offline_access grok-cli:access api:access",
+              }).toString()
+            : JSON.stringify({ client_id: CLIENT_ID }),
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
     if (!response.ok)
       return json(
         {
-          error: `OpenAI sign-in is unavailable (HTTP ${response.status}). You can import a Codex auth file instead.`,
+          error: `${provider === "xai" ? "Grok" : "OpenAI"} sign-in is unavailable (HTTP ${response.status}). Import a separate CLI auth file instead.`,
         },
         502,
       );
     const code = (await response.json()) as Record<string, unknown>;
     const userCode = code.user_code ?? code.usercode;
-    if (typeof code.device_auth_id !== "string" || typeof userCode !== "string")
-      return json({ error: "OpenAI returned an invalid sign-in response." }, 502);
+    const deviceCode = provider === "xai" ? code.device_code : code.device_auth_id;
+    if (typeof deviceCode !== "string" || typeof userCode !== "string")
+      return json({ error: "The provider returned an invalid sign-in response." }, 502);
     const intervalMs = Math.max(5000, Math.min(30_000, (Number(code.interval) || 5) * 1000));
     const id = crypto.randomUUID();
     const now = Date.now();
-    const expiresAt = now + 15 * 60_000;
-    await env.CHATGPT_AUTH_DB.prepare(
-      "INSERT INTO chatgpt_auth_login_attempts (id, device_auth_id, user_code, label, interval_ms, next_poll_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+    const expiresAt =
+      now +
+      (provider === "xai" ? Math.min(1800, Math.max(60, Number(code.expires_in) || 900)) : 900) *
+        1000;
+    await env.LLM_AUTH_DB.prepare(
+      "INSERT INTO llm_auth_login_attempts (id, device_auth_id, user_code, label, interval_ms, next_poll_at, expires_at, provider) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
     )
       .bind(
         id,
-        code.device_auth_id,
+        deviceCode,
         userCode,
         typeof body.label === "string" ? body.label.trim() : null,
         intervalMs,
         now + intervalMs,
         expiresAt,
+        provider,
       )
       .run();
     return json({
       id,
       userCode,
-      verificationUrl: `${AUTH_ORIGIN}/codex/device`,
+      verificationUrl:
+        provider === "xai"
+          ? grokVerificationUrl(code.verification_uri)
+          : `${AUTH_ORIGIN}/codex/device`,
+      provider,
       intervalMs,
       expiresAt,
     });
@@ -375,15 +402,15 @@ export async function handleDeviceLogin(
   if (!match) return json({ error: "not_found" }, 404);
   const id = match[1];
   if (request.method === "DELETE" && !match[2]) {
-    await env.CHATGPT_AUTH_DB.prepare("DELETE FROM chatgpt_auth_login_attempts WHERE id = ?1")
+    await env.LLM_AUTH_DB.prepare("DELETE FROM llm_auth_login_attempts WHERE id = ?1")
       .bind(id)
       .run();
     return json({ ok: true });
   }
   if (request.method !== "POST" || !match[2]) return json({ error: "method_not_allowed" }, 405);
   const now = Date.now();
-  const current = await env.CHATGPT_AUTH_DB.prepare(
-    "SELECT * FROM chatgpt_auth_login_attempts WHERE id = ?1",
+  const current = await env.LLM_AUTH_DB.prepare(
+    "SELECT * FROM llm_auth_login_attempts WHERE id = ?1",
   )
     .bind(id)
     .first<Record<string, unknown>>();
@@ -391,13 +418,72 @@ export async function handleDeviceLogin(
   if (Number(current.expires_at) <= now) return json({ status: "expired" });
   if (current.status !== "pending")
     return json({ status: current.status, accountId: current.account_id });
-  const locked = await env.CHATGPT_AUTH_DB.prepare(
-    "UPDATE chatgpt_auth_login_attempts SET lock_until = ?1 WHERE id = ?2 AND status = 'pending' AND next_poll_at <= ?3 AND lock_until < ?3 RETURNING id",
+  const locked = await env.LLM_AUTH_DB.prepare(
+    "UPDATE llm_auth_login_attempts SET lock_until = ?1 WHERE id = ?2 AND status = 'pending' AND next_poll_at <= ?3 AND lock_until < ?3 RETURNING id",
   )
     .bind(now + 60_000, id, now)
     .first();
   if (!locked) return json({ status: "pending", intervalMs: Number(current.interval_ms) });
   try {
+    if (current.provider === "xai") {
+      const response = await fetch("https://auth.x.ai/oauth2/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          client_id: GROK_CLIENT_ID,
+          device_code: String(current.device_auth_id),
+        }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(20_000),
+      });
+      const tokens = (await response.json()) as Record<string, unknown>;
+      if (!response.ok) {
+        if (tokens.error === "authorization_pending")
+          return json({ status: "pending", intervalMs: Number(current.interval_ms) });
+        if (tokens.error === "slow_down") {
+          const interval = Number(current.interval_ms) + 5000;
+          await env.LLM_AUTH_DB.prepare(
+            "UPDATE llm_auth_login_attempts SET interval_ms = ?1 WHERE id = ?2",
+          )
+            .bind(interval, id)
+            .run();
+          return json({ status: "pending", intervalMs: interval });
+        }
+        throw new Error(`Grok sign-in failed (HTTP ${response.status}). Start a new sign-in.`);
+      }
+      const infoResponse = await fetch("https://auth.x.ai/oauth2/userinfo", {
+        headers: { authorization: `Bearer ${String(tokens.access_token)}` },
+        redirect: "manual",
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!infoResponse.ok) throw new Error("Could not verify the Grok account.");
+      const info = (await infoResponse.json()) as Record<string, unknown>;
+      const expiresIn = Number(tokens.expires_in);
+      if (!Number.isFinite(expiresIn) || expiresIn <= 0)
+        throw new Error("Grok returned an invalid token expiry.");
+      const account = await save({
+        provider: "xai",
+        clientVersion: env.LLM_AUTH_GROK_CLIENT_VERSION,
+        label: current.label ?? undefined,
+        auth: {
+          auth_mode: "oidc",
+          oidc_issuer: "https://auth.x.ai",
+          oidc_client_id: GROK_CLIENT_ID,
+          key: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          user_id: info.sub,
+          email: info.email,
+          expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
+        },
+      });
+      await env.LLM_AUTH_DB.prepare(
+        "UPDATE llm_auth_login_attempts SET status = 'completed', account_id = ?1, device_auth_id = NULL, user_code = NULL WHERE id = ?2",
+      )
+        .bind(account.accountId, id)
+        .run();
+      return json({ status: "completed", account });
+    }
     const response = await fetch(`${AUTH_ORIGIN}/api/accounts/deviceauth/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -446,15 +532,15 @@ export async function handleDeviceLogin(
       expiresAt: now + expiresIn * 1000,
       label: current.label ?? undefined,
     });
-    await env.CHATGPT_AUTH_DB.prepare(
-      "UPDATE chatgpt_auth_login_attempts SET status = 'completed', account_id = ?1, device_auth_id = NULL, user_code = NULL WHERE id = ?2",
+    await env.LLM_AUTH_DB.prepare(
+      "UPDATE llm_auth_login_attempts SET status = 'completed', account_id = ?1, device_auth_id = NULL, user_code = NULL WHERE id = ?2",
     )
       .bind(account.accountId, id)
       .run();
     return json({ status: "completed", account });
   } catch (error) {
-    await env.CHATGPT_AUTH_DB.prepare(
-      "UPDATE chatgpt_auth_login_attempts SET status = 'failed', device_auth_id = NULL, user_code = NULL WHERE id = ?1",
+    await env.LLM_AUTH_DB.prepare(
+      "UPDATE llm_auth_login_attempts SET status = 'failed', device_auth_id = NULL, user_code = NULL WHERE id = ?1",
     )
       .bind(id)
       .run();
@@ -466,10 +552,23 @@ export async function handleDeviceLogin(
       502,
     );
   } finally {
-    await env.CHATGPT_AUTH_DB.prepare(
-      "UPDATE chatgpt_auth_login_attempts SET lock_until = 0, next_poll_at = ?1 WHERE id = ?2",
+    await env.LLM_AUTH_DB.prepare(
+      "UPDATE llm_auth_login_attempts SET lock_until = 0, next_poll_at = ?1 WHERE id = ?2",
     )
       .bind(Date.now() + Number(current.interval_ms), id)
       .run();
   }
+}
+
+function grokVerificationUrl(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Grok did not return a sign-in URL.");
+  const url = new URL(value);
+  if (
+    url.protocol !== "https:" ||
+    !["auth.x.ai", "accounts.x.ai", "grok.com"].includes(url.hostname) ||
+    url.username ||
+    url.password
+  )
+    throw new Error("Grok returned an unexpected sign-in URL.");
+  return url.toString();
 }

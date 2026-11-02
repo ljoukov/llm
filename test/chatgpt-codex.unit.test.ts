@@ -29,14 +29,14 @@ function buildSseResponse(events: readonly unknown[]): Response {
 describe("collectChatGptCodexResponse", () => {
   const originalChatGptWebSocketMode = process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE;
   const originalChatGptCodexEndpoint = process.env.CHATGPT_CODEX_ENDPOINT;
-  const originalChatGptCodexProxyUrl = process.env.CHATGPT_CODEX_PROXY_URL;
-  const originalChatGptCodexProxyApiKey = process.env.CHATGPT_CODEX_PROXY_API_KEY;
+  const originalChatGptCodexProxyUrl = process.env.LLM_PROXY_URL;
+  const originalChatGptCodexProxyApiKey = process.env.LLM_PROXY_API_KEY;
 
   beforeEach(() => {
     process.env.CHATGPT_RESPONSES_WEBSOCKET_MODE = "off";
     delete process.env.CHATGPT_CODEX_ENDPOINT;
-    delete process.env.CHATGPT_CODEX_PROXY_URL;
-    delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+    delete process.env.LLM_PROXY_URL;
+    delete process.env.LLM_PROXY_API_KEY;
     configureChatGptCodexProxy(null);
     chatGptAuthMock.getChatGptAuthProfile.mockClear();
   });
@@ -53,14 +53,14 @@ describe("collectChatGptCodexResponse", () => {
       process.env.CHATGPT_CODEX_ENDPOINT = originalChatGptCodexEndpoint;
     }
     if (originalChatGptCodexProxyUrl === undefined) {
-      delete process.env.CHATGPT_CODEX_PROXY_URL;
+      delete process.env.LLM_PROXY_URL;
     } else {
-      process.env.CHATGPT_CODEX_PROXY_URL = originalChatGptCodexProxyUrl;
+      process.env.LLM_PROXY_URL = originalChatGptCodexProxyUrl;
     }
     if (originalChatGptCodexProxyApiKey === undefined) {
-      delete process.env.CHATGPT_CODEX_PROXY_API_KEY;
+      delete process.env.LLM_PROXY_API_KEY;
     } else {
-      process.env.CHATGPT_CODEX_PROXY_API_KEY = originalChatGptCodexProxyApiKey;
+      process.env.LLM_PROXY_API_KEY = originalChatGptCodexProxyApiKey;
     }
     vi.unstubAllGlobals();
     configureChatGptCodexProxy(null);
@@ -76,7 +76,7 @@ describe("collectChatGptCodexResponse", () => {
       expect(String(input)).toBe("https://runtime-proxy.example/api/codex/responses");
       const headers = init?.headers as Record<string, string>;
       expect(headers.Authorization).toBe("Bearer runtime-proxy-key");
-      expect(headers["x-codex-proxy-auth"]).toBe("runtime-proxy-key");
+      expect(headers["x-llm-proxy-auth"]).toBe("runtime-proxy-key");
       expect(headers["chatgpt-account-id"]).toBeUndefined();
 
       return buildSseResponse([
@@ -103,14 +103,14 @@ describe("collectChatGptCodexResponse", () => {
   });
 
   it("uses the Vercel Codex proxy without reading ChatGPT auth", async () => {
-    process.env.CHATGPT_CODEX_PROXY_URL = "https://codex-proxy.example/api/codex/responses";
-    process.env.CHATGPT_CODEX_PROXY_API_KEY = "proxy-key";
+    process.env.LLM_PROXY_URL = "https://codex-proxy.example/api/codex/responses";
+    process.env.LLM_PROXY_API_KEY = "proxy-key";
 
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       expect(String(input)).toBe("https://codex-proxy.example/api/codex/responses");
       const headers = init?.headers as Record<string, string>;
       expect(headers.Authorization).toBe("Bearer proxy-key");
-      expect(headers["x-codex-proxy-auth"]).toBe("proxy-key");
+      expect(headers["x-llm-proxy-auth"]).toBe("proxy-key");
       expect(headers["chatgpt-account-id"]).toBeUndefined();
 
       return buildSseResponse([
@@ -145,15 +145,15 @@ describe("collectChatGptCodexResponse", () => {
     expect(chatGptAuthMock.getChatGptAuthProfile).not.toHaveBeenCalled();
   });
 
-  it("accepts a root CHATGPT_CODEX_PROXY_URL", async () => {
-    process.env.CHATGPT_CODEX_PROXY_URL = "https://codex-proxy.example/";
-    process.env.CHATGPT_CODEX_PROXY_API_KEY = "proxy-key";
+  it("accepts a root LLM_PROXY_URL", async () => {
+    process.env.LLM_PROXY_URL = "https://codex-proxy.example/";
+    process.env.LLM_PROXY_API_KEY = "proxy-key";
 
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       expect(String(input)).toBe("https://codex-proxy.example/api/codex/responses");
       const headers = init?.headers as Record<string, string>;
       expect(headers.Authorization).toBe("Bearer proxy-key");
-      expect(headers["x-codex-proxy-auth"]).toBe("proxy-key");
+      expect(headers["x-llm-proxy-auth"]).toBe("proxy-key");
       expect(headers["chatgpt-account-id"]).toBeUndefined();
 
       return buildSseResponse([

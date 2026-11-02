@@ -8,6 +8,7 @@ export class Admin {
   accounts = $state<Subscription[]>([]); keys = $state<ApiKey[]>([]); events = $state<AuditEvent[]>([]);
   stats = $state<Stats>({ totals: { issued: 0, failures: 0 }, daily: [], byKey: [], bySubscription: [] });
   quotas = $state<Record<string, Quota | { error: string }>>({});
+  provider = $state<'openai' | 'xai'>('openai'); clientVersion = $state(''); testProvider = $state<'openai' | 'xai'>('openai');
   addOpen = $state(false); label = $state(''); file = $state<File | null>(null); attempt = $state<LoginAttempt | null>(null);
   keyOpen = $state(false); editing = $state<ApiKey | null>(null); keyName = $state(''); keyEnabled = $state(true);
   all = $state(true); selected = $state<Record<string, boolean>>({}); secretOpen = $state(false); secret = $state('');
@@ -43,9 +44,9 @@ export class Admin {
   }
   async keyLogin() { await this.perform(async () => { const key = this.loginKey; this.loginKey = ''; await api('/admin/session', { method: 'POST', body: JSON.stringify({ key }) }); this.authenticated = true; await this.load(); }); }
   async logout() { await this.perform(async () => { await api('/admin/session', { method: 'DELETE' }); this.authenticated = false; this.email = null; this.accounts = []; this.keys = []; this.quotas = {}; }); }
-  openAdd() { this.label = ''; this.file = null; this.attempt = null; this.addOpen = true; }
+  openAdd() { this.label = ''; this.provider = 'openai'; this.file = null; this.attempt = null; this.addOpen = true; }
   cancelAttempt() { clearTimeout(this.timer); if (this.attempt) { const id = this.attempt.id; this.attempt = null; void api(`/v1/login/${id}`, { method: 'DELETE' }).catch(() => {}); } }
-  async connect() { await this.perform(async () => { this.attempt = await api('/v1/login/start', { method: 'POST', body: JSON.stringify({ label: this.label || undefined }) }); const current = this.attempt!; this.timer = setTimeout(() => this.poll(current), current.intervalMs); }); }
+  async connect() { await this.perform(async () => { this.attempt = await api('/v1/login/start', { method: 'POST', body: JSON.stringify({ label: this.label || undefined, provider: this.provider }) }); const current = this.attempt!; this.timer = setTimeout(() => this.poll(current), current.intervalMs); }); }
   async poll(current: LoginAttempt) {
     if (this.attempt?.id !== current.id) return;
     try {
@@ -56,7 +57,7 @@ export class Admin {
       else { this.attempt = null; toast.error('Sign-in expired. Start a new connection.'); }
     } catch (error) { this.attempt = null; this.report(error); }
   }
-  async importAccount() { await this.perform(async () => { if (!this.file || this.file.size > 262144) throw new Error('Choose a Codex auth.json file smaller than 256 KB.'); const data = JSON.parse(await this.file.text()); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Expected a Codex auth.json object.'); await api('/v1/seed', { method: 'POST', body: JSON.stringify({ ...data, label: this.label || undefined }) }); this.addOpen = false; this.view = 'subscriptions'; await this.load(); toast.success('Subscription imported.'); }); }
+  async importAccount() { await this.perform(async () => { if (!this.file || this.file.size > 262144) throw new Error('Choose an auth.json file smaller than 256 KB.'); const data = JSON.parse(await this.file.text()); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Expected an auth.json object.'); await api('/v1/seed', { method: 'POST', body: JSON.stringify(this.provider === "xai" ? { provider: "xai", auth: data, clientVersion: this.clientVersion, label: this.label || undefined } : { ...data, provider: "openai", label: this.label || undefined }) }); this.addOpen = false; this.view = 'subscriptions'; await this.load(); toast.success('Subscription imported.'); }); }
   newKey(key: ApiKey | null = null) { this.editing = key; this.keyName = key?.name || ''; this.keyEnabled = key?.enabled ?? true; this.all = !key || key.accountIds === null; this.selected = Object.fromEntries(this.accounts.map((account) => [account.accountId, key?.accountIds?.includes(account.accountId) ?? false])); this.keyOpen = true; }
   async saveKey() { await this.perform(async () => { const body = { name: this.keyName, enabled: this.keyEnabled, accountIds: this.all ? null : Object.entries(this.selected).filter(([, value]) => value).map(([id]) => id) }; const result = await api<{ token?: string; client?: ApiKey }>(this.editing ? `/v1/clients/${encodeURIComponent(this.editing.id)}` : '/v1/clients', { method: this.editing ? 'PATCH' : 'POST', body: JSON.stringify(body) }); this.keyOpen = false; await this.load(); if (result.token) { this.secret = result.token; this.secretKeyId = result.client!.id; this.keyTestResult = null; this.secretOpen = true; } else toast.success('Key updated.'); }); }
   openKeyTest(key: ApiKey | null = null) { this.keyTestTarget = key; this.testKeyValue = ''; this.keyTestResult = null; this.keyTestOpen = true; }
@@ -66,7 +67,7 @@ export class Admin {
     const sequence = ++this.keyTestSequence;
     this.testingKey = true; this.keyTestResult = null; this.testKeyValue = '';
     try {
-      const result = await api<KeyTestResult>('/v1/clients/test', { method: 'POST', body: JSON.stringify({ token, ...(clientId ? { clientId } : {}) }) });
+      const result = await api<KeyTestResult>('/v1/clients/test', { method: 'POST', body: JSON.stringify({ token, provider: this.testProvider, ...(clientId ? { clientId } : {}) }) });
       if (sequence !== this.keyTestSequence) return;
       this.keyTestResult = result;
       await this.load();
@@ -77,6 +78,7 @@ export class Admin {
     } finally { if (sequence === this.keyTestSequence) this.testingKey = false; }
   }
   confirm(title: string, description: string, label: string, action: () => Promise<void>) { this.keyOpen = false; this.confirmTitle = title; this.confirmText = description; this.confirmLabel = label; this.confirmation = action; this.confirmOpen = true; }
+  async checkConnection(account: Subscription) { await this.perform(async () => { const result = await api<{ modelCount: number }>(`/v1/accounts/${encodeURIComponent(account.accountId)}/check`, { method: "POST" }); toast.success(`Grok connected · ${result.modelCount} models available.`); }); }
   async checkQuota(account: Subscription) { await this.perform(async () => { try { this.quotas[account.accountId] = await api<Quota>(`/v1/accounts/${encodeURIComponent(account.accountId)}/usage`, { method: 'POST' }); } catch (error) { this.quotas[account.accountId] = { error: error instanceof Error ? error.message : 'Limits unavailable.' }; } }); }
   async toggleAccount(account: Subscription) { await this.perform(async () => { await api(`/v1/accounts/${encodeURIComponent(account.accountId)}`, { method: 'PATCH', body: JSON.stringify({ enabled: !account.enabled }) }); await this.load(); }); }
   async refreshAccount(account: Subscription) { await this.perform(async () => { await api('/v1/refresh', { method: 'POST', body: JSON.stringify({ accountId: account.accountId }) }); await this.load(); toast.success('Token refreshed.'); }); }

@@ -18,8 +18,8 @@ import {
 const CHATGPT_CODEX_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_CODEX_ENDPOINT_ENV = "CHATGPT_CODEX_ENDPOINT";
 const CHATGPT_CODEX_IMAGES_ENDPOINT_ENV = "CHATGPT_CODEX_IMAGES_ENDPOINT";
-const CHATGPT_CODEX_PROXY_URL_ENV = "CHATGPT_CODEX_PROXY_URL";
-const CHATGPT_CODEX_PROXY_API_KEY_ENV = "CHATGPT_CODEX_PROXY_API_KEY";
+const LLM_PROXY_URL_ENV = "LLM_PROXY_URL";
+const LLM_PROXY_API_KEY_ENV = "LLM_PROXY_API_KEY";
 const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
 
 const chatGptCodexState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptCodexState"), () => ({
@@ -415,15 +415,13 @@ function resolveChatGptCodexProxyConfig(): Extract<
   }
 
   loadLocalEnv();
-  const rawUrl = process.env[CHATGPT_CODEX_PROXY_URL_ENV]?.trim();
+  const rawUrl = process.env[LLM_PROXY_URL_ENV]?.trim();
   if (!rawUrl) {
     return null;
   }
-  const apiKey = process.env[CHATGPT_CODEX_PROXY_API_KEY_ENV]?.trim();
+  const apiKey = process.env[LLM_PROXY_API_KEY_ENV]?.trim();
   if (!apiKey) {
-    throw new Error(
-      `${CHATGPT_CODEX_PROXY_API_KEY_ENV} must be provided when ${CHATGPT_CODEX_PROXY_URL_ENV} is set.`,
-    );
+    throw new Error(`${LLM_PROXY_API_KEY_ENV} must be provided when ${LLM_PROXY_URL_ENV} is set.`);
   }
   return {
     kind: "proxy",
@@ -462,7 +460,7 @@ function buildChatGptCodexHeaders(options: {
   };
   if (options.endpointConfig.kind === "proxy") {
     headers.Authorization = `Bearer ${options.endpointConfig.apiKey}`;
-    headers["x-codex-proxy-auth"] = options.endpointConfig.apiKey;
+    headers["x-llm-proxy-auth"] = options.endpointConfig.apiKey;
   } else {
     headers.Authorization = `Bearer ${options.endpointConfig.access}`;
     headers["chatgpt-account-id"] = options.endpointConfig.accountId;

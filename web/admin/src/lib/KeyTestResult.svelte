@@ -16,7 +16,7 @@
         <dl class="grid min-w-0 gap-2 text-sm">
           {#if result.client}<div><dt class="font-medium">API key</dt><dd class="break-all">{result.client.name}</dd></div>{/if}
           {#if result.subscription}
-            <div><dt class="font-medium">Selected subscription</dt><dd class="break-all">{result.subscription.email || result.subscription.label || result.subscription.accountId}</dd></div>
+            <div><dt class="font-medium">Selected subscription</dt><dd class="break-all">{result.subscription.provider === 'xai' ? 'Grok' : 'ChatGPT'} · {result.subscription.email || result.subscription.label || result.subscription.accountId}</dd></div>
             {#if result.subscription.plan}<div><dt class="font-medium">Plan</dt><dd>{result.subscription.plan}</dd></div>{/if}
           {/if}
           {#if result.expiresAt}<div><dt class="font-medium">Token expires</dt><dd>{date(result.expiresAt)}</dd></div>{/if}

@@ -1,7 +1,7 @@
-# Vercel Codex Proxy
+# Vercel LLM Proxy
 
 Small Vercel app that proxies OpenAI subscription Codex Responses requests through Vercel while using the
-Cloudflare `workers/chatgpt-auth` app as the token store.
+Cloudflare `workers/llm-auth` app as the token store.
 
 It exposes:
 
@@ -13,10 +13,10 @@ It exposes:
 All endpoints require the Vercel proxy bearer token:
 
 ```bash
-Authorization: Bearer $CODEX_PROXY_API_KEY
+Authorization: Bearer $LLM_PROXY_API_KEY
 ```
 
-`x-codex-proxy-auth: $CODEX_PROXY_API_KEY` is accepted as a fallback for environments that strip
+`x-llm-proxy-auth: $LLM_PROXY_API_KEY` is accepted as a fallback for environments that strip
 `Authorization`.
 
 For upstream requests, the proxy exchanges its token-provider credentials for a ChatGPT access
@@ -27,35 +27,33 @@ token and `chatgpt-account-id` header.
 
 Set these on the Vercel project:
 
-- `CODEX_PROXY_API_KEY`: client-facing bearer token for this Vercel proxy
-- `CHATGPT_AUTH_TOKEN_PROVIDER_URL`: Cloudflare `workers/chatgpt-auth` deployment URL
-- `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY`: named caller token for this Vercel deployment, created with
-  `npm run chatgpt-auth -- client create "Vercel production"`
+- `LLM_PROXY_API_KEY`: client-facing bearer token for this Vercel proxy
+- `LLM_AUTH_URL`: Cloudflare `workers/llm-auth` deployment URL
+- `LLM_AUTH_API_KEY`: named caller token for this Vercel deployment, created with
+  `npm run llm-auth -- client create "Vercel production"`
 
 Optional:
 
-- `CHATGPT_AUTH_API_KEY`: fallback if `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` is not set
-- `CHATGPT_AUTH_TOKEN_PROVIDER_STORE`: deprecated compatibility setting; the current Worker always uses D1
-- `CHATGPT_CODEX_UPSTREAM_URL`: defaults to `https://chatgpt.com/backend-api/codex/responses`
-- `CHATGPT_CODEX_IMAGES_UPSTREAM_URL`: image endpoint override, defaults to
+- `LLM_PROXY_OPENAI_UPSTREAM_URL`: defaults to `https://chatgpt.com/backend-api/codex/responses`
+- `LLM_PROXY_OPENAI_IMAGES_UPSTREAM_URL`: image endpoint override, defaults to
   `https://chatgpt.com/backend-api/codex/images/generations`. The proxy replaces a trailing
   `/responses`, `/images/generations`, or `/images/edits` with the resource requested by the
-  client. When this variable is unset and `CHATGPT_CODEX_UPSTREAM_URL` is set, image endpoint URLs
-  are derived from `CHATGPT_CODEX_UPSTREAM_URL`.
+  client. When this variable is unset and `LLM_PROXY_OPENAI_UPSTREAM_URL` is set, image endpoint URLs
+  are derived from `LLM_PROXY_OPENAI_UPSTREAM_URL`.
 
 ## Use from `@ljoukov/llm`
 
 Point the library at this deployment:
 
 ```bash
-export CHATGPT_CODEX_PROXY_URL="https://<your-vercel-project>.vercel.app"
-export CHATGPT_CODEX_PROXY_API_KEY="<same value as CODEX_PROXY_API_KEY>"
+export LLM_PROXY_URL="https://<your-vercel-project>.vercel.app"
+export LLM_PROXY_API_KEY="<same value as LLM_PROXY_API_KEY>"
 ```
 
 Select this subscription route explicitly with
 `{ provider: "openai", access: "subscription", model: "gpt-6.1-sol" }`.
 
-`CHATGPT_CODEX_PROXY_URL` may be the root deployment URL or the full `/api/codex/responses`
+`LLM_PROXY_URL` may be the root deployment URL or the full `/api/codex/responses`
 endpoint. The library derives the corresponding `/api/codex/images/generations` and
 `/api/codex/images/edits` routes from that URL.
 
@@ -68,19 +66,21 @@ is not added to image requests.
 ## Deploy
 
 ```bash
-cd vercel/codex-proxy
+cd vercel/llm-proxy
 vercel link
-vercel env add CODEX_PROXY_API_KEY production
-vercel env add CHATGPT_AUTH_TOKEN_PROVIDER_URL production
-vercel env add CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY production
+vercel env add LLM_PROXY_API_KEY production
+vercel env add LLM_AUTH_URL production
+vercel env add LLM_AUTH_API_KEY production
 vercel deploy --prod
 ```
 
 For local development:
 
 ```bash
-CODEX_PROXY_API_KEY=local-proxy-key \
-CHATGPT_AUTH_TOKEN_PROVIDER_URL=https://example.invalid \
-CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY=local-worker-key \
+LLM_PROXY_API_KEY=local-proxy-key \
+LLM_AUTH_URL=https://example.invalid \
+LLM_AUTH_API_KEY=local-worker-key \
 npm run local
 ```
+
+The relay currently serves OpenAI subscriptions only. Grok uses the shared auth service but sends inference directly to xAI. Retired `CODEX_PROXY_API_KEY` and `CHATGPT_*` gateway variables are not accepted.

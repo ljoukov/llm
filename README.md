@@ -21,6 +21,31 @@ Designed around a single streaming API that yields:
 - thought (reasoning summary) deltas
 - usage token counts + reported or estimated USD cost, with unknown prices represented explicitly
 
+## Migrating to v14
+
+v14 intentionally removes the old gateway environment names without compatibility aliases:
+
+| Previous setting | Replacement |
+| --- | --- |
+| `CHATGPT_AUTH_TOKEN_PROVIDER_URL` | `LLM_AUTH_URL` |
+| `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` | `LLM_AUTH_API_KEY` |
+| `CHATGPT_AUTH_ADMIN_API_KEY` / Worker `CHATGPT_AUTH_API_KEY` | `LLM_AUTH_ADMIN_API_KEY` |
+| `CHATGPT_CODEX_PROXY_URL` | `LLM_PROXY_URL` |
+| `CHATGPT_CODEX_PROXY_API_KEY` / proxy `CODEX_PROXY_API_KEY` | `LLM_PROXY_API_KEY` |
+
+Remove `CHATGPT_AUTH_TOKEN_PROVIDER_STORE`; selection and refresh coordination always use D1.
+Deployment configuration uses `LLM_AUTH_WORKER_NAME`, `LLM_AUTH_DATABASE_NAME`, `LLM_AUTH_DATABASE_ID`,
+and optional `LLM_AUTH_HOSTNAME`. The source directories are now `workers/llm-auth` and `vercel/llm-proxy`.
+Deploy a new Worker and new proxy alongside the old deployments to keep old clients running. The new
+service uses separate `llm_auth_*` tables and uniquely named migrations; it can share a D1 database
+with the old service without reusing its accounts, keys, or refresh tokens. Connect new sessions.
+
+```ts
+// Same remote settings work for both selections:
+await generateText({ model: "openai:subscription:gpt-6.1-sol", input: "Hello" });
+await generateText({ model: "xai:subscription:grok-4.7", input: "Hello" });
+```
+
 ## Install
 
 ```bash
@@ -287,42 +312,46 @@ Requests with `provider: "openai", access: "subscription"` reuse the ChatGPT OAu
 
 - `${CODEX_HOME:-~/.codex}/auth.json`
 
-If you deploy to multiple environments (Vercel, GCP, local dev, etc.), use a centralized HTTPS token provider that owns
-refresh-token rotation and serves short-lived access tokens.
+Use the shared subscription service for remote deployments or a pool of ChatGPT and Grok accounts:
 
-- `CHATGPT_AUTH_TOKEN_PROVIDER_URL` (example: `https://chatgpt-auth.<your-domain>`)
-- `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` (prefer a named caller token created by the provider CLI)
-- `CHATGPT_AUTH_API_KEY` (backward-compatible fallback; the Worker uses this as its admin secret)
-- `CHATGPT_AUTH_TOKEN_PROVIDER_STORE` (deprecated compatibility setting; the current Worker always uses D1)
-- `CHATGPT_CODEX_PROXY_URL` (optional Vercel proxy endpoint; accepts either `https://<project>.vercel.app` or `https://<project>.vercel.app/api/codex/responses`)
-- `CHATGPT_CODEX_PROXY_API_KEY` (bearer token for `CHATGPT_CODEX_PROXY_URL`)
-- `CHATGPT_CODEX_ENDPOINT` (optional direct endpoint override; defaults to `https://chatgpt.com/backend-api/codex/responses`)
-- `CHATGPT_CODEX_IMAGES_ENDPOINT` (optional direct Images endpoint override; generation/edit paths are derived from it)
-- `CHATGPT_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
+```dotenv
+LLM_AUTH_URL=https://llm-auth.<your-domain>
+LLM_AUTH_API_KEY=<named-application-key>
+```
 
-This repo includes a Cloudflare Workers token provider implementation in `workers/chatgpt-auth/`.
-It also includes a minimal Vercel streaming proxy app in `vercel/codex-proxy/`.
+These settings apply to both `openai:subscription:*` and `xai:subscription:*`. The library requests
+`GET /v1/token?provider=openai` or `?provider=xai`; the service selects only an enabled account of that
+provider permitted by the key. Remote configuration takes priority over local CLI credentials. Set both
+variables together: incomplete configuration, authentication failures, unavailable accounts, and invalid
+responses fail without falling back to a local login or API billing. Without either variable, existing
+local Codex and Grok CLI logins continue to work. API access is unaffected.
 
-If `CHATGPT_AUTH_TOKEN_PROVIDER_URL` plus `CHATGPT_AUTH_TOKEN_PROVIDER_API_KEY` (or the legacy
-`CHATGPT_AUTH_API_KEY`) are set, OpenAI subscription requests fetch a newly selected account from the token provider for each
-top-level request and do not read the local Codex auth store. The included Worker rotates atomically across enabled
-subscription accounts and records which named caller received which account. See
-`workers/chatgpt-auth/README.md` for browser-assisted account login and caller-management commands.
+The service owns refresh-token rotation; applications receive access tokens only. Refreshable sessions
+must have one owner. Connect accounts through the dashboard's browser approval or an isolated CLI login;
+avoid importing a login still used by another CLI or token service.
 
-The token provider also serves a responsive SvelteKit and shadcn-svelte admin dashboard with Google
-sign-in, an environment-based email allowlist, and light/dark themes. Google sign-in uses server-side
-redirects through `/auth`; deployment URLs, Google credentials, allowlisted emails, and resource IDs
-stay in private configuration. Run
-`npm run chatgpt-auth -- dashboard` from this repository to open it with a one-time admin sign-in
-link. Add subscriptions through browser approval or auth-file import, create keys with individually
-selected subscriptions, rotate/revoke keys, and inspect grant activity and subscription usage limits.
-Grant statistics describe token-provider activity rather than model-token consumption or billing.
+The included `workers/llm-auth/` service provides a SvelteKit/shadcn-svelte dashboard, Google sign-in with
+an email allowlist, provider-labelled accounts, per-key account permissions, rotation/revocation, and
+grant activity. ChatGPT supports account-limit snapshots; Grok limits are currently unavailable. Grant
+statistics count credential issuance, not model tokens, inference success, or billing. Open the dashboard:
 
-If `CHATGPT_CODEX_PROXY_URL` + `CHATGPT_CODEX_PROXY_API_KEY` are set, OpenAI subscription text and image requests are sent
-through that proxy and the local process does not need access to the Codex auth store or token provider. The Vercel
-proxy fetches short-lived ChatGPT access tokens from `workers/chatgpt-auth`; it streams Responses traffic and forwards
-Images JSON. These proxy bearer tokens should be server-side environment variables; do not expose them in browser
-bundles.
+```sh
+npm run llm-auth -- dashboard
+npm run llm-auth -- login --provider openai
+npm run llm-auth -- login --provider xai --device-auth
+```
+
+Administration uses `LLM_AUTH_ADMIN_API_KEY`. Application deployments use a named `LLM_AUTH_API_KEY`;
+the library does not accept the admin setting as an application-key fallback.
+
+Inference goes directly to the provider by default. Where ChatGPT blocks the caller's network, optionally
+set `LLM_PROXY_URL` and `LLM_PROXY_API_KEY` to the separate `vercel/llm-proxy/` deployment. Its server-side
+`LLM_AUTH_URL` and named `LLM_AUTH_API_KEY` select ChatGPT credentials. The relay currently serves OpenAI
+subscription text and images only; Grok does not use it. A single relay credential shares the relay's
+configured account permissions. Use the auth service directly for distinct per-application permissions.
+Keep all credentials in server-side environment variables.
+
+See [service deployment and management](workers/llm-auth/README.md).
 
 ### xAI Grok
 
@@ -330,7 +359,7 @@ bundles.
 - `XAI_BASE_URL` (optional API endpoint override; defaults to `https://api.x.ai/v1`)
 - `XAI_TIMEOUT_MS` (optional request timeout in milliseconds)
 
-For subscription access, install the official Grok CLI and sign in:
+For local subscription access without `LLM_AUTH_URL` / `LLM_AUTH_API_KEY`, install the official Grok CLI and sign in:
 
 ```sh
 npm i -g @xai-official/grok
@@ -338,14 +367,14 @@ grok login
 # For a headless login, use: grok login --device-auth
 ```
 
-The library reuses the Grok CLI login in `~/.grok/auth.json`; `GROK_HOME` or `GROK_AUTH_PATH` can select the CLI's
+In local mode, the library reuses the Grok CLI login in `~/.grok/auth.json`; `GROK_HOME` or `GROK_AUTH_PATH` can select the CLI's
 alternate auth location. The official CLI owns token refresh and refresh-token rotation, including its cross-process
 lock. Expired or rejected credentials may invoke `grok --no-auto-update models` to refresh through that CLI.
 
 Subscription inference goes directly to the official CLI chat proxy at `https://cli-chat-proxy.grok.com/v1`, using
 its streaming chat-completions interface as documented in the
 [Grok CLI README](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-shell/README.md#using-authjson-for-api-access). The package retains control of its own tool loop. Subscription traffic does
-not use `XAI_BASE_URL` or fall back to `XAI_API_KEY`. A valid local login and its plan's model access are required;
+not use `XAI_BASE_URL` or fall back to `XAI_API_KEY`. A valid subscription session and its plan's model access are required;
 authentication failures direct you back to `grok login`.
 
 ### Responses transport

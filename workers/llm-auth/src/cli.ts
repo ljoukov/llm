@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,12 +22,11 @@ type ProviderConfig = {
 type JsonObject = Record<string, unknown>;
 
 function resolveProviderConfig(): ProviderConfig {
-  const baseUrl = process.env.CHATGPT_AUTH_TOKEN_PROVIDER_URL?.trim();
-  const adminKey =
-    process.env.CHATGPT_AUTH_ADMIN_API_KEY?.trim() || process.env.CHATGPT_AUTH_API_KEY?.trim();
+  const baseUrl = process.env.LLM_AUTH_URL?.trim();
+  const adminKey = process.env.LLM_AUTH_ADMIN_API_KEY?.trim();
   const missing = [
-    ...(baseUrl ? [] : ["CHATGPT_AUTH_TOKEN_PROVIDER_URL"]),
-    ...(adminKey ? [] : ["CHATGPT_AUTH_ADMIN_API_KEY (or CHATGPT_AUTH_API_KEY)"]),
+    ...(baseUrl ? [] : ["LLM_AUTH_URL"]),
+    ...(adminKey ? [] : ["LLM_AUTH_ADMIN_API_KEY"]),
   ];
   if (missing.length > 0) {
     throw new Error(`Missing ${missing.join(" and ")}.`);
@@ -42,7 +41,7 @@ async function providerRequest(route: string, init: RequestInit = {}): Promise<J
     ...init,
     headers: {
       Authorization: `Bearer ${config.adminKey}`,
-      "x-chatgpt-auth": config.adminKey,
+      "x-llm-auth": config.adminKey,
       Accept: "application/json",
       ...(init.body ? { "content-type": "application/json" } : {}),
       ...(init.headers ?? {}),
@@ -102,6 +101,48 @@ function runCodexLogin(options: {
         );
     });
   });
+}
+
+async function grokLoginAndUpload(options: {
+  label?: string;
+  deviceAuth?: boolean;
+  grok?: string;
+}): Promise<void> {
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "llm-grok-login-"));
+  fs.chmodSync(temporaryHome, 0o700);
+  try {
+    const command = options.grok ?? "grok";
+    const env = {
+      ...process.env,
+      GROK_HOME: temporaryHome,
+      GROK_AUTH_PATH: path.join(temporaryHome, "auth.json"),
+      GROK_DISABLE_API_KEY_AUTH: "1",
+    };
+    for (const name of ["XAI_API_KEY", "GROK_API_KEY", "GROK_CODE_XAI_API_KEY", "GROK_AUTH"])
+      delete env[name as keyof typeof env];
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(command, ["login", ...(options.deviceAuth ? ["--device-auth"] : [])], {
+        env,
+        stdio: "inherit",
+      });
+      child.once("error", () => reject(new Error("Could not start Grok CLI.")));
+      child.once("exit", (code) =>
+        code === 0 ? resolve() : reject(new Error("Grok login failed.")),
+      );
+    });
+    const clientVersion = execFileSync(command, ["--version"], {
+      encoding: "utf8",
+      timeout: 5000,
+    }).match(/\b(\d+\.\d+\.\d+(?:-[\w.-]+)?)\b/u)?.[1];
+    const auth = JSON.parse(fs.readFileSync(path.join(temporaryHome, "auth.json"), "utf8"));
+    const result = await providerRequest("/v1/seed", {
+      method: "POST",
+      body: JSON.stringify({ provider: "xai", auth, clientVersion, label: options.label }),
+    });
+    console.log(`Added Grok subscription ${String(result.label ?? result.accountId)}.`);
+  } finally {
+    fs.rmSync(temporaryHome, { recursive: true, force: true });
+  }
 }
 
 async function loginAndUpload(options: {
@@ -195,8 +236,8 @@ function printOneTimeClientToken(payload: JsonObject): void {
 }
 
 const program = new Command()
-  .name("chatgpt-auth")
-  .description("Manage the Cloudflare ChatGPT subscription-token pool.");
+  .name("llm-auth")
+  .description("Manage the shared LLM subscription-token service.");
 
 program
   .command("dashboard")
@@ -233,7 +274,13 @@ program
   .option("--label <label>", "Human-readable account label")
   .option("--device-auth", "Use Codex device-code authentication")
   .option("--codex <command>", "Codex CLI executable", "codex")
-  .action(loginAndUpload);
+  .option("--grok <command>", "Grok CLI executable", "grok")
+  .option("--provider <provider>", "openai or xai", "openai")
+  .action(async (options) => {
+    if (options.provider === "xai") await grokLoginAndUpload(options);
+    else if (options.provider === "openai") await loginAndUpload(options);
+    else throw new Error("provider must be openai or xai.");
+  });
 
 program
   .command("import")

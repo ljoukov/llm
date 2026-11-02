@@ -41,7 +41,9 @@ function subscriptionAuthFailure(): Response {
   return new Response(
     JSON.stringify({
       error: {
-        message: "xAI subscription authentication failed. Run `grok login` to sign in again.",
+        message: process.env.LLM_AUTH_URL?.trim()
+          ? "xAI subscription authentication failed. Check the LLM auth key and its permitted Grok accounts."
+          : "xAI subscription authentication failed. Run `grok login` to sign in again.",
         type: "authentication_error",
       },
     }),
@@ -81,11 +83,11 @@ function getXaiSubscriptionFetch(timeout: number): typeof fetch {
     const state = xaiClientState.subscriptionRequest.getStore();
     if (!state || state.refreshAttempted) return subscriptionAuthFailure();
     state.refreshAttempted = true;
-    // The official CLI owns refresh-token rotation and its cross-process lock.
+    // The selected credential owner (remote service or local CLI) rotates refresh tokens.
     // Retry an authentication failure only when that operation produced a different bearer.
     let refreshed: XaiSubscriptionAuth;
     try {
-      refreshed = await getXaiSubscriptionAuth({ forceRefresh: true });
+      refreshed = await getXaiSubscriptionAuth({ forceRefresh: true, accountId: latest.accountId });
     } catch {
       return subscriptionAuthFailure();
     }
