@@ -163,8 +163,15 @@ function resolveImagesUpstreamUrl(operation: "generations" | "edits"): string {
   return replaceCodexEndpointResource(configured, `images/${operation}`);
 }
 
-async function fetchChatGptCodexToken(): Promise<ChatGptCodexToken | Response> {
-  const config = resolveTokenProviderConfig();
+async function fetchChatGptCodexToken(
+  applicationKey?: string,
+): Promise<ChatGptCodexToken | Response> {
+  const authUrl = getEnv(LLM_AUTH_URL_ENV);
+  const config = applicationKey
+    ? authUrl
+      ? { url: authUrl, apiKey: applicationKey }
+      : missingConfigResponse([LLM_AUTH_URL_ENV])
+    : resolveTokenProviderConfig();
   if (config instanceof Response) {
     return config;
   }
@@ -185,6 +192,8 @@ async function fetchChatGptCodexToken(): Promise<ChatGptCodexToken | Response> {
   });
 
   if (!response.ok) {
+    if (applicationKey && (response.status === 401 || response.status === 403))
+      return unauthorized();
     return json(
       {
         error: "token_provider_failed",
@@ -436,6 +445,34 @@ export async function handleCodexResponsesRequest(request: Request): Promise<Res
     status: upstreamResponse.status,
     statusText: upstreamResponse.statusText,
     headers: buildClientHeaders(upstreamResponse.headers),
+  });
+}
+
+/** Relay a named application's own auth grant; never use the relay's shared account pool. */
+export async function handleApplicationResponsesRequest(request: Request): Promise<Response> {
+  const applicationKey = getProxyAuthToken(request);
+  if (!applicationKey?.startsWith("llmc_") || applicationKey.length > 512) return unauthorized();
+  if (request.method !== "POST") return methodNotAllowed();
+  const token = await fetchChatGptCodexToken(applicationKey);
+  if (token instanceof Response) return token;
+  if (token.expiresAt === null || token.expiresAt <= Date.now() + 30_000) {
+    return json(
+      { error: "token_provider_invalid_response", message: "Subscription token expired." },
+      { status: 502 },
+    );
+  }
+  const init: StreamingRequestInit = {
+    method: "POST",
+    headers: buildUpstreamHeaders(request, token),
+    body: request.body,
+    signal: request.signal,
+  };
+  if (request.body) init.duplex = "half";
+  const upstream = await fetch(resolveUpstreamUrl(), init);
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: buildClientHeaders(upstream.headers),
   });
 }
 

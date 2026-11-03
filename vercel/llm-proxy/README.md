@@ -84,3 +84,9 @@ npm run local
 ```
 
 The relay currently serves OpenAI subscriptions only. Grok uses the shared auth service but sends inference directly to xAI. Retired `CODEX_PROXY_API_KEY` and `CHATGPT_*` gateway variables are not accepted.
+
+## Per-application relay
+
+`POST /api/app/responses` accepts a named `llmc_*` application key as the bearer token. It exchanges that caller's key with the configured `LLM_AUTH_URL` and forwards only the resulting OpenAI account grant. It never falls back to the relay's shared `LLM_AUTH_API_KEY`, and rejected caller keys never reach inference. No caller key is persisted.
+
+For deployments such as Cloudflare that cannot reach the provider network, set `LLM_PROXY_URL` to this full endpoint and `LLM_PROXY_API_KEY` to the application's named auth key. Existing `/api/codex/*` shared-relay authentication is unchanged.
