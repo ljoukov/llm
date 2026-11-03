@@ -1,5 +1,12 @@
 # Changelog
 
+## 15.0.1 — 2026-11-03
+
+- Honor `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` (including lowercase variants) in Grok API/subscription
+  and Fireworks HTTP clients while retaining provider timeouts and retry behavior.
+- Resolve the default Claude Code executable through `PATH` to an absolute path before passing it to the
+  Agent SDK. Preserve the `LLM_CLAUDE_EXECUTABLE` override and report a clear error when `claude` is unavailable.
+
 ## 15.0.0 — 2026-11-03
 
 ### Breaking: Fireworks API key environment variable

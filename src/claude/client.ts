@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { accessSync, constants, statSync } from "node:fs";
+import path from "node:path";
 
 import type {
   AccountInfo,
@@ -61,6 +63,30 @@ export class ClaudeSubscriptionError extends Error {
     super(message);
     this.name = "ClaudeSubscriptionError";
   }
+}
+
+function resolveClaudeExecutable(): string {
+  const override = process.env.LLM_CLAUDE_EXECUTABLE?.trim();
+  if (override) return override;
+
+  const windows = process.platform === "win32";
+  const extensions = windows
+    ? ["", ...(process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)]
+    : [""];
+  for (const directory of process.env.PATH?.split(path.delimiter) ?? []) {
+    for (const extension of extensions) {
+      const candidate = path.resolve(directory, `claude${extension}`);
+      try {
+        accessSync(candidate, windows ? constants.F_OK : constants.X_OK);
+        if (statSync(candidate).isFile()) return candidate;
+      } catch {
+        // Keep searching past missing or non-executable PATH entries.
+      }
+    }
+  }
+  throw new ClaudeSubscriptionError(
+    "Claude Code executable was not found on PATH. Install Claude Code or set LLM_CLAUDE_EXECUTABLE to its path.",
+  );
 }
 
 function abortError(): Error {
@@ -411,7 +437,7 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
     const options: Options = {
       model: request.model,
       systemPrompt: request.system ?? "You are a helpful assistant.",
-      pathToClaudeCodeExecutable: process.env.LLM_CLAUDE_EXECUTABLE?.trim() || "claude",
+      pathToClaudeCodeExecutable: resolveClaudeExecutable(),
       env: subscriptionEnvironment(request.maxOutputTokens),
       abortController: controller,
       tools: [],

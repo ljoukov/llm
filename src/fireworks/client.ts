@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { Agent, fetch as undiciFetch } from "undici";
+import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
 import { createRetryingFetch } from "../utils/retryFetch.js";
@@ -64,7 +64,7 @@ function getFireworksFetch(): typeof fetch {
   }
 
   const timeoutMs = resolveTimeoutMs();
-  const dispatcher = new Agent({
+  const dispatcher = new EnvHttpProxyAgent({
     bodyTimeout: timeoutMs,
     headersTimeout: timeoutMs,
   });

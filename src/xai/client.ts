@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import OpenAI from "openai";
-import { Agent, fetch as undiciFetch } from "undici";
+import { EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
 
 import { loadLocalEnv } from "../utils/env.js";
 import { createRetryingFetch } from "../utils/retryFetch.js";
@@ -30,7 +30,7 @@ function timeoutMs(): number {
 function getXaiFetch(timeout: number): typeof fetch {
   const existing = xaiClientState.fetchByTimeout.get(timeout);
   if (existing) return existing;
-  const dispatcher = new Agent({ bodyTimeout: timeout, headersTimeout: timeout });
+  const dispatcher = new EnvHttpProxyAgent({ bodyTimeout: timeout, headersTimeout: timeout });
   const requestFetch = ((input: any, init?: any) =>
     undiciFetch(input, { ...(init ?? {}), dispatcher })) as typeof fetch;
   xaiClientState.fetchByTimeout.set(timeout, requestFetch);

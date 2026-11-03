@@ -1,5 +1,9 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import type { AccountInfo, Options, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { runClaudeQuery } from "../src/claude/calls.js";
@@ -117,16 +121,87 @@ function toolHandler(input: QueryInput, index = 0) {
 }
 
 describe("Claude subscription Agent SDK transport", () => {
+  let executableDirectory: string;
+  let executablePath: string;
+  const executableName = process.platform === "win32" ? "claude.EXE" : "claude";
+
+  beforeAll(() => {
+    executableDirectory = mkdtempSync(path.join(os.tmpdir(), "llm claude path "));
+    executablePath = path.join(executableDirectory, executableName);
+    writeFileSync(executablePath, "", { mode: 0o755 });
+  });
+
+  afterAll(() => {
+    rmSync(executableDirectory, { recursive: true, force: true });
+  });
+
   beforeEach(() => {
     sdk.query.mockReset();
     sdk.tool.mockClear();
     sdk.createSdkMcpServer.mockClear();
     vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN", undefined);
+    vi.stubEnv("LLM_CLAUDE_EXECUTABLE", undefined);
+    vi.stubEnv("PATH", executableDirectory);
+    vi.stubEnv("PATHEXT", ".EXE;.CMD");
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     resetModelConcurrencyConfig();
+  });
+
+  it("passes the absolute PATH executable to the SDK, including paths with spaces", async () => {
+    const mocked = stubQuery();
+    await runClaudeQueryImpl(request);
+    expect(mocked.input().options.pathToClaudeCodeExecutable).toBe(executablePath);
+  });
+
+  it("resolves relative PATH entries to an absolute executable path", async () => {
+    vi.stubEnv("PATH", path.relative(process.cwd(), executableDirectory));
+    const mocked = stubQuery();
+    await runClaudeQueryImpl(request);
+    expect(mocked.input().options.pathToClaudeCodeExecutable).toBe(executablePath);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "skips missing, non-executable and directory candidates in PATH order",
+    async () => {
+      const blocked = path.join(executableDirectory, "blocked");
+      const directory = path.join(executableDirectory, "directory");
+      mkdirSync(blocked);
+      mkdirSync(path.join(directory, executableName), { recursive: true });
+      const blockedPath = path.join(blocked, executableName);
+      writeFileSync(blockedPath, "");
+      chmodSync(blockedPath, 0o644);
+      vi.stubEnv(
+        "PATH",
+        [path.join(executableDirectory, "missing"), blocked, directory, executableDirectory].join(
+          path.delimiter,
+        ),
+      );
+      const mocked = stubQuery();
+      await runClaudeQueryImpl(request);
+      expect(mocked.input().options.pathToClaudeCodeExecutable).toBe(executablePath);
+    },
+  );
+
+  it("reports a missing executable before starting the SDK query", async () => {
+    vi.stubEnv("PATH", path.join(executableDirectory, "missing"));
+    stubQuery();
+    await expect(runClaudeQueryImpl(request)).rejects.toThrow(
+      "Claude Code executable was not found on PATH",
+    );
+    expect(sdk.query).not.toHaveBeenCalled();
+  });
+
+  it("preserves an explicit executable override when claude is absent from PATH", async () => {
+    vi.stubEnv("PATH", path.join(executableDirectory, "missing"));
+    vi.stubEnv("LLM_CLAUDE_EXECUTABLE", " /opt/custom installation/claude ");
+    const mocked = stubQuery();
+    await runClaudeQueryImpl(request);
+    expect(mocked.input().options.pathToClaudeCodeExecutable).toBe(
+      "/opt/custom installation/claude",
+    );
   });
 
   it.each([

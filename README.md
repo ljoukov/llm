@@ -288,7 +288,8 @@ generate a subscription token with `claude setup-token` and supply it as `CLAUDE
 Requests with `provider: "anthropic", access: "subscription"` use that token or the local login through the Claude
 Agent SDK, which launches Claude Code as a subprocess. They require a
 Node.js environment where Claude Code can run; the subscription route is unsuitable for edge runtimes.
-The executable defaults to `claude` on `PATH`; set `LLM_CLAUDE_EXECUTABLE` to use a specific installation.
+The library resolves `claude` on `PATH` to an absolute executable path before launching the SDK;
+set `LLM_CLAUDE_EXECUTABLE` to use a specific installation.
 
 The library keeps API-key authentication separate from this route so a parent process's `ANTHROPIC_API_KEY` cannot
 silently turn a subscription call into an API-key call. The explicit OAuth environment token is forwarded only to
@@ -383,6 +384,10 @@ See [service deployment and management](workers/llm-auth/README.md).
 - `XAI_API_KEY` for API access
 - `XAI_BASE_URL` (optional API endpoint override; defaults to `https://api.x.ai/v1`)
 - `XAI_TIMEOUT_MS` (optional request timeout in milliseconds)
+
+Grok API/subscription and Fireworks HTTP requests honor `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
+(and their lowercase variants, which take precedence). Set proxy variables before the first request;
+`NO_PROXY` can exclude hosts from proxying. Provider timeout and retry settings still apply.
 
 For local subscription access without `LLM_AUTH_URL` / `LLM_AUTH_API_KEY`, install the official Grok CLI and sign in:
 
