@@ -48,12 +48,10 @@ function resolveApiKey(): string {
   }
 
   loadLocalEnv();
-  const raw = process.env.FIREWORKS_TOKEN ?? process.env.FIREWORKS_API_KEY;
+  const raw = process.env.FIREWORKS_API_KEY;
   const token = raw?.trim();
   if (!token) {
-    throw new Error(
-      "FIREWORKS_TOKEN (or FIREWORKS_API_KEY) must be provided to access Fireworks APIs.",
-    );
+    throw new Error("FIREWORKS_API_KEY must be provided to access Fireworks APIs.");
   }
 
   fireworksClientState.cachedApiKey = token;

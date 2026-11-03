@@ -1,5 +1,12 @@
 # Changelog
 
+## 15.0.0 — 2026-11-03
+
+### Breaking: Fireworks API key environment variable
+
+- Remove `FIREWORKS_TOKEN` support completely. Set `FIREWORKS_API_KEY` for all Fireworks requests.
+- Update credential errors, integration-test credential detection, and documentation to use `FIREWORKS_API_KEY`.
+
 ## 14.1.0 — 2026-11-03
 
 ### Reasoning discovery and guidance

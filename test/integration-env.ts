@@ -60,9 +60,7 @@ export function getIntegrationProviderAvailability(): IntegrationProviderAvailab
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
     // Explicit opt-ins assert that the corresponding CLI is installed and logged in.
     anthropicSubscription: process.env.LLM_INTEGRATION_CLAUDE_SUBSCRIPTION?.trim() === "1",
-    fireworks: Boolean(
-      process.env.FIREWORKS_TOKEN?.trim() || process.env.FIREWORKS_API_KEY?.trim(),
-    ),
+    fireworks: Boolean(process.env.FIREWORKS_API_KEY?.trim()),
     vercel: Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY?.trim()),
     openAiSubscription: Boolean((tokenProviderUrl && tokenProviderKey) || hasCodexStore()),
     xai: Boolean(process.env.XAI_API_KEY?.trim()),
@@ -108,7 +106,7 @@ function resolveCredentialHintForModel(ref: LlmModelRef): string {
     case "google":
       return "GEMINI_API_KEY, GOOGLE_API_KEY, or GOOGLE_SERVICE_ACCOUNT_JSON";
     case "fireworks":
-      return "FIREWORKS_TOKEN or FIREWORKS_API_KEY";
+      return "FIREWORKS_API_KEY";
     case "vercel":
       return "VERCEL_AI_GATEWAY_API_KEY";
     case "xai":

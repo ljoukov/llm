@@ -25,12 +25,12 @@ function completionStream(): Response {
   );
 }
 
-describe("Fireworks HTTP retries", () => {
+describe("Fireworks client", () => {
   beforeEach(() => {
     resetRuntimeSingletonsForTesting();
     vi.resetModules();
     mocks.fetch.mockReset();
-    vi.stubEnv("FIREWORKS_TOKEN", "fake-fireworks-credential");
+    vi.stubEnv("FIREWORKS_API_KEY", "fake-fireworks-credential");
     vi.stubEnv("FIREWORKS_BASE_URL", "");
     vi.stubEnv("FIREWORKS_TIMEOUT_MS", "");
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -40,6 +40,23 @@ describe("Fireworks HTTP retries", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+  });
+
+  it("rejects the removed credential variable without an API key", async () => {
+    vi.stubEnv("FIREWORKS_API_KEY", "");
+    vi.stubEnv("FIREWORKS_TOKEN", "removed-credential-must-not-be-used");
+    const { getFireworksClient } = await import("../src/fireworks/client.js");
+    expect(getFireworksClient).toThrow(
+      "FIREWORKS_API_KEY must be provided to access Fireworks APIs.",
+    );
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("uses the API key when the removed credential variable is also present", async () => {
+    vi.stubEnv("FIREWORKS_API_KEY", " api-key-credential ");
+    vi.stubEnv("FIREWORKS_TOKEN", "removed-credential-must-not-be-used");
+    const { getFireworksClient } = await import("../src/fireworks/client.js");
+    expect(getFireworksClient().apiKey).toBe("api-key-credential");
   });
 
   it("retries 429 before streaming and exposes retry metrics without nested SDK retries", async () => {

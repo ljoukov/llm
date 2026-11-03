@@ -21,6 +21,15 @@ Designed around a single streaming API that yields:
 - thought (reasoning summary) deltas
 - usage token counts + reported or estimated USD cost, with unknown prices represented explicitly
 
+## Migrating to v15
+
+Rename `FIREWORKS_TOKEN` to `FIREWORKS_API_KEY` in your environment and deployment secrets.
+Fireworks now reads only `FIREWORKS_API_KEY`; the old variable is ignored.
+
+```bash
+export FIREWORKS_API_KEY="your-api-key"
+```
+
 ## Migrating reasoning settings in v14.1
 
 Reasoning now adapts known unsupported levels by default. Existing Grok calls can keep `thinkingLevel: "max"`;
@@ -301,7 +310,7 @@ npm run test:integration:claude-subscription
 ### Vercel AI Gateway and Fireworks
 
 - `VERCEL_AI_GATEWAY_API_KEY` for Vercel AI Gateway
-- `FIREWORKS_TOKEN` (or `FIREWORKS_API_KEY`)
+- `FIREWORKS_API_KEY` for Fireworks
 - `LLM_PROVIDER` (optional: `vercel` or `fireworks`)
 
 For `deepseek-v4.1-flash-1017`, `glm-5.3`, and `kimi-k3`, the library prefers Vercel AI Gateway when
