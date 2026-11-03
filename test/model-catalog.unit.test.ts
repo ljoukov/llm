@@ -13,6 +13,11 @@ const catalogue = {
       name: "Beam",
       context_window: 100_000,
       tags: ["tool-use", "reasoning"],
+      reasoning_options: [
+        { type: "effort", values: ["low", "high", "xhigh", "future-effort"] },
+        { type: "budget_tokens", min: 1024, max: 32768 },
+        { type: "toggle" },
+      ],
       pricing: { input: "0", output: "0" },
     },
     {
@@ -88,6 +93,63 @@ describe("RAM model catalogue", () => {
       "does not support subscription",
     );
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("discovers native reasoning controls without narrowing future effort values", async () => {
+    const models = await listModels({ provider: "vercel" });
+    const beam = models.find((model) => model.model === "reflection/beam-free");
+    expect(beam?.reasoningOptions).toEqual([
+      { type: "effort", values: ["low", "high", "xhigh", "future-effort"] },
+      { type: "budget_tokens", min: 1024, max: 32768 },
+      { type: "toggle" },
+    ]);
+    expect(beam?.defaultReasoningEffort).toBeUndefined();
+    expect(
+      models.find((model) => model.model === "publisher/unknown-price")?.reasoningOptions,
+    ).toBeUndefined();
+    const openai = await listModels({ provider: "openai" });
+    expect(openai.every((model) => model.reasoningOptions === undefined)).toBe(true);
+  });
+
+  it("distinguishes unspecified controls, explicit empty controls, and malformed metadata", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      response({
+        data: [
+          { id: "publisher/tag-only", tags: ["reasoning"] },
+          { id: "publisher/empty", reasoning_options: [] },
+          {
+            id: "publisher/malformed",
+            reasoning_options: [
+              { type: "effort", values: ["high", 10] },
+              { type: "budget_tokens", min: 2000, max: 1000 },
+              { type: "budget_tokens", min: -1 },
+              { type: "future-control" },
+              null,
+            ],
+          },
+          {
+            id: "publisher/mixed",
+            reasoning_options: [
+              { type: "future-control" },
+              { type: "effort", values: ["high", "high"] },
+              { type: "budget_tokens", max: 8192 },
+            ],
+          },
+        ],
+      }),
+    );
+    const models = await listModels({ provider: "vercel" });
+    expect(
+      models.find((model) => model.model === "publisher/tag-only")?.reasoningOptions,
+    ).toBeUndefined();
+    expect(models.find((model) => model.model === "publisher/empty")?.reasoningOptions).toEqual([]);
+    expect(
+      models.find((model) => model.model === "publisher/malformed")?.reasoningOptions,
+    ).toBeUndefined();
+    expect(models.find((model) => model.model === "publisher/mixed")?.reasoningOptions).toEqual([
+      { type: "effort", values: ["high"] },
+      { type: "budget_tokens", max: 8192 },
+    ]);
   });
 
   it("filters known serving aliases while preserving unrelated native model names", async () => {

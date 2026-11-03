@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { generateJson, runToolLoop, tool } from "../src/index.js";
+import { generateJson, generateText, runToolLoop, tool } from "../src/index.js";
 
 const enabled = process.env.LLM_INTEGRATION_GROK_SUBSCRIPTION === "1";
 
 describe.skipIf(!enabled).concurrent("integration: Grok subscription gateway", () => {
+  it("adapts portable max to Grok's xhigh without discovering models first", async () => {
+    const result = await generateText({
+      model: "xai:subscription:grok-4.7",
+      input: "Return exactly: OK",
+      thinkingLevel: "max",
+    });
+    expect(result.text.toUpperCase()).toContain("OK");
+    expect(result.thinking).toEqual({
+      requestedLevel: "max",
+      effectiveLevel: "xhigh",
+      source: "model",
+    });
+  });
   it("returns validated JSON with subscription accounting", async () => {
     const result = await generateJson({
       model: "xai:subscription:grok-4.7",

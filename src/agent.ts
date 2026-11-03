@@ -15,6 +15,7 @@ import {
   createAgentLoggingSession,
   createAgentStreamEventLogger,
   runWithAgentLoggingSession,
+  thinkingLogSegments,
 } from "./agentLogging.js";
 import {
   createToolLoopSteeringChannel,
@@ -355,6 +356,12 @@ async function runAgentLoopInternal(
       `provider=${context.route.provider}`,
       `access=${context.route.access}`,
       `model=${request.model}`,
+      ...(request.thinkingLevel
+        ? [
+            `requestedThinkingLevel=${request.thinkingLevel}`,
+            `thinkingLevelPolicy=${request.thinkingLevelPolicy ?? "clamp"}`,
+          ]
+        : []),
       ...(context.route.speed ? [`requestedSpeed=${context.route.speed}`] : []),
       `tools=${Object.keys(mergedTools).length.toString()}`,
       `filesystemTools=${Object.keys(filesystemTools).length > 0 ? "true" : "false"}`,
@@ -409,6 +416,8 @@ async function runAgentLoopInternal(
       stepCount: result.steps.length,
       toolCallCount: countToolCalls(result),
       totalCostUsd: result.totalCostUsd,
+      modelVersion: lastStep?.modelVersion,
+      thinking: lastStep?.thinking,
       ...(lastStep?.effectiveSpeed ? { effectiveSpeed: lastStep.effectiveSpeed } : {}),
       ...(lastStep?.serviceTier ? { serviceTier: lastStep.serviceTier } : {}),
       usage: summarizeResultUsage(result),
@@ -420,6 +429,11 @@ async function runAgentLoopInternal(
       [
         `[agent:${runId}] run_completed`,
         `status=ok`,
+        `provider=${context.route.provider}`,
+        `access=${context.route.access}`,
+        `model=${context.route.model}`,
+        ...(lastStep ? [`modelVersion=${lastStep.modelVersion}`] : []),
+        ...thinkingLogSegments(lastStep?.thinking),
         `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
         `steps=${result.steps.length.toString()}`,
         `toolCalls=${countToolCalls(result).toString()}`,
@@ -437,7 +451,10 @@ async function runAgentLoopInternal(
         [
           `[agent:${runId}] step_completed`,
           `step=${step.step.toString()}`,
+          `provider=${step.provider ?? context.route.provider}`,
+          `access=${step.access ?? context.route.access}`,
           `modelVersion=${step.modelVersion}`,
+          ...thinkingLogSegments(step.thinking),
           ...(step.requestedSpeed ? [`requestedSpeed=${step.requestedSpeed}`] : []),
           ...(step.effectiveSpeed ? [`effectiveSpeed=${step.effectiveSpeed}`] : []),
           ...(step.serviceTier ? [`serviceTier=${step.serviceTier}`] : []),
@@ -466,6 +483,10 @@ async function runAgentLoopInternal(
       [
         `[agent:${runId}] run_completed`,
         `status=error`,
+        `provider=${context.route.provider}`,
+        `access=${context.route.access}`,
+        `model=${context.route.model}`,
+        ...(request.thinkingLevel ? [`requestedThinkingLevel=${request.thinkingLevel}`] : []),
         ...(context.route.speed ? [`requestedSpeed=${context.route.speed}`] : []),
         `durationMs=${Math.max(0, Date.now() - startedAtMs).toString()}`,
         `uploadCount=${uploadMetrics.count.toString()}`,
@@ -678,6 +699,7 @@ function createSubagentController(params: {
           modelTools: params.baseModelTools,
           maxSteps: subagentRequest.maxSteps,
           thinkingLevel: params.toolLoopRequest.thinkingLevel,
+          thinkingLevelPolicy: params.toolLoopRequest.thinkingLevelPolicy,
           mediaResolution: params.toolLoopRequest.mediaResolution,
           signal: subagentRequest.signal,
         } as RunAgentLoopRequest,

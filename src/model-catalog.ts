@@ -4,6 +4,7 @@ import { FIREWORKS_MODEL_IDS } from "./fireworks/models.js";
 import { getFireworksPricing } from "./fireworks/pricing.js";
 import { GEMINI_IMAGE_MODEL_IDS, GEMINI_TEXT_MODEL_IDS } from "./google/client.js";
 import { getGeminiProPricing } from "./google/pricing.js";
+import type { ModelReasoningOption } from "./model-reasoning.js";
 import {
   getSupportedModelSpeeds,
   isRemovedServingAlias,
@@ -34,6 +35,10 @@ export type LlmModelInfo = {
   readonly maxOutputTokens?: number;
   readonly type?: string;
   readonly capabilities?: readonly string[];
+  /** Native controls reported by this route's catalogue; undefined means unknown, [] means none reported. */
+  readonly reasoningOptions?: readonly ModelReasoningOption[];
+  /** Provider-reported default; may be outside LlmThinkingLevel. Undefined means unknown. */
+  readonly defaultReasoningEffort?: string;
   /** Supported serving modifiers; image models have no speed modifier. */
   readonly supportedSpeeds: readonly LlmSpeed[];
   /** For subscriptions, these are API-equivalent rates rather than billed charges. */

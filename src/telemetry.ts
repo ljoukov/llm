@@ -2,6 +2,7 @@ import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 import type { LlmCostSource, LlmUsageTokens } from "./utils/cost.js";
 import type { LlmModelId, LlmProvider, LlmStreamEvent } from "./llm.js";
 import type { LlmAccess, LlmSpeed } from "./model-selection.js";
+import type { LlmThinkingResolution } from "./thinking.js";
 
 export type LlmTelemetryOperation =
   | "generateText"
@@ -39,6 +40,7 @@ export type LlmCallStreamTelemetryEvent = LlmTelemetryBaseEvent & {
 
 export type LlmCallCompletedTelemetryEvent = LlmTelemetryBaseEvent & {
   readonly type: "llm.call.completed";
+  readonly thinking?: LlmThinkingResolution;
   readonly success: boolean;
   readonly durationMs: number;
   readonly modelVersion?: string;
@@ -88,6 +90,8 @@ export type AgentRunStreamTelemetryEvent = AgentTelemetryBaseEvent & {
 
 export type AgentRunCompletedTelemetryEvent = AgentTelemetryBaseEvent & {
   readonly type: "agent.run.completed";
+  readonly modelVersion?: string;
+  readonly thinking?: LlmThinkingResolution;
   readonly success: boolean;
   readonly durationMs: number;
   readonly stepCount?: number;

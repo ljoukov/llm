@@ -1,5 +1,25 @@
 # Changelog
 
+## 14.1.0 — 2026-11-03
+
+### Reasoning discovery and guidance
+
+- Treat `thinkingLevel` as portable effort by default: clamp to the nearest supported level at or below the request
+  (or the minimum if necessary), and resolve `ultra` to the highest known level. Grok 4.6/4.7 now map `max`/`ultra`
+  to `xhigh`, and Grok 4.5 maps them to `high`, without a discovery request before generation.
+- Add `thinkingLevelPolicy: "strict"` to reject known unsupported explicit levels before inference. Preserve native
+  passthrough for unknown models and existing defaults when no level is specified. Subagents inherit the policy.
+- Add synchronous `resolveThinkingLevel()` and requested/effective `thinking` metadata on text results, stream
+  model/usage events, and tool-loop steps. Resolve once per call/loop using cached route metadata before local mappings.
+- Record provider/access, provider-returned model identity, and requested/effective thinking in native traces,
+  per-call request/response metadata, step/run summaries, and completion telemetry. Label resolved effort as the
+  configuration sent to the adapter rather than claiming the provider attested to an exact reasoning level.
+- Expose optional native `reasoningOptions` through `listModels()`: effort values, token-budget bounds, and toggles
+  from Vercel's dynamic catalogue; route-specific effort values and `defaultReasoningEffort` from xAI.
+- Enrich sparse xAI model lists from the same authenticated route's `/language-models`, with a bounded, best-effort
+  lookup. Missing metadata stays unknown; future native effort values are preserved without a package update.
+- Document model/route differences, optional discovery, strict mode, and the changed Grok `max`/`ultra` behavior.
+
 ## 14.0.0
 
 ### Breaking: shared subscription authentication

@@ -21,6 +21,22 @@ Designed around a single streaming API that yields:
 - thought (reasoning summary) deltas
 - usage token counts + reported or estimated USD cost, with unknown prices represented explicitly
 
+## Migrating reasoning settings in v14.1
+
+Reasoning now adapts known unsupported levels by default. Existing Grok calls can keep `thinkingLevel: "max"`;
+Grok 4.6/4.7 receive `xhigh`, and Grok 4.5 receives `high`. `ultra` selects the highest known level while retaining
+its existing agent delegation behavior. No model-list request is required before generation.
+
+```ts
+// Portable intent; adapts to the selected model's known levels.
+await generateText({ model: "xai:subscription:grok-4.7", input: "Hello", thinkingLevel: "max" });
+// Exact named level, with local rejection if known to be unsupported.
+await generateText({ model: "xai:subscription:grok-4.7", input: "Hello", thinkingLevel: "xhigh", thinkingLevelPolicy: "strict" });
+```
+
+Audit `thinking.requestedLevel`, `thinking.effectiveLevel`, and `thinking.source` on results and traces.
+See [reasoning resolution and discovery](#discovering-reasoning-controls) for caching and unknown-model behavior.
+
 ## Migrating to v14
 
 v14 intentionally removes the old gateway environment names without compatibility aliases:
@@ -1071,7 +1087,11 @@ The Fireworks allowlist is limited to these three models. Use Vercel's explicit 
 
 #### Shared streaming and tool-loop behavior
 
-For both providers, `thinkingLevel` is forwarded as `reasoning_effort` (`ultra` maps to `max`). When omitted, each model retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
+For both providers, the resolved `thinkingLevel` is sent as `reasoning_effort`. Cached Gateway effort metadata can
+clamp it; unknown capabilities retain passthrough behavior (`ultra` falls back to `max`). When omitted, each model
+retains its native default. Reasoning in `reasoning_content` is included in `thoughts` and thought events, and is
+replayed unchanged across tool calls. The provider's reported reasoning-token counts are kept in `usage.thinkingTokens`.
+See [reasoning resolution](#discovering-reasoning-controls) and [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
 
 Vercel and Fireworks text generation and tool loops request streaming completions, including when you await `generateText()` or `runToolLoop()`. Thought and response deltas arrive while inference is running. Fragmented tool calls are assembled before execution, and usage is collected from the final stream chunk.
 
@@ -1110,6 +1130,16 @@ Omit `access` or use `access: "api"` for API-key billing. Native `grok-*` IDs ar
 the model name. API and subscription catalogs can expose different models; discover the selected route's available
 models with `listModels({ provider: "xai", access: "subscription" })`. Passing an accepted model name does not grant
 account access to that model. The same streaming and application function-tool loop are used on both routes.
+
+Reasoning levels depend on the model and route. As of November 3, 2026, xAI documents `low`, `medium`, `high`
+(default), and `xhigh` for Grok 4.6/4.7; Grok 4.5 documents only `low`, `medium`, and `high`.
+For Grok 4.6/4.7, use `thinkingLevel: "xhigh"` for the highest documented effort. `max` is not a documented
+xAI effort. The library automatically maps `thinkingLevel: "max"` and `"ultra"` to `xhigh` on these models,
+and to `high` on Grok 4.5. Use `thinkingLevelPolicy: "strict"` to reject a known unsupported explicit level
+instead of adapting it. A native unsupported-effort HTTP 400 is a configuration failure, not evidence of
+model reasoning performance. See
+[xAI reasoning](https://docs.x.ai/developers/model-capabilities/text/reasoning) and
+[discovering reasoning controls](#discovering-reasoning-controls) below; future models and subscription routes can differ.
 
 This release uses Chat Completions for both xAI routes. Live subscription checks with `grok-4.7` passed text
 streaming, validated JSON, and a two-turn function-tool round trip. xAI's
@@ -1204,6 +1234,97 @@ pricing, and supported processing speeds. Base models appear once; speed choices
 API or subscription catalog. Other providers return the package's supported local allowlist. Discovery does not
 expand OpenAI's closed model types.
 
+### Discovering reasoning controls
+
+Applications normally just set `thinkingLevel`; they do not need to list models before calling:
+
+```ts
+const result = await generateText({
+  model: "xai:subscription:grok-4.7",
+  thinkingLevel: "max",
+  input: "Solve this problem...",
+});
+console.log(result.thinking);
+// { requestedLevel: "max", effectiveLevel: "xhigh", source: "model" }
+```
+
+The default `thinkingLevelPolicy: "clamp"` uses `low < medium < high < xhigh < max`. A supported level is kept;
+otherwise it chooses the greatest supported level below the request, or the minimum supported level if none is lower.
+`ultra` selects the highest known level. Known fixed-reasoning models omit the effort parameter.
+Supported means the library knows how to express the level, not that a provider has confirmed an exact amount of thinking.
+
+Resolution uses cached metadata for the selected route, then bundled mappings for known models, then native passthrough
+for unknown models. It adds no discovery requests to generation. Known Grok mappings work on the first call, including
+subscription routes without metadata. OpenAI and supported Claude models retain `max`; Gemini retains its existing
+high-level or token-budget mapping. Unrecognized models/controls retain passthrough behavior and can still reject a level.
+
+`result.thinking`, tool-loop `steps[].thinking`, and `model` / `usage` stream events expose `requestedLevel`,
+`effectiveLevel` (the level passed to the adapter, absent for fixed reasoning), and `source`: `"catalog"`, `"model"`,
+or `"passthrough"`. A resolution is pinned for the call/tool loop. `thinkingLevelPolicy: "strict"` rejects a known
+unsupported explicit level locally; `ultra` still means highest known level. Unknown-model strict requests pass the
+explicit native level through without claiming validation. Subagents inherit the parent's level and policy.
+
+To preview resolution without inference or network calls, use
+`resolveThinkingLevel({ model: "xai:subscription:grok-4.7", thinkingLevel: "max" })`.
+Omitting `thinkingLevel` preserves existing defaults and produces no resolution metadata.
+
+`LlmThinkingLevel` is the shared vocabulary, not a promise that every model natively accepts every level.
+For optional discovery, `listModels()` exposes `reasoningOptions` with provider-native controls:
+
+```ts
+import { listModels } from "@ljoukov/llm";
+
+const models = await listModels({ provider: "xai", access: "subscription" });
+// Also supported: listModels({ provider: "vercel", refresh: true }).
+const grok = models.find((model) => model.model === "grok-4.7");
+const effort = grok?.reasoningOptions?.find((option) => option.type === "effort");
+console.log(effort?.values); // e.g. ["low", "medium", "high", "xhigh"], when reported
+console.log(grok?.defaultReasoningEffort); // provider-reported default, when available
+```
+
+`ModelReasoningOption` describes three native controls:
+
+| `type` | Metadata |
+| --- | --- |
+| `"effort"` | `values`: allowed native strings, including future levels |
+| `"budget_tokens"` | Optional `min` / `max` token bounds |
+| `"toggle"` | An on/off control |
+
+These describe the provider, not additional request options. `thinkingLevel` still accepts only its declared values.
+The metadata does not add request support for native `none`/`minimal`, arbitrary future strings, token budgets, or toggles.
+An absent `reasoningOptions` means unknown, not unsupported. An empty array means the catalogue reports no controls.
+A `reasoning` capability tag alone does not establish that effort is configurable. `defaultReasoningEffort` is absent
+when the provider does not publish a structured default; the library does not guess it from the model name.
+
+- Vercel reads `reasoning_options` from its public `/v1/models` catalogue, including effort, budget, and toggle entries.
+  It uses the same five-minute RAM cache and `refresh: true` behavior as prices. Vercel does not publish a structured
+  default in this catalogue. Gateway mappings can differ from direct provider behavior.
+- xAI reads `capabilities.reasoning_effort` and `default_reasoning_effort` from the selected authenticated route's
+  `/v1/models`. If controls are missing, it attempts `/v1/language-models` on that same route with a 1.5-second deadline.
+  Enrichment only applies to already-listed model IDs or their advertised aliases. If unavailable, the model list still
+  succeeds with unknown controls. Each explicit xAI discovery call fetches fresh metadata; reported controls are kept
+  in RAM for local effort resolution until the next discovery, separated by access route and API endpoint.
+  A known snapshot does not expire into unsupported native passthrough between calls.
+  A November 3, 2026 check of the configured Grok subscription catalogue returned model IDs without reasoning controls;
+  use the official model documentation when this route reports unknown metadata.
+- Other direct providers currently leave this metadata unknown; consult the selected model's official documentation.
+
+This follows the distinction in [Vercel's reasoning guide](https://vercel.com/docs/ai-gateway/models-and-providers/reasoning):
+discover native controls, then check that the request format can express them. AI SDK's portable reasoning levels and
+its [xAI-specific options](https://ai-sdk.dev/providers/ai-sdk-providers/xai#reasoning-effort) also have different allowed
+values. There is no universal model-discovery schema for reasoning levels; xAI's fields are documented in its
+[model API reference](https://docs.x.ai/developers/rest-api-reference/inference/models).
+
+The reasoning resolver does not fetch catalogues or retry a rejected request at another level. Metadata can change
+or be incomplete; the generation endpoint remains authoritative. Only known level names are ranked; future native
+names are retained in discovery but do not gain an invented ordering. Optional discovery can update mappings without
+a package release; no background model-list requests are started. Vercel's existing cost lookup can also populate its cache.
+For reproducible comparisons, store the resolved provider/access/model, requested `thinkingLevel`, native mapping,
+catalogue snapshot and fetch time, and any configuration errors alongside the result. A successful response or
+nonzero reasoning-token count alone does not prove the provider honored an exact effort level.
+
+### Catalogue caching and cost provenance
+
 Vercel catalog prices are cached in RAM for five minutes and shared across concurrent calls. `refresh: true` bypasses
 the cached age. Catalog fetches have a 1.5-second timeout. Failed refreshes retain the last successful catalog and wait 30 seconds before retrying. A first-time
 catalog failure makes `listModels()` reject; generation can still use static fallback prices for known models or
@@ -1274,7 +1395,16 @@ const { value } = await generateJson({
 });
 ```
 
-`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. In ordinary text and tool-loop calls, `ultra` sends the provider's highest supported reasoning level (`max` for GPT-6 and GPT-5.6). In `runAgentLoop()` and `streamAgentLoop()`, it additionally enables the built-in subagent tools and Codex-style proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining maximum provider reasoning.
+`thinkingLevel` accepts `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`; each model and route accepts a subset.
+Known unsupported levels are adapted locally by default. Omitting it retains the route's existing default behavior.
+See [reasoning resolution and discovery](#discovering-reasoning-controls) for mappings, metadata, and strict mode.
+
+`ultra` is a library preset that selects the highest known supported level: for example, `max` on supported OpenAI
+and Claude models, `xhigh` on Grok 4.6/4.7, and `high` on Grok 4.5. Gemini uses its model-specific high level or token
+budget. With unknown capabilities, it falls back to native `max`; it cannot guarantee support for unknown models.
+In `runAgentLoop()` and `streamAgentLoop()`, `ultra` additionally enables the built-in subagent tools and Codex-style
+proactive delegation prompt. Pass `subagentTool: false` to opt out of delegation while retaining that preset's
+provider reasoning mapping.
 
 ### Streaming JSON outputs
 
@@ -1698,6 +1828,26 @@ Each LLM call writes:
 - streamed `thoughts.txt` and `response.txt` deltas during generation, batched to disk every five seconds while data is pending,
 - `tool_call.txt` plus `tool_call.json` when the model asks to call tools, `output-<n>.<ext>` for inline output media, and `response.metadata.json` at completion,
 - `error.txt` plus `response.metadata.json` on failure.
+
+Both request and response metadata record the public `provider`, `access`, requested `modelId`, serving speed,
+and `thinking: { requestedLevel, effectiveLevel, source }` when a level was specified. Responses also record
+`modelVersion`: the model identity returned by the provider when available, otherwise the requested model ID.
+`provider` identifies the library route (for example `xai`, `openai`, or `vercel`); it does not identify an unreported
+upstream behind a gateway. Internal transport aliases, when recorded, use the separate `transportProvider` field.
+
+`agent.log` model/usage lines and per-step summaries include the provider, access route, returned `modelVersion`,
+`requestedThinkingLevel`, `effectiveThinkingLevel`, and `thinkingLevelSource`. Run summaries include the final step's
+model version and thinking resolution. Stream events and completion telemetry carry the same structured fields.
+For example, a Grok trace can contain:
+
+```text
+model: grok-4.7 provider=xai access=subscription requestedThinkingLevel=max effectiveThinkingLevel=xhigh thinkingLevelSource=model
+```
+
+`effectiveThinkingLevel` records the level sent to the adapter, not a provider attestation of internal computation.
+Gemini may translate that level to a token budget. If a known model has fixed reasoning, the trace says `omitted`;
+if no level was requested, the library leaves thinking resolution absent rather than inventing a provider default.
+Failed calls retain the resolved request configuration in their per-call metadata when a call was started.
 
 Completion, failure, and an explicit logging-session `flush()` immediately drain pending file deltas. Thought lines in `agent.log` are also batched every five seconds and flushed before other events and at the end of a run. Stream events themselves remain immediate. Only reasoning that the provider sends can be logged; an already-running non-streaming request must finish or be restarted with the updated library to gain live traces.
 

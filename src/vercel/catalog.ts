@@ -1,3 +1,4 @@
+import { parseModelReasoningOptions, type ModelReasoningOption } from "../model-reasoning.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
 import { resolveVercelBaseUrl } from "./client.js";
 import { isVercelModelId } from "./models.js";
@@ -18,6 +19,7 @@ export type VercelCatalogModel = {
   readonly maxOutputTokens?: number;
   readonly type?: string;
   readonly capabilities?: readonly string[];
+  readonly reasoningOptions?: readonly ModelReasoningOption[];
   readonly pricing?: VercelTokenPricing;
 };
 
@@ -69,6 +71,7 @@ function parseCatalogModel(raw: unknown): VercelCatalogModel | undefined {
     maxOutputTokens: positiveNumber(item.max_tokens),
     type: typeof item.type === "string" ? item.type : undefined,
     capabilities,
+    reasoningOptions: parseModelReasoningOptions(item.reasoning_options),
     pricing,
   });
 }

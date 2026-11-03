@@ -5,6 +5,7 @@ import path from "node:path";
 
 import type { LlmStreamEvent } from "./llm.js";
 import type { LlmAccess, LlmProvider, LlmSpeed } from "./model-selection.js";
+import type { LlmThinkingResolution } from "./thinking.js";
 import {
   createLogTextRedactor,
   redactFinalLogText,
@@ -44,6 +45,7 @@ export type AgentLlmCallStartInput = {
   readonly access?: LlmAccess;
   readonly modelId: string;
   readonly requestedSpeed?: LlmSpeed;
+  readonly thinking?: LlmThinkingResolution;
   readonly requestText: string;
   readonly requestMetadata?: Record<string, unknown>;
   readonly attachments?: readonly AgentLlmCallAttachment[];
@@ -82,6 +84,7 @@ function applyCallRouteMetadata(
   payload.access = input.access ?? "api";
   payload.modelId = input.modelId;
   payload.requestedSpeed = input.requestedSpeed;
+  if (input.thinking) payload.thinking = input.thinking;
 }
 
 const DEFAULT_THOUGHT_DELTA_LOG_THROTTLE_MS = 5_000;
@@ -250,12 +253,28 @@ function formatUsd(value: number | null | undefined): string {
     : "unknown";
 }
 
-function speedLogSegments(value: {
+export function thinkingLogSegments(thinking: LlmThinkingResolution | undefined): string[] {
+  return thinking
+    ? [
+        `requestedThinkingLevel=${thinking.requestedLevel}`,
+        `effectiveThinkingLevel=${thinking.effectiveLevel ?? "omitted"}`,
+        `thinkingLevelSource=${thinking.source}`,
+      ]
+    : [];
+}
+
+function servingLogSegments(value: {
+  readonly provider?: LlmProvider;
+  readonly access?: LlmAccess;
+  readonly thinking?: LlmThinkingResolution;
   readonly requestedSpeed?: LlmSpeed;
   readonly effectiveSpeed?: LlmSpeed;
   readonly serviceTier?: string;
 }): string[] {
   return [
+    ...(value.provider ? [`provider=${value.provider}`] : []),
+    ...(value.access ? [`access=${value.access}`] : []),
+    ...thinkingLogSegments(value.thinking),
     ...(value.requestedSpeed ? [`requestedSpeed=${value.requestedSpeed}`] : []),
     ...(value.effectiveSpeed ? [`effectiveSpeed=${value.effectiveSpeed}`] : []),
     ...(value.serviceTier ? [`serviceTier=${value.serviceTier}`] : []),
@@ -310,7 +329,7 @@ export function appendAgentStreamEventLog(options: {
       return;
     }
     case "model": {
-      options.append([`model: ${event.modelVersion}`, ...speedLogSegments(event)].join(" "));
+      options.append([`model: ${event.modelVersion}`, ...servingLogSegments(event)].join(" "));
       return;
     }
     case "usage": {
@@ -318,7 +337,7 @@ export function appendAgentStreamEventLog(options: {
         [
           "usage:",
           `modelVersion=${event.modelVersion}`,
-          ...speedLogSegments(event),
+          ...servingLogSegments(event),
           `costUsd=${formatUsd(event.costUsd)}`,
           ...(event.costSource ? [`costSource=${event.costSource}`] : []),
           ...(event.apiEquivalentCostUsd !== undefined
@@ -547,6 +566,7 @@ class AgentLoggingSessionImpl implements AgentLoggingSession {
           provider: input.provider,
           access: input.access ?? "api",
           modelId: input.modelId,
+          ...(input.thinking ? { thinking: input.thinking } : {}),
           ...(input.requestedSpeed ? { requestedSpeed: input.requestedSpeed } : {}),
           ...(input.requestMetadata ? { request: sanitiseLogValue(input.requestMetadata) } : {}),
         };

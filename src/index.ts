@@ -97,6 +97,8 @@ export type {
   LlmTextDeltaEvent,
   LlmTextModelId,
   LlmThinkingLevel,
+  LlmThinkingLevelPolicy,
+  LlmThinkingResolution,
   LlmTextRequest,
   LlmTextResult,
   LlmServingMetadata,
@@ -384,6 +386,8 @@ export type {
 } from "./model-selection.js";
 export { listModels } from "./model-catalog.js";
 export type { LlmModelInfo, ListModelsOptions, ModelTokenPricing } from "./model-catalog.js";
+export type { ModelReasoningOption } from "./model-reasoning.js";
+export { resolveThinkingLevel } from "./thinking.js";
 export { resolveCallCostUsd } from "./utils/cost.js";
 export type {
   EstimateCallCostOptions,

@@ -437,6 +437,8 @@ describe("runToolLoop (Fireworks)", () => {
     expect(result.steps[0]?.usage?.responseTokens).toBe(0);
     expect(events).toContainEqual({
       type: "model",
+      provider: "fireworks",
+      access: "api",
       modelVersion: responseOverride.model,
       finishReason: "length",
     });

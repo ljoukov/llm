@@ -521,7 +521,7 @@ describe("runAgentLoop", () => {
     expect(started.runId).toBe(completed.runId);
   });
 
-  it("propagates telemetry context across subagent runs", async () => {
+  it("propagates telemetry context and thinking policy across subagent runs", async () => {
     runToolLoopMock.mockClear();
     let callIndex = 0;
     runToolLoopMock.mockImplementation(async (request: unknown) => {
@@ -578,6 +578,8 @@ describe("runAgentLoop", () => {
     await runAgentLoop({
       model: "gpt-6-luna",
       input: "delegate",
+      thinkingLevel: "xhigh",
+      thinkingLevelPolicy: "strict",
       subagentTool: {
         enabled: true,
         maxAgents: 2,
@@ -601,6 +603,7 @@ describe("runAgentLoop", () => {
 
     expect(runToolLoopMock).toHaveBeenCalledTimes(2);
     for (const [call] of runToolLoopMock.mock.calls) {
+      expect(call).toMatchObject({ thinkingLevel: "xhigh", thinkingLevelPolicy: "strict" });
       expect((call as { modelTools?: unknown[] }).modelTools).toEqual([
         {
           type: "image-generation",

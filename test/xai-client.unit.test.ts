@@ -298,4 +298,176 @@ describe("xAI API and subscription transport", () => {
     const subscription = await discoverXaiModels("subscription");
     expect(subscription.every((model) => model.pricing === undefined)).toBe(true);
   });
+
+  it("exposes /models reasoning metadata through the public catalogue without another lookup", async () => {
+    mocks.fetch.mockResolvedValue(
+      jsonResponse({
+        data: [
+          {
+            id: "grok-future-model",
+            context_length: 123_000,
+            capabilities: {
+              reasoning_effort: ["none", "low", "xhigh", "future-effort"],
+              default_reasoning_effort: "future-effort",
+            },
+          },
+        ],
+      }),
+    );
+    const { listModels } = await import("../src/model-catalog.js");
+    const models = await listModels({ provider: "xai", access: "subscription" });
+    expect(models[0]).toMatchObject({
+      provider: "xai",
+      access: "subscription",
+      model: "grok-future-model",
+      contextWindow: 123_000,
+      reasoningOptions: [{ type: "effort", values: ["none", "low", "xhigh", "future-effort"] }],
+      defaultReasoningEffort: "future-effort",
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "api",
+    "subscription",
+  ] as const)("enriches sparse %s metadata on the same route and keeps model availability", async (access) => {
+    mocks.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [
+            { id: "grok-4.7" },
+            { id: "grok-build" },
+            {
+              id: "grok-known",
+              capabilities: { reasoning_effort: [], default_reasoning_effort: "high" },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          models: [
+            {
+              id: "grok-4.7",
+              capabilities: {
+                reasoning_effort: ["low", "medium", "high", "xhigh"],
+                default_reasoning_effort: "high",
+              },
+            },
+            {
+              id: "latest",
+              aliases: ["grok-build"],
+              capabilities: { reasoning_effort: ["low", "high"] },
+            },
+            {
+              id: "grok-known",
+              capabilities: { reasoning_effort: ["low"], default_reasoning_effort: "low" },
+            },
+            { id: "grok-not-available", capabilities: { reasoning_effort: ["max"] } },
+            null,
+          ],
+        }),
+      );
+    const { listModels } = await import("../src/model-catalog.js");
+    const models = await listModels({ provider: "xai", access });
+    expect(models.map((model) => model.model)).toEqual(["grok-4.7", "grok-build", "grok-known"]);
+    expect(models[0]).toMatchObject({
+      reasoningOptions: [{ type: "effort", values: ["low", "medium", "high", "xhigh"] }],
+      defaultReasoningEffort: "high",
+    });
+    expect(models[1]?.reasoningOptions).toEqual([{ type: "effort", values: ["low", "high"] }]);
+    expect(models[2]).toMatchObject({
+      reasoningOptions: [{ type: "effort", values: [] }],
+      defaultReasoningEffort: "high",
+    });
+    const base = access === "api" ? "https://api.x.ai/v1" : "https://cli-chat-proxy.grok.com/v1";
+    expect(mocks.fetch.mock.calls.map(([url]) => String(url))).toEqual([
+      `${base}/models`,
+      `${base}/language-models`,
+    ]);
+    const headers = new Headers(mocks.fetch.mock.calls[1]?.[1]?.headers);
+    expect(headers.get("authorization")).toBe(
+      access === "api" ? "Bearer fake-api-credential" : "Bearer fake-subscription-credential",
+    );
+  });
+
+  it.each([
+    403, 404,
+  ])("keeps discovery usable when optional reasoning lookup returns %s", async (status) => {
+    mocks.fetch
+      .mockResolvedValueOnce(jsonResponse({ data: [{ id: "grok-4.7" }] }))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "not available" } }, status));
+    const { discoverXaiModels } = await import("../src/xai/discovery.js");
+    const models = await discoverXaiModels("subscription");
+    expect(models.map((model) => model.id)).toEqual(["grok-4.7"]);
+    expect(models[0]?.reasoningOptions).toBeUndefined();
+    expect(models[0]?.defaultReasoningEffort).toBeUndefined();
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps malformed reasoning metadata unknown", async () => {
+    mocks.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [null, { id: "grok-4.7", capabilities: { reasoning_effort: "high" } }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          models: [
+            {
+              id: "grok-4.7",
+              capabilities: { reasoning_effort: ["high", 1], default_reasoning_effort: 10 },
+            },
+          ],
+        }),
+      );
+    const { discoverXaiModels } = await import("../src/xai/discovery.js");
+    const models = await discoverXaiModels();
+    expect(models[0]?.reasoningOptions).toBeUndefined();
+    expect(models[0]?.defaultReasoningEffort).toBeUndefined();
+  });
+
+  it("reads changed xAI effort metadata on the next discovery call", async () => {
+    const catalogue = (values: string[]) =>
+      jsonResponse({
+        data: [
+          {
+            id: "grok-4.7",
+            capabilities: { reasoning_effort: values },
+          },
+        ],
+      });
+    mocks.fetch.mockResolvedValueOnce(catalogue(["low", "high", "xhigh"]));
+    const { discoverXaiModels } = await import("../src/xai/discovery.js");
+    expect((await discoverXaiModels())[0]?.reasoningOptions).toEqual([
+      { type: "effort", values: ["low", "high", "xhigh"] },
+    ]);
+    mocks.fetch.mockResolvedValueOnce(catalogue(["low", "high", "xhigh", "max"]));
+    expect((await discoverXaiModels())[0]?.reasoningOptions).toEqual([
+      { type: "effort", values: ["low", "high", "xhigh", "max"] },
+    ]);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps discovered reasoning by route and endpoint for later calls without repeated discovery", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    const catalogue = (values: string[]) =>
+      jsonResponse({ data: [{ id: "grok-4.7", capabilities: { reasoning_effort: values } }] });
+    const { discoverXaiModels } = await import("../src/xai/discovery.js");
+    const { resolveThinkingLevel } = await import("../src/thinking.js");
+    mocks.fetch.mockResolvedValueOnce(catalogue(["low", "max"]));
+    await discoverXaiModels("api");
+    mocks.fetch.mockResolvedValueOnce(catalogue(["low", "high"]));
+    await discoverXaiModels("subscription");
+    const resolve = (access: "api" | "subscription") =>
+      resolveThinkingLevel({ provider: "xai", access, model: "grok-4.7", thinkingLevel: "max" });
+    expect(resolve("api")).toMatchObject({ effectiveLevel: "max", source: "catalog" });
+    expect(resolve("subscription")).toMatchObject({ effectiveLevel: "high", source: "catalog" });
+    vi.stubEnv("XAI_BASE_URL", "https://other.test/v1");
+    expect(resolve("api")).toMatchObject({ effectiveLevel: "xhigh", source: "model" });
+    now.mockReturnValue(1000 + 5 * 60_000);
+    expect(resolve("subscription")).toMatchObject({ effectiveLevel: "high", source: "catalog" });
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
 });

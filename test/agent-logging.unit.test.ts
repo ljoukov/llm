@@ -100,6 +100,7 @@ describe("agent logging", () => {
         provider: "openai",
         modelId: "gpt-6-luna",
         requestedSpeed: "fast",
+        thinking: { requestedLevel: "ultra", effectiveLevel: "max", source: "model" },
         requestText: "hello",
         requestMetadata: {
           image_url: "data:image/png;base64,QUJDRA==",
@@ -191,6 +192,7 @@ describe("agent logging", () => {
       });
       expect(requestMetadata).toMatchObject({
         modelId: "gpt-6-luna",
+        thinking: { requestedLevel: "ultra", effectiveLevel: "max", source: "model" },
         requestedSpeed: "fast",
       });
 
@@ -200,6 +202,7 @@ describe("agent logging", () => {
       expect(responseMetadata.status).toBe("completed");
       expect(responseMetadata).toMatchObject({
         provider: "openai",
+        thinking: { requestedLevel: "ultra", effectiveLevel: "max", source: "model" },
         access: "api",
         modelId: "gpt-6-luna",
         transportProvider: "responses-api",
@@ -227,6 +230,7 @@ describe("agent logging", () => {
         provider: "openai",
         access: "subscription",
         modelId: "gpt-6-sol",
+        thinking: { requestedLevel: "ultra", effectiveLevel: "max", source: "model" },
         requestText: "hello",
       });
       call.appendResponseDelta("partial");
@@ -268,6 +272,7 @@ describe("agent logging", () => {
         access: "subscription",
         modelId: "gpt-6-sol",
         transportProvider: "chatgpt",
+        thinking: { requestedLevel: "ultra", effectiveLevel: "max", source: "model" },
         costUsd: null,
         costSource: "subscription",
         apiEquivalentCostUsd: 0.001,
@@ -489,6 +494,35 @@ describe("agent logging", () => {
       "modelVersion=gpt-6.1-sol requestedSpeed=fast effectiveSpeed=standard serviceTier=default",
     );
     expect(lines.join("\n")).not.toContain("gpt-6.1-sol-fast");
+  });
+
+  it("includes the route and resolved thinking level in model and usage trace lines", () => {
+    const lines: string[] = [];
+    const logger = createAgentStreamEventLogger({ append: (line) => lines.push(line) });
+    const route = {
+      provider: "xai" as const,
+      access: "subscription" as const,
+      thinking: {
+        requestedLevel: "max" as const,
+        effectiveLevel: "xhigh" as const,
+        source: "model" as const,
+      },
+    };
+    logger.appendEvent({ type: "model", modelVersion: "grok-4.7-snapshot", ...route });
+    logger.appendEvent({
+      type: "usage",
+      modelVersion: "grok-4.7-snapshot",
+      usage: { promptTokens: 1, responseTokens: 1 },
+      costUsd: null,
+      ...route,
+    });
+    logger.flush();
+    for (const line of lines) {
+      expect(line).toContain(
+        "provider=xai access=subscription requestedThinkingLevel=max effectiveThinkingLevel=xhigh thinkingLevelSource=model",
+      );
+      expect(line).toContain("grok-4.7-snapshot");
+    }
   });
 
   it("throttles thought delta log lines and flushes before response deltas", () => {

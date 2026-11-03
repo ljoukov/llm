@@ -148,6 +148,8 @@ describe("Gemini tool-loop output controls", () => {
       expect(result.steps[0]?.usage?.thinkingTokens).toBe(65_536);
       expect(events).toContainEqual({
         type: "model",
+        provider: "google",
+        access: "api",
         modelVersion: "gemini-4-argon",
         finishReason: "MAX_TOKENS",
       });

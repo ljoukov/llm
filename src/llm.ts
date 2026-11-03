@@ -132,6 +132,17 @@ import {
 } from "./model-selection.js";
 import { runXaiCall } from "./xai/calls.js";
 import { XAI_MODEL_IDS, isXaiModelId } from "./xai/models.js";
+import {
+  resolveThinkingLevel,
+  type LlmThinkingLevel,
+  type LlmThinkingLevelPolicy,
+  type LlmThinkingResolution,
+} from "./thinking.js";
+export type {
+  LlmThinkingLevel,
+  LlmThinkingLevelPolicy,
+  LlmThinkingResolution,
+} from "./thinking.js";
 
 export type { LlmUsageTokens } from "./utils/cost.js";
 export { estimateCallCostUsd } from "./utils/cost.js";
@@ -212,8 +223,6 @@ export type LlmToolOutputContentItem =
   | LlmInputFilePart;
 
 export type LlmImageSize = "1K" | "2K" | "4K";
-export type LlmThinkingLevel = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
-
 export type LlmWebSearchMode = "cached" | "live";
 
 export type LlmOpenAiShellNetworkPolicy =
@@ -276,6 +285,10 @@ export type LlmTextDeltaEvent =
   | { readonly type: "delta"; readonly channel: "thought"; readonly text: string };
 
 export type LlmServingMetadata = {
+  /** Public inference route; a Gateway's underlying serving provider may differ. */
+  readonly provider?: LlmProvider;
+  readonly access?: LlmAccess;
+  readonly thinking?: LlmThinkingResolution;
   readonly requestedSpeed?: LlmSpeed;
   readonly effectiveSpeed?: LlmSpeed;
   readonly serviceTier?: string;
@@ -484,7 +497,10 @@ export type LlmBaseRequest = LlmModelSelection & {
   readonly responseModalities?: readonly string[];
   readonly imageAspectRatio?: string;
   readonly imageSize?: LlmImageSize;
+  /** Portable effort, clamped locally to known model/route levels. ultra selects the highest known level. */
   readonly thinkingLevel?: LlmThinkingLevel;
+  /** clamp (default) adapts known levels; strict rejects a known unsupported explicit level before inference. */
+  readonly thinkingLevelPolicy?: LlmThinkingLevelPolicy;
   readonly mediaResolution?: LlmMediaResolution;
   readonly openAiTextFormat?: ResponseTextConfig["format"];
   readonly telemetry?: TelemetrySelection;
@@ -763,6 +779,7 @@ export type LlmToolLoopRequest = LlmInput &
      */
     readonly maxOutputTokens?: number;
     readonly thinkingLevel?: LlmThinkingLevel;
+    readonly thinkingLevelPolicy?: LlmThinkingLevelPolicy;
     readonly mediaResolution?: LlmMediaResolution;
     readonly steering?: LlmToolLoopSteeringChannel;
     readonly onEvent?: (event: LlmStreamEvent) => void;
@@ -1426,18 +1443,38 @@ function convertLlmContentToGeminiContent(
   };
 }
 
+const thinkingResolutionSymbol = Symbol("thinkingResolution");
 type NormalizedModelRequest<T> = Omit<T, "provider" | "access" | "model" | "speed"> &
-  LlmModelRef & { readonly access: LlmAccess };
+  LlmModelRef & {
+    readonly access: LlmAccess;
+    readonly [thinkingResolutionSymbol]?: LlmThinkingResolution;
+  };
 
 function normalizeModelRequest<T extends ModelRefInput>(request: T): NormalizedModelRequest<T> {
-  return { ...request, ...resolveModelRef(request) } as NormalizedModelRequest<T>;
+  const normalized = { ...request, ...resolveModelRef(request) };
+  const thinking =
+    (request as { readonly [thinkingResolutionSymbol]?: LlmThinkingResolution })[
+      thinkingResolutionSymbol
+    ] ?? resolveThinkingLevel(normalized);
+  return {
+    ...normalized,
+    ...(thinking
+      ? { thinkingLevel: thinking.effectiveLevel, [thinkingResolutionSymbol]: thinking }
+      : {}),
+  } as NormalizedModelRequest<T>;
 }
 
 function resolveServingMetadata(
-  requestedSpeed: LlmSpeed | undefined,
+  request: {
+    readonly provider?: LlmProvider;
+    readonly access?: LlmAccess;
+    readonly speed?: LlmSpeed;
+    readonly [thinkingResolutionSymbol]?: LlmThinkingResolution;
+  },
   serviceTier?: string,
   effectiveSpeed?: LlmSpeed,
 ): LlmServingMetadata {
+  const requestedSpeed = request.speed;
   const tierSpeed =
     serviceTier === "default" || serviceTier === "standard"
       ? "standard"
@@ -1447,6 +1484,9 @@ function resolveServingMetadata(
           ? "ultrafast"
           : undefined;
   return {
+    ...(request.provider ? { provider: request.provider } : {}),
+    ...(request.access ? { access: request.access } : {}),
+    ...(request[thinkingResolutionSymbol] ? { thinking: request[thinkingResolutionSymbol] } : {}),
     ...(requestedSpeed ? { requestedSpeed } : {}),
     ...((effectiveSpeed ?? tierSpeed) ? { effectiveSpeed: effectiveSpeed ?? tierSpeed } : {}),
     ...(serviceTier ? { serviceTier } : {}),
@@ -5339,7 +5379,7 @@ function toLoggedGeminiToolCalls(
 
 function startLlmCallLoggerFromContents(options: {
   readonly provider: LlmTransportProvider;
-  readonly request: LlmTextRequest;
+  readonly request: NormalizedModelRequest<LlmTextRequest>;
   readonly contents: readonly LlmContent[];
 }): AgentLlmCallLogger | undefined {
   const session = getCurrentAgentLoggingSession();
@@ -5380,6 +5420,7 @@ function startLlmCallLoggerFromContents(options: {
     access: options.request.access ?? transportAccess(options.provider),
     modelId: options.request.model,
     requestedSpeed: options.request.speed,
+    thinking: options.request[thinkingResolutionSymbol],
     requestText: sections.join("\n").trim(),
     requestMetadata: {
       model: options.request.model,
@@ -5428,6 +5469,7 @@ function startLlmCallLoggerFromPayload(options: {
   readonly access?: LlmAccess;
   readonly modelId: string;
   readonly requestedSpeed?: LlmSpeed;
+  readonly thinking?: LlmThinkingResolution;
   readonly requestPayload: unknown;
   readonly step: number;
 }): AgentLlmCallLogger | undefined {
@@ -5485,6 +5527,7 @@ function startLlmCallLoggerFromPayload(options: {
     access: options.access ?? transportAccess(options.provider),
     modelId: options.modelId,
     requestedSpeed: options.requestedSpeed,
+    thinking: options.thinking,
     requestText: serialiseRequestPayloadForLogging(options.requestPayload),
     requestMetadata: {
       step: options.step,
@@ -5522,7 +5565,7 @@ async function runTextCall(params: {
   });
 
   let modelVersion: string = request.model;
-  let servingMetadata: LlmServingMetadata = resolveServingMetadata(request.speed);
+  let servingMetadata: LlmServingMetadata = resolveServingMetadata(request);
   let blocked = false;
   let grounding: GroundingMetadata | undefined;
   let openAi: LlmOpenAiResponseMetadata | undefined;
@@ -5653,7 +5696,7 @@ async function runTextCall(params: {
 
             const finalResponse = await (stream as any).finalResponse();
             openAi = extractOpenAiResponseMetadata(finalResponse);
-            servingMetadata = resolveServingMetadata(request.speed, finalResponse.service_tier);
+            servingMetadata = resolveServingMetadata(request, finalResponse.service_tier);
             modelVersion =
               typeof finalResponse.model === "string" ? finalResponse.model : request.model;
             pushEvent({ type: "model", modelVersion });
@@ -5756,7 +5799,7 @@ async function runTextCall(params: {
           pushEvent({ type: "blocked" });
         }
         modelVersion = result.model ?? modelForProvider;
-        servingMetadata = resolveServingMetadata(request.speed, result.serviceTier);
+        servingMetadata = resolveServingMetadata(request, result.serviceTier);
         pushEvent({ type: "model", modelVersion });
         latestUsage = extractChatGptUsageTokens(result.usage);
 
@@ -5800,7 +5843,7 @@ async function runTextCall(params: {
           onDelta: pushDelta,
         });
         servingMetadata = {
-          ...resolveServingMetadata(request.speed, undefined, response.effectiveSpeed),
+          ...resolveServingMetadata(request, undefined, response.effectiveSpeed),
           ...(response.serviceTier ? { serviceTier: response.serviceTier } : {}),
         };
         modelVersion = response.model || request.model;
@@ -5838,7 +5881,7 @@ async function runTextCall(params: {
           { signal },
         );
         servingMetadata = {
-          ...resolveServingMetadata(request.speed, undefined, response.usage.speed),
+          ...resolveServingMetadata(request, undefined, response.usage.speed),
           ...(response.usage.service_tier ? { serviceTier: response.usage.service_tier } : {}),
         };
         modelVersion = response.model || request.model;
@@ -5911,7 +5954,7 @@ async function runTextCall(params: {
             if (provider === "vercel") {
               const actual = extractVercelServingMetadata(response);
               servingMetadata = resolveServingMetadata(
-                request.speed,
+                request,
                 actual.serviceTier,
                 actual.effectiveSpeed,
               );
@@ -6181,6 +6224,7 @@ function startTextStream(
         modelVersion: output.modelVersion,
         requestedSpeed: output.requestedSpeed,
         effectiveSpeed: output.effectiveSpeed,
+        thinking: output.thinking,
         serviceTier: output.serviceTier,
         blocked: output.blocked,
         usage: output.usage,
@@ -6368,6 +6412,8 @@ function startJsonStream<T>(
                 responseMimeType: request.responseMimeType ?? "application/json",
                 responseJsonSchema,
                 thinkingLevel: request.thinkingLevel,
+                thinkingLevelPolicy: request.thinkingLevelPolicy,
+                [thinkingResolutionSymbol]: request[thinkingResolutionSymbol],
                 ...(openAiTextFormatForAttempt
                   ? { openAiTextFormat: openAiTextFormatForAttempt }
                   : {}),
@@ -6449,6 +6495,7 @@ function startJsonStream<T>(
         modelVersion: output.result.modelVersion,
         requestedSpeed: output.result.requestedSpeed,
         effectiveSpeed: output.result.effectiveSpeed,
+        thinking: output.result.thinking,
         serviceTier: output.result.serviceTier,
         blocked: output.result.blocked,
         usage: output.result.usage,
@@ -6770,7 +6817,7 @@ function extractOpenAiReasoningSummary(response: unknown): string {
 
 export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToolLoopResult> {
   const normalizedRequest = normalizeModelRequest(selection);
-  let servingMetadata: LlmServingMetadata = resolveServingMetadata(normalizedRequest.speed);
+  let servingMetadata: LlmServingMetadata = resolveServingMetadata(normalizedRequest);
   const request = {
     ...normalizedRequest,
     onEvent: normalizedRequest.onEvent
@@ -6902,6 +6949,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           provider: "openai",
           modelId: request.model,
           requestedSpeed: request.speed,
+          thinking: request[thinkingResolutionSymbol],
           requestPayload: stepRequestPayload,
           step: turn,
         });
@@ -6983,10 +7031,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             },
           );
 
-          servingMetadata = resolveServingMetadata(
-            request.speed,
-            (finalResponse as any).service_tier,
-          );
+          servingMetadata = resolveServingMetadata(request, (finalResponse as any).service_tier);
           modelVersion =
             typeof (finalResponse as any).model === "string"
               ? (finalResponse as any).model
@@ -7390,6 +7435,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           provider: "chatgpt",
           modelId: request.model,
           requestedSpeed: request.speed,
+          thinking: request[thinkingResolutionSymbol],
           requestPayload: stepRequestPayload,
           step: turn,
         });
@@ -7416,7 +7462,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           const modelCompletedAtMs = Date.now();
 
           modelVersion = response.model || providerInfo.model;
-          servingMetadata = resolveServingMetadata(request.speed, response.serviceTier);
+          servingMetadata = resolveServingMetadata(request, response.serviceTier);
           usageTokens = extractChatGptUsageTokens(response.usage);
           const stepCostResolution = await resolveCallCostUsd({
             speed: request.speed,
@@ -7778,6 +7824,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           access: providerInfo.access,
           modelId: request.model,
           requestedSpeed: request.speed,
+          thinking: request[thinkingResolutionSymbol],
           requestPayload: stepRequestPayload,
           step: turn,
         });
@@ -7812,7 +7859,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           if (provider === "vercel") {
             const actual = extractVercelServingMetadata(response);
             servingMetadata = resolveServingMetadata(
-              request.speed,
+              request,
               actual.serviceTier,
               actual.effectiveSpeed,
             );
@@ -8141,6 +8188,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           provider: "claude",
           modelId: request.model,
           requestedSpeed: request.speed,
+          thinking: request[thinkingResolutionSymbol],
           step: offset + 1,
           requestPayload: {
             model: providerInfo.model,
@@ -8182,7 +8230,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             },
             onAssistantMessage: (message, context) => {
               servingMetadata = {
-                ...resolveServingMetadata(request.speed, undefined, message.usage.speed),
+                ...resolveServingMetadata(request, undefined, message.usage.speed),
                 ...(message.usage.service_tier ? { serviceTier: message.usage.service_tier } : {}),
               };
               const state = stateFor(context.turn);
@@ -8273,7 +8321,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
               ? state.message.usage.service_tier
               : outcome.serviceTier;
             servingMetadata = {
-              ...resolveServingMetadata(request.speed, undefined, actualSpeed),
+              ...resolveServingMetadata(request, undefined, actualSpeed),
               ...(actualTier ? { serviceTier: actualTier } : {}),
             };
             const last = index === ordered.length - 1;
@@ -8431,6 +8479,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           provider: "anthropic",
           modelId: request.model,
           requestedSpeed: request.speed,
+          thinking: request[thinkingResolutionSymbol],
           requestPayload: stepRequestPayload,
           step: turn,
         });
@@ -8467,7 +8516,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           );
           const modelCompletedAtMs = Date.now();
           servingMetadata = {
-            ...resolveServingMetadata(request.speed, undefined, response.usage.speed),
+            ...resolveServingMetadata(request, undefined, response.usage.speed),
             ...(response.usage.service_tier ? { serviceTier: response.usage.service_tier } : {}),
           };
           modelVersion = response.model || request.model;
@@ -8724,6 +8773,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
         provider: "gemini",
         modelId: request.model,
         requestedSpeed: request.speed,
+        thinking: request[thinkingResolutionSymbol],
         requestPayload: stepRequestPayload,
         step: turn,
       });
