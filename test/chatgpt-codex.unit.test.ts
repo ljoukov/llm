@@ -66,6 +66,55 @@ describe("collectChatGptCodexResponse", () => {
     configureChatGptCodexProxy(null);
   });
 
+  it("preserves opaque continuation and exposed summaries without raw reasoning content", async () => {
+    configureChatGptCodexProxy({
+      url: "https://runtime-proxy.example/",
+      apiKey: "runtime-proxy-key",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        buildSseResponse([
+          { type: "response.reasoning_text.delta", delta: "not collected" },
+          {
+            type: "response.completed",
+            response: {
+              status: "completed",
+              output: [
+                {
+                  type: "reasoning",
+                  id: "r1",
+                  encrypted_content: "opaque",
+                  summary: [{ type: "summary_text", text: "Exposed summary" }],
+                  content: [{ type: "reasoning_text", text: "not collected" }],
+                },
+                {
+                  type: "message",
+                  role: "assistant",
+                  phase: "commentary",
+                  content: [{ type: "output_text", text: "Visible message" }],
+                },
+              ],
+            },
+          },
+        ]),
+      ),
+    );
+    const result = await collectChatGptCodexResponse({
+      request: {
+        model: "gpt-6-luna",
+        store: false,
+        stream: true,
+        input: [{ role: "user", content: "hi" }],
+      },
+    });
+    expect(result.reasoningSummaryText).toBe("Exposed summary");
+    expect(result.text).toBe("Visible message");
+    expect(JSON.stringify(result.replayItems)).toContain("opaque");
+    expect(JSON.stringify(result.replayItems)).toContain("commentary");
+    expect(JSON.stringify(result)).not.toContain("not collected");
+  });
+
   it("uses explicit runtime Codex proxy configuration without process env", async () => {
     configureChatGptCodexProxy({
       url: "https://runtime-proxy.example/",

@@ -75,6 +75,48 @@ async function multiplyTools() {
 }
 
 describe("Gemini tool-loop output controls", () => {
+  it("recovers native history without repeating completed model/tool calls", async () => {
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    let saved: import("../src/index.js").ToolLoopCheckpoint | null = null;
+    let executions = 0;
+    const request = {
+      provider: "google" as const,
+      model: "gemini-4-argon" as const,
+      input: "Multiply",
+      maxSteps: 3,
+      tools: {
+        multiply: tool({
+          inputSchema: z.object({ a: z.number(), b: z.number() }),
+          execute: ({ a, b }) => {
+            executions++;
+            return { value: a * b };
+          },
+        }),
+      },
+      persistence: {
+        identity: "fixture-v1",
+        load: async () => saved,
+        save: async (checkpoint: import("../src/index.js").ToolLoopCheckpoint) => {
+          saved = structuredClone(checkpoint);
+        },
+      },
+    };
+    await expect(
+      runToolLoop({
+        ...request,
+        onEvent: (event) => {
+          if (event.type === "tool_call" && event.phase === "completed")
+            throw new Error("worker died");
+        },
+      }),
+    ).rejects.toThrow("worker died");
+    const result = await runToolLoop(request);
+    expect(result.text).toBe("6");
+    expect(result.steps).toHaveLength(2);
+    expect(executions).toBe(1);
+    expect(requests).toHaveLength(2);
+  });
+
   it.each([
     "gemini-4-argon",
     "gemini-3.8-flash",

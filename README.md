@@ -1828,6 +1828,54 @@ const result = await runAgentLoop({
 console.log(result.text);
 ```
 
+### Restartable tool and agent loops
+
+Pass `persistence` to `runToolLoop()` or `runAgentLoop()` to recover completed model/tool boundaries.
+The experiment definition and tools remain ordinary TypeScript code. Only execution state is serialized.
+
+```ts
+import { runAgentLoop, type ToolLoopCheckpoint } from "@ljoukov/llm";
+
+const result = await runAgentLoop({
+  provider: "openai", access: "subscription", model: "gpt-6-luna",
+  input: prompt, tools, maxSteps: 100,
+  filesystemTool: false, subagentTool: false,
+  persistence: {
+    identity: frozenTaskToolsAndEnvironmentDigest,
+    load: async (): Promise<ToolLoopCheckpoint | null> => store.load(),
+    // Commit atomically before resolving. A storage failure stops advancement.
+    save: async checkpoint => store.commit(checkpoint),
+    retryInterruptedTools: ["workspace_python"],
+  },
+});
+```
+
+The library saves complete model responses before executing runtime tools, journals each tool before and
+after execution, and reconstructs native provider history from saved responses and receipts without
+requesting completed generations or executing completed tools again. Persistent tool execution is serial,
+including when a model returns several tool calls. The original maximum step count spans restarts.
+Changed prompts, routes, settings or tool definitions reject recovery; `identity` must additionally pin
+caller-owned tool code, task files and environment. A stored completed result is returned directly.
+
+The caller owns durable atomic storage, exclusive ownership of each run, and consistent workspace snapshots.
+The save callback must pair the checkpoint with its filesystem state if tools generate code or mutate files.
+Before resuming, restore that paired workspace. An interrupted tool defaults to `ToolLoopRecoveryError`;
+list it in `retryInterruptedTools` only after restoring its effects or establishing idempotency. External
+side effects are not made exactly-once. An unfinished model request may run again, with unknown prior cost.
+Temporary provider file references can still require provider-side availability; local persistence is not
+a backup of remote hosted containers or provider uploads.
+
+Checkpoint payloads contain prompts, native provider responses and tool results, including opaque reasoning
+state. They are sensitive execution data, separate from redacted readable logs. OpenAI API persistence
+replays native output items instead of depending on a stored `previous_response_id`. Subscription persistence
+also preserves available public messages and opaque reasoning items; raw reasoning-text events remain ignored.
+Logging and `onEvent` continue exposing provider-supplied summaries independently of checkpointing.
+
+The current implementation supports OpenAI API/subscription, xAI, Fireworks, Vercel, Anthropic API and Gemini.
+Claude Agent SDK subscription loops, subagents and steering are rejected with persistence enabled until
+their additional session/agent state can be restored safely. Native hosted-tool resources need their own
+recovery policy.
+
 ### Agent Logging (Console + Files + Redirects)
 
 `runAgentLoop()` enables logging by default. It writes:

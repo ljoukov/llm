@@ -101,7 +101,15 @@ export type ChatGptCustomToolCallOutput = {
   output: string | ChatGptInputMessagePart[];
 };
 
+export type ChatGptReasoningItem = {
+  type: "reasoning";
+  id: string;
+  summary: { type: "summary_text"; text: string }[];
+  encrypted_content?: string;
+};
+
 export type ChatGptInputItem =
+  | ChatGptReasoningItem
   | ChatGptInputMessage
   | ChatGptFunctionCall
   | ChatGptCustomToolCall
@@ -199,7 +207,41 @@ export type ChatGptCodexImageGenerationCall = {
   result: string;
 };
 
+function replayableCodexItem(item: Record<string, unknown>): ChatGptInputItem | undefined {
+  if (item.type === "reasoning" && typeof item.id === "string") {
+    const summary = Array.isArray(item.summary)
+      ? item.summary
+          .filter(
+            (part): part is { type: "summary_text"; text: string } =>
+              part?.type === "summary_text" && typeof part.text === "string",
+          )
+          .map((part) => ({ type: "summary_text" as const, text: part.text }))
+      : [];
+    return {
+      type: "reasoning",
+      id: item.id,
+      summary,
+      ...(typeof item.encrypted_content === "string"
+        ? { encrypted_content: item.encrypted_content }
+        : {}),
+    };
+  }
+  if (item.type === "message" && item.role === "assistant" && Array.isArray(item.content)) {
+    return {
+      type: "message",
+      role: "assistant",
+      content: item.content
+        .filter((part) => part?.type === "output_text" && typeof part.text === "string")
+        .map((part) => ({ type: "output_text" as const, text: part.text })),
+      ...(typeof item.phase === "string" ? { phase: item.phase } : {}),
+    } as ChatGptInputItem;
+  }
+  return undefined;
+}
+
 export type ChatGptCodexCollectedResponse = {
+  /** Replayable public messages and opaque reasoning state; excludes raw reasoning text. */
+  replayItems?: ChatGptInputItem[];
   serviceTier?: string;
   text: string;
   reasoningText: string;
@@ -573,6 +615,7 @@ async function collectChatGptCodexStream(options: {
   let text = "";
   const reasoningText = "";
   let reasoningSummaryText = "";
+  const replayItems = new Map<string, ChatGptInputItem>();
   let usage: ChatGptCodexUsage | undefined;
   let responseId: string | undefined;
   let serviceTier: string | undefined;
@@ -608,6 +651,11 @@ async function collectChatGptCodexStream(options: {
     if (type === "response.output_item.added" || type === "response.output_item.done") {
       const item = event.item as Record<string, unknown> | undefined;
       if (item) {
+        if (type === "response.output_item.done") {
+          const replay = replayableCodexItem(item);
+          if (replay)
+            replayItems.set(String(event.output_index ?? item.id ?? replayItems.size), replay);
+        }
         if (item.type === "function_call") {
           const id = typeof item.id === "string" ? item.id : "";
           const callId = typeof item.call_id === "string" ? item.call_id : id;
@@ -667,6 +715,15 @@ async function collectChatGptCodexStream(options: {
     if (type === "response.completed") {
       const response = event.response as Record<string, unknown> | undefined;
       if (response) {
+        if (Array.isArray(response.output)) {
+          replayItems.clear();
+          for (const [index, item] of response.output.entries()) {
+            if (item && typeof item === "object") {
+              const replay = replayableCodexItem(item as Record<string, unknown>);
+              if (replay) replayItems.set(String(index), replay);
+            }
+          }
+        }
         usage = response.usage as ChatGptCodexUsage | undefined;
         responseId = typeof response.id === "string" ? response.id : responseId;
         model = typeof response.model === "string" ? response.model : undefined;
@@ -701,6 +758,23 @@ async function collectChatGptCodexStream(options: {
     }
   }
 
+  if (!reasoningSummaryText)
+    reasoningSummaryText = [...replayItems.values()]
+      .filter((item): item is ChatGptReasoningItem => item.type === "reasoning")
+      .flatMap((item) => item.summary.map((part) => part.text))
+      .join("");
+  if (!text)
+    text = [...replayItems.values()]
+      .filter((item): item is ChatGptInputMessage => item.type === "message")
+      .flatMap((item) =>
+        typeof item.content === "string"
+          ? [item.content]
+          : item.content
+              .filter((part) => part.type === "output_text")
+              .map((part) => (part as ChatGptOutputTextPart).text),
+      )
+      .join("");
+
   // Fallback: if we never received the summary delta, preserve reasoningText.
   if (!reasoningSummaryText && reasoningText) {
     reasoningSummaryText = reasoningText;
@@ -717,6 +791,7 @@ async function collectChatGptCodexStream(options: {
     .filter((call): call is ChatGptCodexImageGenerationCall => call !== undefined);
 
   return {
+    ...(replayItems.size ? { replayItems: [...replayItems.values()] } : {}),
     text,
     reasoningText,
     reasoningSummaryText,

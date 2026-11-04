@@ -397,3 +397,6 @@ export type {
 
 export { XAI_MODEL_IDS, isXaiModelId, resolveXaiModelId } from "./xai/models.js";
 export type { XaiModelId, XaiAccess } from "./xai/models.js";
+
+export { ToolLoopRecoveryError } from "./toolLoopPersistence.js";
+export type { ToolLoopCheckpoint, ToolLoopPersistence } from "./toolLoopPersistence.js";

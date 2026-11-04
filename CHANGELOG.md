@@ -1,5 +1,16 @@
 # Changelog
 
+## 15.1.0 — 2026-11-04
+
+- Add opt-in `persistence` to tool/agent loops: await caller-owned checkpoints before runtime tools,
+  reuse completed model responses and tool receipts on restart, serialize persistent tool execution,
+  reject changed run inputs, and stop on uncertain interrupted tools unless explicitly retryable.
+- Preserve native OpenAI output history for persistent loops, including opaque reasoning state, and
+  extract returned reasoning summaries from the Responses `summary` field. Preserve replayable public
+  messages and opaque reasoning items in ChatGPT subscription collection without collecting raw reasoning.
+- Persistence currently excludes Claude Agent SDK subscription loops, subagents and interactive steering.
+  Storage, workspace restoration and exclusive run ownership remain caller responsibilities.
+
 ## 15.0.1 — 2026-11-03
 
 - Honor `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` (including lowercase variants) in Grok API/subscription

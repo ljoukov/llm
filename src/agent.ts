@@ -280,7 +280,7 @@ async function runAgentLoopInternal(
   const startedAtMs = Date.now();
   const steeringChannel = toolLoopRequest.steering ?? createToolLoopSteeringChannel();
   const toolLoopRequestWithSteering =
-    toolLoopRequest.steering === steeringChannel
+    toolLoopRequest.persistence || toolLoopRequest.steering === steeringChannel
       ? toolLoopRequest
       : { ...toolLoopRequest, steering: steeringChannel };
   const filesystemSelection = filesystemTool ?? filesystem_tool;
@@ -295,6 +295,11 @@ async function runAgentLoopInternal(
     request.mediaResolution,
   );
   const resolvedSubagentConfig = resolveSubagentToolConfig(subagentSelection, context.depth);
+  if (toolLoopRequest.persistence && resolvedSubagentConfig.enabled) {
+    throw new Error(
+      "Persistent agent loops require subagentTool: false; subagent state is not yet checkpointed.",
+    );
+  }
   const subagentController = createSubagentController({
     runId,
     route: context.route,

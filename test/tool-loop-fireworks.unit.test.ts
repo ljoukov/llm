@@ -75,10 +75,11 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function readArtifact(filename: string): Promise<string> {
+async function readArtifact(filename: string, expected?: string): Promise<string> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     try {
-      return await fs.readFile(filename, "utf8");
+      const value = await fs.readFile(filename, "utf8");
+      if (expected === undefined || value === expected) return value;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -177,6 +178,48 @@ describe("runToolLoop (Fireworks)", () => {
     responseOverride = null;
     streamOverride = null;
   });
+  it("recovers native history without repeating completed model/tool calls", async () => {
+    const { runToolLoop, tool } = await import("../src/llm.js");
+    let saved: import("../src/index.js").ToolLoopCheckpoint | null = null;
+    let executions = 0;
+    const request = {
+      provider: "fireworks" as const,
+      model: "kimi-k3" as const,
+      input: "Multiply",
+      maxSteps: 3,
+      tools: {
+        multiply: tool({
+          inputSchema: z.object({ a: z.number(), b: z.number() }),
+          execute: ({ a, b }) => {
+            executions++;
+            return { value: a * b };
+          },
+        }),
+      },
+      persistence: {
+        identity: "fixture-v1",
+        load: async () => saved,
+        save: async (checkpoint: import("../src/index.js").ToolLoopCheckpoint) => {
+          saved = structuredClone(checkpoint);
+        },
+      },
+    };
+    await expect(
+      runToolLoop({
+        ...request,
+        onEvent: (event) => {
+          if (event.type === "tool_call" && event.phase === "completed")
+            throw new Error("worker died");
+        },
+      }),
+    ).rejects.toThrow("worker died");
+    const result = await runToolLoop(request);
+    expect(result.text).toBe("6");
+    expect(result.steps).toHaveLength(2);
+    expect(executions).toBe(1);
+    expect(requests).toHaveLength(2);
+  });
+
   it.each([
     "deepseek-v4.1-flash-1017",
     "glm-5.3",
@@ -288,8 +331,10 @@ describe("runToolLoop (Fireworks)", () => {
         code: "ENOENT",
       });
       await vi.advanceTimersByTimeAsync(1);
-      expect(await readArtifact(path.join(directory, "thoughts.txt"))).toBe("working through it");
-      expect(await readArtifact(path.join(directory, "response.txt"))).toBe("partial ");
+      expect(await readArtifact(path.join(directory, "thoughts.txt"), "working through it")).toBe(
+        "working through it",
+      );
+      expect(await readArtifact(path.join(directory, "response.txt"), "partial ")).toBe("partial ");
       expect(settled).toBe(false);
       resume.resolve();
       const completed = await result;

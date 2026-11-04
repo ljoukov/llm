@@ -2,6 +2,16 @@ import { Buffer } from "node:buffer";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
+import {
+  hasToolLoopPersistence,
+  persistentLoopValue,
+  persistentModelCall,
+  persistentTurnCompletedAt,
+  persistentToolCall,
+  withToolLoopPersistence,
+  withoutToolLoopPersistence,
+  type ToolLoopPersistence,
+} from "./toolLoopPersistence.js";
 
 import {
   FinishReason,
@@ -21,6 +31,7 @@ import {
 import { zodToJsonSchema } from "@alcyone-labs/zod-to-json-schema";
 import { z } from "zod";
 import { toFile } from "openai";
+import { toResponseInputItems } from "openai/lib/responses/ResponseInputItems";
 import type { ResponseTextConfig } from "openai/resources/responses/responses";
 
 import { createAsyncQueue, type AsyncQueue } from "./utils/asyncQueue.js";
@@ -771,6 +782,7 @@ export type LlmToolLoopSteeringChannel = {
 
 export type LlmToolLoopRequest = LlmInput &
   LlmTextModelSelection & {
+    readonly persistence?: ToolLoopPersistence;
     readonly tools: LlmToolSet;
     readonly modelTools?: readonly LlmToolConfig[];
     readonly maxSteps?: number;
@@ -4425,7 +4437,17 @@ function extractSpawnStartupMetrics(outputPayload: unknown): Record<string, unkn
   };
 }
 
-async function executeToolCall(params: {
+async function executeToolCall(
+  params: Parameters<typeof executeToolCallUncached>[0],
+): ReturnType<typeof executeToolCallUncached> {
+  const context = getCurrentToolCallContext();
+  if (!context) return await executeToolCallUncached(params);
+  return await persistentToolCall(context.toolId, params.toolName, params.rawInput, () =>
+    executeToolCallUncached(params),
+  );
+}
+
+async function executeToolCallUncached(params: {
   callKind: "function" | "custom";
   toolName: string;
   tool: LlmExecutableTool<z.ZodType, unknown> | undefined;
@@ -6795,7 +6817,8 @@ function extractOpenAiReasoningSummary(response: unknown): string {
     if ((item as { type?: unknown }).type !== "reasoning") {
       continue;
     }
-    const content = (item as { content?: unknown }).content;
+    const content =
+      (item as { summary?: unknown }).summary ?? (item as { content?: unknown }).content;
     if (!Array.isArray(content)) {
       continue;
     }
@@ -6804,7 +6827,7 @@ function extractOpenAiReasoningSummary(response: unknown): string {
         continue;
       }
       const entryType = (entry as { type?: unknown }).type;
-      if (entryType === "reasoning_summary_text") {
+      if (entryType === "reasoning_summary_text" || entryType === "summary_text") {
         const text = (entry as { text?: unknown }).text;
         if (typeof text === "string") {
           summary += text;
@@ -6816,6 +6839,35 @@ function extractOpenAiReasoningSummary(response: unknown): string {
 }
 
 export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToolLoopResult> {
+  if (!selection.persistence)
+    return await withoutToolLoopPersistence(() => runToolLoopInternal(selection));
+  if (selection.steering) throw new Error("Persistent loops do not yet support steering.");
+  const normalized = normalizeModelRequest(selection);
+  const route = resolveProvider(
+    normalized.model,
+    normalized.provider,
+    normalized.access,
+    normalized.speed,
+  );
+  if (route.provider === "claude")
+    throw new Error("Claude Agent SDK subscription loops do not yet support persistence.");
+  const { persistence, signal: _signal, onEvent: _onEvent, tools, ...settings } = normalized;
+  const definitions = Object.entries(tools).map(([name, definition]) => ({
+    name,
+    description: definition.description,
+    terminal: definition.terminal,
+    ...(isCustomTool(definition)
+      ? { type: "custom", format: definition.format }
+      : {
+          schema: buildOpenAiToolSchema(definition.inputSchema, name),
+        }),
+  }));
+  return await withToolLoopPersistence(selection.persistence, { settings, definitions }, () =>
+    runToolLoopInternal({ ...selection, persistence: undefined }),
+  );
+}
+
+async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmToolLoopResult> {
   const normalizedRequest = normalizeModelRequest(selection);
   let servingMetadata: LlmServingMetadata = resolveServingMetadata(normalizedRequest);
   const request = {
@@ -6904,7 +6956,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
-        const stepStartedAtMs = Date.now();
+        let stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
         const abortController = new AbortController();
@@ -6965,71 +7017,87 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
         };
 
         try {
-          const finalResponse = await runOpenAiCall(
-            async (client) => {
-              const stream = client.responses.stream(
-                {
-                  model: providerInfo.model,
-                  input: preparedInput as any,
-                  ...(providerInfo.serviceTier
-                    ? { service_tier: providerInfo.serviceTier as any }
-                    : {}),
-                  ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-                  ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
-                  ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
-                  reasoning,
-                  text: textConfig as any,
-                  include: ["reasoning.encrypted_content"] as any,
-                },
-                { signal: abortController.signal } as any,
-              );
+          const recorded = await persistentModelCall(turn, stepRequestPayload, async () => {
+            const value = await runOpenAiCall(
+              async (client) => {
+                const stream = client.responses.stream(
+                  {
+                    model: providerInfo.model,
+                    input: preparedInput as any,
+                    ...(providerInfo.serviceTier
+                      ? { service_tier: providerInfo.serviceTier as any }
+                      : {}),
+                    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+                    ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
+                    ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
+                    reasoning,
+                    text: textConfig as any,
+                    include: ["reasoning.encrypted_content"] as any,
+                  },
+                  { signal: abortController.signal } as any,
+                );
 
-              for await (const event of stream as any) {
-                markFirstModelEvent();
-                switch (event.type) {
-                  case "response.output_text.delta": {
-                    const text = typeof event.delta === "string" ? event.delta : "";
-                    if (text.length > 0) {
-                      stepCallLogger?.appendResponseDelta(text);
+                for await (const event of stream as any) {
+                  markFirstModelEvent();
+                  switch (event.type) {
+                    case "response.output_text.delta": {
+                      const text = typeof event.delta === "string" ? event.delta : "";
+                      if (text.length > 0) {
+                        stepCallLogger?.appendResponseDelta(text);
+                      }
+                      emitEvent({
+                        type: "delta",
+                        channel: "response",
+                        text,
+                      });
+                      break;
                     }
-                    emitEvent({
-                      type: "delta",
-                      channel: "response",
-                      text,
-                    });
-                    break;
-                  }
-                  case "response.reasoning_summary_text.delta": {
-                    thoughtDeltaEmitted = true;
-                    const text = typeof event.delta === "string" ? event.delta : "";
-                    if (text.length > 0) {
-                      stepCallLogger?.appendThoughtDelta(text);
+                    case "response.reasoning_summary_text.delta": {
+                      thoughtDeltaEmitted = true;
+                      const text = typeof event.delta === "string" ? event.delta : "";
+                      if (text.length > 0) {
+                        stepCallLogger?.appendThoughtDelta(text);
+                      }
+                      emitEvent({
+                        type: "delta",
+                        channel: "thought",
+                        text,
+                      });
+                      break;
                     }
-                    emitEvent({
-                      type: "delta",
-                      channel: "thought",
-                      text,
-                    });
-                    break;
+                    case "response.refusal.delta":
+                      blocked = true;
+                      emitEvent({ type: "blocked" });
+                      break;
+                    default:
+                      break;
                   }
-                  case "response.refusal.delta":
-                    blocked = true;
-                    emitEvent({ type: "blocked" });
-                    break;
-                  default:
-                    break;
                 }
-              }
-              return await (stream as any).finalResponse();
-            },
-            providerInfo.model,
-            {
-              signal: request.signal,
-              onSettled: (metrics) => {
-                schedulerMetrics = metrics;
+                return await (stream as any).finalResponse();
               },
-            },
-          );
+              providerInfo.model,
+              {
+                signal: request.signal,
+                onSettled: (metrics) => {
+                  schedulerMetrics = metrics;
+                },
+              },
+            );
+            return {
+              value,
+              state: {
+                stepStartedAtMs,
+                modelCompletedAtMs: Date.now(),
+                thoughtDeltaEmitted,
+                blocked,
+                firstModelEventAtMs,
+                schedulerMetrics,
+              },
+            };
+          });
+          const finalResponse = recorded.value;
+          ({ thoughtDeltaEmitted, blocked, firstModelEventAtMs, schedulerMetrics } =
+            recorded.state);
 
           servingMetadata = resolveServingMetadata(request, (finalResponse as any).service_tier);
           modelVersion =
@@ -7066,7 +7134,8 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             stepCallLogger?.appendThoughtDelta(reasoningSummary);
             emitEvent({ type: "delta", channel: "thought", text: reasoningSummary });
           }
-          const modelCompletedAtMs = Date.now();
+          stepStartedAtMs = recorded.state.stepStartedAtMs;
+          const modelCompletedAtMs = recorded.state.modelCompletedAtMs;
 
           const generatedImageCount = responseContentParts.filter(
             (part) => part.type === "inlineData" && isInlineImageMime(part.mimeType),
@@ -7133,7 +7202,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
                 : [];
             finalText = responseText;
             finalThoughts = reasoningSummary;
-            const stepCompletedAtMs = Date.now();
+            const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
             const timing = buildStepTiming({
               stepStartedAtMs,
               stepCompletedAtMs,
@@ -7293,7 +7362,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             }
           }
 
-          const stepCompletedAtMs = Date.now();
+          const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
@@ -7351,8 +7420,15 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             finalThoughts = reasoningSummary;
             return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
           }
-          previousResponseId = (finalResponse as any).id;
-          input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
+          if (hasToolLoopPersistence()) {
+            input = input.concat(
+              toResponseInputItems((finalResponse as any).output ?? []),
+              toolOutputs,
+            );
+          } else {
+            previousResponseId = (finalResponse as any).id;
+            input = steeringItems.length > 0 ? toolOutputs.concat(steeringItems) : toolOutputs;
+          }
         } catch (error) {
           stepCallLogger?.fail(error, {
             responseText,
@@ -7388,13 +7464,16 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
         model: request.model,
       });
       // ChatGPT Codex prompt caching is keyed by both prompt_cache_key and session_id.
-      const conversationId = `tool-loop-${randomBytes(8).toString("hex")}`;
+      const conversationId = await persistentLoopValue(
+        "conversationId",
+        () => `tool-loop-${randomBytes(8).toString("hex")}`,
+      );
       const promptCacheKey = conversationId;
       let input: ChatGptInputItem[] = [...toolLoopInput.input];
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
-        const stepStartedAtMs = Date.now();
+        let stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let thoughtDeltaEmitted = false;
         let sawResponseDelta = false;
@@ -7440,26 +7519,46 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           step: turn,
         });
         try {
-          const response = await collectChatGptCodexResponseWithRetry({
-            sessionId: conversationId,
-            request: stepRequestPayload as any,
-            signal: request.signal,
-            onDelta: (delta) => {
-              if (delta.thoughtDelta) {
-                markFirstModelEvent();
-                thoughtDeltaEmitted = true;
-                stepCallLogger?.appendThoughtDelta(delta.thoughtDelta);
-                request.onEvent?.({ type: "delta", channel: "thought", text: delta.thoughtDelta });
-              }
-              if (delta.textDelta) {
-                markFirstModelEvent();
-                sawResponseDelta = true;
-                stepCallLogger?.appendResponseDelta(delta.textDelta);
-                request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
-              }
-            },
+          const recorded = await persistentModelCall(turn, stepRequestPayload, async () => {
+            const value = await collectChatGptCodexResponseWithRetry({
+              sessionId: conversationId,
+              request: stepRequestPayload as any,
+              signal: request.signal,
+              onDelta: (delta) => {
+                if (delta.thoughtDelta) {
+                  markFirstModelEvent();
+                  thoughtDeltaEmitted = true;
+                  stepCallLogger?.appendThoughtDelta(delta.thoughtDelta);
+                  request.onEvent?.({
+                    type: "delta",
+                    channel: "thought",
+                    text: delta.thoughtDelta,
+                  });
+                }
+                if (delta.textDelta) {
+                  markFirstModelEvent();
+                  sawResponseDelta = true;
+                  stepCallLogger?.appendResponseDelta(delta.textDelta);
+                  request.onEvent?.({ type: "delta", channel: "response", text: delta.textDelta });
+                }
+              },
+            });
+            return {
+              value,
+              state: {
+                stepStartedAtMs,
+                modelCompletedAtMs: Date.now(),
+                thoughtDeltaEmitted,
+                sawResponseDelta,
+                firstModelEventAtMs,
+              },
+            };
           });
-          const modelCompletedAtMs = Date.now();
+          const response = recorded.value;
+          ({ thoughtDeltaEmitted, sawResponseDelta, firstModelEventAtMs } = recorded.state);
+
+          stepStartedAtMs = recorded.state.stepStartedAtMs;
+          const modelCompletedAtMs = recorded.state.modelCompletedAtMs;
 
           modelVersion = response.model || providerInfo.model;
           servingMetadata = resolveServingMetadata(request, response.serviceTier);
@@ -7520,7 +7619,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
                 : [];
             finalText = responseText;
             finalThoughts = reasoningSummaryText;
-            const stepCompletedAtMs = Date.now();
+            const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
             const timing = buildStepTiming({
               stepStartedAtMs,
               stepCompletedAtMs,
@@ -7687,7 +7786,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             }
           }
 
-          const stepCompletedAtMs = Date.now();
+          const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
@@ -7742,10 +7841,12 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             finalThoughts = reasoningSummaryText;
             return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
           }
-          input =
-            steeringItems.length > 0
-              ? input.concat(toolOutputs, steeringItems)
-              : input.concat(toolOutputs);
+          const replayItems = hasToolLoopPersistence()
+            ? (response.replayItems ?? []).filter(
+                (item) => item.type !== "function_call" && item.type !== "custom_tool_call",
+              )
+            : [];
+          input = input.concat(replayItems, toolOutputs, steeringItems);
         } catch (error) {
           stepCallLogger?.fail(error, {
             responseText,
@@ -7791,7 +7892,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
-        const stepStartedAtMs = Date.now();
+        let stepStartedAtMs = Date.now();
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
         let modelVersion: string = request.model;
         let finishReason: string | undefined;
@@ -7829,32 +7930,48 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           step: turn,
         });
         try {
-          const response = await runCall(
-            async (client) => {
-              return await streamFireworksChatCompletion(client, stepRequestPayload, {
-                signal: request.signal,
-                provider,
-                onDelta: (channel, text) => {
-                  if (channel === "thought") {
-                    reasoningContent = (reasoningContent ?? "") + text;
-                    stepCallLogger?.appendThoughtDelta(text);
-                  } else {
-                    responseText += text;
-                    stepCallLogger?.appendResponseDelta(text);
-                  }
-                  request.onEvent?.({ type: "delta", channel, text });
-                },
-              });
-            },
-            providerInfo.model,
-            {
-              signal: request.signal,
-              onSettled: (metrics) => {
-                schedulerMetrics = metrics;
+          const recorded = await persistentModelCall(turn, stepRequestPayload, async () => {
+            const value = await runCall(
+              async (client) => {
+                return await streamFireworksChatCompletion(client, stepRequestPayload, {
+                  signal: request.signal,
+                  provider,
+                  onDelta: (channel, text) => {
+                    if (channel === "thought") {
+                      reasoningContent = (reasoningContent ?? "") + text;
+                      stepCallLogger?.appendThoughtDelta(text);
+                    } else {
+                      responseText += text;
+                      stepCallLogger?.appendResponseDelta(text);
+                    }
+                    request.onEvent?.({ type: "delta", channel, text });
+                  },
+                });
               },
-            },
-          );
-          const modelCompletedAtMs = Date.now();
+              providerInfo.model,
+              {
+                signal: request.signal,
+                onSettled: (metrics) => {
+                  schedulerMetrics = metrics;
+                },
+              },
+            );
+            return {
+              value,
+              state: {
+                stepStartedAtMs,
+                modelCompletedAtMs: Date.now(),
+                responseText,
+                reasoningContent,
+                schedulerMetrics,
+              },
+            };
+          });
+          const response = recorded.value;
+          ({ responseText, reasoningContent, schedulerMetrics } = recorded.state);
+
+          stepStartedAtMs = recorded.state.stepStartedAtMs;
+          const modelCompletedAtMs = recorded.state.modelCompletedAtMs;
 
           if (provider === "vercel") {
             const actual = extractVercelServingMetadata(response);
@@ -7920,7 +8037,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
               steeringInput.length > 0 ? toFireworksMessages(steeringInput) : [];
             finalText = responseText;
             finalThoughts = reasoningContent ?? "";
-            const stepCompletedAtMs = Date.now();
+            const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
             const timing = buildStepTiming({
               stepStartedAtMs,
               stepCompletedAtMs,
@@ -8064,7 +8181,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             });
           }
 
-          const stepCompletedAtMs = Date.now();
+          const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
@@ -8457,7 +8574,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
       const config = anthropicRequestConfig(request);
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
-        const stepStartedAtMs = Date.now();
+        let stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
         let modelVersion: string = request.model;
@@ -8500,21 +8617,40 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
             }
             request.onEvent?.({ type: "delta", channel, text });
           };
-          const response = await runAnthropicCall(
-            (client) =>
-              client.streamMessage(stepRequestPayload, {
+          const recorded = await persistentModelCall(turn, stepRequestPayload, async () => {
+            const value = await runAnthropicCall(
+              (client) =>
+                client.streamMessage(stepRequestPayload, {
+                  signal: request.signal,
+                  onDelta: pushDelta,
+                }),
+              request.model,
+              {
                 signal: request.signal,
-                onDelta: pushDelta,
-              }),
-            request.model,
-            {
-              signal: request.signal,
-              onSettled: (metrics) => {
-                schedulerMetrics = metrics;
+                onSettled: (metrics) => {
+                  schedulerMetrics = metrics;
+                },
               },
-            },
-          );
-          const modelCompletedAtMs = Date.now();
+            );
+            return {
+              value,
+              state: {
+                stepStartedAtMs,
+                modelCompletedAtMs: Date.now(),
+                responseText,
+                thoughts,
+                sawResponseDelta,
+                sawThoughtDelta,
+                schedulerMetrics,
+              },
+            };
+          });
+          const response = recorded.value;
+          ({ responseText, thoughts, sawResponseDelta, sawThoughtDelta, schedulerMetrics } =
+            recorded.state);
+
+          stepStartedAtMs = recorded.state.stepStartedAtMs;
+          const modelCompletedAtMs = recorded.state.modelCompletedAtMs;
           servingMetadata = {
             ...resolveServingMetadata(request, undefined, response.usage.speed),
             ...(response.usage.service_tier ? { serviceTier: response.usage.service_tier } : {}),
@@ -8635,7 +8771,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
               ...(result.error ? { is_error: true } : {}),
             });
           }
-          const stepCompletedAtMs = Date.now();
+          const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
@@ -8732,7 +8868,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
-      const stepStartedAtMs = Date.now();
+      let stepStartedAtMs = Date.now();
       let firstModelEventAtMs: number | undefined;
       let schedulerMetrics: CallSchedulerRunMetrics | undefined;
       let modelVersion: string = request.model;
@@ -8788,93 +8924,112 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           readonly finishReason?: string;
         };
 
-        const response: GeminiToolLoopResponse = await runGeminiCall(
-          async (client) => {
-            const stream = await client.models.generateContentStream({
-              model: request.model,
-              contents: preparedGeminiContents,
-              config,
-            });
-            let responseText = "";
-            let thoughtsText = "";
-            const modelParts: GeminiPart[] = [];
-            const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
-            let latestUsageMetadata: unknown;
-            let resolvedModelVersion: string | undefined;
-            let resolvedFinishReason: string | undefined;
+        const recorded = await persistentModelCall(
+          turn,
+          { ...stepRequestPayload, config: { ...config, abortSignal: undefined } },
+          async () => {
+            const value = await runGeminiCall(
+              async (client) => {
+                const stream = await client.models.generateContentStream({
+                  model: request.model,
+                  contents: preparedGeminiContents,
+                  config,
+                });
+                let responseText = "";
+                let thoughtsText = "";
+                const modelParts: GeminiPart[] = [];
+                const functionCalls: Array<NonNullable<GeminiPart["functionCall"]>> = [];
+                let latestUsageMetadata: unknown;
+                let resolvedModelVersion: string | undefined;
+                let resolvedFinishReason: string | undefined;
 
-            for await (const chunk of guardGeminiStreamRetries(stream)) {
-              markFirstModelEvent();
-              if (chunk.modelVersion) {
-                resolvedModelVersion = chunk.modelVersion;
-                onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
-              }
-              if (chunk.usageMetadata) {
-                latestUsageMetadata = chunk.usageMetadata;
-              }
-              const candidates = chunk.candidates;
-              if (!candidates || candidates.length === 0) {
-                continue;
-              }
-              const primary = candidates[0];
-              if (primary?.finishReason) {
-                resolvedFinishReason = primary.finishReason;
-              }
-              const parts = primary?.content?.parts ?? [];
-              const chunkFunctionCalls =
-                (
-                  chunk as {
-                    functionCalls?: Array<NonNullable<GeminiPart["functionCall"]>>;
+                for await (const chunk of guardGeminiStreamRetries(stream)) {
+                  markFirstModelEvent();
+                  if (chunk.modelVersion) {
+                    resolvedModelVersion = chunk.modelVersion;
+                    onEvent?.({ type: "model", modelVersion: chunk.modelVersion });
                   }
-                ).functionCalls ?? [];
-              if (parts.length === 0 && chunkFunctionCalls.length === 0) {
-                continue;
-              }
+                  if (chunk.usageMetadata) {
+                    latestUsageMetadata = chunk.usageMetadata;
+                  }
+                  const candidates = chunk.candidates;
+                  if (!candidates || candidates.length === 0) {
+                    continue;
+                  }
+                  const primary = candidates[0];
+                  if (primary?.finishReason) {
+                    resolvedFinishReason = primary.finishReason;
+                  }
+                  const parts = primary?.content?.parts ?? [];
+                  const chunkFunctionCalls =
+                    (
+                      chunk as {
+                        functionCalls?: Array<NonNullable<GeminiPart["functionCall"]>>;
+                      }
+                    ).functionCalls ?? [];
+                  if (parts.length === 0 && chunkFunctionCalls.length === 0) {
+                    continue;
+                  }
 
-              for (const part of parts) {
-                modelParts.push(part);
-                if (typeof part.text === "string" && part.text.length > 0) {
-                  if (part.thought) {
-                    thoughtsText += part.text;
-                    stepCallLogger?.appendThoughtDelta(part.text);
-                    onEvent?.({ type: "delta", channel: "thought", text: part.text });
-                  } else {
-                    responseText += part.text;
-                    stepCallLogger?.appendResponseDelta(part.text);
-                    onEvent?.({ type: "delta", channel: "response", text: part.text });
+                  for (const part of parts) {
+                    modelParts.push(part);
+                    if (typeof part.text === "string" && part.text.length > 0) {
+                      if (part.thought) {
+                        thoughtsText += part.text;
+                        stepCallLogger?.appendThoughtDelta(part.text);
+                        onEvent?.({ type: "delta", channel: "thought", text: part.text });
+                      } else {
+                        responseText += part.text;
+                        stepCallLogger?.appendResponseDelta(part.text);
+                        onEvent?.({ type: "delta", channel: "response", text: part.text });
+                      }
+                    }
+                  }
+                  if (chunkFunctionCalls.length > 0) {
+                    functionCalls.push(...chunkFunctionCalls);
+                    continue;
+                  }
+                  for (const part of parts) {
+                    if (part.functionCall) {
+                      functionCalls.push(part.functionCall);
+                    }
                   }
                 }
-              }
-              if (chunkFunctionCalls.length > 0) {
-                functionCalls.push(...chunkFunctionCalls);
-                continue;
-              }
-              for (const part of parts) {
-                if (part.functionCall) {
-                  functionCalls.push(part.functionCall);
-                }
-              }
-            }
 
+                return {
+                  responseText,
+                  thoughtsText,
+                  functionCalls,
+                  modelParts,
+                  usageMetadata: latestUsageMetadata,
+                  modelVersion: resolvedModelVersion ?? request.model,
+                  finishReason: resolvedFinishReason,
+                };
+              },
+              request.model,
+              {
+                signal: request.signal,
+                onSettled: (metrics) => {
+                  schedulerMetrics = metrics;
+                },
+              },
+            );
             return {
-              responseText,
-              thoughtsText,
-              functionCalls,
-              modelParts,
-              usageMetadata: latestUsageMetadata,
-              modelVersion: resolvedModelVersion ?? request.model,
-              finishReason: resolvedFinishReason,
+              value,
+              state: {
+                stepStartedAtMs,
+                modelCompletedAtMs: Date.now(),
+                firstModelEventAtMs,
+                schedulerMetrics,
+              },
             };
           },
-          request.model,
-          {
-            signal: request.signal,
-            onSettled: (metrics) => {
-              schedulerMetrics = metrics;
-            },
-          },
         );
-        const modelCompletedAtMs = Date.now();
+        const response: GeminiToolLoopResponse = recorded.value;
+        ({ firstModelEventAtMs, schedulerMetrics } = recorded.state);
+
+        stepStartedAtMs = recorded.state.stepStartedAtMs;
+        const modelCompletedAtMs = recorded.state.modelCompletedAtMs;
 
         usageTokens = extractGeminiUsageTokens(response.usageMetadata);
         modelVersion = response.modelVersion ?? request.model;
@@ -8908,7 +9063,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           const steeringInput = steeringInternal?.drainPendingContents() ?? [];
           finalText = responseText;
           finalThoughts = thoughtsText;
-          const stepCompletedAtMs = Date.now();
+          const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
           const timing = buildStepTiming({
             stepStartedAtMs,
             stepCompletedAtMs,
@@ -9071,7 +9226,7 @@ export async function runToolLoop(selection: LlmToolLoopRequest): Promise<LlmToo
           );
         }
 
-        const stepCompletedAtMs = Date.now();
+        const stepCompletedAtMs = persistentTurnCompletedAt(turn, modelCompletedAtMs);
         const timing = buildStepTiming({
           stepStartedAtMs,
           stepCompletedAtMs,
