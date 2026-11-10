@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>llm Browser Agent</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>llm Browser Agent</h1>
+      <p id="status" role="status" aria-live="polite">Checking connection…</p>
+      <form id="connect-form">
+        <label for="bridge-url">Local connection URL</label>
+        <input id="bridge-url" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the URL from the bridge" required />
+        <p class="hint">The URL contains a local access token. Keep it private.</p>
+        <div class="actions">
+          <button type="submit">Connect</button>
+          <button type="button" id="disconnect">Disconnect</button>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

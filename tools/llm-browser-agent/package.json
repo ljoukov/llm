@@ -1,0 +1,35 @@
+{
+  "name": "@ljoukov/llm-browser-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser agent CLI for Chrome, powered by @ljoukov/llm",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "llm-browser-agent": "bin/llm-browser-agent.mjs"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "start": "node --import tsx src/cli.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "test:chrome": "node --import tsx test/chrome-smoke.ts"
+  },
+  "dependencies": {
+    "@ljoukov/llm": "file:../..",
+    "ws": "^8.19.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "@types/ws": "^8.18.1",
+    "playwright": "^1.58.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.0"
+  }
+}
