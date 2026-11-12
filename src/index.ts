@@ -432,3 +432,8 @@ export type { XaiModelId, XaiAccess } from "./xai/models.js";
 
 export { ToolLoopRecoveryError } from "./toolLoopPersistence.js";
 export type { ToolLoopCheckpoint, ToolLoopPersistence } from "./toolLoopPersistence.js";
+export { DEFAULT_COMPACTION_PROMPT } from "./compaction.js";
+export type { LlmCompactionOptions } from "./compaction.js";
+export type { LlmCompactionEvent, LlmCompactionRecord } from "./llm.js";
+export { resolveModelContextWindow, clearModelContextWindowCache } from "./model-context.js";
+export type { ModelContextWindow, ResolveModelContextWindowOptions } from "./model-context.js";

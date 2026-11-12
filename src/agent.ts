@@ -706,6 +706,7 @@ function createSubagentController(params: {
           thinkingLevel: params.toolLoopRequest.thinkingLevel,
           thinkingLevelPolicy: params.toolLoopRequest.thinkingLevelPolicy,
           mediaResolution: params.toolLoopRequest.mediaResolution,
+          compaction: params.toolLoopRequest.compaction,
           signal: subagentRequest.signal,
         } as RunAgentLoopRequest,
         {
@@ -832,8 +833,10 @@ function sumUsageValue(current: number | undefined, next: number | undefined): n
 
 function summarizeResultUsage(result: LlmToolLoopResult): LlmUsageTokens | undefined {
   let summary: LlmUsageTokens | undefined;
-  for (const step of result.steps) {
-    const usage = step.usage;
+  for (const usage of [
+    ...result.steps.map((step) => step.usage),
+    ...(result.compactions ?? []).map((compaction) => compaction.usage),
+  ]) {
     if (!usage) {
       continue;
     }

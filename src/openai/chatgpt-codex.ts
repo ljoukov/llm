@@ -3,6 +3,7 @@ import { TextDecoder } from "node:util";
 
 import { loadLocalEnv } from "../utils/env.js";
 import { getRuntimeSingleton } from "../utils/runtimeSingleton.js";
+import { createRetryingFetch } from "../utils/retryFetch.js";
 import { getChatGptAuthProfile } from "./chatgpt-auth.js";
 import {
   OPENAI_BETA_RESPONSES_WEBSOCKETS_V2,
@@ -21,6 +22,9 @@ const CHATGPT_CODEX_IMAGES_ENDPOINT_ENV = "CHATGPT_CODEX_IMAGES_ENDPOINT";
 const LLM_PROXY_URL_ENV = "LLM_PROXY_URL";
 const LLM_PROXY_API_KEY_ENV = "LLM_PROXY_API_KEY";
 const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
+// Codex model metadata is gated by client protocol version, independently of the
+// library's release version. This version supports the fields used by this client.
+const CHATGPT_CODEX_MODELS_CLIENT_VERSION = "0.144.0";
 
 const chatGptCodexState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptCodexState"), () => ({
   cachedResponsesWebSocketMode: null as ResponsesWebSocketMode | null,
@@ -108,8 +112,17 @@ export type ChatGptReasoningItem = {
   encrypted_content?: string;
 };
 
+/** Opaque server state. Preserve every field unchanged when continuing a conversation. */
+export type ChatGptCompactionItem = {
+  type: "compaction" | "compaction_summary" | "context_compaction";
+  id?: string;
+  encrypted_content: string;
+  [key: string]: unknown;
+};
+
 export type ChatGptInputItem =
   | ChatGptReasoningItem
+  | ChatGptCompactionItem
   | ChatGptInputMessage
   | ChatGptFunctionCall
   | ChatGptCustomToolCall
@@ -122,7 +135,7 @@ export type ChatGptCodexRequest = {
   stream: boolean;
   service_tier?: string;
   instructions?: string;
-  input: ChatGptInputItem[];
+  input: (ChatGptInputItem | { type: "compaction_trigger" })[];
   text?: { verbosity?: string; format?: unknown };
   include?: string[];
   prompt_cache_key?: string;
@@ -131,6 +144,25 @@ export type ChatGptCodexRequest = {
   temperature?: number;
   tools?: unknown[];
   reasoning?: { effort: string; summary?: string };
+};
+
+export type ChatGptCodexCompactionRequest = Pick<
+  ChatGptCodexRequest,
+  | "model"
+  | "input"
+  | "instructions"
+  | "tools"
+  | "parallel_tool_calls"
+  | "reasoning"
+  | "service_tier"
+  | "prompt_cache_key"
+  | "text"
+>;
+
+export type ChatGptCodexCompactionResponse = {
+  /** The entire canonical next input window, including retained messages and opaque state. */
+  readonly output: ChatGptInputItem[];
+  readonly usage?: ChatGptCodexUsage;
 };
 
 export type ChatGptCodexStreamEvent = {
@@ -208,6 +240,9 @@ export type ChatGptCodexImageGenerationCall = {
 };
 
 function replayableCodexItem(item: Record<string, unknown>): ChatGptInputItem | undefined {
+  if (isOpaqueCompactionItem(item)) {
+    return item;
+  }
   if (item.type === "reasoning" && typeof item.id === "string") {
     const summary = Array.isArray(item.summary)
       ? item.summary
@@ -237,6 +272,16 @@ function replayableCodexItem(item: Record<string, unknown>): ChatGptInputItem | 
     } as ChatGptInputItem;
   }
   return undefined;
+}
+
+function isOpaqueCompactionItem(item: Record<string, unknown>): item is ChatGptCompactionItem {
+  return (
+    (item.type === "compaction" ||
+      item.type === "compaction_summary" ||
+      item.type === "context_compaction") &&
+    typeof item.encrypted_content === "string" &&
+    item.encrypted_content.length > 0
+  );
 }
 
 export type ChatGptCodexCollectedResponse = {
@@ -278,6 +323,7 @@ export async function streamChatGptCodexResponse(options: {
   request: ChatGptCodexRequest;
   sessionId?: string;
   signal?: AbortSignal;
+  betaFeatures?: readonly string[];
 }): Promise<AsyncIterable<ChatGptCodexStreamEvent>> {
   const endpointConfig = await resolveChatGptCodexEndpointConfig();
   const mode = resolveChatGptResponsesWebSocketMode();
@@ -291,6 +337,7 @@ export async function streamChatGptCodexResponse(options: {
       endpointConfig,
       sessionId: options.sessionId,
       signal: options.signal,
+      betaFeatures: options.betaFeatures,
     });
     return {
       async *[Symbol.asyncIterator](): AsyncIterator<ChatGptCodexStreamEvent> {
@@ -316,6 +363,7 @@ export async function streamChatGptCodexResponse(options: {
     endpointConfig,
     sessionId: options.sessionId,
     useWebSocket: true,
+    betaFeatures: options.betaFeatures,
   });
   return createAdaptiveResponsesStream({
     mode,
@@ -350,16 +398,21 @@ async function streamChatGptCodexResponseSse(options: {
   endpointConfig: ChatGptCodexEndpointConfig;
   sessionId?: string;
   signal?: AbortSignal;
+  betaFeatures?: readonly string[];
 }): Promise<AsyncIterable<ChatGptCodexStreamEvent>> {
   const headers = buildChatGptCodexHeaders({
     endpointConfig: options.endpointConfig,
     sessionId: options.sessionId,
     useWebSocket: false,
+    betaFeatures: options.betaFeatures,
   });
   headers.Accept = "text/event-stream";
   headers["Content-Type"] = "application/json";
 
-  const response = await fetch(options.endpointConfig.url, {
+  const fetchResponse = options.betaFeatures?.includes("remote_compaction_v2")
+    ? createRetryingFetch(fetch, { scope: "chatgpt-compaction-v2" })
+    : fetch;
+  const response = await fetchResponse(options.endpointConfig.url, {
     method: "POST",
     headers,
     body: JSON.stringify(options.request),
@@ -367,7 +420,9 @@ async function streamChatGptCodexResponseSse(options: {
   });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`ChatGPT Codex request failed (${response.status}): ${body}`);
+    throw Object.assign(new Error(`ChatGPT Codex request failed (${response.status}): ${body}`), {
+      status: response.status,
+    });
   }
   const body = response.body;
   if (!body) {
@@ -412,7 +467,7 @@ function resolveChatGptCodexEndpoint(): string {
 
 function replaceCodexEndpointResource(
   rawUrl: string,
-  resource: "images/generations" | "images/edits",
+  resource: "images/generations" | "images/edits" | "responses/compact" | "models",
 ): string {
   try {
     const url = new URL(rawUrl);
@@ -488,6 +543,7 @@ function buildChatGptCodexHeaders(options: {
   endpointConfig: ChatGptCodexEndpointConfig;
   sessionId?: string;
   useWebSocket: boolean;
+  betaFeatures?: readonly string[];
 }): Record<string, string> {
   const openAiBeta = options.useWebSocket
     ? mergeOpenAiBetaHeader(
@@ -500,6 +556,9 @@ function buildChatGptCodexHeaders(options: {
     originator: "codex_cli_rs",
     "User-Agent": buildUserAgent(),
   };
+  if (options.betaFeatures?.length) {
+    headers["x-codex-beta-features"] = options.betaFeatures.join(",");
+  }
   if (options.endpointConfig.kind === "proxy") {
     headers.Authorization = `Bearer ${options.endpointConfig.apiKey}`;
     headers["x-llm-proxy-auth"] = options.endpointConfig.apiKey;
@@ -554,11 +613,152 @@ export async function requestChatGptCodexImages(options: {
   };
 }
 
+/** Calls server-side compaction; this does not ask a text model to write a summary. */
+export async function requestChatGptCodexCompaction(options: {
+  readonly sessionId?: string;
+  readonly request: ChatGptCodexCompactionRequest;
+  readonly signal?: AbortSignal;
+  /** Responses V2 is the current Codex protocol; unary remains available for older deployments. */
+  readonly transport?: "responses" | "unary";
+}): Promise<ChatGptCodexCompactionResponse> {
+  if (options.transport !== "unary") {
+    const response = await collectChatGptCodexResponse({
+      sessionId: options.sessionId,
+      signal: options.signal,
+      betaFeatures: ["remote_compaction_v2"],
+      requireCompaction: true,
+      request: {
+        ...options.request,
+        instructions: options.request.instructions ?? "You are a helpful assistant.",
+        input: [...options.request.input, { type: "compaction_trigger" }],
+        store: false,
+        stream: true,
+        include: ["reasoning.encrypted_content"],
+      },
+    });
+    return {
+      output: response.replayItems ?? [],
+      ...(response.usage ? { usage: response.usage } : {}),
+    };
+  }
+  const endpointConfig = await resolveChatGptCodexEndpointConfig();
+  const headers = buildChatGptCodexHeaders({
+    endpointConfig,
+    sessionId: options.sessionId,
+    useWebSocket: false,
+  });
+  if (options.sessionId) {
+    headers["session-id"] = options.sessionId;
+    headers["thread-id"] = options.sessionId;
+  }
+  headers.Accept = "application/json";
+  headers["Content-Type"] = "application/json";
+
+  // Build the unary request explicitly: response-only streaming/storage controls
+  // must not leak here if the caller passes an ordinary request object.
+  const request: ChatGptCodexCompactionRequest = {
+    model: options.request.model,
+    input: options.request.input,
+    ...(options.request.instructions !== undefined
+      ? { instructions: options.request.instructions }
+      : {}),
+    ...(options.request.tools !== undefined ? { tools: options.request.tools } : {}),
+    ...(options.request.parallel_tool_calls !== undefined
+      ? { parallel_tool_calls: options.request.parallel_tool_calls }
+      : {}),
+    ...(options.request.reasoning !== undefined ? { reasoning: options.request.reasoning } : {}),
+    ...(options.request.service_tier !== undefined
+      ? { service_tier: options.request.service_tier }
+      : {}),
+    ...(options.request.prompt_cache_key !== undefined
+      ? { prompt_cache_key: options.request.prompt_cache_key }
+      : {}),
+    ...(options.request.text !== undefined ? { text: options.request.text } : {}),
+  };
+  const response = await createRetryingFetch(fetch, { scope: "chatgpt-compaction" })(
+    replaceCodexEndpointResource(endpointConfig.url, "responses/compact"),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+      signal: options.signal,
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    throw Object.assign(
+      new Error(`ChatGPT Codex compaction request failed (${response.status}): ${body}`),
+      { status: response.status },
+    );
+  }
+  const payload: unknown = await response.json();
+  if (!payload || typeof payload !== "object" || !("output" in payload)) {
+    throw new Error("ChatGPT Codex compaction response did not include an output array.");
+  }
+  const output = payload.output;
+  if (
+    !Array.isArray(output) ||
+    output.length === 0 ||
+    !output.every(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        !Array.isArray(item) &&
+        (typeof item.type === "string" ||
+          ["user", "assistant", "system", "developer"].includes(item.role)),
+    ) ||
+    !output.some((item) => isOpaqueCompactionItem(item))
+  ) {
+    throw new Error("ChatGPT Codex compaction response did not include a valid compacted window.");
+  }
+  // The returned window is canonical: do not filter, prune, or normalize its items.
+  return payload as ChatGptCodexCompactionResponse;
+}
+
+/** Read subscription model metadata through the same authenticated route as inference. */
+export async function fetchChatGptCodexModels(
+  options: { readonly signal?: AbortSignal } = {},
+): Promise<readonly unknown[]> {
+  const endpointConfig = await resolveChatGptCodexEndpointConfig();
+  const headers = buildChatGptCodexHeaders({ endpointConfig, useWebSocket: false });
+  headers.Accept = "application/json";
+  const url = new URL(replaceCodexEndpointResource(endpointConfig.url, "models"));
+  url.searchParams.set("client_version", CHATGPT_CODEX_MODELS_CLIENT_VERSION);
+  const timeout = AbortSignal.timeout(20_000);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  const response = await createRetryingFetch(fetch, { scope: "chatgpt-models" })(url.toString(), {
+    method: "GET",
+    headers,
+    signal,
+  });
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(
+        `ChatGPT Codex model metadata request failed (${response.status}). The configured inference route must support GET /models; set compaction.contextWindowTokens or compaction.thresholdTokens explicitly if model metadata is unavailable.`,
+      ),
+      { status: response.status },
+    );
+  }
+  const payload: unknown = await response.json();
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("models" in payload) ||
+    !Array.isArray(payload.models)
+  ) {
+    throw new Error("ChatGPT Codex model metadata response did not include a models array.");
+  }
+  return payload.models;
+}
+
 export async function collectChatGptCodexResponse(options: {
   request: ChatGptCodexRequest;
   sessionId?: string;
   signal?: AbortSignal;
   onDelta?: (delta: ChatGptCodexDelta) => void;
+  betaFeatures?: readonly string[];
+  /** Validate server compaction before any caller replaces its current history. */
+  requireCompaction?: boolean;
 }): Promise<ChatGptCodexCollectedResponse> {
   let requestForAttempt = options.request;
   let retriedWithoutReasoningSummary = false;
@@ -573,6 +773,7 @@ export async function collectChatGptCodexResponse(options: {
       });
       return await collectChatGptCodexStream({
         stream,
+        requireCompaction: options.requireCompaction,
         onDelta: (delta) => {
           sawAnyDelta = true;
           options.onDelta?.(delta);
@@ -605,6 +806,7 @@ export async function collectChatGptCodexResponse(options: {
 async function collectChatGptCodexStream(options: {
   stream: AsyncIterable<ChatGptCodexStreamEvent>;
   onDelta?: (delta: ChatGptCodexDelta) => void;
+  requireCompaction?: boolean;
 }): Promise<ChatGptCodexCollectedResponse> {
   const toolCalls = new Map<string, ChatGptCodexToolCall>();
   const toolCallOrder: string[] = [];
@@ -622,6 +824,8 @@ async function collectChatGptCodexStream(options: {
   let model: string | undefined;
   let status: string | undefined;
   let blocked = false;
+  let sawCompleted = false;
+  let completedCompactionItems = 0;
   for await (const event of options.stream) {
     const type = typeof event.type === "string" ? event.type : undefined;
     if (type === "response.output_text.delta") {
@@ -652,6 +856,7 @@ async function collectChatGptCodexStream(options: {
       const item = event.item as Record<string, unknown> | undefined;
       if (item) {
         if (type === "response.output_item.done") {
+          if (isOpaqueCompactionItem(item)) completedCompactionItems += 1;
           const replay = replayableCodexItem(item);
           if (replay)
             replayItems.set(String(event.output_index ?? item.id ?? replayItems.size), replay);
@@ -713,6 +918,7 @@ async function collectChatGptCodexStream(options: {
       continue;
     }
     if (type === "response.completed") {
+      sawCompleted = true;
       const response = event.response as Record<string, unknown> | undefined;
       if (response) {
         if (Array.isArray(response.output)) {
@@ -755,6 +961,20 @@ async function collectChatGptCodexStream(options: {
           typeof response.service_tier === "string" ? response.service_tier : serviceTier;
         status = typeof response.status === "string" ? response.status : undefined;
       }
+    }
+  }
+
+  if (options.requireCompaction) {
+    if (!sawCompleted) {
+      throw new Error("ChatGPT Codex compaction stream closed before response.completed.");
+    }
+    const compactions = [...replayItems.values()].filter((item) =>
+      isOpaqueCompactionItem(item as Record<string, unknown>),
+    );
+    if (compactions.length !== 1 || completedCompactionItems > 1) {
+      throw new Error(
+        `ChatGPT Codex compaction expected exactly one opaque compaction output item, got ${Math.max(compactions.length, completedCompactionItems)}.`,
+      );
     }
   }
 

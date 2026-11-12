@@ -1,5 +1,25 @@
 # Changelog
 
+## 15.3.0 — 2026-11-12
+
+- Add opt-in conversation compaction to tool and agent loops, preferring native OpenAI Responses,
+  ChatGPT Codex V2 server compaction through `/responses`, supported Anthropic, and xAI API compaction.
+  Preserve opaque or signed continuation state and canonical compacted windows without translating
+  them into text summaries.
+- Add configurable summary compaction for other routes, including an adapted Codex checkpoint prompt,
+  model-dependent token budget, summary budget, and retained recent history. Summary calls inherit the
+  complete parent model route; completed compaction calls participate in checkpoint recovery. Validate
+  Gemini replacements with native token counting, and preserve history when a summary is unusable.
+- Add context-window discovery with cached provider metadata, explicit deployment overrides, and
+  `resolveModelContextWindow()` / `clearModelContextWindowCache()`. Empty compaction options default to
+  80% of the model budget with room reserved for output, rather than a global token threshold.
+  Subscription budgets use Codex metadata or an explicitly documented subscription limit, without
+  substituting API context limits.
+- Report compaction events, receipts, usage, and separate costs without double-counting inline server
+  compaction charges.
+- Expose Claude subscription SDK compaction enablement and window settings while rejecting unsupported
+  custom compaction controls.
+
 ## 15.2.0 — 2026-11-12
 
 - Add `decide()` for native System 1 Boolean, choice, and rubric-score requests through Google Gemini Decision 1,

@@ -40,6 +40,8 @@ export type ClaudeQueryRequest = {
   jsonSchema?: Record<string, unknown>;
   maxSteps?: number;
   maxOutputTokens?: number;
+  /** The Agent SDK owns compaction; undefined keeps its default policy. */
+  compaction?: false | { thresholdTokens: number };
   signal?: AbortSignal;
   tools?: ClaudeTool[];
   /** Internal text follow-ups, delivered between model turns without restarting the session. */
@@ -308,6 +310,15 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
     (!Number.isInteger(request.maxOutputTokens) || request.maxOutputTokens < 1)
   )
     throw new ClaudeSubscriptionError("Claude maxOutputTokens must be a positive integer.");
+  if (
+    request.compaction &&
+    (!Number.isSafeInteger(request.compaction.thresholdTokens) ||
+      request.compaction.thresholdTokens < 100_000 ||
+      request.compaction.thresholdTokens > 1_000_000)
+  )
+    throw new ClaudeSubscriptionError(
+      "Claude compaction thresholdTokens must be an integer from 100000 to 1000000.",
+    );
   const content = promptContent(request.messages);
   const definitions = (request.tools ?? []).map((definition, index) => {
     // The host owns validation with the original schema. A transport-only copy
@@ -447,7 +458,21 @@ export async function runClaudeQueryImpl(request: ClaudeQueryRequest): Promise<C
         : {},
       strictMcpConfig: true,
       settingSources: [],
-      ...(request.speed !== undefined ? { settings: { fastMode: request.speed === "fast" } } : {}),
+      ...(request.speed !== undefined || request.compaction !== undefined
+        ? {
+            settings: {
+              ...(request.speed !== undefined ? { fastMode: request.speed === "fast" } : {}),
+              ...(request.compaction !== undefined
+                ? {
+                    autoCompactEnabled: request.compaction !== false,
+                    ...(request.compaction
+                      ? { autoCompactWindow: request.compaction.thresholdTokens }
+                      : {}),
+                  }
+                : {}),
+            },
+          }
+        : {}),
       extraArgs: { "safe-mode": null },
       plugins: [],
       skills: [],

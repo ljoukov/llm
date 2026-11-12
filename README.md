@@ -1929,6 +1929,119 @@ const result = await runAgentLoop({
 console.log(result.text);
 ```
 
+### Compaction
+
+Long-running `runToolLoop()`, `streamToolLoop()`, `runAgentLoop()`, and `streamAgentLoop()` runs can
+compact their active conversation. Enable it with `compaction: {}` to use a model-dependent budget.
+
+```ts
+import { runAgentLoop } from "@ljoukov/llm";
+
+const result = await runAgentLoop({
+  provider: "openai", access: "subscription", model: "gpt-6.1-sol",
+  input: "Investigate the issue, implement the fix, and verify it.",
+  tools,
+  compaction: {}, // Prefer native server compaction with a model-dependent threshold.
+  onEvent: (event) => {
+    if (event.type === "compaction") {
+      console.log(event.phase, event.mode, event.beforeStep);
+    }
+  },
+});
+
+console.log(result.compactions);
+```
+
+The default `thresholdRatio: 0.8` triggers compaction at 80% of the selected model's context budget,
+capped by its input limit and the space reserved for output in a shared context window. The output
+reserve comes from `reserveOutputTokens`, then the loop's `maxOutputTokens`, then the model's reported
+output limit capped at `32_000` tokens (or `32_000` when that limit is unavailable). There is no fixed
+token threshold across models.
+
+Set `thresholdTokens` for an explicit trigger. When supplied without `contextWindowTokens`, it skips
+model-limit discovery, so the caller owns the context and output budget. Set `contextWindowTokens` to
+override a private deployment's total context window; the resolved threshold is then checked against
+that budget. If model metadata is unavailable, supply one of these explicit overrides.
+
+`resolveModelContextWindow(selection, options?)` exposes the route-specific limits and their source.
+Successful discoveries are cached for one hour, and concurrent lookups share a request;
+`clearModelContextWindowCache()` discards that cache. Discovery uses provider metadata where available.
+OpenAI's public Models resource omits token limits, so its literal API model catalog uses limits checked
+against the official model pages. Subscription limits come from Codex model metadata, independently of
+API limits. When that metadata omits `gpt-6.1-sol`, its
+[documented Codex/ChatGPT Work default](https://developers.openai.com/api/docs/models/gpt-6.1-sol) of
+`500_000` tokens is used. Other subscription models without metadata require `thresholdTokens` or
+`contextWindowTokens`; API limits are not substituted. Google's
+[Models resource](https://ai.google.dev/api/models) reports separate input and output token limits.
+
+| Route | `mode: "auto"` behavior |
+| --- | --- |
+| OpenAI API | Responses API `context_management` server-side compaction |
+| OpenAI subscription | Codex V2 server compaction through ordinary `/responses` with `compaction_trigger` and its beta header |
+| Anthropic API, supported models | On-demand server compaction with a signed compaction block |
+| xAI API | Responses API `POST /responses/compact` |
+| Google, Fireworks, Vercel, xAI subscription, unsupported Anthropic models | Prompt-based summary fallback |
+| Claude subscription | Claude Agent SDK manages compaction inside its own loop; see restrictions below |
+
+`mode: "server"` requires native server support and rejects unsupported routes. `mode: "summary"`
+forces the portable summary fallback. Authentication, rate-limit, and transient server errors do not
+silently switch a native request to summary mode. Pass `compaction: false` or omit the option to leave
+library-managed compaction disabled.
+
+Codex V2 carries native encrypted continuation state and does not ask the model for a text summary.
+It sends `x-codex-beta-features: remote_compaction_v2` with the compaction request.
+The older unary `/responses/compact` transport remains available internally for older deployments;
+it is not the default subscription path.
+
+The fallback accepts `prompt`, `maxSummaryTokens` (default `4096`), and
+`preserveRecentMessages` (default `4`). Its default prompt is adapted from Codex's checkpoint handoff:
+preserve the current goal, user constraints and corrections, decisions, completed work, unresolved
+questions, next actions, and exact identifiers or references needed to continue. Set `prompt` to replace
+it for your task, or build on the exported `DEFAULT_COMPACTION_PROMPT`. Summary calls inherit the
+running agent's resolved provider, access, model, and speed; there is no separate summarizer model
+override. System and developer instructions remain explicit, and recent history is retained at complete
+conversation boundaries so tool calls keep their results.
+
+`maxSummaryTokens` is passed as an output cap on API fallback routes. Forced Codex prompt-summary
+compaction uses it as an advisory target because that subscription transport does not support the cap.
+
+Compaction runs between completed tool turns. Client-managed thresholds use reported token usage where
+available and a text-size estimate; they are not an exact tokenizer or a guarantee that an already
+oversized request can be recovered. Gemini additionally validates the replacement with its native
+`countTokens` API, including the system instruction and tool definitions. The ordinary Gemini
+`generateContent` route uses this summary fallback; compaction in Live or managed-agent products is a
+separate capability.
+
+An empty, blocked, or non-shrinking summary stops the run while preserving the original history. Saved
+model receipts include rejected summaries, so checkpoint recovery does not pay to generate the same
+summary again. Native encrypted or signed compaction state is carried forward unchanged. In particular,
+a standalone compact endpoint's entire returned window is canonical and is
+not reduced to just its compaction item. Checkpoints retain completed compaction calls so recovery can
+reuse them along with ordinary model responses.
+
+`result.compactions`, when present, records `beforeStep`, `mode`, optional `inputTokensBefore` and
+`usage`, and `costUsd` for each compaction. Streaming emits `type: "compaction"` with `phase: "started"`
+or `"completed"` and the same fields. Separate compaction charges are included in `totalCostUsd`;
+inline OpenAI server compaction is already charged in the ordinary generation step, so its compaction
+record has `costUsd: 0`.
+
+Claude subscription accepts automatic window controls when the resolved threshold is from `100_000`
+to `1_000_000` tokens, or `compaction: false`. These map to the SDK's `autoCompactWindow` and
+`autoCompactEnabled` settings. Its SDK owns the conversation and compaction process, so
+`server`/`summary` modes and custom prompt,
+summary-budget, or recent-message controls are rejected rather than approximated. Omitting the option
+preserves the SDK's own defaults.
+
+Compaction is lossy: retain source files or external records for details that must remain exact. The
+fallback follows [Anthropic's context-engineering guidance](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+to preserve essential state and discard redundant history. Google's
+[Gemini CLI compression implementation](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/context/chatCompressionService.ts)
+and [checkpoint prompt](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/prompts/snippets.ts)
+also inform the continuation-summary design. Native contracts are documented in
+[OpenAI compaction](https://developers.openai.com/api/docs/guides/compaction),
+[Anthropic on-demand compaction](https://platform.claude.com/docs/en/build-with-claude/compaction-on-demand),
+and [xAI context compaction](https://docs.x.ai/developers/advanced-api-usage/context-compaction).
+
 ### Restartable tool and agent loops
 
 Pass `persistence` to `runToolLoop()` or `runAgentLoop()` to recover completed model/tool boundaries.

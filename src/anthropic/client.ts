@@ -65,6 +65,14 @@ export type AnthropicDocumentBlock = {
   citations?: { enabled: boolean };
 };
 
+/** Keep the content and signature exactly as returned by the compaction API. */
+export type AnthropicCompactionBlock = {
+  type: "compaction";
+  content: string;
+  signature: string;
+  cache_control?: Record<string, unknown>;
+};
+
 export type AnthropicContentBlock =
   | AnthropicTextBlock
   | AnthropicThinkingBlock
@@ -72,7 +80,8 @@ export type AnthropicContentBlock =
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
   | AnthropicImageBlock
-  | AnthropicDocumentBlock;
+  | AnthropicDocumentBlock
+  | AnthropicCompactionBlock;
 
 export type AnthropicMessageParam = {
   role: "user" | "assistant";
@@ -106,6 +115,7 @@ export type AnthropicMessageRequest = {
   };
   temperature?: number;
   stop_sequences?: string[];
+  compaction?: { type: "summarize"; instructions?: string };
 };
 
 export type AnthropicUsage = {
@@ -121,6 +131,14 @@ export type AnthropicUsage = {
     ephemeral_1h_input_tokens?: number;
   };
   server_tool_use?: { web_search_requests?: number; web_fetch_requests?: number };
+  /** Includes both summarization and ordinary generation when compaction runs. */
+  iterations?: AnthropicUsageIteration[];
+};
+
+export type AnthropicUsageIteration = Omit<AnthropicUsage, "iterations" | "cache_creation"> & {
+  type: string;
+  model?: string | null;
+  cache_creation?: AnthropicUsage["cache_creation"] | null;
 };
 
 export type AnthropicMessage = {
@@ -202,6 +220,77 @@ function mergeUsage(current: AnthropicUsage, update: Partial<AnthropicUsage>): A
 
 /** Retries rejected HTTP requests before handing an accepted stream to its consumer. */
 export class AnthropicClient {
+  async getModel(model: string, options: { signal?: AbortSignal } = {}): Promise<unknown> {
+    const apiKey = resolveApiKey();
+    const response = await getRetryingFetch()(
+      `https://api.anthropic.com/v1/models/${encodeURIComponent(model)}`,
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          "anthropic-version": ANTHROPIC_VERSION,
+          "x-api-key": apiKey,
+        },
+        signal: options.signal,
+      },
+    );
+    if (!response.ok) {
+      let detail = "";
+      try {
+        const payload = (await response.json()) as { error?: { message?: unknown } };
+        if (typeof payload.error?.message === "string") {
+          detail = `: ${safeErrorMessage(payload.error.message, apiKey)}`;
+        }
+      } catch {
+        // The status still identifies failures with non-JSON response bodies.
+      }
+      throw new AnthropicApiError(
+        `Anthropic model request failed (HTTP ${response.status})${detail}`,
+        response.status,
+        errorHeaders(response, apiKey),
+      );
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw new AnthropicApiError("Anthropic model request returned invalid JSON.");
+    }
+  }
+
+  /** Native server-side compaction; the returned assistant message replaces the submitted history. */
+  async compactMessage(
+    request: AnthropicMessageRequest,
+    options: AnthropicStreamOptions = {},
+  ): Promise<AnthropicMessage> {
+    const {
+      tool_choice: _toolChoice,
+      stop_sequences: _stopSequences,
+      output_config,
+      ...parameters
+    } = request;
+    const message = await this.streamMessage(
+      {
+        ...parameters,
+        ...(output_config?.effort ? { output_config: { effort: output_config.effort } } : {}),
+        compaction: request.compaction ?? { type: "summarize" },
+      },
+      options,
+    );
+    const block = message.content[0];
+    if (
+      message.stop_reason !== "compaction" ||
+      message.content.length !== 1 ||
+      block?.type !== "compaction" ||
+      typeof block.content !== "string" ||
+      !block.content.trim() ||
+      typeof block.signature !== "string" ||
+      !block.signature
+    ) {
+      throw new AnthropicApiError("Anthropic compaction returned no signed compaction summary.");
+    }
+    return message;
+  }
+
   async streamMessage(
     request: AnthropicMessageRequest,
     options: AnthropicStreamOptions = {},
@@ -214,6 +303,14 @@ export class AnthropicClient {
         accept: "text/event-stream",
         "anthropic-version": ANTHROPIC_VERSION,
         "x-api-key": apiKey,
+        ...(request.compaction ||
+        request.messages.some(
+          (message) =>
+            Array.isArray(message.content) &&
+            message.content.some((block) => block.type === "compaction"),
+        )
+          ? { "anthropic-beta": "compact-2026-09-04" }
+          : {}),
       },
       body: JSON.stringify({ ...request, stream: true }),
       signal: options.signal,

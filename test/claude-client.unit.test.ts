@@ -451,6 +451,57 @@ describe("Claude subscription Agent SDK transport", () => {
     expect(sdk.query).not.toHaveBeenCalled();
   });
 
+  it("configures SDK compaction without replacing speed settings", async () => {
+    const mocked = stubQuery();
+    await runClaudeQueryImpl({
+      ...request,
+      model: "claude-opus-5-5",
+      speed: "fast",
+      compaction: { thresholdTokens: 250_000 },
+    });
+    expect(mocked.input().options.settings).toEqual({
+      fastMode: true,
+      autoCompactEnabled: true,
+      autoCompactWindow: 250_000,
+    });
+  });
+
+  it("can disable SDK compaction explicitly", async () => {
+    const mocked = stubQuery();
+    await runClaudeQueryImpl({ ...request, compaction: false });
+    expect(mocked.input().options.settings).toEqual({ autoCompactEnabled: false });
+  });
+
+  it("leaves the SDK compaction default unchanged when omitted", async () => {
+    const mocked = stubQuery();
+    await runClaudeQueryImpl(request);
+    expect(mocked.input().options.settings).toBeUndefined();
+  });
+
+  it.each([
+    100_000, 1_000_000,
+  ])("accepts compaction window boundary %s", async (thresholdTokens) => {
+    const mocked = stubQuery();
+    await runClaudeQueryImpl({ ...request, compaction: { thresholdTokens } });
+    expect(mocked.input().options.settings).toEqual({
+      autoCompactEnabled: true,
+      autoCompactWindow: thresholdTokens,
+    });
+  });
+
+  it.each([
+    99_999,
+    1_000_001,
+    100_000.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])("rejects invalid SDK compaction window %s before starting the query", async (thresholdTokens) => {
+    await expect(
+      runClaudeQueryImpl({ ...request, compaction: { thresholdTokens } }),
+    ).rejects.toThrow("Claude compaction thresholdTokens");
+    expect(sdk.query).not.toHaveBeenCalled();
+  });
+
   it("reports the served speed and independent capacity tier instead of assuming requested speed", async () => {
     const model = "claude-opus-5-5";
     stubQuery([

@@ -30,8 +30,11 @@ const CHATGPT_UPSTREAM_HEADER_ALLOWLIST = new Set([
   "accept",
   "content-type",
   "openai-beta",
+  "x-codex-beta-features",
   "originator",
   "session_id",
+  "session-id",
+  "thread-id",
   "user-agent",
 ]);
 
@@ -139,7 +142,7 @@ function resolveUpstreamUrl(): string {
 
 function replaceCodexEndpointResource(
   rawUrl: string,
-  resource: "images/generations" | "images/edits",
+  resource: "images/generations" | "images/edits" | "responses/compact" | "models",
 ): string {
   const url = new URL(rawUrl);
   const path = url.pathname.replace(/\/+$/u, "");
@@ -255,7 +258,7 @@ function normalizeEpochMillis(value: unknown): number | null {
 function buildUpstreamHeaders(
   request: Request,
   token: ChatGptCodexToken,
-  mode: "responses" | "images" = "responses",
+  mode: "responses" | "images" | "compaction" = "responses",
 ): Headers {
   const headers = new Headers();
   for (const [name, value] of request.headers) {
@@ -275,7 +278,7 @@ function buildUpstreamHeaders(
 
   headers.set("authorization", `Bearer ${token.accessToken}`);
   headers.set("chatgpt-account-id", token.accountId);
-  if (mode === "responses" && !headers.has("openai-beta")) {
+  if (mode !== "images" && !headers.has("openai-beta")) {
     headers.set("openai-beta", DEFAULT_OPENAI_BETA_HEADER);
   } else if (mode === "images") {
     headers.delete("openai-beta");
@@ -416,7 +419,10 @@ export async function handleCodexUsageRequest(request: Request): Promise<Respons
   }
 }
 
-export async function handleCodexResponsesRequest(request: Request): Promise<Response> {
+export async function handleCodexResponsesRequest(
+  request: Request,
+  operation: "responses" | "compact" = "responses",
+): Promise<Response> {
   if (!isAuthorized(request)) {
     return unauthorized();
   }
@@ -431,7 +437,11 @@ export async function handleCodexResponsesRequest(request: Request): Promise<Res
 
   const upstreamRequestInit: StreamingRequestInit = {
     method: "POST",
-    headers: buildUpstreamHeaders(request, token),
+    headers: buildUpstreamHeaders(
+      request,
+      token,
+      operation === "compact" ? "compaction" : "responses",
+    ),
     body: request.body,
     signal: request.signal,
   };
@@ -439,7 +449,12 @@ export async function handleCodexResponsesRequest(request: Request): Promise<Res
     upstreamRequestInit.duplex = "half";
   }
 
-  const upstreamResponse = await fetch(resolveUpstreamUrl(), upstreamRequestInit);
+  const upstreamResponse = await fetch(
+    operation === "compact"
+      ? replaceCodexEndpointResource(resolveUpstreamUrl(), "responses/compact")
+      : resolveUpstreamUrl(),
+    upstreamRequestInit,
+  );
 
   return new Response(upstreamResponse.body, {
     status: upstreamResponse.status,
@@ -449,7 +464,10 @@ export async function handleCodexResponsesRequest(request: Request): Promise<Res
 }
 
 /** Relay a named application's own auth grant; never use the relay's shared account pool. */
-export async function handleApplicationResponsesRequest(request: Request): Promise<Response> {
+export async function handleApplicationResponsesRequest(
+  request: Request,
+  operation: "responses" | "compact" = "responses",
+): Promise<Response> {
   const applicationKey = getProxyAuthToken(request);
   if (!applicationKey?.startsWith("llmc_") || applicationKey.length > 512) return unauthorized();
   if (request.method !== "POST") return methodNotAllowed();
@@ -463,12 +481,21 @@ export async function handleApplicationResponsesRequest(request: Request): Promi
   }
   const init: StreamingRequestInit = {
     method: "POST",
-    headers: buildUpstreamHeaders(request, token),
+    headers: buildUpstreamHeaders(
+      request,
+      token,
+      operation === "compact" ? "compaction" : "responses",
+    ),
     body: request.body,
     signal: request.signal,
   };
   if (request.body) init.duplex = "half";
-  const upstream = await fetch(resolveUpstreamUrl(), init);
+  const upstream = await fetch(
+    operation === "compact"
+      ? replaceCodexEndpointResource(resolveUpstreamUrl(), "responses/compact")
+      : resolveUpstreamUrl(),
+    init,
+  );
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
@@ -507,5 +534,46 @@ export async function handleCodexImagesRequest(
     status: upstreamResponse.status,
     statusText: upstreamResponse.statusText,
     headers: buildClientHeaders(upstreamResponse.headers),
+  });
+}
+
+/** Relay read-only model metadata without changing the selected subscription grant. */
+export async function handleCodexModelsRequest(
+  request: Request,
+  access: "proxy" | "application" = "proxy",
+): Promise<Response> {
+  const applicationKey = access === "application" ? getProxyAuthToken(request) : undefined;
+  if (access === "application") {
+    if (!applicationKey?.startsWith("llmc_") || applicationKey.length > 512) return unauthorized();
+  } else if (!isAuthorized(request)) {
+    return unauthorized();
+  }
+  if (request.method !== "GET") return methodNotAllowed();
+  const clientVersion = new URL(request.url).searchParams.get("client_version") ?? "0.144.0";
+  if (clientVersion.length > 64 || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/u.test(clientVersion)) {
+    return json({ error: "invalid_client_version" }, { status: 400 });
+  }
+  const token = await fetchChatGptCodexToken(applicationKey ?? undefined);
+  if (token instanceof Response) return token;
+  if (
+    access === "application" &&
+    (token.expiresAt === null || token.expiresAt <= Date.now() + 30_000)
+  ) {
+    return json(
+      { error: "token_provider_invalid_response", message: "Subscription token expired." },
+      { status: 502 },
+    );
+  }
+  const url = new URL(replaceCodexEndpointResource(resolveUpstreamUrl(), "models"));
+  url.searchParams.set("client_version", clientVersion);
+  const upstream = await fetch(url.toString(), {
+    method: "GET",
+    headers: buildUpstreamHeaders(request, token, "compaction"),
+    signal: request.signal,
+  });
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: buildClientHeaders(upstream.headers),
   });
 }

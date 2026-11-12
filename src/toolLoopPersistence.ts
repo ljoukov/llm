@@ -127,12 +127,15 @@ export async function withToolLoopPersistence(
   });
 }
 
-export async function persistentLoopValue<T>(key: string, create: () => T): Promise<T> {
+export async function persistentLoopValue<T>(
+  key: string,
+  create: () => T | Promise<T>,
+): Promise<T> {
   const journal = storage.getStore();
   if (!journal) return create();
   if (Object.hasOwn(journal.checkpoint.values, key))
     return clone(journal.checkpoint.values[key]) as T;
-  const value = create();
+  const value = await create();
   journal.checkpoint.values[key] = clone(value);
   await commit(journal);
   return value;
@@ -140,7 +143,7 @@ export async function persistentLoopValue<T>(key: string, create: () => T): Prom
 
 /** Rebuild native history from recorded responses without making completed model calls again. */
 export async function persistentModelCall<T>(
-  turn: number,
+  turn: number | `compaction:${number}`,
   request: unknown,
   call: () => Promise<T>,
 ): Promise<T> {

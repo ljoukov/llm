@@ -39,6 +39,7 @@ import { estimateCallCostUsd, resolveCallCostUsd, type LlmUsageTokens } from "./
 import type { CallSchedulerRunMetrics } from "./utils/scheduler.js";
 import {
   collectChatGptCodexResponse,
+  requestChatGptCodexCompaction,
   requestChatGptCodexImages,
   type ChatGptInputItem,
   type ChatGptInputMessagePart,
@@ -142,6 +143,19 @@ import {
   type LlmSpeed,
 } from "./model-selection.js";
 import { runXaiCall } from "./xai/calls.js";
+import {
+  assertCompleteCompactionHistory,
+  compactionTranscript,
+  estimateCompactionTokens,
+  resolveCompactionOptions,
+  splitCompactionHistory,
+  type LlmCompactionOptions,
+} from "./compaction.js";
+import { resolveModelContextWindow } from "./model-context.js";
+import {
+  isAnthropicCompactionSupported,
+  sumAnthropicUsageIterations,
+} from "./anthropic/compaction.js";
 import { XAI_MODEL_IDS, isXaiModelId } from "./xai/models.js";
 import {
   resolveThinkingLevel,
@@ -359,7 +373,22 @@ export type LlmStreamEvent =
   | LlmUsageEvent
   | LlmModelEvent
   | LlmBlockedEvent
-  | LlmToolCallStreamEvent;
+  | LlmToolCallStreamEvent
+  | LlmCompactionEvent;
+
+export type LlmCompactionRecord = {
+  readonly beforeStep: number;
+  readonly mode: "server" | "summary";
+  readonly inputTokensBefore?: number;
+  readonly usage?: LlmUsageTokens;
+  /** Separate compaction charge. Inline server compaction is included in the generation step. */
+  readonly costUsd: number | null;
+};
+
+export type LlmCompactionEvent = {
+  readonly type: "compaction";
+  readonly phase: "started" | "completed";
+} & LlmCompactionRecord;
 
 export type { LlmOpenModelProvider } from "./vercel/models.js";
 export type {
@@ -756,6 +785,7 @@ export type LlmToolLoopResult = {
   readonly content?: LlmContent;
   readonly steps: readonly LlmToolLoopStep[];
   readonly totalCostUsd: number | null;
+  readonly compactions?: readonly LlmCompactionRecord[];
 };
 
 export type LlmToolLoopSteeringMessage = {
@@ -783,6 +813,8 @@ export type LlmToolLoopSteeringChannel = {
 export type LlmToolLoopRequest = LlmInput &
   LlmTextModelSelection & {
     readonly persistence?: ToolLoopPersistence;
+    /** Opt in to native context compaction, with a configurable same-model summary fallback. */
+    readonly compaction?: false | LlmCompactionOptions;
     readonly tools: LlmToolSet;
     readonly modelTools?: readonly LlmToolConfig[];
     readonly maxSteps?: number;
@@ -1456,6 +1488,8 @@ function convertLlmContentToGeminiContent(
 }
 
 const thinkingResolutionSymbol = Symbol("thinkingResolution");
+// A private budget for the internal summarizer; it is never exposed as a model override.
+const compactionSummaryBudget = Symbol("compactionSummaryBudget");
 type NormalizedModelRequest<T> = Omit<T, "provider" | "access" | "model" | "speed"> &
   LlmModelRef & {
     readonly access: LlmAccess;
@@ -3071,6 +3105,7 @@ function anthropicRequestConfig(
 
 function extractAnthropicUsageTokens(usage: AnthropicMessage["usage"]): LlmUsageTokens | undefined {
   if (!usage) return undefined;
+  usage = sumAnthropicUsageIterations(usage);
   const input = toMaybeNumber(usage.input_tokens) ?? 0;
   const cachedTokens = toMaybeNumber(usage.cache_read_input_tokens) ?? 0;
   const cacheWriteTokens = toMaybeNumber(usage.cache_creation_input_tokens) ?? 0;
@@ -5568,6 +5603,9 @@ async function runTextCall(params: {
   onEvent?: (event: LlmStreamEvent) => void;
 }): Promise<LlmTextResult> {
   const { request, queue, abortController } = params;
+  const summaryTokenLimit = (request as typeof request & { [compactionSummaryBudget]?: number })[
+    compactionSummaryBudget
+  ];
   const providerInfo = resolveProvider(
     request.model,
     request.provider,
@@ -5687,6 +5725,9 @@ async function runTextCall(params: {
                   ? { service_tier: providerInfo.serviceTier as any }
                   : {}),
                 reasoning,
+                ...(summaryTokenLimit !== undefined
+                  ? { max_output_tokens: summaryTokenLimit }
+                  : {}),
                 text: openAiTextConfig as any,
                 ...(openAiTools ? { tools: openAiTools as any } : {}),
                 include: ["code_interpreter_call.outputs", "reasoning.encrypted_content"] as any,
@@ -5861,6 +5902,7 @@ async function runTextCall(params: {
           ...prompt,
           effort: config.output_config?.effort,
           jsonSchema: config.output_config?.format?.schema as Record<string, unknown> | undefined,
+          ...(summaryTokenLimit !== undefined ? { maxOutputTokens: summaryTokenLimit } : {}),
           signal,
           onDelta: pushDelta,
         });
@@ -5896,7 +5938,12 @@ async function runTextCall(params: {
         const response = await runAnthropicCall(
           (client) =>
             client.streamMessage(
-              { model: modelForProvider, max_tokens: 32_000, ...prompt, ...config },
+              {
+                model: modelForProvider,
+                max_tokens: summaryTokenLimit ?? 32_000,
+                ...prompt,
+                ...config,
+              },
               { signal, onDelta: pushDelta },
             ),
           request.model,
@@ -5962,6 +6009,7 @@ async function runTextCall(params: {
                   ? { providerOptions: resolveVercelSpeedOptions(modelForProvider, request.speed) }
                   : {}),
                 messages: fireworksMessages as any,
+                ...(summaryTokenLimit !== undefined ? { max_tokens: summaryTokenLimit } : {}),
                 ...(responseFormat ? { response_format: responseFormat } : {}),
                 ...(request.thinkingLevel
                   ? {
@@ -6006,7 +6054,7 @@ async function runTextCall(params: {
         const thinkingConfig = resolveGeminiThinkingConfig(modelForProvider, request.thinkingLevel);
         const mediaResolution = toGeminiMediaResolution(request.mediaResolution);
         const config: GenerateContentConfig = {
-          maxOutputTokens: 32_000,
+          maxOutputTokens: summaryTokenLimit ?? 32_000,
           abortSignal: signal,
           ...(thinkingConfig ? { thinkingConfig } : {}),
           ...(mediaResolution ? { mediaResolution } : {}),
@@ -6922,14 +6970,224 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
     }
   }
   const steeringInternal = resolveToolLoopSteeringInternal(request.steering);
+  const compactionOptions = resolveCompactionOptions(request.compaction);
+  const nativeCompaction =
+    providerInfo.provider === "openai" ||
+    providerInfo.provider === "chatgpt" ||
+    (providerInfo.provider === "xai" && providerInfo.access === "api") ||
+    (providerInfo.provider === "anthropic" && isAnthropicCompactionSupported(providerInfo.model));
+  if (compactionOptions?.mode === "server" && !nativeCompaction) {
+    throw new Error(
+      `Server-side compaction is not supported for ${providerInfo.publicProvider}:${providerInfo.access}.`,
+    );
+  }
+  if (providerInfo.provider === "claude" && compactionOptions) {
+    if (
+      compactionOptions.mode !== "auto" ||
+      (request.compaction &&
+        (request.compaction.prompt !== undefined ||
+          request.compaction.maxSummaryTokens !== undefined ||
+          request.compaction.preserveRecentMessages !== undefined))
+    )
+      throw new Error(
+        "Claude subscription compaction is managed by its SDK; only automatic window controls are supported.",
+      );
+  }
+  const compaction = compactionOptions
+    ? await persistentLoopValue("compactionBudget", async () => {
+        // An explicit trigger is also usable on routes without model metadata.
+        if (
+          compactionOptions.thresholdTokens !== undefined &&
+          compactionOptions.contextWindowTokens === undefined
+        )
+          return { ...compactionOptions, thresholdTokens: compactionOptions.thresholdTokens };
+        const context = await resolveModelContextWindow(request as LlmTextModelSelection, {
+          signal: request.signal,
+          contextWindowTokens: compactionOptions.contextWindowTokens,
+        });
+        const reserve =
+          compactionOptions.reserveOutputTokens ??
+          request.maxOutputTokens ??
+          Math.min(context.maxOutputTokens ?? 32_000, 32_000);
+        const ceiling = Math.min(
+          context.maxInputTokens ?? context.contextWindowTokens,
+          context.contextWindowTokens - (context.limitType === "context" ? reserve : 0),
+        );
+        const thresholdTokens =
+          compactionOptions.thresholdTokens ??
+          Math.floor(
+            Math.min(context.contextWindowTokens * compactionOptions.thresholdRatio, ceiling),
+          );
+        if (thresholdTokens <= 0 || thresholdTokens > ceiling)
+          throw new Error(
+            "compaction.thresholdTokens must leave room for output within the model's context window.",
+          );
+        return { ...compactionOptions, thresholdTokens };
+      })
+    : undefined;
 
   const steps: LlmToolLoopStep[] = [];
+  const compactions: LlmCompactionRecord[] = [];
+  const compactionOverheadTokens = compaction
+    ? estimateCompactionTokens({
+        instructions: request.instructions,
+        tools: toolEntries.map(([name, definition]) => ({
+          name,
+          description: definition.description,
+          ...(isCustomTool(definition)
+            ? { format: definition.format }
+            : { schema: buildOpenAiToolSchema(definition.inputSchema, name) }),
+        })),
+        modelTools: request.modelTools,
+      })
+    : 0;
   let totalCostUsd: number | null = 0;
   let finalText = "";
   let finalThoughts = "";
+  let compactedAfterStep = -1;
+  let previousHistoryLength = 0;
+  const shouldCompact = (history: readonly unknown[]): number | undefined => {
+    if (!compaction) return undefined;
+    const last = steps.at(-1);
+    const reported =
+      last && last.step > compactedAfterStep && last.usage?.promptTokens !== undefined
+        ? last.usage.promptTokens + estimateCompactionTokens(history.slice(previousHistoryLength))
+        : 0;
+    const tokens = Math.max(estimateCompactionTokens(history) + compactionOverheadTokens, reported);
+    previousHistoryLength = history.length;
+    return tokens >= compaction.thresholdTokens ? tokens : undefined;
+  };
+  const completeCompaction = (record: LlmCompactionRecord): void => {
+    compactions.push(record);
+    totalCostUsd = addCosts(totalCostUsd, record.costUsd);
+    compactedAfterStep = steps.length;
+    request.onEvent?.({ type: "compaction", phase: "completed", ...record });
+  };
+  const compactHistory = async <T>(
+    history: readonly T[],
+    beforeStep: number,
+    summaryMessage: (text: string) => T,
+    native?: () => Promise<{ history: T[]; usage?: LlmUsageTokens }>,
+    validate?: (replacement: T[]) => Promise<void>,
+  ): Promise<T[]> => {
+    const inputTokensBefore = shouldCompact(history);
+    if (!compaction || inputTokensBefore === undefined) return [...history];
+    assertCompleteCompactionHistory(history);
+    const mode = native && compaction.mode !== "summary" ? "server" : "summary";
+    request.onEvent?.({
+      type: "compaction",
+      phase: "started",
+      beforeStep,
+      mode,
+      inputTokensBefore,
+      costUsd: null,
+    });
+    const result = await persistentModelCall(
+      `compaction:${beforeStep}`,
+      { history, compaction, mode },
+      async () => {
+        if (mode === "server" && native) {
+          const result = await native();
+          const cost = await resolveCallCostUsd({
+            modelId: request.model,
+            provider: providerInfo.publicProvider,
+            access: providerInfo.access,
+            speed: request.speed,
+            tokens: result.usage,
+            responseImages: 0,
+          });
+          return { history: result.history, usage: result.usage, costUsd: cost.costUsd };
+        }
+        const split = splitCompactionHistory(history, compaction);
+        if (!split.prefix.length)
+          throw new Error("Compaction has no completed conversation to summarize.");
+        const summary = await generateText({
+          model: request.model,
+          provider: request.provider,
+          access: request.access,
+          speed: request.speed,
+          thinkingLevel: request.thinkingLevel,
+          thinkingLevelPolicy: request.thinkingLevelPolicy,
+          [compactionSummaryBudget]: compaction.maxSummaryTokens,
+          instructions: `${compaction.prompt}\n\nKeep the checkpoint within ${compaction.maxSummaryTokens} tokens.`,
+          input: compactionTranscript({
+            instructions: request.instructions,
+            history: [...split.instructions, ...split.prefix],
+          }),
+          signal: request.signal,
+        } as LlmTextRequest);
+        if (summary.blocked || !summary.text.trim())
+          return {
+            history: [...history],
+            usage: summary.usage,
+            costUsd: summary.costUsd,
+            error:
+              "Compaction returned an empty or blocked summary; original history was preserved.",
+          };
+        const suffix =
+          providerInfo.provider === "anthropic"
+            ? split.suffix.map((item) => {
+                const message = item as AnthropicMessageParam;
+                return Array.isArray(message.content)
+                  ? ({
+                      ...message,
+                      content: message.content.filter(
+                        (block) => block.type !== "thinking" && block.type !== "redacted_thinking",
+                      ),
+                    } as T)
+                  : item;
+              })
+            : split.suffix;
+        const replacement = [...split.instructions, summaryMessage(summary.text.trim()), ...suffix];
+        if (estimateCompactionTokens(replacement) >= estimateCompactionTokens(history))
+          return {
+            history: [...history],
+            usage: summary.usage,
+            costUsd: summary.costUsd,
+            error: "Compaction did not reduce context size; original history was preserved.",
+          };
+        if (
+          estimateCompactionTokens(replacement) + compactionOverheadTokens >=
+          compaction.thresholdTokens
+        )
+          return {
+            history: [...history],
+            usage: summary.usage,
+            costUsd: summary.costUsd,
+            error:
+              "Compaction left context above its token budget; lower recent-message retention or increase the threshold. Original history was preserved.",
+          };
+        return { history: replacement, usage: summary.usage, costUsd: summary.costUsd };
+      },
+    );
+    // Journal even a rejected model summary before validation, so recovery never pays to regenerate it.
+    if ("error" in result && result.error) throw new Error(result.error);
+    await validate?.(result.history);
+    previousHistoryLength = result.history.length;
+    completeCompaction({
+      beforeStep,
+      mode,
+      inputTokensBefore,
+      usage: result.usage,
+      costUsd: result.costUsd,
+    });
+    return result.history;
+  };
 
   try {
-    if (providerInfo.provider === "openai") {
+    if (
+      providerInfo.provider === "openai" ||
+      (providerInfo.provider === "xai" &&
+        providerInfo.access === "api" &&
+        compaction &&
+        compaction.mode !== "summary")
+    ) {
+      const isXai = providerInfo.provider === "xai";
+      if (isXai && request.modelTools?.length)
+        throw new Error("xAI tool loops do not support provider-native modelTools.");
+      const runResponsesCall: typeof runOpenAiCall = isXai
+        ? (fn, model, options) => runXaiCall(fn, model, "api", options)
+        : runOpenAiCall;
       const openAiAgentTools = buildOpenAiToolsFromToolSet(request.tools);
       const openAiNativeTools = toOpenAiTools(request.modelTools, { provider: "openai" });
       const openAiTools = openAiNativeTools
@@ -6939,14 +7197,20 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
         providerInfo.model,
         request.thinkingLevel,
       );
-      const textConfig = {
-        format: { type: "text" },
-        verbosity: resolveOpenAiVerbosity(providerInfo.model),
-      };
-      const reasoning = {
-        effort: toOpenAiReasoningEffort(reasoningEffort),
-        summary: "detailed" as const,
-      };
+      const textConfig = isXai
+        ? undefined
+        : {
+            format: { type: "text" },
+            verbosity: resolveOpenAiVerbosity(providerInfo.model),
+          };
+      const reasoning = isXai
+        ? request.thinkingLevel
+          ? { effort: resolveFireworksReasoningEffort(request.thinkingLevel) }
+          : undefined
+        : {
+            effort: toOpenAiReasoningEffort(reasoningEffort),
+            summary: "detailed" as const,
+          };
 
       let previousResponseId: string | undefined;
       let input: any = toOpenAiInput(contents, {
@@ -6956,6 +7220,40 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
+        if (compaction?.mode === "summary" || isXai) {
+          input = await compactHistory(
+            input,
+            turn,
+            (text) => ({ role: "user", content: `Context checkpoint:\n${text}` }),
+            isXai
+              ? async () => {
+                  const prepared = await maybePrepareOpenAiPromptInput(input, {
+                    model: request.model,
+                    provider: "openai",
+                  });
+                  const compacted = await runResponsesCall(
+                    (client) =>
+                      client.responses.compact(
+                        { model: providerInfo.model, input: prepared as any } as any,
+                        { signal: request.signal },
+                      ),
+                    providerInfo.model,
+                    { signal: request.signal },
+                  );
+                  if (
+                    !compacted.output?.some(
+                      (item: any) => item.type === "compaction" && item.encrypted_content,
+                    )
+                  )
+                    throw new Error("xAI compaction returned no opaque continuation state.");
+                  return {
+                    history: compacted.output as any[],
+                    usage: extractOpenAiUsageTokens(compacted.usage),
+                  };
+                }
+              : undefined,
+          );
+        }
         let stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
@@ -6989,16 +7287,26 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
         const stepRequestPayload = {
           model: providerInfo.model,
           input: preparedInput,
+          ...(isXai && request.maxOutputTokens !== undefined
+            ? { max_output_tokens: request.maxOutputTokens }
+            : {}),
           ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier as any } : {}),
           ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
           ...(openAiTools.length > 0 ? { tools: openAiTools } : {}),
           ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
-          reasoning,
-          text: textConfig,
-          include: ["reasoning.encrypted_content"],
+          ...(reasoning ? { reasoning } : {}),
+          ...(textConfig ? { text: textConfig } : {}),
+          ...(compaction && compaction.mode !== "summary" && !isXai
+            ? {
+                context_management: [
+                  { type: "compaction", compact_threshold: compaction.thresholdTokens },
+                ],
+              }
+            : {}),
+          ...(!isXai ? { include: ["reasoning.encrypted_content"] } : {}),
         };
         const stepCallLogger = startLlmCallLoggerFromPayload({
-          provider: "openai",
+          provider: isXai ? "xai" : "openai",
           modelId: request.model,
           requestedSpeed: request.speed,
           thinking: request[thinkingResolutionSymbol],
@@ -7018,21 +7326,31 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
 
         try {
           const recorded = await persistentModelCall(turn, stepRequestPayload, async () => {
-            const value = await runOpenAiCall(
+            const value = await runResponsesCall(
               async (client) => {
                 const stream = client.responses.stream(
                   {
                     model: providerInfo.model,
                     input: preparedInput as any,
+                    ...(isXai && request.maxOutputTokens !== undefined
+                      ? { max_output_tokens: request.maxOutputTokens }
+                      : {}),
                     ...(providerInfo.serviceTier
                       ? { service_tier: providerInfo.serviceTier as any }
                       : {}),
                     ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
                     ...(openAiTools.length > 0 ? { tools: openAiTools as any } : {}),
                     ...(openAiTools.length > 0 ? { parallel_tool_calls: true } : {}),
-                    reasoning,
-                    text: textConfig as any,
-                    include: ["reasoning.encrypted_content"] as any,
+                    ...(reasoning ? { reasoning: reasoning as any } : {}),
+                    ...(textConfig ? { text: textConfig as any } : {}),
+                    ...(compaction && compaction.mode !== "summary" && !isXai
+                      ? {
+                          context_management: [
+                            { type: "compaction", compact_threshold: compaction.thresholdTokens },
+                          ],
+                        }
+                      : {}),
+                    ...(!isXai ? { include: ["reasoning.encrypted_content"] as any } : {}),
                   },
                   { signal: abortController.signal } as any,
                 );
@@ -7096,6 +7414,14 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             };
           });
           const finalResponse = recorded.value;
+          if (
+            compaction &&
+            compaction.mode !== "summary" &&
+            !isXai &&
+            (finalResponse as any).output?.some((item: any) => item.type === "compaction")
+          ) {
+            completeCompaction({ beforeStep: turn, mode: "server", costUsd: 0 });
+          }
           ({ thoughtDeltaEmitted, blocked, firstModelEventAtMs, schedulerMetrics } =
             recorded.state);
 
@@ -7228,7 +7554,7 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             stepCallLogger?.complete({
               responseText,
               metadata: {
-                provider: "openai",
+                provider: isXai ? "xai" : "openai",
                 model: request.model,
                 modelVersion,
                 ...servingMetadata,
@@ -7250,10 +7576,18 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
                 ...(responseContent ? { content: responseContent } : {}),
                 steps,
                 totalCostUsd,
+                ...(compactions.length ? { compactions } : {}),
               };
             }
-            previousResponseId = (finalResponse as any).id;
-            input = steeringItems;
+            if (hasToolLoopPersistence() || compaction?.mode === "summary" || isXai) {
+              input = input.concat(
+                toResponseInputItems((finalResponse as any).output ?? []),
+                steeringItems,
+              );
+            } else {
+              previousResponseId = (finalResponse as any).id;
+              input = steeringItems;
+            }
             continue;
           }
 
@@ -7400,7 +7734,7 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             toolCallText: stepToolCallText,
             toolCallPayload: stepToolCallPayload,
             metadata: {
-              provider: "openai",
+              provider: isXai ? "xai" : "openai",
               model: request.model,
               modelVersion,
               ...servingMetadata,
@@ -7418,12 +7752,19 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
           if (terminalToolCall) {
             finalText = terminalToolCallText(terminalToolCall) || responseText;
             finalThoughts = reasoningSummary;
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            return {
+              text: finalText,
+              thoughts: finalThoughts,
+              steps,
+              totalCostUsd,
+              ...(compactions.length ? { compactions } : {}),
+            };
           }
-          if (hasToolLoopPersistence()) {
+          if (hasToolLoopPersistence() || compaction?.mode === "summary" || isXai) {
             input = input.concat(
               toResponseInputItems((finalResponse as any).output ?? []),
               toolOutputs,
+              steeringItems,
             );
           } else {
             previousResponseId = (finalResponse as any).id;
@@ -7435,7 +7776,7 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             toolCallText: stepToolCallText,
             toolCallPayload: stepToolCallPayload,
             metadata: {
-              provider: "openai",
+              provider: isXai ? "xai" : "openai",
               model: request.model,
               modelVersion,
               ...servingMetadata,
@@ -7473,6 +7814,36 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
+        input = await compactHistory(
+          input,
+          turn,
+          (text) => ({ role: "user", content: `Context checkpoint:\n${text}` }) as ChatGptInputItem,
+          async () => {
+            const prepared = await maybePrepareOpenAiPromptInput(input, {
+              model: request.model,
+              provider: "chatgpt",
+            });
+            const result = await requestChatGptCodexCompaction({
+              sessionId: conversationId,
+              signal: request.signal,
+              request: {
+                model: providerInfo.model,
+                input: prepared as ChatGptInputItem[],
+                instructions: toolLoopInput.instructions ?? "You are a helpful assistant.",
+                tools: openAiTools as any,
+                parallel_tool_calls: true,
+                prompt_cache_key: promptCacheKey,
+                ...(providerInfo.serviceTier ? { service_tier: providerInfo.serviceTier } : {}),
+                reasoning: {
+                  effort: toOpenAiReasoningEffort(reasoningEffort),
+                  summary: "detailed",
+                },
+                text: { verbosity: resolveOpenAiVerbosity(request.model) },
+              },
+            });
+            return { history: result.output, usage: extractChatGptUsageTokens(result.usage) };
+          },
+        );
         let stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let thoughtDeltaEmitted = false;
@@ -7658,12 +8029,28 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
               },
             });
             if (steeringItems.length === 0) {
-              return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+              return {
+                text: finalText,
+                thoughts: finalThoughts,
+                steps,
+                totalCostUsd,
+                ...(compactions.length ? { compactions } : {}),
+              };
             }
             const assistantItem = toChatGptAssistantMessage(responseText);
-            input = assistantItem
-              ? input.concat(assistantItem, steeringItems)
-              : input.concat(steeringItems);
+            const replay =
+              (hasToolLoopPersistence() || compaction) && response.replayItems?.length
+                ? response.replayItems
+                : [
+                    ...(response.replayItems ?? []).filter(
+                      (item) =>
+                        item.type === "compaction" ||
+                        item.type === "compaction_summary" ||
+                        item.type === "context_compaction",
+                    ),
+                    ...(assistantItem ? [assistantItem] : []),
+                  ];
+            input = input.concat(replay, steeringItems);
             continue;
           }
 
@@ -7839,13 +8226,25 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
           if (terminalToolCall) {
             finalText = terminalToolCallText(terminalToolCall) || responseText;
             finalThoughts = reasoningSummaryText;
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            return {
+              text: finalText,
+              thoughts: finalThoughts,
+              steps,
+              totalCostUsd,
+              ...(compactions.length ? { compactions } : {}),
+            };
           }
-          const replayItems = hasToolLoopPersistence()
-            ? (response.replayItems ?? []).filter(
-                (item) => item.type !== "function_call" && item.type !== "custom_tool_call",
-              )
-            : [];
+          const replayItems =
+            hasToolLoopPersistence() || compaction
+              ? (response.replayItems ?? []).filter(
+                  (item) => item.type !== "function_call" && item.type !== "custom_tool_call",
+                )
+              : (response.replayItems ?? []).filter(
+                  (item) =>
+                    item.type === "compaction" ||
+                    item.type === "compaction_summary" ||
+                    item.type === "context_compaction",
+                );
           input = input.concat(replayItems, toolOutputs, steeringItems);
         } catch (error) {
           stepCallLogger?.fail(error, {
@@ -7892,6 +8291,11 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
 
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
+        const compacted = await compactHistory(messages, turn, (text) => ({
+          role: "user",
+          content: `Context checkpoint:\n${text}`,
+        }));
+        messages.splice(0, messages.length, ...compacted);
         let stepStartedAtMs = Date.now();
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
         let modelVersion: string = request.model;
@@ -8079,7 +8483,13 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
               },
             });
             if (steeringMessages.length === 0) {
-              return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+              return {
+                text: finalText,
+                thoughts: finalThoughts,
+                steps,
+                totalCostUsd,
+                ...(compactions.length ? { compactions } : {}),
+              };
             }
             if (responseText.length > 0) {
               messages.push({
@@ -8228,7 +8638,13 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
           if (terminalToolCall) {
             finalText = terminalToolCallText(terminalToolCall) || responseText;
             finalThoughts = reasoningContent ?? "";
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            return {
+              text: finalText,
+              thoughts: finalThoughts,
+              steps,
+              totalCostUsd,
+              ...(compactions.length ? { compactions } : {}),
+            };
           }
 
           messages.push({
@@ -8327,6 +8743,12 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             effort: config.output_config?.effort,
             maxSteps: maxSteps - offset,
             maxOutputTokens: request.maxOutputTokens,
+            compaction:
+              request.compaction === false
+                ? false
+                : compaction
+                  ? { thresholdTokens: compaction.thresholdTokens }
+                  : undefined,
             signal: request.signal,
             drainSteering: () => {
               const pending = steeringInternal?.drainPendingContents() ?? [];
@@ -8528,7 +8950,13 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             ? []
             : [...deferredSteering.splice(0), ...(steeringInternal?.drainPendingContents() ?? [])];
           if (pending.length === 0)
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            return {
+              text: finalText,
+              thoughts: finalThoughts,
+              steps,
+              totalCostUsd,
+              ...(compactions.length ? { compactions } : {}),
+            };
           // A new SDK query receives completed work as explicit conversation context.
           // It never re-executes the tools from the preceding query.
           prompt.messages.push({ role: "assistant", content: outcome.text });
@@ -8574,6 +9002,38 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
       const config = anthropicRequestConfig(request);
       for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
         const turn = stepIndex + 1;
+        const compacted = await compactHistory(
+          prompt.messages,
+          turn,
+          (text) =>
+            ({ role: "user", content: `Context checkpoint:\n${text}` }) as AnthropicMessageParam,
+          isAnthropicCompactionSupported(providerInfo.model)
+            ? async () => {
+                const result = await runAnthropicCall(
+                  (client) =>
+                    client.compactMessage(
+                      {
+                        model: providerInfo.model,
+                        max_tokens: compaction?.maxSummaryTokens ?? 4096,
+                        ...prompt,
+                        ...config,
+                        tools,
+                      },
+                      { signal: request.signal },
+                    ),
+                  providerInfo.model,
+                  { signal: request.signal },
+                );
+                return {
+                  history: [
+                    { role: "assistant", content: result.content } as AnthropicMessageParam,
+                  ],
+                  usage: extractAnthropicUsageTokens(result.usage),
+                };
+              }
+            : undefined,
+        );
+        prompt.messages.splice(0, prompt.messages.length, ...compacted);
         let stepStartedAtMs = Date.now();
         let firstModelEventAtMs: number | undefined;
         let schedulerMetrics: CallSchedulerRunMetrics | undefined;
@@ -8826,7 +9286,13 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
               ? terminalToolCallText(terminalToolCall) || responseText
               : responseText;
             finalThoughts = thoughts;
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            return {
+              text: finalText,
+              thoughts: finalThoughts,
+              steps,
+              totalCostUsd,
+              ...(compactions.length ? { compactions } : {}),
+            };
           }
           // Preserve the complete signed assistant turn unchanged; Claude binds thinking to its prefix.
           prompt.messages.push({ role: "assistant", content: response.content });
@@ -8860,14 +9326,62 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
     const geminiTools = geminiNativeTools
       ? geminiNativeTools.concat(geminiFunctionTools)
       : geminiFunctionTools;
-    const geminiContents = contents.map((content) =>
-      convertLlmContentToGeminiContent(content, {
-        defaultMediaResolution: request.mediaResolution,
-      }),
-    );
+    const geminiSystemInstruction = compaction
+      ? contents
+          .filter((content) => content.role === "system" || content.role === "developer")
+          .flatMap((content) => content.parts.map((part) => toGeminiPart(part)))
+      : [];
+    const geminiContents = contents
+      .filter(
+        (content) => !compaction || (content.role !== "system" && content.role !== "developer"),
+      )
+      .map((content) =>
+        convertLlmContentToGeminiContent(content, {
+          defaultMediaResolution: request.mediaResolution,
+        }),
+      );
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const turn = stepIndex + 1;
+      const countContext = async (history: GeminiContent[]): Promise<number> => {
+        const prepared = await maybePrepareGeminiPromptContents(history);
+        const counted = await runGeminiCall(
+          (client) =>
+            client.models.countTokens({
+              model: request.model,
+              contents: prepared,
+              config: {
+                abortSignal: request.signal,
+                tools: geminiTools,
+                ...(geminiSystemInstruction.length
+                  ? { systemInstruction: { parts: geminiSystemInstruction } }
+                  : {}),
+              },
+            }),
+          request.model,
+          { signal: request.signal },
+        );
+        if (counted.totalTokens === undefined)
+          throw new Error("Gemini did not return a token count for compacted context.");
+        return counted.totalTokens;
+      };
+      const compacted = await compactHistory(
+        geminiContents,
+        turn,
+        (text) => ({ role: "user", parts: [{ text: `Context checkpoint:\n${text}` }] }),
+        undefined,
+        async (replacement) => {
+          const [before, after] = await Promise.all([
+            countContext(geminiContents),
+            countContext(replacement),
+          ]);
+          if (after >= before || (compaction && after >= compaction.thresholdTokens))
+            throw new Error(
+              "Gemini compaction did not create enough context space; original history was preserved.",
+            );
+        },
+      );
+      geminiContents.splice(0, geminiContents.length, ...compacted);
       let stepStartedAtMs = Date.now();
       let firstModelEventAtMs: number | undefined;
       let schedulerMetrics: CallSchedulerRunMetrics | undefined;
@@ -8889,6 +9403,9 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
         maxOutputTokens: request.maxOutputTokens ?? 32_000,
         abortSignal: request.signal,
         tools: geminiTools,
+        ...(geminiSystemInstruction.length
+          ? { systemInstruction: { parts: geminiSystemInstruction } }
+          : {}),
         toolConfig: {
           functionCallingConfig: {
             mode: FunctionCallingConfigMode.VALIDATED,
@@ -9106,7 +9623,13 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
             },
           });
           if (steeringInput.length === 0) {
-            return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+            return {
+              text: finalText,
+              thoughts: finalThoughts,
+              steps,
+              totalCostUsd,
+              ...(compactions.length ? { compactions } : {}),
+            };
           }
           const modelPartsForHistory = response.modelParts.filter(
             (part) => !(typeof part.text === "string" && part.thought === true),
@@ -9274,7 +9797,13 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
         if (terminalToolCall) {
           finalText = terminalToolCallText(terminalToolCall) || responseText;
           finalThoughts = thoughtsText;
-          return { text: finalText, thoughts: finalThoughts, steps, totalCostUsd };
+          return {
+            text: finalText,
+            thoughts: finalThoughts,
+            steps,
+            totalCostUsd,
+            ...(compactions.length ? { compactions } : {}),
+          };
         }
 
         geminiContents.push({ role: "user", parts: responseParts });
