@@ -16,6 +16,7 @@ import {
   type GeminiImageModelId,
 } from "./google/client.js";
 import { resolveOpenModelProvider, type KnownVercelModelId } from "./vercel/models.js";
+import { isDecisionModelId } from "./decisions/models.js";
 
 export const LLM_PROVIDERS = [
   "openai",
@@ -24,6 +25,7 @@ export const LLM_PROVIDERS = [
   "fireworks",
   "vercel",
   "xai",
+  "typesafe",
 ] as const;
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 export type LlmAccess = "api" | "subscription";
@@ -135,7 +137,7 @@ export type ModelRefInput = {
   readonly speed?: LlmSpeed;
 };
 
-function hasControlCharacter(value: string): boolean {
+export function hasControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
     if (code < 32 || code === 127) return true;
@@ -176,6 +178,8 @@ export function getSupportedModelSpeeds(
   selection: Pick<ModelRefInput, "model" | "access"> & { readonly provider: LlmProvider },
 ): readonly LlmSpeed[] {
   const { provider, model } = selection;
+  if (provider === "typesafe") return [];
+  if (isDecisionModelId(model) && model !== "gpt-6-luna") return [];
   if (isRemovedServingAlias(model)) return [];
   if (isOpenAiImageModelId(model) || isGeminiImageModelId(model)) return [];
   if (provider === "openai") {
@@ -205,7 +209,7 @@ export function getSupportedModelSpeeds(
   return ["standard"];
 }
 
-function splitQualifiedModel(model: string):
+export function splitQualifiedModel(model: string):
   | {
       provider: LlmProvider;
       access: LlmAccess;

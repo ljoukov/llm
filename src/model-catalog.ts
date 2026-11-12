@@ -1,5 +1,11 @@
 import { ANTHROPIC_MODEL_IDS } from "./anthropic/models.js";
 import { getAnthropicPricing } from "./anthropic/pricing.js";
+import {
+  FIREWORKS_DECISION_MODEL_IDS,
+  GOOGLE_DECISION_MODEL_IDS,
+  OPENAI_DECISION_MODEL_IDS,
+  TYPESAFE_DECISION_MODEL_IDS,
+} from "./decisions/models.js";
 import { FIREWORKS_MODEL_IDS } from "./fireworks/models.js";
 import { getFireworksPricing } from "./fireworks/pricing.js";
 import { GEMINI_IMAGE_MODEL_IDS, GEMINI_TEXT_MODEL_IDS } from "./google/client.js";
@@ -39,10 +45,12 @@ export type LlmModelInfo = {
   readonly reasoningOptions?: readonly ModelReasoningOption[];
   /** Provider-reported default; may be outside LlmThinkingLevel. Undefined means unknown. */
   readonly defaultReasoningEffort?: string;
-  /** Supported serving modifiers; image models have no speed modifier. */
+  /** Supported serving modifiers; image and dedicated decision models have no speed modifier. */
   readonly supportedSpeeds: readonly LlmSpeed[];
   /** For subscriptions, these are API-equivalent rates rather than billed charges. */
   readonly pricing?: ModelTokenPricing;
+  /** Native Decisions API rates when this model also has a separate text-generation price. */
+  readonly decisionPricing?: ModelTokenPricing;
   /** Known rates by serving speed. Missing entries are unknown, never free. */
   readonly pricingBySpeed?: Readonly<Partial<Record<LlmSpeed, ModelTokenPricing>>>;
   readonly pricingSource?: "catalog" | "estimate";
@@ -51,6 +59,8 @@ export type LlmModelInfo = {
 export type ListModelsOptions = {
   readonly provider: LlmProvider;
   readonly access?: LlmAccess;
+  /** Return models supported by decide() on the selected route. */
+  readonly capability?: "decisions";
   /** Bypass the Vercel RAM cache; concurrent refreshes still share one request. */
   readonly refresh?: boolean;
 };
@@ -69,6 +79,18 @@ function pricesBySpeed(
 
 /** Discover dynamic Vercel/xAI catalogues, or the supported local provider allowlist. */
 export async function listModels(options: ListModelsOptions): Promise<readonly LlmModelInfo[]> {
+  const { capability } = options;
+  if (capability !== undefined && capability !== "decisions") {
+    throw new Error(`Unsupported model capability: ${String(capability)}.`);
+  }
+  const models = await listProviderModels(options);
+  if (!capability) return models;
+  return models.filter(
+    (model) => model.capabilities?.includes(capability) || model.type === "decision",
+  );
+}
+
+async function listProviderModels(options: ListModelsOptions): Promise<readonly LlmModelInfo[]> {
   const { provider } = options;
   const access = options.access ?? "api";
   if (access !== "api" && access !== "subscription") {
@@ -76,6 +98,9 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
   }
   if (access === "subscription" && !["openai", "anthropic", "xai"].includes(provider)) {
     throw new Error(`${provider} does not support subscription access.`);
+  }
+  if (options.capability === "decisions" && ["vercel", "anthropic", "xai"].includes(provider)) {
+    return [];
   }
   if (provider === "vercel") {
     return (await getVercelModelCatalog({ refresh: options.refresh }))
@@ -86,7 +111,9 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
         model: id,
         ...model,
         supportedSpeeds:
-          model.type === "image" ? [] : getSupportedModelSpeeds({ provider, access, model: id }),
+          model.type === "image" || model.type === "decision"
+            ? []
+            : getSupportedModelSpeeds({ provider, access, model: id }),
         pricingBySpeed: model.pricing ? { standard: model.pricing } : undefined,
         pricingSource: model.pricing ? "catalog" : undefined,
       }));
@@ -112,6 +139,19 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
         access,
         model,
         type: "language",
+        capabilities:
+          access === "api" && OPENAI_DECISION_MODEL_IDS.some((id) => id === model)
+            ? ["decisions"]
+            : undefined,
+        decisionPricing:
+          access === "api" && OPENAI_DECISION_MODEL_IDS.some((id) => id === model)
+            ? {
+                inputRate: 0.1 / 1_000_000,
+                outputRate: 0,
+                cachedRate: 0.01 / 1_000_000,
+                cacheWriteRate: 0.125 / 1_000_000,
+              }
+            : undefined,
         supportedSpeeds: getSupportedModelSpeeds({ provider, access, model }),
         pricing: getOpenAiPricing(model),
         pricingBySpeed: pricesBySpeed(
@@ -157,14 +197,43 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
     });
   }
   if (provider === "fireworks") {
-    return FIREWORKS_MODEL_IDS.map((model) => ({
+    return [
+      ...FIREWORKS_MODEL_IDS.map((model) => ({
+        provider,
+        access,
+        model,
+        type: "language",
+        supportedSpeeds: getSupportedModelSpeeds({ provider, access, model }),
+        pricing: getFireworksPricing(model),
+        pricingBySpeed: { standard: getFireworksPricing(model) },
+        pricingSource: "estimate" as const,
+      })),
+      ...FIREWORKS_DECISION_MODEL_IDS.map((model) => ({
+        provider,
+        access,
+        model,
+        type: "decision",
+        capabilities: ["decisions"],
+        contextWindow: 262_144,
+        supportedSpeeds: [],
+        pricing: {
+          inputRate: 0.042 / 1_000_000,
+          outputRate: 0,
+          cachedRate: 0.0084 / 1_000_000,
+        },
+        pricingSource: "estimate" as const,
+      })),
+    ];
+  }
+  if (provider === "typesafe") {
+    return TYPESAFE_DECISION_MODEL_IDS.map((model) => ({
       provider,
       access,
       model,
-      type: "language",
-      supportedSpeeds: getSupportedModelSpeeds({ provider, access, model }),
-      pricing: getFireworksPricing(model),
-      pricingBySpeed: { standard: getFireworksPricing(model) },
+      type: "decision",
+      capabilities: ["decisions"],
+      supportedSpeeds: [],
+      pricing: { inputRate: 0.042 / 1_000_000, outputRate: 0 },
       pricingSource: "estimate",
     }));
   }
@@ -194,6 +263,17 @@ export async function listModels(options: ListModelsOptions): Promise<readonly L
         model,
         type: "image",
         supportedSpeeds: [],
+      })),
+      ...GOOGLE_DECISION_MODEL_IDS.map((model) => ({
+        provider,
+        access,
+        model,
+        type: "decision",
+        capabilities: ["decisions"],
+        contextWindow: 262_144,
+        supportedSpeeds: [],
+        pricing: { inputRate: 0.1 / 1_000_000, outputRate: 0 },
+        pricingSource: "estimate" as const,
       })),
     ];
   }

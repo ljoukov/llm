@@ -1,6 +1,6 @@
 {
   "name": "@ljoukov/llm",
-  "version": "15.1.0",
+  "version": "15.2.0",
   "description": "Unified typed model routing for OpenAI, Anthropic, Google, xAI, Fireworks and Vercel AI Gateway, with API/subscription access, streaming, tools and usage/cost metrics.",
   "license": "MIT",
   "repository": {
@@ -66,6 +66,7 @@
     "test:integration": "npm run test:integration:node",
     "test:integration:node": "vitest run --config vitest.integration.config.ts",
     "test:integration:openai-models": "vitest run --config vitest.integration.config.ts test/openai-models.integration.test.ts",
+    "test:integration:decisions": "vitest run --config vitest.integration.config.ts test/decisions.integration.test.ts",
     "test:integration:bun": "bunx vitest run --config vitest.integration.config.ts",
     "test:integration:runtimes": "npm run test:integration:node && npm run test:integration:bun",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm run typecheck:llm-proxy",

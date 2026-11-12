@@ -13,6 +13,7 @@ Unified TypeScript wrapper over:
 - **Vercel AI Gateway** with namespaced model passthrough (`provider: "vercel"`)
 - **Fireworks** for DeepSeek V4.1 Flash, GLM-5.3, and Kimi K3 (`provider: "fireworks"`)
 - **xAI Grok API** and **Grok CLI subscription access** (`provider: "xai"`)
+- **Native System 1 decisions** with Google, OpenAI, Fireworks Rune, and TypeSafe Jev via `decide()`
 - **Agentic orchestration with subagents** via `runAgentLoop()` + built-in delegation control tools
 
 Designed around a single streaming API that yields:
@@ -221,6 +222,14 @@ See Node.js docs on environment variables and dotenv files: https://nodejs.org/a
 - `OPENAI_API_KEY`
 - `OPENAI_RESPONSES_WEBSOCKET_MODE` (`auto` | `off` | `only`, default: `auto`)
 - `OPENAI_BASE_URL` (optional; defaults to `https://api.openai.com/v1`)
+
+### TypeSafe Jev decisions
+
+- `TYPESAFE_API_KEY`
+- `TYPESAFE_BASE_URL` (optional; defaults to `https://api.typesafe.ai/v1`)
+- `TYPESAFE_TIMEOUT_MS` (optional request timeout; defaults to `900000`)
+
+TypeSafe is available through `decide({ provider: "typesafe", ... })` for native decision requests.
 
 ### Gemini
 
@@ -1097,7 +1106,8 @@ Use the short library model IDs below; they resolve to the exact direct Firework
 | `glm-5.3` | `glm-5p3` | $1.4 / $0.26 / $4.4 |
 | `kimi-k3` | `kimi-k3` | $3 / $0.3 / $15 |
 
-The Fireworks allowlist is limited to these three models. Use Vercel's explicit namespaced route for other Gateway models.
+The Fireworks text-generation allowlist is limited to these three models. Use Vercel's explicit namespaced route for other Gateway models.
+The separate [Decisions API](#decisions-system-1) also supports Fireworks Rune.
 
 #### Shared streaming and tool-loop behavior
 
@@ -1222,6 +1232,74 @@ const result = await generateText({
 GPT-6.1 Terra API-equivalent estimates use $1 input, $0.05 cached input, $1.25 cache writes, and $5 output per million
 tokens, with the same fast and long-input multipliers described above.
 
+## Decisions (System 1)
+
+`decide()` evaluates Boolean, choice, and ordered-rubric questions through native decision endpoints and returns
+typed answers with probabilities. It supports these API routes:
+
+| Provider | Model IDs | Input supported by this wrapper |
+| --- | --- | --- |
+| `google` | `gemini-decision-1` | Text, images, audio, video, and PDF documents |
+| `openai` | `gpt-6-luna` | Text and images |
+| `fireworks` | `accounts/fireworks/models/rune` | Text |
+| `typesafe` | `jev-1.14.0`, `jev-1.13.0`, `jev-latest`, `jev-preview` | Text |
+
+Google launched Gemini Decision 1 on November 11, 2026. See the native
+[Google](https://aistudio.google.com/docs/decisions-api),
+[OpenAI](https://developers.openai.com/api/docs/guides/decisions),
+[Fireworks](https://docs.fireworks.ai/api-reference/post-decisions), and
+[TypeSafe](https://docs.typesafe.ai/api/system-one) API documentation for provider behavior.
+Fireworks serves Rune; Jev uses the direct TypeSafe route and `TYPESAFE_API_KEY`.
+
+```ts
+import { decide } from "@ljoukov/llm";
+
+const result = await decide({
+  model: "google:api:gemini-decision-1",
+  input: "I was charged twice. Please refund the duplicate charge.",
+  questions: {
+    requestsRefund: {
+      type: "boolean",
+      instructions: "Does the customer request a refund?",
+    },
+    team: {
+      type: "choice",
+      instructions: "Which team should handle the request?",
+      criteria: { billing: "Charges, payments, and refunds", support: "Product help" },
+    },
+    urgency: {
+      type: "score",
+      instructions: "How urgent is the request?",
+      criteria: ["Routine", "Time-sensitive", "Immediate action required"],
+    },
+  },
+});
+
+const refund = result.answers.requestsRefund;
+if (refund.type === "boolean") console.log(refund.probability);
+console.log(result.usage, result.costUsd, result.costSource);
+```
+
+Question names are preserved as answer keys. Boolean answers return `probability`; choice answers return `choice`
+and a `probabilities` map; score answers return a continuous `score` over zero-based rubric indices and per-level
+`probabilities`. Provider-reported `confidence` is optional. Any question can return `{ type: "refusal" }`, so check
+the answer's `type` before reading its value. `rawResponse` retains the unmodified provider response.
+
+Boolean questions can add `criteria: { true: "...", false: "..." }`. Choice criteria map option IDs to descriptions;
+score criteria are ordered descriptions. Google question names accept 1–64 letters, digits, underscores, or hyphens.
+Requests accept an `AbortSignal` through `signal` and the existing `telemetry` option.
+
+For media, pass `input: [{ type: "image", mimeType: "image/jpeg", uri: "https://..." }]`, or replace `uri` with
+base64 `data`. Google also accepts `audio`, `video`, and `document` blocks. Image/video blocks can specify
+`resolution`; OpenAI images accept only `"low"` or `"high"`. TypeSafe's experimental image and box primitives are
+not exposed by this wrapper.
+
+Decisions require API access and reject subscription access and speed modifiers. Google Decisions currently
+requires `GEMINI_API_KEY` or `GOOGLE_API_KEY`; Vertex AI is unsupported. Unset `GOOGLE_SERVICE_ACCOUNT_JSON` to use
+the API-key backend when both credentials are present. Decision-only IDs are rejected by text-generation and
+tool-loop APIs. Decision pricing is tracked separately from text-generation pricing; unavailable usage or rates
+produce `costUsd: null` with `costSource: "unknown"`.
+
 ## Model discovery and costs
 
 ```ts
@@ -1247,6 +1325,29 @@ console.log(result.costUsd, result.costSource);
 pricing, and supported processing speeds. Base models appear once; speed choices are metadata. Vercel reads its [public `/v1/models` API](https://ai-gateway.vercel.sh/v1/models); no credential is sent to that catalog. xAI queries the authenticated
 API or subscription catalog. Other providers return the package's supported local allowlist. Discovery does not
 expand OpenAI's closed model types.
+
+Filter a provider's catalogue for decision capability, or inspect the synchronous known-ID arrays:
+
+```ts
+import { listModels, LLM_MODEL_IDS, LLM_DECISION_MODEL_IDS } from "@ljoukov/llm";
+
+const googleDecisions = await listModels({ provider: "google", capability: "decisions" });
+const jevModels = await listModels({ provider: "typesafe", capability: "decisions" });
+console.log(googleDecisions.map(({ model }) => model), jevModels);
+console.log(LLM_MODEL_IDS); // Known text/image IDs; excludes dynamic catalogue-only IDs.
+console.log(LLM_DECISION_MODEL_IDS); // Known decision IDs across the supported native routes.
+```
+
+`provider` is required; `access` defaults to `"api"`. The decision filter returns routes supported by `decide()`;
+it returns an empty list for Vercel, Anthropic, and xAI. Catalogue `decisionPricing` describes
+the native decision tariff when known. For OpenAI Luna, `pricing` remains its text-generation tariff and
+`decisionPricing` records the separate Decisions tariff with zero output-token charges.
+
+Run opt-in live decision checks with canonical model references:
+
+```sh
+LLM_DECISION_INTEGRATION_MODELS=google:api:gemini-decision-1,fireworks:api:accounts/fireworks/models/rune npm run test:integration:decisions
+```
 
 ### Discovering reasoning controls
 

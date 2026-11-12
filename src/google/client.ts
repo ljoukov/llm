@@ -60,7 +60,7 @@ function normaliseConfigValue(value?: string | null): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function resolveGeminiApiKey(): string | undefined {
+export function resolveGeminiApiKey(): string | undefined {
   loadLocalEnv();
   if (normaliseConfigValue(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)) {
     return undefined;

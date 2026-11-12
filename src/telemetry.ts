@@ -3,13 +3,15 @@ import type { LlmCostSource, LlmUsageTokens } from "./utils/cost.js";
 import type { LlmModelId, LlmProvider, LlmStreamEvent } from "./llm.js";
 import type { LlmAccess, LlmSpeed } from "./model-selection.js";
 import type { LlmThinkingResolution } from "./thinking.js";
+import type { DecisionModelId } from "./decisions/models.js";
 
 export type LlmTelemetryOperation =
   | "generateText"
   | "streamText"
   | "generateJson"
   | "streamJson"
-  | "generateImages";
+  | "generateImages"
+  | "decide";
 
 type LlmTelemetryBaseEvent = {
   readonly timestamp: string;
@@ -17,7 +19,7 @@ type LlmTelemetryBaseEvent = {
   readonly operation: LlmTelemetryOperation;
   readonly provider: LlmProvider;
   readonly access: LlmAccess;
-  readonly model: LlmModelId;
+  readonly model: LlmModelId | DecisionModelId;
   readonly requestedSpeed?: LlmSpeed;
 };
 

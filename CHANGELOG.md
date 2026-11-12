@@ -1,5 +1,15 @@
 # Changelog
 
+## 15.2.0 — 2026-11-12
+
+- Add `decide()` for native System 1 Boolean, choice, and rubric-score requests through Google Gemini Decision 1,
+  OpenAI GPT-6 Luna, Fireworks Rune, and direct TypeSafe Jev. Preserve typed answers, refusals, native responses,
+  token usage, decision-specific cost estimates, cancellation, and telemetry.
+- Add API-only decision-model allowlists and `LLM_DECISION_MODEL_IDS`; keep decision-only models outside text
+  generation and tool loops. Google Decisions requires its API-key backend; Rune and Jev accept text in this wrapper.
+- Add `listModels({ provider, capability: "decisions" })` and separate `decisionPricing` metadata so callers can
+  discover native decision models and distinguish OpenAI Luna's decision tariff from its text-generation tariff.
+
 ## 15.1.0 — 2026-11-04
 
 - Add opt-in `persistence` to tool/agent loops: await caller-owned checkpoints before runtime tools,

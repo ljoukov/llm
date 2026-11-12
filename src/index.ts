@@ -385,6 +385,38 @@ export type {
   ParsedModelRef,
 } from "./model-selection.js";
 export { listModels } from "./model-catalog.js";
+export { decide, resolveDecisionModelRef } from "./decisions.js";
+export {
+  LLM_DECISION_MODEL_IDS,
+  OPENAI_DECISION_MODEL_IDS,
+  GOOGLE_DECISION_MODEL_IDS,
+  FIREWORKS_DECISION_MODEL_IDS,
+  TYPESAFE_DECISION_MODEL_IDS,
+  isDecisionModelId,
+} from "./decisions/models.js";
+export type {
+  DecisionModelId,
+  DecisionModelRef,
+  DecisionModelSelection,
+  DecisionProvider,
+} from "./decisions/models.js";
+export type {
+  DecideRequest,
+  DecisionContent,
+  DecisionInput,
+  DecisionQuestion,
+  DecisionQuestions,
+  DecisionBooleanQuestion,
+  DecisionChoiceQuestion,
+  DecisionScoreQuestion,
+  DecisionAnswer,
+  DecisionAnswers,
+  DecisionBooleanAnswer,
+  DecisionChoiceAnswer,
+  DecisionScoreAnswer,
+  DecisionRefusal,
+  DecisionResult,
+} from "./decisions/types.js";
 export type { LlmModelInfo, ListModelsOptions, ModelTokenPricing } from "./model-catalog.js";
 export type { ModelReasoningOption } from "./model-reasoning.js";
 export { resolveThinkingLevel } from "./thinking.js";

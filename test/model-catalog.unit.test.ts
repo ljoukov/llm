@@ -95,6 +95,144 @@ describe("RAM model catalogue", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("discovers API decisions without granting subscription capabilities", async () => {
+    const openai = await listModels({ provider: "openai", capability: "decisions" });
+    expect(openai).toHaveLength(1);
+    expect(openai[0]).toMatchObject({
+      provider: "openai",
+      access: "api",
+      model: "gpt-6-luna",
+      type: "language",
+      capabilities: ["decisions"],
+      decisionPricing: {
+        inputRate: 0.1 / 1_000_000,
+        outputRate: 0,
+        cachedRate: 0.01 / 1_000_000,
+        cacheWriteRate: 0.125 / 1_000_000,
+      },
+    });
+    expect(openai[0]?.pricing?.outputRate).toBeGreaterThan(0);
+    expect(
+      await listModels({ provider: "openai", access: "subscription", capability: "decisions" }),
+    ).toEqual([]);
+    expect(
+      await listModels({ provider: "anthropic", access: "subscription", capability: "decisions" }),
+    ).toEqual([]);
+    expect(
+      await listModels({ provider: "xai", access: "subscription", capability: "decisions" }),
+    ).toEqual([]);
+    const subscription = await listModels({ provider: "openai", access: "subscription" });
+    expect(subscription.find(({ model }) => model === "gpt-6-luna")?.capabilities).toBeUndefined();
+    expect(await listModels({ provider: "anthropic", capability: "decisions" })).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("includes dedicated Google decisions in the full and filtered catalogues", async () => {
+    const all = await listModels({ provider: "google" });
+    const decisions = await listModels({ provider: "google", capability: "decisions" });
+    expect(decisions).toEqual([
+      expect.objectContaining({
+        provider: "google",
+        access: "api",
+        model: "gemini-decision-1",
+        type: "decision",
+        capabilities: ["decisions"],
+        contextWindow: 262_144,
+        supportedSpeeds: [],
+        pricing: { inputRate: 0.1 / 1_000_000, outputRate: 0 },
+        pricingSource: "estimate",
+      }),
+    ]);
+    expect(all).toContainEqual(decisions[0]);
+    expect(all.some(({ type }) => type === "language")).toBe(true);
+    expect(all.some(({ type }) => type === "image")).toBe(true);
+    await expect(
+      listModels({ provider: "google", access: "subscription", capability: "decisions" }),
+    ).rejects.toThrow("does not support subscription");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("lists native Fireworks decisions separately from its language models", async () => {
+    const all = await listModels({ provider: "fireworks" });
+    const decisions = await listModels({ provider: "fireworks", capability: "decisions" });
+    expect(decisions).toEqual([
+      {
+        provider: "fireworks",
+        access: "api",
+        model: "accounts/fireworks/models/rune",
+        type: "decision",
+        capabilities: ["decisions"],
+        contextWindow: 262_144,
+        supportedSpeeds: [],
+        pricing: {
+          inputRate: 0.042 / 1_000_000,
+          outputRate: 0,
+          cachedRate: 0.0084 / 1_000_000,
+        },
+        pricingSource: "estimate",
+      },
+    ]);
+    expect(all).toContainEqual(decisions[0]);
+    expect(all.some(({ type }) => type === "language")).toBe(true);
+    expect(all.some(({ model }) => model.startsWith("jev"))).toBe(false);
+    await expect(
+      listModels({ provider: "fireworks", access: "subscription", capability: "decisions" }),
+    ).rejects.toThrow("does not support subscription");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("discovers TypeSafe Jev models with their dedicated API pricing", async () => {
+    const all = await listModels({ provider: "typesafe" });
+    const decisions = await listModels({ provider: "typesafe", capability: "decisions" });
+    expect(decisions).toEqual(all);
+    expect(decisions.map(({ model }) => model)).toEqual([
+      "jev-1.14.0",
+      "jev-1.13.0",
+      "jev-latest",
+      "jev-preview",
+    ]);
+    for (const model of decisions) {
+      expect(model).toMatchObject({
+        provider: "typesafe",
+        access: "api",
+        type: "decision",
+        capabilities: ["decisions"],
+        supportedSpeeds: [],
+        pricing: { inputRate: 0.042 / 1_000_000, outputRate: 0 },
+        pricingSource: "estimate",
+      });
+    }
+    await expect(
+      listModels({ provider: "typesafe", access: "subscription", capability: "decisions" }),
+    ).rejects.toThrow("does not support subscription");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not advertise unsupported decision routes from dynamic catalogues", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      response({
+        data: [
+          { id: "publisher/language-decisions", type: "language", tags: ["decisions"] },
+          { id: "publisher/dedicated-decisions", type: "decision" },
+          { id: "publisher/language-only", type: "language", tags: ["tool-use"] },
+        ],
+      }),
+    );
+    const models = await listModels({ provider: "vercel", capability: "decisions" });
+    expect(models).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+    const all = await listModels({ provider: "vercel" });
+    expect(all).toHaveLength(3);
+    expect(all[1]?.supportedSpeeds).toEqual([]);
+  });
+
+  it("rejects unsupported runtime capabilities before fetching a catalogue", async () => {
+    await expect(
+      listModels({ provider: "vercel", capability: "unknown" as "decisions" }),
+    ).rejects.toThrow("Unsupported model capability: unknown");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("discovers native reasoning controls without narrowing future effort values", async () => {
     const models = await listModels({ provider: "vercel" });
     const beam = models.find((model) => model.model === "reflection/beam-free");

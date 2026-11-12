@@ -18,7 +18,8 @@ export type ModelConcurrencyProvider =
   | "fireworks"
   | "vercel"
   | "anthropic"
-  | "xai";
+  | "xai"
+  | "typesafe";
 
 export type ModelConcurrencyConfig = {
   readonly globalCap?: number;
@@ -43,6 +44,7 @@ const MODEL_CONCURRENCY_PROVIDERS: readonly ModelConcurrencyProvider[] = [
   "vercel",
   "anthropic",
   "xai",
+  "typesafe",
 ];
 
 const modelConcurrencyState = getRuntimeSingleton(
@@ -109,6 +111,7 @@ function normalizeModelConcurrencyConfig(
     vercel: new Map<string, number>(),
     anthropic: new Map<string, number>(),
     xai: new Map<string, number>(),
+    typesafe: new Map<string, number>(),
   };
   for (const provider of MODEL_CONCURRENCY_PROVIDERS) {
     const providerCap = normalizeCap(config.providerCaps?.[provider]);
