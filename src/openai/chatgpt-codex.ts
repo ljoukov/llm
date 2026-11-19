@@ -24,7 +24,7 @@ const LLM_PROXY_API_KEY_ENV = "LLM_PROXY_API_KEY";
 const CHATGPT_RESPONSES_EXPERIMENTAL_HEADER = "responses=experimental";
 // Codex model metadata is gated by client protocol version, independently of the
 // library's release version. This version supports the fields used by this client.
-const CHATGPT_CODEX_MODELS_CLIENT_VERSION = "0.144.0";
+const CHATGPT_CODEX_MODELS_CLIENT_VERSION = "0.166.0";
 
 const chatGptCodexState = getRuntimeSingleton(Symbol.for("@ljoukov/llm.chatGptCodexState"), () => ({
   cachedResponsesWebSocketMode: null as ResponsesWebSocketMode | null,

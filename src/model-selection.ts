@@ -2,7 +2,7 @@ import {
   isOpenAiModelId,
   isOpenAiImageModelId,
   isOpenAiSubscriptionModelId,
-  OPENAI_SUBSCRIPTION_MODEL_IDS,
+  supportsOpenAiUltrafast,
   type OpenAiModelId,
   type OpenAiImageModelId,
   type OpenAiSubscriptionModelId,
@@ -153,6 +153,17 @@ function isXaiModel(model: string): model is XaiModelSelectionId {
   return /^grok-[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(model);
 }
 
+// The explicit Gateway route can still serve these canonical IDs with Fast mode.
+const LEGACY_OPENAI_GATEWAY_FAST_MODELS: ReadonlySet<string> = new Set([
+  "gpt-6.1-sol",
+  "gpt-6-astra",
+  "gpt-6-sol",
+  "gpt-5.6",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+]);
+
 /** Removed serving aliases are rejected rather than rewritten, including their known Gateway forms. */
 export function isRemovedServingAlias(modelId: string): boolean {
   if (modelId.startsWith("chatgpt-") || /^gpt-.+-fast$/u.test(modelId)) return true;
@@ -161,10 +172,7 @@ export function isRemovedServingAlias(modelId: string): boolean {
     if (nativeId.startsWith("chatgpt-")) return true;
     if (!nativeId.endsWith("-fast")) return false;
     const baseId = nativeId.slice(0, -"-fast".length);
-    return (
-      isOpenAiModelId(baseId) ||
-      (OPENAI_SUBSCRIPTION_MODEL_IDS as readonly string[]).includes(baseId)
-    );
+    return isOpenAiModelId(baseId) || LEGACY_OPENAI_GATEWAY_FAST_MODELS.has(baseId);
   }
   if (modelId.startsWith("anthropic/") && modelId.endsWith("-fast")) {
     const baseId = modelId.slice("anthropic/".length, -"-fast".length);
@@ -188,21 +196,24 @@ export function getSupportedModelSpeeds(
         ? isOpenAiSubscriptionModelId(model)
         : isOpenAiModelId(model);
     if (!listed) return [];
-    if (model === "gpt-6-astra" || model === "gpt-6.1-sol") return LLM_SPEEDS;
+    if (supportsOpenAiUltrafast(model)) return LLM_SPEEDS;
     return model.startsWith("experimental-chatgpt-") ? ["standard"] : ["standard", "fast"];
   }
   if (provider === "anthropic") {
     return model === "claude-opus-5-5" ? ["standard", "fast"] : ["standard"];
   }
   if (provider === "vercel") {
+    const openAiModel = model.startsWith("openai/") ? model.slice("openai/".length) : "";
     if (
-      (model.startsWith("openai/") && isOpenAiImageModelId(model.slice("openai/".length))) ||
+      isOpenAiImageModelId(openAiModel) ||
       (model.startsWith("google/") && isGeminiImageModelId(model.slice("google/".length)))
     ) {
       return [];
     }
+    if (supportsOpenAiUltrafast(openAiModel)) return LLM_SPEEDS;
     const supportsFast =
-      (model.startsWith("openai/") && isOpenAiModelId(model.slice("openai/".length))) ||
+      openAiModel === "gpt-6-luna" ||
+      LEGACY_OPENAI_GATEWAY_FAST_MODELS.has(openAiModel) ||
       model === "anthropic/claude-opus-5-5";
     return supportsFast ? ["standard", "fast"] : ["standard"];
   }

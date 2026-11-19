@@ -4,19 +4,19 @@ import { benchmarkModelSelection, isBenchmarkModel } from "../benchmarks/model-s
 
 describe("benchmark model selection", () => {
   it("normalizes qualified references with an independent speed modifier", () => {
-    expect(benchmarkModelSelection("openai:subscription:gpt-6.1-sol", "fast")).toEqual({
+    expect(benchmarkModelSelection("openai:subscription:gpt-6.2-sol", "fast")).toEqual({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       speed: "fast",
     });
   });
 
   it("validates inferred API routes and preserves native model colons", () => {
-    expect(benchmarkModelSelection("gpt-6.1-sol")).toMatchObject({
+    expect(benchmarkModelSelection("gpt-6.2-sol")).toMatchObject({
       provider: "openai",
       access: "api",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
     });
     expect(benchmarkModelSelection("vercel:api:publisher/model:variant:free")).toMatchObject({
       provider: "vercel",
@@ -26,7 +26,7 @@ describe("benchmark model selection", () => {
   });
 
   it.each([
-    "gpt-6.1-terra",
+    "gpt-6.1-sol",
     "gpt-6.1-sol-fast",
     "openai:subscription:gpt-6.1-sol-fast",
     "chatgpt-gpt-6.1-sol",
@@ -37,8 +37,11 @@ describe("benchmark model selection", () => {
     expect(isBenchmarkModel(label)).toBe(false);
   });
 
-  it("rejects unsupported speeds while accepting explicit subscription-only text routes", () => {
+  it("validates speed independently for API and subscription routes", () => {
     expect(isBenchmarkModel("google:api:gemini-2.5-pro", "fast")).toBe(false);
+    expect(isBenchmarkModel("gpt-6.1-terra", "fast")).toBe(true);
     expect(isBenchmarkModel("openai:subscription:gpt-6.1-terra", "fast")).toBe(true);
+    expect(isBenchmarkModel("openai:subscription:gpt-6.1-terra", "ultrafast")).toBe(false);
+    expect(isBenchmarkModel("openai:subscription:gpt-6.2-astra", "ultrafast")).toBe(true);
   });
 });

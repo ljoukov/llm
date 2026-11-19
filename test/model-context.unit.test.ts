@@ -177,8 +177,13 @@ describe("model context-window discovery", () => {
     ).toMatchObject({ contextWindowTokens: 64_000, maxOutputTokens: 8_000 });
   });
 
-  it("uses verified literal OpenAI API catalogue values without a network request", async () => {
-    expect(await resolveModelContextWindow({ model: "gpt-6-luna" })).toMatchObject({
+  it.each([
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "gpt-6.1-terra",
+    "gpt-6-luna",
+  ] as const)("uses verified OpenAI API catalogue values for %s", async (model) => {
+    expect(await resolveModelContextWindow({ model })).toMatchObject({
       contextWindowTokens: 1_050_000,
       maxInputTokens: 922_000,
       maxOutputTokens: 128_000,
@@ -188,11 +193,11 @@ describe("model context-window discovery", () => {
       resolveModelContextWindow({
         provider: "openai",
         access: "subscription",
-        model: "gpt-6-luna",
+        model,
       }),
     ).rejects.toThrow("No context-window metadata");
     vi.stubEnv("OPENAI_BASE_URL", "https://private.test/v1");
-    await expect(resolveModelContextWindow({ model: "gpt-6-luna" })).rejects.toThrow(
+    await expect(resolveModelContextWindow({ model })).rejects.toThrow(
       "No context-window metadata",
     );
   });
@@ -220,32 +225,18 @@ describe("model context-window discovery", () => {
 
   it("discovers active Codex subscription windows independently of larger opt-in limits", async () => {
     mocks.codexModels.mockResolvedValue([
-      { slug: "gpt-6.1-sol", context_window: 500_000, max_context_window: 1_050_000 },
+      { slug: "gpt-6.2-sol", context_window: 500_000, max_context_window: 1_050_000 },
     ]);
     expect(
       await resolveModelContextWindow({
         provider: "openai",
         access: "subscription",
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
       }),
     ).toMatchObject({ contextWindowTokens: 500_000, source: "provider", limitType: "context" });
     expect(
-      await resolveModelContextWindow({ provider: "openai", model: "gpt-6.1-sol" }),
+      await resolveModelContextWindow({ provider: "openai", model: "gpt-6.2-sol" }),
     ).toMatchObject({ contextWindowTokens: 1_050_000, source: "catalog" });
-  });
-
-  it("uses only the documented subscription-specific fallback when the catalogue omits the model", async () => {
-    mocks.codexModels.mockResolvedValue([]);
-    expect(
-      await resolveModelContextWindow({
-        provider: "openai",
-        access: "subscription",
-        model: "gpt-6.1-sol",
-      }),
-    ).toMatchObject({ contextWindowTokens: 500_000, source: "catalog" });
-    await expect(
-      resolveModelContextWindow({ provider: "openai", access: "subscription", model: "gpt-6-sol" }),
-    ).rejects.toThrow("No context-window metadata");
   });
 
   it("accepts a validated override without provider discovery", async () => {

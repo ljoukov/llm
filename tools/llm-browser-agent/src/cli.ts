@@ -33,7 +33,7 @@ const help = `llm-browser-agent — browser agent CLI using @ljoukov/llm
   llm-browser-agent status [--state <file>]
   llm-browser-agent call '<browser action JSON>' [--state <file>]
   llm-browser-agent session [--state <file>]   # JSONL in/out, persistent element refs
-  llm-browser-agent run '<task>' [--model openai:subscription:gpt-6.1-sol]
+  llm-browser-agent run '<task>' [--model openai:subscription:gpt-6.2-sol]
   llm-browser-agent prompt [--instructions <file>]
 
 Options:
@@ -139,7 +139,7 @@ async function main() {
       state: { type: "string", default: defaultState },
       port: { type: "string" },
       instructions: { type: "string" },
-      model: { type: "string", default: "openai:subscription:gpt-6.1-sol" },
+      model: { type: "string", default: "openai:subscription:gpt-6.2-sol" },
       speed: { type: "string" },
       thinking: { type: "string" },
       "max-steps": { type: "string", default: "40" },

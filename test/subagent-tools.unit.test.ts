@@ -456,7 +456,7 @@ describe("subagent tools", () => {
   });
 
   it.each([
-    { provider: "openai", access: "subscription", model: "gpt-6.1-sol", speed: "fast" },
+    { provider: "openai", access: "subscription", model: "gpt-6.2-sol", speed: "fast" },
     { provider: "vercel", access: "api", model: "reflection/beam-free", speed: "standard" },
   ] as const)("inherits the entire $provider:$access route and strips child overrides", async (route) => {
     const runSubagent = vi.fn(async (_request: SubagentRunRequest) => ({
@@ -484,7 +484,7 @@ describe("subagent tools", () => {
       message: "task",
       provider: "openai",
       access: "api",
-      model: "gpt-6-astra",
+      model: "gpt-6.2-astra",
       speed: "ultrafast",
     });
     expect(parsed.success).toBe(true);

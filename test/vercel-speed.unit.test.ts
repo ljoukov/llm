@@ -5,23 +5,37 @@ import { extractVercelServingMetadata, resolveVercelSpeedOptions } from "../src/
 describe("Vercel serving speed", () => {
   it("uses native serving controls without manufacturing model aliases", () => {
     expect(resolveVercelSpeedOptions("openai/gpt-6.1-sol", "fast")).toEqual({
-      gateway: { sort: "cost", serviceTier: "priority" },
+      providerOptions: { gateway: { sort: "cost", serviceTier: "priority" } },
     });
     expect(resolveVercelSpeedOptions("anthropic/claude-opus-5-5", "fast")).toEqual({
-      gateway: { sort: "cost", speed: "fast", allowFallbackFromFast: false },
+      providerOptions: { gateway: { sort: "cost", speed: "fast", allowFallbackFromFast: false } },
     });
     expect(resolveVercelSpeedOptions("publisher/model", undefined)).toEqual({
-      gateway: { sort: "cost" },
+      providerOptions: { gateway: { sort: "cost" } },
     });
+  });
+
+  it.each([
+    "openai/gpt-6.2-sol",
+    "openai/gpt-6.2-astra",
+  ])("passes the native tier for %s", (model) => {
+    for (const speed of ["fast", "ultrafast"] as const) {
+      expect(resolveVercelSpeedOptions(model, speed)).toEqual({
+        providerOptions: { gateway: { sort: "cost" } },
+        service_tier: speed,
+      });
+    }
   });
 
   it("forces standard serving when explicitly selected", () => {
     expect(resolveVercelSpeedOptions("openai/gpt-6.1-sol", "standard")).toEqual({
-      gateway: { sort: "cost", serviceTier: "default" },
+      providerOptions: { gateway: { sort: "cost", serviceTier: "default" } },
     });
     expect(resolveVercelSpeedOptions("anthropic/claude-opus-5-5", "standard")).toEqual({
-      gateway: { sort: "cost", serviceTier: "default" },
-      anthropic: { speed: "standard" },
+      providerOptions: {
+        gateway: { sort: "cost", serviceTier: "default" },
+        anthropic: { speed: "standard" },
+      },
     });
     expect(() => resolveVercelSpeedOptions("openai/gpt-6-astra", "ultrafast")).toThrow(
       "Ultrafast speed is not supported",

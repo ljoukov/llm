@@ -6006,7 +6006,7 @@ async function runTextCall(params: {
               {
                 model: modelForProvider,
                 ...(provider === "vercel"
-                  ? { providerOptions: resolveVercelSpeedOptions(modelForProvider, request.speed) }
+                  ? resolveVercelSpeedOptions(modelForProvider, request.speed)
                   : {}),
                 messages: fireworksMessages as any,
                 ...(summaryTokenLimit !== undefined ? { max_tokens: summaryTokenLimit } : {}),
@@ -8309,7 +8309,7 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
         const stepRequestPayload = {
           model: providerInfo.model,
           ...(provider === "vercel"
-            ? { providerOptions: resolveVercelSpeedOptions(providerInfo.model, request.speed) }
+            ? resolveVercelSpeedOptions(providerInfo.model, request.speed)
             : {}),
           messages,
           tools: fireworksTools,

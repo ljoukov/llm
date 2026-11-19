@@ -59,14 +59,14 @@ describe("runAgentLoop", () => {
     ]);
   });
 
-  it("auto-selects codex filesystem tools for gpt-6-sol", async () => {
+  it("auto-selects codex filesystem tools for gpt-6.2-sol", async () => {
     runToolLoopMock.mockClear();
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       input: "test",
       filesystemTool: true,
     });
@@ -99,7 +99,7 @@ describe("runAgentLoop", () => {
       await runAgentLoop({
         provider: "openai",
         access: "subscription",
-        model: "gpt-6-sol",
+        model: "gpt-6.2-sol",
         input: "test",
         mediaResolution: "original",
         filesystemTool: {
@@ -176,7 +176,7 @@ describe("runAgentLoop", () => {
     const { runAgentLoop } = await import("../src/agent.js");
 
     await runAgentLoop({
-      model: "gpt-5.6",
+      model: "gpt-6.2-sol",
       input: "Generate a portrait",
       imageGenerationTool: {
         model: "gpt-image-2",
@@ -209,7 +209,7 @@ describe("runAgentLoop", () => {
     await runAgentLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.2-sol",
       input: "Generate a landscape",
       image_generation_tool: {
         access: "subscription",
@@ -233,7 +233,7 @@ describe("runAgentLoop", () => {
       runAgentLoop({
         provider: "openai",
         access: "subscription",
-        model: "gpt-5.6-sol",
+        model: "gpt-6.2-sol",
         input: "Generate a landscape",
         imageGenerationTool: {
           imageSize: "landscape",
@@ -277,7 +277,7 @@ describe("runAgentLoop", () => {
     await runAgentLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.2-sol",
       input: "investigate independent workstreams",
       thinkingLevel: "ultra",
     });
@@ -305,7 +305,7 @@ describe("runAgentLoop", () => {
     await runAgentLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.2-sol",
       input: "work locally",
       thinkingLevel: "ultra",
       subagentTool: false,
@@ -416,7 +416,7 @@ describe("runAgentLoop", () => {
         steps: [
           {
             step: 1,
-            modelVersion: "gpt-6.1-sol",
+            modelVersion: "gpt-6.2-sol",
             requestedSpeed: "fast",
             effectiveSpeed: "fast",
             serviceTier: "fast",
@@ -433,7 +433,7 @@ describe("runAgentLoop", () => {
           },
           {
             step: 2,
-            modelVersion: "gpt-6.1-sol",
+            modelVersion: "gpt-6.2-sol",
             requestedSpeed: "fast",
             effectiveSpeed: "standard",
             serviceTier: "default",
@@ -459,7 +459,7 @@ describe("runAgentLoop", () => {
     await runAgentLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       speed: "fast",
       input: "test",
       filesystemTool: true,
@@ -664,10 +664,10 @@ describe("runAgentLoop", () => {
     {
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       speed: "fast",
     },
-    { model: "openai:subscription:gpt-6.1-sol", speed: "fast" },
+    { model: "openai:subscription:gpt-6.2-sol", speed: "fast" },
   ] as const)("normalizes $model and inherits its speed in child agents", async (selection) => {
     runToolLoopMock.mockClear();
     let calls = 0;
@@ -705,7 +705,7 @@ describe("runAgentLoop", () => {
     const route = {
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
     };
     expect(runToolLoopMock).toHaveBeenCalledTimes(2);
     for (const [call] of runToolLoopMock.mock.calls) {

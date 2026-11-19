@@ -4,7 +4,7 @@ import { z } from "zod";
 import { runAgentLoop } from "../src/index.js";
 import { assertIntegrationCredentialsForModels } from "./integration-env.js";
 
-const model = { provider: "openai", access: "subscription", model: "gpt-5.6-sol" } as const;
+const model = { provider: "openai", access: "subscription", model: "gpt-6.2-sol" } as const;
 const readFactInputSchema = z.object({ key: z.enum(["alpha", "beta"]) }).strict();
 
 assertIntegrationCredentialsForModels([model]);

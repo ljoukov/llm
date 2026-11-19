@@ -1,5 +1,16 @@
 # Changelog
 
+## 16.0.0 — 2026-11-19
+
+- Replace the OpenAI API and ChatGPT subscription text allowlists with `gpt-6.2-astra`,
+  `gpt-6.2-sol`, `gpt-6.1-terra`, and `gpt-6-luna`. GPT-6.1 Terra is now supported on the API.
+  Migrate older Astra, Sol, Terra, and Luna selections using the [README migration guide](./README.md#migrating-to-v16).
+- Use `speed: "ultrafast"` with GPT-6.2 Astra and Sol on the API and eligible subscriptions.
+  Estimate Ultrafast at three times the Standard rate through February 28, 2027, and six times
+  the Standard rate starting March 1, 2027, Pacific time. GPT-6.2 Astra and Sol also support
+  both Fast and Ultrafast through Vercel AI Gateway.
+- Update model discovery, reasoning controls, and context limits for the new model lineup.
+
 ## 15.3.0 — 2026-11-12
 
 - Add opt-in conversation compaction to tool and agent loops, preferring native OpenAI Responses,

@@ -129,7 +129,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
             input_tokens: 10,
             output_tokens: 5,
             total_tokens: 15,
-            ...(options.request.model === "gpt-6-astra"
+            ...(options.request.model === "gpt-6.2-astra"
               ? { input_tokens_details: { cached_tokens: 2, cache_write_tokens: 3 } }
               : {}),
           },
@@ -148,7 +148,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
           input_tokens: 8,
           output_tokens: 4,
           total_tokens: 12,
-          ...(options.request.model === "gpt-6-astra"
+          ...(options.request.model === "gpt-6.2-astra"
             ? { input_tokens_details: { cached_tokens: 1, cache_write_tokens: 2 } }
             : {}),
         },
@@ -343,8 +343,8 @@ describe("runToolLoop custom tools", () => {
   });
 
   it.each([
-    "gpt-6-astra",
-    "gpt-6-sol",
+    "gpt-6.2-astra",
+    "gpt-6.2-sol",
   ] as const)("supports %s custom/freeform tools and accumulates usage", async (model) => {
     chatGptScenario = "custom";
     chatGptRequests = [];
@@ -374,13 +374,13 @@ describe("runToolLoop custom tools", () => {
     expect(result.text).toBe("done");
     expect(chatGptRequests.every((request) => request.model === model)).toBe(true);
     expect(chatGptRequests.every((request) => request.reasoning.effort === "high")).toBe(true);
-    if (model === "gpt-6-astra") {
+    if (model === "gpt-6.2-astra") {
       expect(result.steps.map((step) => step.usage?.cacheWriteTokens)).toEqual([3, 2]);
       expect(result.steps.map((step) => step.usage?.cachedTokens)).toEqual([2, 1]);
       expect(result.totalCostUsd).toBeNull();
       expect(
         result.steps.reduce((sum, step) => sum + (step.apiEquivalentCostUsd ?? 0), 0),
-      ).toBeCloseTo(0.0006155, 10);
+      ).toBeCloseTo(0.0004912, 10);
     } else {
       expect(result.steps.every((step) => step.usage?.cacheWriteTokens === undefined)).toBe(true);
     }
@@ -560,7 +560,7 @@ describe("runToolLoop custom tools", () => {
     const result = await runToolLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       input: "inspect image",
       tools: {
         view_image: tool({
@@ -593,7 +593,7 @@ describe("runToolLoop custom tools", () => {
     const result = await runToolLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       input: "finish",
       tools: {
         view_image: tool({
@@ -619,7 +619,7 @@ describe("runToolLoop custom tools", () => {
     const result = await runToolLoop({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       input: "inspect image",
       tools: {
         view_image: tool({

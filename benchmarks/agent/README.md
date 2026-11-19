@@ -11,7 +11,7 @@ This benchmark evaluates a filesystem-based agent that must:
 It runs the agent with (default model set):
 
 - ChatGPT Codex (Spark): `openai:subscription:gpt-6-luna`
-- OpenAI Responses: `gpt-6-sol`, `gpt-6-luna`
+- OpenAI Responses: `gpt-6.2-sol`, `gpt-6-luna`
 - Open models (automatic Vercel/Fireworks routing): `kimi-k3`, `glm-5.3`, `deepseek-v4.1-flash-1017`
 - Google Gemini: `gemini-4-argon`, `gemini-3.8-flash`
 
@@ -29,7 +29,7 @@ model/speed combinations fail before calls start; projections and reports use th
 `--merge-latest` requires the same agent and grader speed settings as the saved run.
 
 ```bash
-npx tsx benchmarks/agent/run.ts --models openai:subscription:gpt-6.1-sol --speed fast --estimate-only
+npx tsx benchmarks/agent/run.ts --models openai:subscription:gpt-6.2-sol --speed fast --estimate-only
 ```
 
 ## Run
@@ -61,7 +61,7 @@ npx tsx benchmarks/agent/run.ts --estimate-only
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models openai:subscription:gpt-6-luna,gpt-6-sol,gpt-6-luna,kimi-k3,glm-5.3,deepseek-v4.1-flash-1017,gemini-4-argon,gemini-3.8-flash \
+  --models openai:subscription:gpt-6-luna,gpt-6.2-sol,gpt-6-luna,kimi-k3,glm-5.3,deepseek-v4.1-flash-1017,gemini-4-argon,gemini-3.8-flash \
   --tasks all \
   --variants baseline,subagents \
   --runs 3 \
@@ -80,7 +80,7 @@ Patch `traces/latest` with only newly rerun cases (keep older model/task results
 
 ```bash
 npx tsx benchmarks/agent/run.ts \
-  --models openai:subscription:gpt-6-luna,gpt-6-sol \
+  --models openai:subscription:gpt-6-luna,gpt-6.2-sol \
   --tasks all \
   --merge-latest
 ```

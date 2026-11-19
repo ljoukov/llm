@@ -220,7 +220,7 @@ describe("Vercel shared-model routing", () => {
   it("does not allow provider overrides to reroute direct models", async () => {
     const { generateText } = await import("../src/llm.js");
     await expect(
-      generateText({ model: "gpt-6.1-sol", provider: "vercel", input: "hello" } as never),
+      generateText({ model: "gpt-6.2-sol", provider: "vercel", input: "hello" } as never),
     ).rejects.toThrow("Unsupported model/access combination");
     expect(state.requests).toHaveLength(0);
   });

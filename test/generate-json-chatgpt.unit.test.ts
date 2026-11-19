@@ -39,9 +39,9 @@ vi.mock("../src/openai/chatgpt-codex.js", () => {
 
 describe("generateJson (ChatGPT)", () => {
   it.each([
-    "gpt-6-astra",
-    "gpt-6.1-sol",
-    "gpt-6-sol",
+    "gpt-6.2-astra",
+    "gpt-6.2-sol",
+    "gpt-6.1-terra",
     "gpt-6-luna",
   ] as const)("passes json_schema text.format through %s", async (model) => {
     const { generateJson } = await import("../src/llm.js");

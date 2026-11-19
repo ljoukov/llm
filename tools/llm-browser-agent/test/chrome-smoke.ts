@@ -264,7 +264,7 @@ try {
       selection: {
         provider: "openai",
         access: "subscription",
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
         speed: "standard",
       },
       settingsPath: path.join(profile, "agent-settings.json"),
@@ -284,7 +284,7 @@ try {
       },
     });
     terminalInput.write(
-      `/domains only ${allowOrigin}\n/model openai:subscription:gpt-6.1-sol medium\n${input} Use snapshot to verify text; do not use evaluate or expression-based wait.\n`,
+      `/domains only ${allowOrigin}\n/model openai:subscription:gpt-6.2-sol medium\n${input} Use snapshot to verify text; do not use evaluate or expression-based wait.\n`,
     );
     const timer = setTimeout(
       () => rejectResult(new Error("Live interactive task timed out")),

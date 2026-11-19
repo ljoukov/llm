@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { isOpenAiImageModelId, LLM_MODEL_IDS } from "../src/index.js";
 import { estimateCallCostUsd } from "../src/utils/cost.js";
@@ -6,17 +6,13 @@ import { getOpenAiPricing } from "../src/openai/pricing.js";
 import type { LlmSpeed } from "../src/model-selection.js";
 
 describe("estimateCallCostUsd", () => {
+  afterEach(() => vi.useRealTimers());
+
   it.each([
-    ["gpt-6.1-sol", 0.00781],
-    ["gpt-6.1-sol", 0.00781],
+    ["gpt-6.2-sol", 0.00781],
+    ["gpt-6.2-astra", 0.03124],
     ["gpt-6.1-terra", 0.003905],
-    ["gpt-6-sol", 0.00782],
     ["gpt-6-luna", 0.000391],
-    ["gpt-6-astra", 0.0391],
-    ["gpt-6-astra", 0.0391],
-    ["gpt-5.6-sol", 0.01564],
-    ["gpt-5.6-terra", 0.00902],
-    ["gpt-5.6-luna", 0.000902],
   ] as const)("prices %s standard, fast, and concrete versions", (modelId, expectedCost) => {
     const tokens = {
       promptTokens: 1000,
@@ -33,9 +29,13 @@ describe("estimateCallCostUsd", () => {
   });
 
   it.each([
-    "gpt-6-astra",
-    "gpt-6.1-sol",
-  ])("prices %s Ultrafast at the published rates", (modelId) => {
+    ["gpt-6.2-astra", "2027-03-01T07:59:59.999Z", 3],
+    ["gpt-6.2-astra", "2027-03-01T08:00:00.000Z", 6],
+    ["gpt-6.2-sol", "2027-03-01T07:59:59.999Z", 3],
+    ["gpt-6.2-sol", "2027-03-01T08:00:00.000Z", 6],
+  ] as const)("prices %s Ultrafast at %s", (modelId, timestamp, multiplier) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(timestamp));
     const tokens = {
       promptTokens: 272_001,
       cachedTokens: 100,
@@ -50,9 +50,9 @@ describe("estimateCallCostUsd", () => {
       tokens,
       responseImages: 0,
     });
-    expect(ultrafast).toBeCloseTo((standard as number) * 6, 10);
+    expect(ultrafast).toBeCloseTo((standard as number) * multiplier, 10);
     expect(getOpenAiPricing(modelId, "ultrafast")?.cacheWriteRate).toBe(
-      (getOpenAiPricing(modelId)?.cacheWriteRate as number) * 6,
+      (getOpenAiPricing(modelId)?.cacheWriteRate as number) * multiplier,
     );
   });
 
@@ -69,9 +69,11 @@ describe("estimateCallCostUsd", () => {
   });
 
   it("uses the served OpenAI tier rather than the requested speed", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
     const options = {
       provider: "openai",
-      modelId: "gpt-6.1-sol",
+      modelId: "gpt-6.2-sol",
       tokens: { promptTokens: 1000, responseTokens: 1000 },
       responseImages: 0,
     };
@@ -83,7 +85,7 @@ describe("estimateCallCostUsd", () => {
       10,
     );
     expect(estimateCallCostUsd({ ...options, effectiveServiceTier: "ultrafast" })).toBeCloseTo(
-      0.072,
+      0.036,
       10,
     );
     expect(estimateCallCostUsd({ ...options, effectiveServiceTier: "flex" })).toBeNull();
@@ -137,7 +139,7 @@ describe("estimateCallCostUsd", () => {
     expect(
       estimateCallCostUsd({
         modelId,
-        pricingModelId: "gpt-6.1-sol",
+        pricingModelId: "gpt-6.2-sol",
         tokens: { promptTokens: 1000 },
         responseImages: 0,
       }),
@@ -153,15 +155,15 @@ describe("estimateCallCostUsd", () => {
   });
 
   it.each([
-    ["gpt-6.1-sol", 1000, 0.00791],
-    ["gpt-6.1-sol", 272000, 0.54991],
-    ["gpt-6.1-sol", 272001, 1.096824],
+    ["gpt-6.2-sol", 1000, 0.00791],
+    ["gpt-6.2-sol", 272000, 0.54991],
+    ["gpt-6.2-sol", 272001, 1.096824],
     ["gpt-6.1-terra", 1000, 0.003955],
     ["gpt-6.1-terra", 272000, 0.274955],
     ["gpt-6.1-terra", 272001, 0.548412],
-    ["gpt-6-astra", 1000, 0.0396],
-    ["gpt-6-astra", 272000, 2.7496],
-    ["gpt-6-astra", 272001, 5.48422],
+    ["gpt-6.2-astra", 1000, 0.03164],
+    ["gpt-6.2-astra", 272000, 2.19964],
+    ["gpt-6.2-astra", 272001, 4.387296],
   ] as const)("prices %s cache writes at the %s token boundary", (modelId, promptTokens, expectedCost) => {
     expect(
       estimateCallCostUsd({
@@ -198,7 +200,7 @@ describe("estimateCallCostUsd", () => {
     expect(
       estimateCallCostUsd({
         modelId: "experimental-chatgpt-private-model",
-        pricingModelId: "gpt-6-sol",
+        pricingModelId: "gpt-6.2-sol",
         tokens: { promptTokens: 1000, responseTokens: 600 },
         responseImages: 0,
       }),

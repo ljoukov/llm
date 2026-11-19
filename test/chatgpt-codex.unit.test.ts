@@ -186,7 +186,7 @@ describe("collectChatGptCodexResponse", () => {
       expect(headers.get("authorization")).toBe("Bearer llmc_app");
       expect(headers.get("session_id")).toBe("session-v2");
       expect(JSON.parse(init?.body as string)).toMatchObject({
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
         input: [{ role: "user", content: "history" }, { type: "compaction_trigger" }],
         instructions: "Keep working",
         store: false,
@@ -210,7 +210,7 @@ describe("collectChatGptCodexResponse", () => {
     const result = await requestChatGptCodexCompaction({
       sessionId: "session-v2",
       request: {
-        model: "gpt-6.1-sol",
+        model: "gpt-6.2-sol",
         input: [{ role: "user", content: "history" }],
         instructions: "Keep working",
       },
@@ -278,7 +278,7 @@ describe("collectChatGptCodexResponse", () => {
     );
     await expect(
       requestChatGptCodexCompaction({
-        request: { model: "gpt-6.1-sol", input: [{ role: "user", content: "history" }] },
+        request: { model: "gpt-6.2-sol", input: [{ role: "user", content: "history" }] },
       }),
     ).rejects.toThrow(expected);
   });
@@ -298,7 +298,7 @@ describe("collectChatGptCodexResponse", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(
       requestChatGptCodexCompaction({
-        request: { model: "gpt-6.1-sol", input: [{ role: "user", content: "history" }] },
+        request: { model: "gpt-6.2-sol", input: [{ role: "user", content: "history" }] },
         signal: controller.signal,
       }),
     ).resolves.toEqual({ output: [compaction] });
@@ -311,7 +311,7 @@ describe("collectChatGptCodexResponse", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(
       requestChatGptCodexCompaction({
-        request: { model: "gpt-6.1-sol", input: [{ role: "user", content: "history" }] },
+        request: { model: "gpt-6.2-sol", input: [{ role: "user", content: "history" }] },
       }),
     ).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -401,7 +401,7 @@ describe("collectChatGptCodexResponse", () => {
     const models = [{ slug: "gpt-6-luna", context_window: 128_000, max_context_window: 256_000 }];
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
       expect(String(input)).toBe(
-        "https://codex.example/backend/models?workspace=one&client_version=0.144.0",
+        "https://codex.example/backend/models?workspace=one&client_version=0.166.0",
       );
       expect(init?.method).toBe("GET");
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer test-access");
@@ -421,7 +421,7 @@ describe("collectChatGptCodexResponse", () => {
       apiKey: "llmc_app",
     });
     const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
-      expect(String(input)).toBe("https://proxy.example/api/app/models?client_version=0.144.0");
+      expect(String(input)).toBe("https://proxy.example/api/app/models?client_version=0.166.0");
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer llmc_app");
       return new Response("not found", { status: 404 });
     });
@@ -718,7 +718,7 @@ describe("collectChatGptCodexResponse", () => {
         {
           type: "response.completed",
           response: {
-            model: "gpt-6-sol",
+            model: "gpt-6.2-sol",
             status: "completed",
             usage: {
               input_tokens: 2,
@@ -733,7 +733,7 @@ describe("collectChatGptCodexResponse", () => {
 
     const result = await collectChatGptCodexResponse({
       request: {
-        model: "gpt-6-sol",
+        model: "gpt-6.2-sol",
         store: false,
         stream: true,
         input: [{ role: "user", content: "draw a blue square" }],

@@ -51,7 +51,7 @@ export LLM_PROXY_API_KEY="<same value as LLM_PROXY_API_KEY>"
 ```
 
 Select this subscription route explicitly with
-`{ provider: "openai", access: "subscription", model: "gpt-6.1-sol" }`.
+`{ provider: "openai", access: "subscription", model: "gpt-6.2-sol" }`.
 
 `LLM_PROXY_URL` may be the root deployment URL or the full `/api/codex/responses`
 endpoint. The library derives the corresponding `/api/codex/images/generations` and

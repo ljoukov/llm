@@ -22,6 +22,31 @@ Designed around a single streaming API that yields:
 - thought (reasoning summary) deltas
 - usage token counts + reported or estimated USD cost, with unknown prices represented explicitly
 
+## Migrating to v16
+
+Update saved configuration, qualified model strings, and CLI arguments that select a retired OpenAI
+text model. The direct OpenAI API and ChatGPT subscription allowlists each contain four text models.
+
+| Previous OpenAI model | Replacement |
+| --- | --- |
+| `gpt-6-astra` | `gpt-6.2-astra` |
+| `gpt-6.1-sol`, `gpt-6-sol`, `gpt-5.6-sol`, `gpt-5.6` | `gpt-6.2-sol` |
+| `gpt-5.6-terra` | `gpt-6.1-terra` |
+| `gpt-5.6-luna` | `gpt-6-luna` |
+
+```ts
+await generateText({ model: "openai:api:gpt-6.2-sol", input: "Hello" });
+await generateText({
+  model: "openai:subscription:gpt-6.2-astra",
+  speed: "ultrafast",
+  input: "Hello",
+});
+```
+
+Keep speed in the separate `speed` field, or use `--speed ultrafast` with supported CLI selections.
+Both GPT-6.2 models use `low` as their lowest reasoning effort. Check the
+[processing speeds](#processing-speed) for tier availability.
+
 ## Migrating to v15
 
 Rename `FIREWORKS_TOKEN` to `FIREWORKS_API_KEY` in your environment and deployment secrets.
@@ -68,7 +93,7 @@ with the old service without reusing its accounts, keys, or refresh tokens. Conn
 
 ```ts
 // Same remote settings work for both selections:
-await generateText({ model: "openai:subscription:gpt-6.1-sol", input: "Hello" });
+await generateText({ model: "openai:subscription:gpt-6.2-sol", input: "Hello" });
 await generateText({ model: "xai:subscription:grok-4.7", input: "Hello" });
 ```
 
@@ -96,7 +121,7 @@ const result = await generateText({ ...model, input: "Return exactly: OK" });
 
 const subscriptionResult = await generateText({
   provider: "openai",
-  model: "gpt-6.1-sol",
+  model: "gpt-6.2-sol",
   access: "subscription",
   speed: "fast",
   input: "Return exactly: OK",
@@ -104,13 +129,13 @@ const subscriptionResult = await generateText({
 
 // Qualified strings work directly in every generation and agent request.
 const configuredResult = await generateText({
-  model: "openai:subscription:gpt-6.1-sol",
+  model: "openai:subscription:gpt-6.2-sol",
   speed: "fast",
   input: "Return exactly: OK",
 });
 
 // The parser also builds a reusable structured selection from configuration.
-const selection = parseModelRef("openai:subscription:gpt-6.1-sol");
+const selection = parseModelRef("openai:subscription:gpt-6.2-sol");
 const parsedResult = await generateText({ ...selection, speed: "fast", input: "Return exactly: OK" });
 ```
 
@@ -160,7 +185,7 @@ Use `speed: "standard" | "fast" | "ultrafast"` independently of model identity a
 const selection = {
   provider: "openai",
   access: "subscription",
-  model: "gpt-6.1-sol",
+  model: "gpt-6.2-sol",
   speed: "fast",
 } satisfies LlmModelRef;
 
@@ -168,13 +193,20 @@ const result = await generateText({ ...selection, input: "Hello" });
 ```
 
 Omitting `speed` preserves the provider's default; explicit `"standard"` requests standard processing. Supported speeds
-depend on provider, access mode, and model. Unsupported combinations fail validation. OpenAI supports fast processing
-on listed text models and ultrafast on GPT-6.1 Sol and GPT-6 Astra. Anthropic fast processing is supported only on
-Claude Opus 5.5. Vercel fast routing is supported for known `openai/<base-model>` text IDs and
-`anthropic/claude-opus-5-5`; other Gateway models currently support standard speed only. Image routes do not accept a
-speed modifier. Use `listModels()` to inspect each route's `supportedSpeeds`.
+depend on provider, access mode, and model. Unsupported combinations fail validation.
 
-Adapters follow [OpenAI service tiers](https://developers.openai.com/api/docs/guides/fast-mode),
+GPT-6.2 Sol and Astra support Ultrafast on the API and eligible subscriptions. At launch, Pro 500
+subscribers can use Ultrafast with either model and Pro 200 subscribers can use it with Sol. Eligible
+Enterprise and Edu workspaces can enable access through their administrator.
+See [OpenAI's launch announcement](https://openai.com/index/introducing-gpt-6-2-astra-sol/).
+
+Anthropic fast processing is supported on Claude Opus 5.5. On Vercel AI Gateway,
+`openai/gpt-6.2-astra` and `openai/gpt-6.2-sol` support Fast and Ultrafast. Vercel also supports
+Fast on other known OpenAI text IDs and `anthropic/claude-opus-5-5`. Use `listModels()` to inspect
+each route's `supportedSpeeds`. See [Vercel's GPT-6.2 announcement](https://vercel.com/changelog/gpt-6-2-astra-and-sol-now-available-on-ai-gateway).
+
+Adapters follow [OpenAI Fast mode](https://developers.openai.com/api/docs/guides/fast-mode),
+[OpenAI Ultrafast mode](https://developers.openai.com/api/docs/guides/ultrafast-mode),
 [Anthropic speed](https://platform.claude.com/docs/en/build-with-claude/fast-mode), and
 [Vercel fast routing](https://vercel.com/docs/ai-gateway/models-and-providers/fast-mode).
 Claude Code fast processing uses usage credits rather than included subscription limits;
@@ -189,7 +221,8 @@ do not expose model or speed overrides.
 
 Version 13 removes synthetic `-fast` model IDs completely. Leading `chatgpt-` route aliases are also rejected.
 There are no backward-compatibility aliases or automatic suffix/prefix rewrites. Update configuration strings,
-application requests, scripts, benchmarks, and saved agent settings before upgrading. See [release notes](./CHANGELOG.md).
+application requests, scripts, benchmarks, and saved agent settings before upgrading. The table records version 13
+replacements. For the current Sol ID, see [Migrating to v16](#migrating-to-v16).
 
 | Removed selection | Version 13 replacement |
 | --- | --- |
@@ -663,7 +696,7 @@ import { runAgentLoop } from "@ljoukov/llm";
 const result = await runAgentLoop({
   provider: "openai",
   access: "subscription",
-  model: "gpt-5.6-sol",
+  model: "gpt-6.2-sol",
   input:
     "Create a very wide panoramic 3:1 landscape canvas illustrating a moonlit paper-cut forest. The final image must be much wider than it is tall.",
   imageGenerationTool: true,
@@ -674,7 +707,7 @@ console.log(result.steps.flatMap((step) => step.toolCalls));
 
 By default, the convenience option follows the outer model's credential route:
 
-- An OpenAI API text model such as `gpt-5.6` receives the provider-hosted Responses
+- An OpenAI API text model such as `gpt-6.2-sol` receives the provider-hosted Responses
   `image_generation` tool with nested `model: "gpt-image-2"`.
 - A ChatGPT-authenticated text model receives a runtime `image_generation` function tool that
   directly calls the subscription Images endpoint with `model: "gpt-image-2"`.
@@ -691,7 +724,7 @@ import { createImageGenerationTool, runToolLoop } from "@ljoukov/llm";
 
 const result = await runToolLoop({
   provider: "openai",
-  model: "gpt-5.6",
+  model: "gpt-6.2-sol",
   input:
     "Generate a tall upright 2:3 portrait poster canvas of a glass observatory above the clouds. The final image must be taller than it is wide.",
   tools: {
@@ -710,7 +743,7 @@ returned as an `inlineData` part in `result.content`:
 ```ts
 const result = await runToolLoop({
   provider: "openai",
-  model: "gpt-5.6",
+  model: "gpt-6.2-sol",
   input: "Generate a wide watercolor panorama of a coastal village.",
   tools: {},
   modelTools: [
@@ -892,7 +925,7 @@ You can also control image analysis fidelity with request-level `mediaResolution
 ```ts
 const result = await generateText({
   provider: "openai",
-  model: "gpt-6-sol",
+  model: "gpt-6.2-sol",
   mediaResolution: "original",
   input,
 });
@@ -1180,7 +1213,7 @@ import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
   provider: "openai",
-  model: "gpt-6-astra",
+  model: "gpt-6.2-astra",
   access: "subscription",
   thinkingLevel: "high",
   input: "Return exactly: OK",
@@ -1189,48 +1222,39 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-`gpt-6-astra` supports `low`, `medium` (default), `high`, `xhigh`, and `max`; `ultra` maps to `max`. `none` and
-`minimal` are not accepted by the public `thinkingLevel` type. Both access routes use the Responses streaming, JSON,
-and tool-loop transport. An OpenAI subscription selection never falls back to `OPENAI_API_KEY`.
+Both OpenAI access routes use the Responses API for streaming, structured outputs, and tool loops.
+A subscription selection uses ChatGPT/Codex credentials without falling back to `OPENAI_API_KEY`.
 
-For subscription calls, estimated costs describe equivalent API usage. They are not subscription charges.
-[Astra API-equivalent rates](https://developers.openai.com/api/docs/models/gpt-6-astra) use $10 input, $1 cached input,
-$12.50 cache writes, and $50 output per million tokens; requests above 272,000 input tokens apply 2× input/cache rates
-and 1.5× output rates. `usage.cacheWriteTokens` is populated only when reported.
+Both OpenAI access routes support the following native text IDs.
 
-Use the native text model ID with `speed: "fast"` for faster processing. OpenAI receives `service_tier="fast"`;
-explicit `speed: "standard"` maps to `service_tier="default"`. Fast API-equivalent rates are twice standard rates.
-[Official pricing](https://developers.openai.com/api/docs/pricing) includes cache writes and the long-input rates.
+| Model ID | Supported speeds |
+| --- | --- |
+| `gpt-6.2-astra` | `standard`, `fast`, `ultrafast` |
+| `gpt-6.2-sol` | `standard`, `fast`, `ultrafast` |
+| `gpt-6.1-terra` | `standard`, `fast` |
+| `gpt-6-luna` | `standard`, `fast` |
 
-Supported OpenAI IDs are fixed literal unions in code:
+For images, use `gpt-image-2` on either route. Select `access: "subscription"` explicitly for ChatGPT/Codex.
+The explicit OpenAI subscription route also accepts the `experimental-chatgpt-*` prefix for private model suffixes.
+Experimental prices remain unknown unless a supported `pricingModelId` is supplied to the estimator.
 
-- API text: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6` (Sol alias), `gpt-5.6-sol`,
-  `gpt-5.6-terra`, and `gpt-5.6-luna`.
-- Subscription text: the same named models, plus `gpt-6.1-terra`, except the generic `gpt-5.6` alias.
-- Images: `gpt-image-2` on either route; select `access: "subscription"` explicitly for ChatGPT/Codex.
+`speed: "standard"` sends `service_tier: "default"`. Fast sends `"fast"` to the public API and
+`"priority"` to the subscription endpoint. Ultrafast sends `"ultrafast"` on either route.
+The reported service tier takes precedence in usage estimates when available.
 
-The explicit OpenAI subscription route also accepts the existing `experimental-chatgpt-*` prefix for private model
-suffixes. This experimental exception does not enable arbitrary direct OpenAI API models. Experimental prices remain
-unknown unless a supported `pricingModelId` is supplied to the estimator.
+The table shows standard short-context API rates per million tokens.
 
-Standard API estimates per million tokens are $2 / $0.10 / $10 (input / cached input / output) for GPT-6.1 Sol and
-$0.10 / $0.01 / $0.50 for GPT-6 Luna. The catalog and cost metadata distinguish reported charges, estimates, and unknown
-prices.
+| Model ID | Input | Cached input | Output |
+| --- | ---: | ---: | ---: |
+| `gpt-6.2-astra` | $8.00 | $0.40 | $40.00 |
+| `gpt-6.2-sol` | $2.00 | $0.10 | $10.00 |
+| `gpt-6.1-terra` | $1.00 | $0.05 | $5.00 |
+| `gpt-6-luna` | $0.10 | $0.01 | $0.50 |
 
-Select GPT-6.1 Terra through ChatGPT/Codex subscription access:
-
-```ts
-const result = await generateText({
-  provider: "openai",
-  access: "subscription",
-  model: "gpt-6.1-terra",
-  speed: "fast",
-  input: "Return exactly: OK",
-});
-```
-
-GPT-6.1 Terra API-equivalent estimates use $1 input, $0.05 cached input, $1.25 cache writes, and $5 output per million
-tokens, with the same fast and long-input multipliers described above.
+For GPT-6.2 Astra and Sol, Fast costs 2× Standard at the same context length. Ultrafast costs 3× Standard
+through February 28, 2027, and 6× starting March 1, 2027, Pacific time. Requests with more than 272,000
+input tokens apply 2× input/cache rates and 1.5× output rates for these models. Subscription estimates represent
+equivalent API usage. See [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).
 
 ## Decisions (System 1)
 
@@ -1660,7 +1684,7 @@ import { generateText } from "@ljoukov/llm";
 
 const result = await generateText({
   provider: "openai",
-  model: "gpt-5.6-sol",
+  model: "gpt-6.2-sol",
   input: "Run python --version in a hosted shell and summarize the result.",
   tools: [{ type: "shell" }],
 });
@@ -1678,7 +1702,7 @@ import { downloadOpenAiContainerFile, generateText, listOpenAiContainerFiles } f
 
 const result = await generateText({
   provider: "openai",
-  model: "gpt-5.6-sol",
+  model: "gpt-6.2-sol",
   input:
     "Use the shell to write /mnt/data/report.txt containing 'hello'. Reply only when done.",
   tools: [{ type: "shell" }],
@@ -1717,7 +1741,7 @@ const cover = await uploadOpenAiContainerFile({
 
 await generateText({
   provider: "openai",
-  model: "gpt-5.6-sol",
+  model: "gpt-6.2-sol",
   input: `Use ${cover.path}, write LaTeX, run xelatex, and save /mnt/data/article.pdf.`,
   tools: [{ type: "shell", environment: { type: "container-reference", containerId: container.id } }],
 });
@@ -1938,7 +1962,7 @@ compact their active conversation. Enable it with `compaction: {}` to use a mode
 import { runAgentLoop } from "@ljoukov/llm";
 
 const result = await runAgentLoop({
-  provider: "openai", access: "subscription", model: "gpt-6.1-sol",
+  provider: "openai", access: "subscription", model: "gpt-6.2-sol",
   input: "Investigate the issue, implement the fix, and verify it.",
   tools,
   compaction: {}, // Prefer native server compaction with a model-dependent threshold.
@@ -1967,11 +1991,8 @@ that budget. If model metadata is unavailable, supply one of these explicit over
 Successful discoveries are cached for one hour, and concurrent lookups share a request;
 `clearModelContextWindowCache()` discards that cache. Discovery uses provider metadata where available.
 OpenAI's public Models resource omits token limits, so its literal API model catalog uses limits checked
-against the official model pages. Subscription limits come from Codex model metadata, independently of
-API limits. When that metadata omits `gpt-6.1-sol`, its
-[documented Codex/ChatGPT Work default](https://developers.openai.com/api/docs/models/gpt-6.1-sol) of
-`500_000` tokens is used. Other subscription models without metadata require `thresholdTokens` or
-`contextWindowTokens`; API limits are not substituted. Google's
+against the official model pages. Subscription limits come from Codex model metadata. If those limits
+are unavailable, supply `thresholdTokens` or `contextWindowTokens`. Google's
 [Models resource](https://ai.google.dev/api/models) reports separate input and output token limits.
 
 | Route | `mode: "auto"` behavior |
@@ -2212,7 +2233,7 @@ Interactive CLI chat with mid-run steering, thought streaming, filesystem tools 
 the current directory, subagents enabled, and `Esc` interrupt support:
 
 ```bash
-npm run example:cli-chat -- --model openai:subscription:gpt-6.1-sol --speed fast
+npm run example:cli-chat -- --model openai:subscription:gpt-6.2-sol --speed fast
 ```
 
 The CLI's implicit default model uses fast speed. Supplying `--model` without `--speed` preserves that model's provider
@@ -2241,7 +2262,7 @@ npm run test:integration:new-models
 `LLM_INTEGRATION_MODELS` can narrow a matrix to a comma-separated list of canonical `provider:access:model` selections:
 
 ```sh
-LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.1-sol LLM_INTEGRATION_SPEEDS=standard,fast npm run test:integration:openai-models
+LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.2-sol LLM_INTEGRATION_SPEEDS=standard,fast,ultrafast npm run test:integration:openai-models
 ```
 
 `LLM_INTEGRATION_SPEEDS` selects a comma-separated list of processing speeds; the matrix filters unsupported

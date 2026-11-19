@@ -18,7 +18,7 @@ const requestedChatGptModel = requestedModels.find(
 );
 const chatGptModel =
   requestedChatGptModel ??
-  ({ provider: "openai", access: "subscription", model: "gpt-6-sol" } as const);
+  ({ provider: "openai", access: "subscription", model: "gpt-6.2-sol" } as const);
 const chatGptToolOutputIt = requestedChatGptModel ? it : it.skip;
 
 if (requestedChatGptModel) assertIntegrationCredentialsForModels([chatGptModel]);

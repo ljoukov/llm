@@ -184,7 +184,7 @@ describe("LLM telemetry", () => {
     };
     chatGptCodexRequests = [];
     chatGptCodexResponse = {
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       status: "completed",
       text: "",
       reasoningText: "",
@@ -258,7 +258,7 @@ describe("LLM telemetry", () => {
     openAiStreamedEvents = [{ type: "response.output_text.delta", delta: "done" }];
     openAiFinalResponse = {
       id: "resp_shell",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       status: "completed",
       output: [
         {
@@ -286,7 +286,7 @@ describe("LLM telemetry", () => {
     };
 
     const result = await generateText({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       input: "Use shell.",
       tools: [{ type: "shell" }],
     });

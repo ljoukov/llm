@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
 import {
@@ -76,6 +76,7 @@ describe("streamText (OpenAI)", () => {
     resetMockStorageState();
     installMockStorageEnv();
   });
+  afterEach(() => vi.useRealTimers());
 
   it("streams response + thought deltas and returns usage/cost", async () => {
     const { streamText } = await import("../src/llm.js");
@@ -123,7 +124,7 @@ describe("streamText (OpenAI)", () => {
   it("maps thinkingLevel=xhigh to OpenAI xhigh reasoning effort", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-6.1-sol", input: "hi", thinkingLevel: "xhigh" });
+    const call = streamText({ model: "gpt-6.2-sol", input: "hi", thinkingLevel: "xhigh" });
     for await (const _event of call.events) {
       // Drain stream.
     }
@@ -135,7 +136,7 @@ describe("streamText (OpenAI)", () => {
   it("maps thinkingLevel=max to OpenAI max reasoning effort", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.6-sol", input: "hi", thinkingLevel: "max" });
+    const call = streamText({ model: "gpt-6.2-sol", input: "hi", thinkingLevel: "max" });
     for await (const _event of call.events) {
       // Drain stream.
     }
@@ -147,7 +148,7 @@ describe("streamText (OpenAI)", () => {
   it("maps thinkingLevel=ultra to OpenAI max reasoning effort", async () => {
     const { streamText } = await import("../src/llm.js");
 
-    const call = streamText({ model: "gpt-5.6-sol", input: "hi", thinkingLevel: "ultra" });
+    const call = streamText({ model: "gpt-6.2-sol", input: "hi", thinkingLevel: "ultra" });
     for await (const _event of call.events) {
       // Drain stream.
     }
@@ -157,14 +158,10 @@ describe("streamText (OpenAI)", () => {
   });
 
   it.each([
-    "gpt-6.1-sol",
-    "gpt-6-astra",
-    "gpt-6-sol",
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
+    "gpt-6.1-terra",
     "gpt-6-luna",
-    "gpt-5.6",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
   ] as const)("requests fast serving without changing %s", async (model) => {
     const { generateText } = await import("../src/llm.js");
 
@@ -181,19 +178,21 @@ describe("streamText (OpenAI)", () => {
   it.each([
     ["standard", "default", 0.00008],
     ["fast", "fast", 0.00016],
-    ["ultrafast", "ultrafast", 0.00048],
+    ["ultrafast", "ultrafast", 0.00024],
   ] as const)("maps explicit %s speed independently of model identity", async (speed, serviceTier, expectedCost) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
     const { generateText } = await import("../src/llm.js");
     const result = await generateText({
-      model: "openai:api:gpt-6.1-sol",
+      model: "openai:api:gpt-6.2-sol",
       speed,
       input: "hi",
     });
 
-    expect(capturedRequest?.model).toBe("gpt-6.1-sol");
+    expect(capturedRequest?.model).toBe("gpt-6.2-sol");
     expect(capturedRequest?.service_tier).toBe(serviceTier);
-    expect(result.model).toBe("gpt-6.1-sol");
-    expect(result.modelVersion).toBe("gpt-6.1-sol");
+    expect(result.model).toBe("gpt-6.2-sol");
+    expect(result.modelVersion).toBe("gpt-6.2-sol");
     expect(result.requestedSpeed).toBe(speed);
     expect(result.effectiveSpeed).toBe(speed);
     expect(result.serviceTier).toBe(serviceTier);
@@ -203,7 +202,7 @@ describe("streamText (OpenAI)", () => {
   it("records a provider downgrade and prices the actual standard tier", async () => {
     finalResponseServiceTierOverride = "default";
     const { streamText } = await import("../src/llm.js");
-    const call = streamText({ model: "openai:api:gpt-6.1-sol", speed: "fast", input: "hi" });
+    const call = streamText({ model: "openai:api:gpt-6.2-sol", speed: "fast", input: "hi" });
     const events: any[] = [];
     for await (const event of call.events) events.push(event);
     const result = await call.result;
@@ -225,7 +224,7 @@ describe("streamText (OpenAI)", () => {
   it("normalizes the provider's legacy priority tier metadata to fast speed", async () => {
     finalResponseServiceTierOverride = "priority";
     const { generateText } = await import("../src/llm.js");
-    const result = await generateText({ model: "gpt-6.1-sol", speed: "fast", input: "hi" });
+    const result = await generateText({ model: "gpt-6.2-sol", speed: "fast", input: "hi" });
     expect(result).toMatchObject({ effectiveSpeed: "fast", serviceTier: "priority" });
     expect(result.costUsd).toBeCloseTo(0.00016, 10);
   });
@@ -308,18 +307,18 @@ describe("streamText (OpenAI)", () => {
   });
 
   it("prices explicit fast speed when OpenAI returns a concrete model version", async () => {
-    finalResponseModelOverride = "gpt-6.1-sol-2026-10-03";
+    finalResponseModelOverride = "gpt-6.2-sol-2026-11-19";
     const { generateText } = await import("../src/llm.js");
 
     const result = await generateText({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       speed: "fast",
       input: "hi",
     });
 
-    expect(capturedRequest?.model).toBe("gpt-6.1-sol");
+    expect(capturedRequest?.model).toBe("gpt-6.2-sol");
     expect(capturedRequest?.service_tier).toBe("fast");
-    expect(result.modelVersion).toBe("gpt-6.1-sol-2026-10-03");
+    expect(result.modelVersion).toBe("gpt-6.2-sol-2026-11-19");
     expect(result.costUsd).toBeCloseTo(0.00016, 8);
   });
 
@@ -327,7 +326,7 @@ describe("streamText (OpenAI)", () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       input: "Use shell.",
       tools: [
         {
@@ -353,11 +352,11 @@ describe("streamText (OpenAI)", () => {
     ]);
   });
 
-  it("maps mediaResolution=original to OpenAI image detail on gpt-6-sol", async () => {
+  it("maps mediaResolution=original to OpenAI image detail on gpt-6.2-sol", async () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       mediaResolution: "original",
       input: [
         {

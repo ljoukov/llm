@@ -96,7 +96,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => ({
         })),
         webSearchCalls: [],
         usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
-        model: "gpt-6-sol",
+        model: "gpt-6.2-sol",
         status: "completed",
         blocked: false,
       };
@@ -108,7 +108,7 @@ vi.mock("../src/openai/chatgpt-codex.js", () => ({
       toolCalls: [],
       webSearchCalls: [],
       usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       status: "completed",
       blocked: false,
     };
@@ -238,7 +238,7 @@ describe("runAgentLoop uploads", () => {
       const result = await runAgentLoop({
         provider: "openai",
         access: "subscription",
-        model: "gpt-6-sol",
+        model: "gpt-6.2-sol",
         input: "Inspect all of the images and finish.",
         filesystemTool: {
           profile: "codex",

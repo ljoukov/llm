@@ -22,7 +22,7 @@ import {
   type LlmSpeed,
 } from "../src/index.js";
 
-const DEFAULT_MODEL = "openai:subscription:gpt-5.6-sol";
+const DEFAULT_MODEL = "openai:subscription:gpt-6.2-sol";
 const DEFAULT_SPEED: LlmSpeed = "fast";
 const DEFAULT_THINKING_LEVEL: LlmThinkingLevel = "high";
 const DEFAULT_MODEL_TOOLS = [{ type: "web-search", mode: "live" }] as const;

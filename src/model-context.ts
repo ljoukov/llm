@@ -10,7 +10,7 @@ import {
   type ResolvedModelRef,
 } from "./model-selection.js";
 import { fetchChatGptCodexModels } from "./openai/chatgpt-codex.js";
-import { isChatGptModelId, resolveChatGptProviderModel } from "./openai/models.js";
+import { isChatGptModelId, isOpenAiModelId, resolveChatGptProviderModel } from "./openai/models.js";
 import { getRuntimeSingleton } from "./utils/runtimeSingleton.js";
 import { loadLocalEnv } from "./utils/env.js";
 import { getVercelModelCatalog } from "./vercel/catalog.js";
@@ -100,26 +100,14 @@ function routeScope(route: ResolvedModelRef): string {
 }
 
 // OpenAI's Models REST resource does not report token limits. These literal API-only
-// values were verified against each official model page on 2026-11-12:
-// https://developers.openai.com/api/docs/models/gpt-6.1-sol
-// https://developers.openai.com/api/docs/models/gpt-6-astra
-// https://developers.openai.com/api/docs/models/gpt-6-sol
+// limits are documented on each supported model's page:
+// https://developers.openai.com/api/docs/models/gpt-6.2-astra
+// https://developers.openai.com/api/docs/models/gpt-6.2-sol
+// https://developers.openai.com/api/docs/models/gpt-6.1-terra
 // https://developers.openai.com/api/docs/models/gpt-6-luna
-// https://developers.openai.com/api/docs/models/gpt-5.6
-// https://developers.openai.com/api/docs/models/gpt-5.6-sol
-// https://developers.openai.com/api/docs/models/gpt-5.6-terra
-// https://developers.openai.com/api/docs/models/gpt-5.6-luna
 // Never infer a subscription limit or a private deployment limit from these values.
-const OPENAI_API_CONTEXT_WINDOWS: Readonly<Record<string, number>> = Object.freeze({
-  "gpt-6.1-sol": 1_050_000,
-  "gpt-6-astra": 1_050_000,
-  "gpt-6-sol": 1_050_000,
-  "gpt-6-luna": 1_050_000,
-  "gpt-5.6": 1_050_000,
-  "gpt-5.6-sol": 1_050_000,
-  "gpt-5.6-terra": 1_050_000,
-  "gpt-5.6-luna": 1_050_000,
-});
+const OPENAI_API_CONTEXT_WINDOW = 1_050_000;
+const OPENAI_API_MAX_OUTPUT_TOKENS = 128_000;
 
 // Vertex's publisher-model metadata currently omits token limits. Use exact model
 // documentation only when a successful metadata request has no limits. Moving
@@ -146,17 +134,16 @@ async function discoverContextWindow(
   const identity = { provider: route.provider, access: route.access, model: route.model };
   if (route.provider === "openai" && route.access === "api") {
     const customBase = process.env.OPENAI_BASE_URL?.trim();
-    const contextWindowTokens = OPENAI_API_CONTEXT_WINDOWS[route.model];
     if (
-      !contextWindowTokens ||
+      !isOpenAiModelId(route.model) ||
       (customBase && customBase.replace(/\/+$/u, "") !== "https://api.openai.com/v1")
     )
       throw contextError(route);
     return {
       ...identity,
-      contextWindowTokens,
-      maxInputTokens: 922_000,
-      maxOutputTokens: 128_000,
+      contextWindowTokens: OPENAI_API_CONTEXT_WINDOW,
+      maxInputTokens: OPENAI_API_CONTEXT_WINDOW - OPENAI_API_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: OPENAI_API_MAX_OUTPUT_TOKENS,
       limitType: "context",
       source: "catalog",
     };
@@ -171,20 +158,14 @@ async function discoverContextWindow(
       .find((entry) => entry?.slug === nativeModel || entry?.id === nativeModel);
     // context_window is the configured default; max_context_window may require
     // an opt-in and must not silently enlarge a subscription's active budget.
-    const reportedWindow = positiveInteger(model?.context_window);
-    // The official GPT-6.1 Sol page explicitly distinguishes its 500K default in
-    // Codex/ChatGPT Work from the API's 1.05M window. No other subscription values
-    // are inferred from API model documentation.
-    // https://developers.openai.com/api/docs/models/gpt-6.1-sol
-    const contextWindowTokens =
-      reportedWindow ?? (route.model === "gpt-6.1-sol" ? 500_000 : undefined);
+    const contextWindowTokens = positiveInteger(model?.context_window);
     if (!contextWindowTokens) throw contextError(route);
     return {
       ...identity,
       contextWindowTokens,
       maxOutputTokens: positiveInteger(model?.max_output_tokens),
       limitType: "context",
-      source: reportedWindow ? "provider" : "catalog",
+      source: "provider",
     };
   }
   if (route.provider === "google") {

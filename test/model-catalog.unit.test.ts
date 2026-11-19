@@ -52,6 +52,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -75,14 +76,17 @@ describe("RAM model catalogue", () => {
   it("keeps API and subscription catalogues distinct without remote discovery", async () => {
     const api = await listModels({ provider: "openai" });
     const subscription = await listModels({ provider: "openai", access: "subscription" });
-    expect(api.some((model) => model.model === "gpt-5.6")).toBe(true);
-    expect(subscription.some((model) => model.model === "gpt-5.6")).toBe(false);
-    for (const id of ["gpt-6.1-terra"]) {
-      expect(api.some((model) => model.model === id)).toBe(false);
-      expect(subscription.find((model) => model.model === id)).toMatchObject({
+    expect(api.map(({ model }) => model).sort()).toEqual(
+      subscription.map(({ model }) => model).sort(),
+    );
+    for (const [access, catalogue] of [
+      ["api", api],
+      ["subscription", subscription],
+    ] as const) {
+      expect(catalogue.find(({ model }) => model === "gpt-6.1-terra")).toMatchObject({
         provider: "openai",
-        access: "subscription",
-        model: id,
+        access,
+        model: "gpt-6.1-terra",
         supportedSpeeds: ["standard", "fast"],
       });
     }
@@ -301,20 +305,22 @@ describe("RAM model catalogue", () => {
   });
 
   it("lists each base model once with speed capabilities and known rates", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
     const models = await listModels({ provider: "openai", access: "subscription" });
     expect(new Set(models.map((model) => model.model)).size).toBe(models.length);
     expect(models.some((model) => model.model.endsWith("-fast"))).toBe(false);
     expect(models.some((model) => model.model.startsWith("chatgpt-"))).toBe(false);
-    const sol = models.find((model) => model.model === "gpt-6.1-sol");
+    const sol = models.find((model) => model.model === "gpt-6.2-sol");
     expect(sol).toMatchObject({
       supportedSpeeds: ["standard", "fast", "ultrafast"],
       pricingBySpeed: {
         standard: { inputRate: 2 / 1_000_000, outputRate: 10 / 1_000_000 },
         fast: { inputRate: 4 / 1_000_000, outputRate: 20 / 1_000_000 },
-        ultrafast: { inputRate: 12 / 1_000_000 },
+        ultrafast: { inputRate: 6 / 1_000_000 },
       },
     });
-    expect(sol?.pricingBySpeed?.ultrafast?.outputRate).toBeCloseTo(60 / 1_000_000, 12);
+    expect(sol?.pricingBySpeed?.ultrafast?.outputRate).toBeCloseTo(30 / 1_000_000, 12);
     expect(models.find((model) => model.model === "gpt-image-2")?.supportedSpeeds).toEqual([]);
     const anthropic = await listModels({ provider: "anthropic" });
     expect(anthropic.find((model) => model.model === "claude-opus-5-5")).toMatchObject({
@@ -490,7 +496,7 @@ describe("cost provenance", () => {
     const cost = await resolveCallCostUsd({
       provider: "openai",
       access: "subscription",
-      modelId: "gpt-6-sol",
+      modelId: "gpt-6.2-sol",
       tokens: usage,
       responseImages: 0,
     });
@@ -536,7 +542,7 @@ describe("cost provenance", () => {
     const cost = await resolveCallCostUsd({
       provider: "openai",
       access: "subscription",
-      modelId: "gpt-6.1-sol",
+      modelId: "gpt-6.2-sol",
       speed: "fast",
       effectiveServiceTier: "default",
       tokens: { promptTokens: 1000, responseTokens: 1000 },

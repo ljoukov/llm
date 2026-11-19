@@ -52,8 +52,8 @@ describe("portable thinking levels", () => {
 
   it("preserves OpenAI/Claude maximums and Gemini's existing high mapping", () => {
     for (const model of [
-      "openai:subscription:gpt-6.1-sol",
-      "openai:api:gpt-6-astra",
+      "openai:subscription:gpt-6.2-sol",
+      "openai:api:gpt-6.2-astra",
       "anthropic:api:claude-opus-5-5",
     ]) {
       expect(resolveThinkingLevel({ model, thinkingLevel: "ultra" })?.effectiveLevel).toBe("max");

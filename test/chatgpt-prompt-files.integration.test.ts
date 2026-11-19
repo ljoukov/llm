@@ -16,7 +16,7 @@ const requestedChatGptModel = requestedModels.find(
 );
 const chatGptModel =
   requestedChatGptModel ??
-  ({ provider: "openai", access: "subscription", model: "gpt-6-sol" } as const);
+  ({ provider: "openai", access: "subscription", model: "gpt-6.2-sol" } as const);
 const chatGptPromptFilesIt = requestedChatGptModel && hasCanonicalFilesBackend() ? it : it.skip;
 
 if (requestedChatGptModel) assertIntegrationCredentialsForModels([chatGptModel]);

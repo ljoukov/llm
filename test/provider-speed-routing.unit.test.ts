@@ -115,6 +115,28 @@ describe("provider serving speed through the public generation API", () => {
     });
   });
 
+  it("passes Ultrafast to the Gateway and prices the reported result", async () => {
+    state.gatewayTier = "ultrafast";
+    const { generateText } = await import("../src/llm.js");
+    const result = await generateText({
+      model: "vercel:api:openai/gpt-6.2-astra",
+      speed: "ultrafast",
+      input: "Hello",
+    });
+    expect(state.requests[0]?.request).toMatchObject({
+      model: "openai/gpt-6.2-astra",
+      service_tier: "ultrafast",
+      providerOptions: { gateway: { sort: "cost" } },
+    });
+    expect(result).toMatchObject({
+      requestedSpeed: "ultrafast",
+      effectiveSpeed: "ultrafast",
+      serviceTier: "ultrafast",
+      costUsd: 0.01,
+      costSource: "reported",
+    });
+  });
+
   it.each([
     undefined,
     "flex",

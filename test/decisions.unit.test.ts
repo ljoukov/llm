@@ -106,7 +106,7 @@ describe("unified decisions", () => {
     { model: "openai:subscription:gpt-6-luna" },
     { model: "gpt-6-luna", speed: "standard" },
     { model: "openai:api:gpt-6-luna:fast" },
-    { model: "gpt-6.1-sol" },
+    { model: "gpt-6.2-sol" },
     { model: "gemini-decision-1", provider: "fireworks" },
     { model: " gemini-decision-1" },
   ])("rejects unsupported or conflicting routes before adapters: %j", async (selection) => {

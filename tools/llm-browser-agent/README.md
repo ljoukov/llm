@@ -74,7 +74,7 @@ are never sent to the model:
 /domains clear
 /domains all
 /model
-/model openai:subscription:gpt-6.1-sol high
+/model openai:subscription:gpt-6.2-sol high
 /thinking medium
 /usage
 /cancel
@@ -147,7 +147,7 @@ node tools/llm-browser-agent/bin/llm-browser-agent.mjs run \
   'Open https://example.com and report its heading.'
 ```
 
-The default model is `openai:subscription:gpt-6.1-sol`. It uses existing `llm`
+The default model is `openai:subscription:gpt-6.2-sol`. It uses existing `llm`
 subscription authentication; it creates no keys and has no fallback to API
 billing. `llm` reads `.env.local`/`.env` from the working directory, then uses its
 normal subscription auth routing, including `LLM_AUTH_URL` + `LLM_AUTH_API_KEY`
@@ -159,7 +159,7 @@ Model and speed are separate options, validated by `llm`'s existing model policy
 
 ```sh
 node tools/llm-browser-agent/bin/llm-browser-agent.mjs run \
-  --model openai:subscription:gpt-6.1-sol --speed standard \
+  --model openai:subscription:gpt-6.2-sol --speed standard \
   --max-steps 30 --instructions /absolute/path/to/my-instructions.txt \
   'Read the open documentation tab and summarize the installation steps.'
 ```
@@ -294,7 +294,7 @@ import { BrowserSession, connectBridge, createBrowserTools } from "./dist/index.
 const client = await connectBridge(privateClientUrl); // /client URL, not /extension
 try {
   const result = await runToolLoop({
-    provider: "openai", access: "subscription", model: "gpt-6.1-sol",
+    provider: "openai", access: "subscription", model: "gpt-6.2-sol",
     instructions: "Your complete browser-agent instructions.",
     input: "Your browsing task.",
     tools: createBrowserTools(new BrowserSession(client)),

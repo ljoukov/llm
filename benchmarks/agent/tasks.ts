@@ -260,7 +260,7 @@ export const AGENT_BENCHMARK_TASKS: readonly AgentBenchmarkTask[] = [
 
 export const DEFAULT_BENCHMARK_MODELS: readonly string[] = [
   "openai:subscription:gpt-6-luna",
-  "gpt-6-sol",
+  "gpt-6.2-sol",
   "gpt-6-luna",
   "kimi-k3",
   "glm-5.3",

@@ -1,4 +1,5 @@
 import type { LlmSpeed } from "../model-selection.js";
+import { supportsOpenAiUltrafast } from "../openai/models.js";
 
 type VercelSpeedOptions = {
   gateway: {
@@ -10,23 +11,39 @@ type VercelSpeedOptions = {
   anthropic?: { speed: "standard" };
 };
 
+type VercelSpeedRequest = {
+  providerOptions: VercelSpeedOptions;
+  service_tier?: "fast" | "ultrafast";
+};
+
 /** Keep model identity unchanged while choosing the Gateway's serving controls. */
-export function resolveVercelSpeedOptions(model: string, speed?: LlmSpeed): VercelSpeedOptions {
+export function resolveVercelSpeedOptions(model: string, speed?: LlmSpeed): VercelSpeedRequest {
+  if (
+    (speed === "fast" || speed === "ultrafast") &&
+    model.startsWith("openai/") &&
+    supportsOpenAiUltrafast(model.slice("openai/".length))
+  ) {
+    return { providerOptions: { gateway: { sort: "cost" } }, service_tier: speed };
+  }
   if (speed === "ultrafast") {
-    throw new Error("Ultrafast speed is not supported by the Vercel route.");
+    throw new Error(`Ultrafast speed is not supported for ${model} on the Vercel route.`);
   }
   if (speed === "fast") {
-    return model.startsWith("openai/")
-      ? { gateway: { sort: "cost", serviceTier: "priority" } }
-      : { gateway: { sort: "cost", speed: "fast", allowFallbackFromFast: false } };
+    return {
+      providerOptions: model.startsWith("openai/")
+        ? { gateway: { sort: "cost", serviceTier: "priority" } }
+        : { gateway: { sort: "cost", speed: "fast", allowFallbackFromFast: false } },
+    };
   }
   if (speed === "standard") {
     return {
-      gateway: { sort: "cost", serviceTier: "default" },
-      ...(model.startsWith("anthropic/") ? { anthropic: { speed: "standard" as const } } : {}),
+      providerOptions: {
+        gateway: { sort: "cost", serviceTier: "default" },
+        ...(model.startsWith("anthropic/") ? { anthropic: { speed: "standard" as const } } : {}),
+      },
     };
   }
-  return { gateway: { sort: "cost" } };
+  return { providerOptions: { gateway: { sort: "cost" } } };
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

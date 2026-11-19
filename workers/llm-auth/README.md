@@ -110,5 +110,5 @@ imply Gemini or other subscriptions are already implemented.
 
 With the new application settings configured, run Grok JSON and function-tool checks with
 `LLM_INTEGRATION_GROK_SUBSCRIPTION=1 npm run test:integration:grok-subscription`. Restrict OpenAI
-checks with `LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.1-sol`
+checks with `LLM_INTEGRATION_MODELS=openai:subscription:gpt-6-luna,openai:subscription:gpt-6.2-sol`
 before `npm run test:integration:openai-models`. These checks consume the selected subscription's quota.

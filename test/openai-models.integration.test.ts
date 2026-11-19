@@ -70,6 +70,14 @@ describe.concurrent("integration: supported OpenAI text models", () => {
       expect(result.access).toBe(model.access ?? "api");
       expect(result.requestedSpeed).toBe(model.speed);
       expect(result.modelVersion).not.toMatch(/-fast$/u);
+      if (model.speed === "ultrafast") {
+        console.info(
+          `${integrationModelLabel(model)}: served ${result.modelVersion}, tier ${result.serviceTier ?? "unreported"}`,
+        );
+        if (model.access !== "subscription" && result.serviceTier !== undefined) {
+          expect(result.effectiveSpeed).toBe("ultrafast");
+        }
+      }
       if (model.access === "subscription") {
         expect(result.costUsd).toBeNull();
         expect(result.costSource).toBe("subscription");

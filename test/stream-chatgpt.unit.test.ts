@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetRuntimeSingletonsForTesting } from "../src/utils/runtimeSingleton.js";
 import {
@@ -76,6 +76,7 @@ describe("streamText (ChatGPT)", () => {
     resetMockStorageState();
     installMockStorageEnv();
   });
+  afterEach(() => vi.useRealTimers());
 
   it.each([
     [undefined, "medium"],
@@ -90,7 +91,7 @@ describe("streamText (ChatGPT)", () => {
     const result = await generateText({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-astra",
+      model: "gpt-6.2-astra",
       input: "hi",
       thinkingLevel,
     });
@@ -98,14 +99,14 @@ describe("streamText (ChatGPT)", () => {
     expect(result.access).toBe("subscription");
     expect(result.costUsd).toBeNull();
     expect(result.costSource).toBe("subscription");
-    expect(result.modelVersion).toBe("gpt-6-astra");
-    expect(capturedRequest.model).toBe("gpt-6-astra");
+    expect(result.modelVersion).toBe("gpt-6.2-astra");
+    expect(capturedRequest.model).toBe("gpt-6.2-astra");
     expect(capturedRequest.reasoning.effort).toBe(effort);
     expect(capturedRequest.service_tier).toBeUndefined();
     expect(capturedRequest.temperature).toBeUndefined();
     expect(capturedRequest.top_p).toBeUndefined();
     expect(result.usage?.cacheWriteTokens).toBeUndefined();
-    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.0004, 10);
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.00032, 10);
   });
 
   it("preserves reported Astra cache writes without charging ordinary input twice", async () => {
@@ -114,13 +115,13 @@ describe("streamText (ChatGPT)", () => {
     const result = await generateText({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-astra",
+      model: "gpt-6.2-astra",
       input: "hi",
       thinkingLevel: "high",
     });
     expect(result.usage?.cachedTokens).toBe(2);
     expect(result.usage?.cacheWriteTokens).toBe(3);
-    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.0003895, 10);
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.0003108, 10);
   });
 
   it("streams response + thought deltas and returns usage/cost", async () => {
@@ -261,7 +262,7 @@ describe("streamText (ChatGPT)", () => {
     await generateText({
       provider: "openai",
       access: "subscription",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.2-sol",
       input: "hi",
       thinkingLevel: "max",
     });
@@ -275,7 +276,7 @@ describe("streamText (ChatGPT)", () => {
     await generateText({
       provider: "openai",
       access: "subscription",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.2-sol",
       input: "hi",
       thinkingLevel: "ultra",
     });
@@ -284,14 +285,10 @@ describe("streamText (ChatGPT)", () => {
   });
 
   it.each([
-    "gpt-6.1-sol",
+    "gpt-6.2-sol",
     "gpt-6.1-terra",
-    "gpt-6-astra",
-    "gpt-6-sol",
+    "gpt-6.2-astra",
     "gpt-6-luna",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
   ] as const)("requests fast serving without changing %s", async (model) => {
     const { generateText } = await import("../src/llm.js");
 
@@ -334,21 +331,28 @@ describe("streamText (ChatGPT)", () => {
     expect(result.apiEquivalentCostUsd).toBeCloseTo(apiEquivalentCost, 10);
   });
 
-  it("requests ultrafast subscription serving while preserving the base model", async () => {
+  it.each([
+    ["gpt-6.2-sol", 0.00024],
+    ["gpt-6.2-astra", 0.00096],
+  ] as const)("requests ultrafast subscription serving for %s", async (model, cost) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
     const { generateText } = await import("../src/llm.js");
     const result = await generateText({
-      model: "openai:subscription:gpt-6.1-sol",
+      provider: "openai",
+      access: "subscription",
+      model,
       speed: "ultrafast",
       input: "hi",
     });
-    expect(capturedRequest?.model).toBe("gpt-6.1-sol");
+    expect(capturedRequest?.model).toBe(model);
     expect(capturedRequest?.service_tier).toBe("ultrafast");
     expect(result).toMatchObject({
-      modelVersion: "gpt-6.1-sol",
+      modelVersion: model,
       requestedSpeed: "ultrafast",
       effectiveSpeed: "ultrafast",
     });
-    expect(result.apiEquivalentCostUsd).toBeCloseTo(0.00048, 10);
+    expect(result.apiEquivalentCostUsd).toBeCloseTo(cost, 10);
   });
 
   it("prices the actual standard tier when requested fast serving falls back", async () => {
@@ -385,7 +389,7 @@ describe("streamText (ChatGPT)", () => {
     const call = streamText({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       input: "Use shell.",
       tools: [{ type: "shell" }],
     });
@@ -419,13 +423,13 @@ describe("streamText (ChatGPT)", () => {
     expect(result.modelVersion).toBe("private-model");
   });
 
-  it("maps mediaResolution=original to ChatGPT image detail on gpt-6-sol", async () => {
+  it("maps mediaResolution=original to ChatGPT image detail on gpt-6.2-sol", async () => {
     const { generateText } = await import("../src/llm.js");
 
     await generateText({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6-sol",
+      model: "gpt-6.2-sol",
       mediaResolution: "original",
       input: [
         {

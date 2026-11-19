@@ -20,7 +20,7 @@ model/speed combinations fail before calls start; projections and reports use th
 `--merge-latest` requires the same agent and grader speed settings as the saved run.
 
 ```bash
-npx tsx benchmarks/lesson-generation/run.ts --models openai:subscription:gpt-6.1-sol --speed fast --estimate-only
+npx tsx benchmarks/lesson-generation/run.ts --models openai:subscription:gpt-6.2-sol --speed fast --estimate-only
 ```
 
 ## Run

@@ -69,13 +69,13 @@ beforeEach(() => {
 });
 
 describe.each([
-  "openai:api:gpt-6.1-sol",
-  "openai:subscription:gpt-6.1-sol",
+  "openai:api:gpt-6.2-sol",
+  "openai:subscription:gpt-6.2-sol",
 ] as const)("qualified model selection: %s", (model) => {
   const request = { model, speed: "fast", input: "Hello" } as const;
 
   function expectNormalizedRequest() {
-    expect(capturedRequest.model).toBe("gpt-6.1-sol");
+    expect(capturedRequest.model).toBe("gpt-6.2-sol");
     expect(capturedRequest.service_tier).toBe(
       model.startsWith("openai:subscription:") ? "priority" : "fast",
     );
@@ -85,7 +85,7 @@ describe.each([
     const { generateText } = await import("../src/llm.js");
     const result = await generateText(request);
     expect(result.text).toBe("Hello");
-    expect(result.model).toBe("gpt-6.1-sol");
+    expect(result.model).toBe("gpt-6.2-sol");
     expectNormalizedRequest();
   });
 
@@ -93,7 +93,7 @@ describe.each([
     const { streamText } = await import("../src/llm.js");
     const call = streamText(request);
     const [, result] = await Promise.all([drain(call.events), call.result]);
-    expect(result.model).toBe("gpt-6.1-sol");
+    expect(result.model).toBe("gpt-6.2-sol");
     expectNormalizedRequest();
   });
 
@@ -119,7 +119,7 @@ describe.each([
       tools: { unused: tool({ inputSchema: z.object({}), execute: () => "unused" }) },
       maxSteps: 1,
     });
-    expect(result.steps[0]?.modelVersion).toBe("gpt-6.1-sol");
+    expect(result.steps[0]?.modelVersion).toBe("gpt-6.2-sol");
     expectNormalizedRequest();
   });
 
@@ -131,14 +131,14 @@ describe.each([
       maxSteps: 1,
     });
     const [, result] = await Promise.all([drain(call.events), call.result]);
-    expect(result.steps[0]?.modelVersion).toBe("gpt-6.1-sol");
+    expect(result.steps[0]?.modelVersion).toBe("gpt-6.2-sol");
     expectNormalizedRequest();
   });
 });
 
 describe("OpenAI integration speed variants", () => {
   const routes = [
-    { provider: "openai", access: "api", model: "gpt-6.1-sol" },
+    { provider: "openai", access: "api", model: "gpt-6.2-sol" },
     { provider: "openai", access: "subscription", model: "gpt-6.1-terra" },
   ] as const;
 
@@ -146,9 +146,9 @@ describe("OpenAI integration speed variants", () => {
     vi.stubEnv("LLM_INTEGRATION_SPEEDS", "");
     const variants = openAiIntegrationSpeedVariants(routes);
     expect(variants.map(integrationModelLabel)).toEqual([
-      "openai:api:gpt-6.1-sol speed=standard",
-      "openai:api:gpt-6.1-sol speed=fast",
-      "openai:api:gpt-6.1-sol speed=ultrafast",
+      "openai:api:gpt-6.2-sol speed=standard",
+      "openai:api:gpt-6.2-sol speed=fast",
+      "openai:api:gpt-6.2-sol speed=ultrafast",
       "openai:subscription:gpt-6.1-terra speed=standard",
       "openai:subscription:gpt-6.1-terra speed=fast",
     ]);
@@ -157,8 +157,8 @@ describe("OpenAI integration speed variants", () => {
   it("narrows requested speeds and filters unsupported combinations", () => {
     vi.stubEnv("LLM_INTEGRATION_SPEEDS", "ultrafast,fast,fast");
     expect(openAiIntegrationSpeedVariants(routes).map(integrationModelLabel)).toEqual([
-      "openai:api:gpt-6.1-sol speed=fast",
-      "openai:api:gpt-6.1-sol speed=ultrafast",
+      "openai:api:gpt-6.2-sol speed=fast",
+      "openai:api:gpt-6.2-sol speed=ultrafast",
       "openai:subscription:gpt-6.1-terra speed=fast",
     ]);
   });

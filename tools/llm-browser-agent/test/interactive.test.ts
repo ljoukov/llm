@@ -95,7 +95,7 @@ async function fixture(
     selection: {
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       speed: "standard",
     },
     thinkingLevel: "high",
@@ -218,7 +218,7 @@ test("pending saved restrictions block tasks and are reapplied after Chrome reco
     disconnected: true,
     savedSettings: {
       version: 1,
-      selection: { provider: "openai", access: "subscription", model: "gpt-6.1-sol" },
+      selection: { provider: "openai", access: "subscription", model: "gpt-6.2-sol" },
       policy: restricted,
     },
   });
@@ -255,9 +255,11 @@ test("model menu selects a listed model and thinking without sending menu choice
   const f = await fixture(t);
   f.send("/model");
   await f.until(() => /Choose a model number/.test(f.stdout()), "model menu");
-  f.send("1");
+  const solChoice = f.stdout().match(/^(\d+)\. openai:subscription:gpt-6\.2-sol$/m)?.[1];
+  assert.ok(solChoice);
+  f.send(solChoice);
   await f.until(
-    () => /Thinking for openai:subscription:gpt-6.1-sol/.test(f.stdout()),
+    () => /Thinking for openai:subscription:gpt-6\.2-sol/.test(f.stdout()),
     "thinking menu",
   );
   f.send("medium");
@@ -297,10 +299,45 @@ test("saved model settings are restored unless explicit CLI selection and thinki
   });
   explicit.send("Task with explicit CLI settings");
   await explicit.until(() => /Answer 1/.test(explicit.stdout()), "explicit task");
-  assert.equal(explicit.calls[0]?.model, "gpt-6.1-sol");
+  assert.equal(explicit.calls[0]?.model, "gpt-6.2-sol");
   assert.equal(explicit.calls[0]?.thinkingLevel, "high");
   assert.deepEqual(explicit.policy(), savedSettings.policy);
   await explicit.quit();
+});
+
+test("retired saved OpenAI models migrate without changing the route or domain restrictions", async (t) => {
+  const savedSettings = {
+    version: 1,
+    selection: {
+      provider: "openai",
+      access: "subscription",
+      model: "gpt-6.1-sol",
+      speed: "fast",
+    },
+    thinkingLevel: "low",
+    policy: {
+      mode: "allowlist",
+      allow: ["https://example.com"],
+      block: ["https://blocked.example"],
+    },
+  };
+  const f = await fixture(t, undefined, { savedSettings });
+  f.send("Task using migrated settings");
+  await f.until(() => /Answer 1/.test(f.stdout()), "migrated task");
+  const selection = { ...savedSettings.selection, model: "gpt-6.2-sol" };
+  const request = f.calls[0];
+  assert.equal(request?.provider, selection.provider);
+  assert.equal(request?.access, selection.access);
+  assert.equal(request?.model, selection.model);
+  assert.equal(request?.speed, selection.speed);
+  assert.equal(request?.thinkingLevel, savedSettings.thinkingLevel);
+  assert.deepEqual(f.policy(), savedSettings.policy);
+  assert.deepEqual(JSON.parse(await readFile(f.settingsPath, "utf8")), {
+    ...savedSettings,
+    selection,
+  });
+  assert.match(f.stderr(), /Updated the saved OpenAI model to openai:subscription:gpt-6\.2-sol\./);
+  await f.quit();
 });
 
 test("interactive history retains prior text and usage totals come from completed steps", async (t) => {
@@ -398,7 +435,7 @@ test("saved wildcard settings restore canonical patterns without changing exact 
   const f = await fixture(t, undefined, {
     savedSettings: {
       version: 1,
-      selection: { provider: "openai", access: "subscription", model: "gpt-6.1-sol" },
+      selection: { provider: "openai", access: "subscription", model: "gpt-6.2-sol" },
       policy: savedPolicy,
     },
   });

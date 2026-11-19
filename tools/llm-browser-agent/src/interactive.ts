@@ -58,6 +58,15 @@ const thinkingLevels: readonly LlmThinkingLevel[] = [
   "ultra",
 ];
 const modelChoices = OPENAI_SUBSCRIPTION_MODEL_IDS.map((model) => `openai:subscription:${model}`);
+const retiredOpenAiModels = new Map([
+  ["gpt-6-astra", "gpt-6.2-astra"],
+  ["gpt-6.1-sol", "gpt-6.2-sol"],
+  ["gpt-6-sol", "gpt-6.2-sol"],
+  ["gpt-5.6", "gpt-6.2-sol"],
+  ["gpt-5.6-sol", "gpt-6.2-sol"],
+  ["gpt-5.6-terra", "gpt-6.1-terra"],
+  ["gpt-5.6-luna", "gpt-6-luna"],
+]);
 const help = `Commands (handled locally):
   /domains                       Show browser permissions
   /domains inspect <tabId>       Show frame-origin permission diagnostics
@@ -181,7 +190,10 @@ function modelLabel(selection: LlmTextModelSelection): string {
   return `${resolved.provider}:${resolved.access}:${resolved.model}`;
 }
 
-async function readSettings(filename: string): Promise<Settings | undefined> {
+async function readSettings(
+  filename: string,
+  report: (message: string) => void,
+): Promise<Settings | undefined> {
   let content: string;
   try {
     content = await readFile(filename, "utf8");
@@ -199,14 +211,35 @@ async function readSettings(filename: string): Promise<Settings | undefined> {
     !("selection" in parsed)
   )
     throw new Error("Invalid interactive settings file.");
-  const selection = selectedModel(parsed.selection);
+  let savedSelection = parsed.selection;
+  let replacement: string | undefined;
+  if (
+    savedSelection &&
+    typeof savedSelection === "object" &&
+    "provider" in savedSelection &&
+    savedSelection.provider === "openai" &&
+    "access" in savedSelection &&
+    (savedSelection.access === "api" || savedSelection.access === "subscription") &&
+    "model" in savedSelection &&
+    typeof savedSelection.model === "string" &&
+    (savedSelection.model !== "gpt-5.6" || savedSelection.access === "api")
+  ) {
+    replacement = retiredOpenAiModels.get(savedSelection.model);
+    if (replacement) savedSelection = { ...savedSelection, model: replacement };
+  }
+  const selection = selectedModel(savedSelection);
   const level =
     "thinkingLevel" in parsed && parsed.thinkingLevel !== undefined
       ? thinking(String(parsed.thinkingLevel), selection)
       : undefined;
   const policy =
     "policy" in parsed && parsed.policy !== undefined ? normalizePolicy(parsed.policy) : undefined;
-  return { version: 1, selection, thinkingLevel: level, policy };
+  const settings: Settings = { version: 1, selection, thinkingLevel: level, policy };
+  if (replacement) {
+    await saveSettings(filename, settings);
+    report(`Updated the saved OpenAI model to ${modelLabel(selection)}.`);
+  }
+  return settings;
 }
 
 async function saveSettings(filename: string, settings: Settings): Promise<void> {
@@ -242,7 +275,7 @@ export async function runInteractive(options: InteractiveOptions): Promise<void>
       errors.write(`Audit error: ${message(error)}\n`);
     }
   };
-  const saved = await readSettings(options.settingsPath);
+  const saved = await readSettings(options.settingsPath, report);
   let selection =
     options.explicitSelection || !saved ? selectedModel(options.selection) : saved.selection;
   let level =

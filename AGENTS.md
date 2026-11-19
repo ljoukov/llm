@@ -23,9 +23,8 @@
 ## OpenAI Model Policy
 
 - Direct OpenAI API and subscription text and image model ids are closed literal allowlists. Do not add support for arbitrary strings on those routes. Vercel model ids may use validated `publisher/model` passthrough when `provider: "vercel"` is explicit.
-- Supported OpenAI API model ids: `gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`.
+- Supported text model ids for the direct OpenAI API and OpenAI subscription (`provider: "openai", access: "subscription"`): `gpt-6.2-astra`, `gpt-6.2-sol`, `gpt-6.1-terra`, and `gpt-6-luna`.
 - Supported OpenAI image model ids: `gpt-image-2`.
-- Supported OpenAI subscription text model ids (with `provider: "openai", access: "subscription"`): `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`.
 - Supported OpenAI subscription image model ids (with `provider: "openai", access: "subscription"`): `gpt-image-2`.
 - Experimental ChatGPT-authenticated model ids may use the public `experimental-chatgpt-*` prefix so private/internal model suffixes do not need to be committed to this package.
 - Model identity and processing speed are separate. Use `speed: "standard" | "fast" | "ultrafast"` only where the selected route supports it. Synthetic `-fast` IDs and legacy leading `chatgpt-` route aliases are rejected without compatibility shims.

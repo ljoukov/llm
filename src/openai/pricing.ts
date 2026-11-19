@@ -1,6 +1,7 @@
 import {
   isChatGptImageModelId,
   isOpenAiImageModelId,
+  supportsOpenAiUltrafast,
   type OpenAiGptImage2Quality,
 } from "./models.js";
 import type { LlmSpeed } from "../model-selection.js";
@@ -33,18 +34,24 @@ export type OpenAiImagePricing = {
   >;
 };
 
-// Official pricing snapshot, 2026-10-22: https://developers.openai.com/api/docs/pricing
+// Current model rates: https://developers.openai.com/api/docs/pricing
 // ChatGPT costs are API-equivalent estimates, not billed subscription charges.
-// Unknown models have no rate; callers may supply a known pricingModelId explicitly.
+// Retain historical rates for callers estimating the cost of recorded usage.
 const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
-  "gpt-6.1-sol": {
+  "gpt-6.2-astra": {
+    inputRate: 8 / 1_000_000,
+    cachedRate: 0.4 / 1_000_000,
+    cacheWriteRate: 10 / 1_000_000,
+    outputRate: 40 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-6.2-sol": {
     inputRate: 2 / 1_000_000,
     cachedRate: 0.1 / 1_000_000,
     cacheWriteRate: 2.5 / 1_000_000,
     outputRate: 10 / 1_000_000,
     longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
   },
-  // Terra API-equivalent rates verified 2026-10-29 against the official pricing page.
   "gpt-6.1-terra": {
     inputRate: 1 / 1_000_000,
     cachedRate: 0.05 / 1_000_000,
@@ -57,6 +64,13 @@ const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
     cachedRate: 1 / 1_000_000,
     cacheWriteRate: 12.5 / 1_000_000,
     outputRate: 50 / 1_000_000,
+    longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
+  },
+  "gpt-6.1-sol": {
+    inputRate: 2 / 1_000_000,
+    cachedRate: 0.1 / 1_000_000,
+    cacheWriteRate: 2.5 / 1_000_000,
+    outputRate: 10 / 1_000_000,
     longInput: { threshold: 272_000, inputMultiplier: 2, outputMultiplier: 1.5 },
   },
   "gpt-6-sol": {
@@ -96,6 +110,8 @@ const TEXT_PRICING: Readonly<Record<string, OpenAiPricing>> = {
   },
 };
 
+const GPT_6_2_ULTRAFAST_PROMO_END = Date.parse("2027-03-01T00:00:00-08:00");
+
 const OPENAI_GPT_IMAGE_2_PRICING: OpenAiImagePricing = {
   inputTextRate: 5 / 1_000_000,
   inputImageRate: 8 / 1_000_000,
@@ -130,14 +146,19 @@ export function getOpenAiPricing(
   const standard = Object.hasOwn(TEXT_PRICING, normalized) ? TEXT_PRICING[normalized] : undefined;
   if (!standard) return undefined;
   if (speed === "standard") return standard;
-  // Official Ultrafast snapshot, 2026-10-29: the two supported models use 6x standard rates.
-  if (
-    speed !== "fast" &&
-    (speed !== "ultrafast" || !["gpt-6-astra", "gpt-6.1-sol"].includes(normalized))
+  let multiplier: number;
+  if (speed === "fast") {
+    multiplier = 2;
+  } else if (speed === "ultrafast" && supportsOpenAiUltrafast(normalized)) {
+    multiplier = Date.now() < GPT_6_2_ULTRAFAST_PROMO_END ? 3 : 6;
+  } else if (
+    speed === "ultrafast" &&
+    (normalized === "gpt-6-astra" || normalized === "gpt-6.1-sol")
   ) {
+    multiplier = 6;
+  } else {
     return undefined;
   }
-  const multiplier = speed === "ultrafast" ? 6 : 2;
   return {
     ...standard,
     inputRate: standard.inputRate * multiplier,

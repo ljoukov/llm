@@ -1,18 +1,18 @@
 export const OPENAI_MODEL_IDS = [
-  "gpt-6.1-sol",
-  "gpt-6-astra",
-  "gpt-6-sol",
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
+  "gpt-6.1-terra",
   "gpt-6-luna",
-  "gpt-5.6",
-  "gpt-5.6-sol",
-  "gpt-5.6-terra",
-  "gpt-5.6-luna",
 ] as const;
 
 export type OpenAiModelId = (typeof OPENAI_MODEL_IDS)[number];
 
 export function isOpenAiModelId(value: string): value is OpenAiModelId {
   return (OPENAI_MODEL_IDS as readonly string[]).includes(value);
+}
+
+export function supportsOpenAiUltrafast(model: string): boolean {
+  return model === "gpt-6.2-astra" || model === "gpt-6.2-sol";
 }
 
 export const OPENAI_IMAGE_MODEL_IDS = ["gpt-image-2"] as const;
@@ -159,16 +159,7 @@ export type OpenAiGptImage2PartialImageCount =
 export const OPENAI_GPT_IMAGE_2_NUM_IMAGES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export type OpenAiGptImage2NumImages = (typeof OPENAI_GPT_IMAGE_2_NUM_IMAGES)[number];
 
-export const CHATGPT_MODEL_IDS = [
-  "gpt-6.1-sol",
-  "gpt-6.1-terra",
-  "gpt-6-astra",
-  "gpt-6-sol",
-  "gpt-6-luna",
-  "gpt-5.6-sol",
-  "gpt-5.6-terra",
-  "gpt-5.6-luna",
-] as const;
+export const CHATGPT_MODEL_IDS = OPENAI_MODEL_IDS;
 
 export const OPENAI_SUBSCRIPTION_MODEL_IDS = CHATGPT_MODEL_IDS;
 export type OpenAiSubscriptionModelId = ChatGptModelId;

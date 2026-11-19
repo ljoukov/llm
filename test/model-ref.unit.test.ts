@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { getSupportedModelSpeeds, isRemovedServingAlias } from "../src/model-selection.js";
-import { OPENAI_MODEL_IDS } from "../src/openai/models.js";
 
 import {
   generateText,
@@ -26,21 +25,19 @@ const _futureVercelType = {
 } satisfies LlmModelRef;
 const _openAiApiType = {
   provider: "openai",
-  model: "gpt-5.6",
+  model: "gpt-6.2-sol",
 } satisfies LlmModelRef;
 const _openAiSubscriptionType = {
   provider: "openai",
   access: "subscription",
-  model: "gpt-6.1-sol",
+  model: "gpt-6.2-sol",
   speed: "fast",
 } satisfies LlmModelRef;
-const _openAiTerraSubscriptionTypes = [
+const _openAiTerraTypes = [
+  { provider: "openai", access: "api", model: "gpt-6.1-terra" },
   { provider: "openai", access: "subscription", model: "gpt-6.1-terra" },
   { provider: "openai", access: "subscription", model: "gpt-6.1-terra", speed: "fast" },
 ] as const satisfies readonly LlmModelRef[];
-const invalidOpenAiTerraApi = { provider: "openai", model: "gpt-6.1-terra" } as const;
-// @ts-expect-error GPT-6.1 Terra is only supported through subscription access.
-const _invalidOpenAiTerraApi: LlmModelRef = invalidOpenAiTerraApi;
 const invalidOpenAiFastAlias = {
   provider: "openai",
   access: "subscription",
@@ -59,25 +56,25 @@ const _xaiSubscriptionType = {
   model: "grok-latest-future-model",
 } satisfies LlmModelRef;
 const _qualifiedSubscriptionType = {
-  model: "openai:subscription:gpt-6.1-sol",
+  model: "openai:subscription:gpt-6.2-sol",
   speed: "fast",
 } satisfies LlmTextModelSelection;
 const _qualifiedMatchingRouteType = {
   provider: "openai",
   access: "subscription",
-  model: "openai:subscription:gpt-6.1-sol",
+  model: "openai:subscription:gpt-6.2-sol",
   speed: "ultrafast",
 } satisfies LlmTextModelSelection;
 const invalidQualifiedApi = { model: "openai:api:gpt-arbitrary" } as const;
 // @ts-expect-error A qualified string does not open the OpenAI model allowlist.
 const _invalidQualifiedApi: LlmTextModelSelection = invalidQualifiedApi;
 const conflictingQualifiedRoute = {
-  model: "openai:subscription:gpt-6.1-sol",
+  model: "openai:subscription:gpt-6.2-sol",
   access: "api",
 } as const;
 // @ts-expect-error Qualified strings and explicit route fields must agree.
 const _conflictingQualifiedRoute: LlmTextModelSelection = conflictingQualifiedRoute;
-const invalidSpeed = { provider: "openai", model: "gpt-6.1-sol", speed: "turbo" } as const;
+const invalidSpeed = { provider: "openai", model: "gpt-6.2-sol", speed: "turbo" } as const;
 // @ts-expect-error Serving speeds are a closed literal union.
 const _invalidSpeed: LlmTextModelSelection = invalidSpeed;
 
@@ -92,7 +89,7 @@ const invalidOpenAiSubscription = {
   access: "subscription",
   model: "gpt-5.6",
 } as const;
-// @ts-expect-error The API-only gpt-5.6 route cannot be used through subscription access.
+// @ts-expect-error Retired OpenAI models cannot be used through subscription access.
 const _invalidOpenAiSubscription: LlmModelRef = invalidOpenAiSubscription;
 const invalidGoogleSubscription = {
   provider: "google",
@@ -104,7 +101,7 @@ const _invalidGoogleSubscription: LlmModelRef = invalidGoogleSubscription;
 const invalidProvider = { provider: "grok", model: "grok-latest" } as const;
 // @ts-expect-error Canonical provider names are a closed allowlist.
 const _invalidProvider: LlmModelRef = invalidProvider;
-const invalidImplicitSubscription = { access: "subscription", model: "gpt-6.1-sol" } as const;
+const invalidImplicitSubscription = { access: "subscription", model: "gpt-6.2-sol" } as const;
 // @ts-expect-error Subscription selections must identify their provider explicitly.
 const _invalidImplicitSubscription: LlmTextModelSelection = invalidImplicitSubscription;
 const invalidLegacyOpenAi = {
@@ -123,11 +120,11 @@ function _checkPublicRequestTypes(): void {
   const input = "Hello";
   const tools = {};
   const schema = z.object({ ok: z.boolean() });
-  const api = { provider: "openai", model: "gpt-5.6" } as const;
+  const api = { provider: "openai", model: "gpt-6.2-sol" } as const;
   const subscription = {
     provider: "openai",
     access: "subscription",
-    model: "gpt-6.1-sol",
+    model: "gpt-6.2-sol",
     speed: "fast",
   } as const;
   const vercel = { provider: "vercel", model: "reflection/beam-free" } as const;
@@ -136,7 +133,7 @@ function _checkPublicRequestTypes(): void {
   void generateText({ ...api, input });
   void generateText({ ...subscription, input });
   void generateText({ ...vercel, input });
-  void generateText({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input });
+  void generateText({ model: "openai:subscription:gpt-6.2-sol", speed: "fast", input });
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void generateText({ ...invalidProvider, input });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -148,7 +145,7 @@ function _checkPublicRequestTypes(): void {
   void generateJson({ ...api, input, schema });
   void generateJson({ ...subscription, input, schema });
   void generateJson({ ...vercel, input, schema });
-  void generateJson({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input, schema });
+  void generateJson({ model: "openai:subscription:gpt-6.2-sol", speed: "fast", input, schema });
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void generateJson({ ...invalidProvider, input, schema });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -160,7 +157,7 @@ function _checkPublicRequestTypes(): void {
   void runToolLoop({ ...api, input, tools });
   void runToolLoop({ ...subscription, input, tools });
   void runToolLoop({ ...vercel, input, tools });
-  void runToolLoop({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input, tools });
+  void runToolLoop({ model: "openai:subscription:gpt-6.2-sol", speed: "fast", input, tools });
   // @ts-expect-error Invalid providers must not be widened by the request type.
   void runToolLoop({ ...invalidProvider, input, tools });
   // @ts-expect-error OpenAI API model allowlists apply at every entrypoint.
@@ -172,10 +169,10 @@ function _checkPublicRequestTypes(): void {
   void runAgentLoop({ ...api, input, tools });
   void runAgentLoop({ ...subscription, input, tools });
   void runAgentLoop({ ...vercel, input, tools });
-  void runAgentLoop({ model: "openai:subscription:gpt-6.1-sol", speed: "fast", input, tools });
+  void runAgentLoop({ model: "openai:subscription:gpt-6.2-sol", speed: "fast", input, tools });
   for (const model of [
-    "openai:subscription:gpt-6.1-sol",
-    "openai:api:gpt-6-astra",
+    "openai:subscription:gpt-6.2-sol",
+    "openai:api:gpt-6.2-astra",
     "anthropic:api:claude-opus-5-5",
   ] as const) {
     const selection = { model, speed: "fast" } satisfies LlmTextModelSelection;
@@ -230,20 +227,20 @@ describe("model references", () => {
     const expected = {
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
       speed: "fast",
     } as const;
     expect(resolveModelRef(expected)).toEqual(expected);
-    expect(resolveModelRef({ model: "openai:subscription:gpt-6.1-sol", speed: "fast" })).toEqual(
+    expect(resolveModelRef({ model: "openai:subscription:gpt-6.2-sol", speed: "fast" })).toEqual(
       expected,
     );
-    expect(resolveModelRef({ ...expected, model: "openai:subscription:gpt-6.1-sol" })).toEqual(
+    expect(resolveModelRef({ ...expected, model: "openai:subscription:gpt-6.2-sol" })).toEqual(
       expected,
     );
   });
 
   it("preserves omitted speed and explicit standard as different selections", () => {
-    const selection = { provider: "openai", model: "gpt-6.1-sol" } as const;
+    const selection = { provider: "openai", model: "gpt-6.2-sol" } as const;
     expect(resolveModelRef(selection)).not.toHaveProperty("speed");
     expect(resolveModelRef({ ...selection, speed: "standard" })).toMatchObject({
       speed: "standard",
@@ -267,20 +264,23 @@ describe("model references", () => {
   });
 
   it.each([
-    { model: "openai:subscription:gpt-6.1-sol", provider: "anthropic" },
-    { model: "openai:subscription:gpt-6.1-sol", access: "api" },
+    { model: "openai:subscription:gpt-6.2-sol", provider: "anthropic" },
+    { model: "openai:subscription:gpt-6.2-sol", access: "api" },
     { model: "openai:api:gpt-arbitrary" },
+    { model: "openai:api:gpt-6.1-sol" },
+    { model: "openai:subscription:gpt-6-astra" },
     { model: "openai:subscription:chatgpt-gpt-6.1-sol" },
     { model: "openai:subscription:gpt-6.1-sol-fast" },
     { model: "openai:subscription:" },
-    { model: "openai:token:gpt-6.1-sol" },
+    { model: "openai:token:gpt-6.2-sol" },
   ])("rejects contradictory or unsupported direct qualified selection %j", (selection) => {
     expect(() => resolveModelRef(selection as never)).toThrow();
   });
 
   it.each([
-    { provider: "openai", model: "gpt-6.1-sol", speed: "turbo" },
+    { provider: "openai", model: "gpt-6.2-sol", speed: "turbo" },
     { provider: "openai", model: "gpt-6-luna", speed: "ultrafast" },
+    { provider: "openai", model: "gpt-6.1-terra", speed: "ultrafast" },
     { provider: "openai", access: "subscription", model: "gpt-6.1-terra", speed: "ultrafast" },
     {
       provider: "openai",
@@ -306,18 +306,21 @@ describe("model references", () => {
   });
 
   it("exposes route-specific speed capabilities without synthetic model entries", () => {
-    expect(getSupportedModelSpeeds({ provider: "openai", model: "gpt-6.1-sol" })).toEqual([
-      "standard",
-      "fast",
-      "ultrafast",
-    ]);
-    expect(
-      getSupportedModelSpeeds({
-        provider: "openai",
-        access: "subscription",
-        model: "gpt-6.1-terra",
-      }),
-    ).toEqual(["standard", "fast"]);
+    for (const access of ["api", "subscription"] as const) {
+      for (const model of ["gpt-6.2-sol", "gpt-6.2-astra"]) {
+        expect(getSupportedModelSpeeds({ provider: "openai", access, model })).toEqual([
+          "standard",
+          "fast",
+          "ultrafast",
+        ]);
+      }
+      for (const model of ["gpt-6.1-terra", "gpt-6-luna"]) {
+        expect(getSupportedModelSpeeds({ provider: "openai", access, model })).toEqual([
+          "standard",
+          "fast",
+        ]);
+      }
+    }
     expect(getSupportedModelSpeeds({ provider: "anthropic", model: "claude-opus-5-5" })).toEqual([
       "standard",
       "fast",
@@ -339,7 +342,14 @@ describe("model references", () => {
 
   it("permits Vercel fast only for documented OpenAI base routes and Claude Opus 5.5", () => {
     for (const model of [
-      ...OPENAI_MODEL_IDS.map((id) => `openai/${id}`),
+      "openai/gpt-6.1-sol",
+      "openai/gpt-6-astra",
+      "openai/gpt-6-sol",
+      "openai/gpt-6-luna",
+      "openai/gpt-5.6",
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-terra",
+      "openai/gpt-5.6-luna",
       "anthropic/claude-opus-5-5",
     ]) {
       expect(getSupportedModelSpeeds({ provider: "vercel", model })).toEqual(["standard", "fast"]);
@@ -348,6 +358,21 @@ describe("model references", () => {
         speed: "fast",
       });
     }
+  });
+
+  it.each([
+    "openai/gpt-6.2-sol",
+    "openai/gpt-6.2-astra",
+  ])("permits Fast and Ultrafast on the Gateway for %s", (model) => {
+    expect(getSupportedModelSpeeds({ provider: "vercel", model })).toEqual([
+      "standard",
+      "fast",
+      "ultrafast",
+    ]);
+    expect(resolveModelRef({ provider: "vercel", model, speed: "ultrafast" })).toMatchObject({
+      model,
+      speed: "ultrafast",
+    });
   });
 
   it.each([
@@ -379,22 +404,21 @@ describe("model references", () => {
   });
 
   it("defaults explicit providers to API access", () => {
-    expect(resolveModelRef({ provider: "openai", model: "gpt-6.1-sol" })).toEqual({
+    expect(resolveModelRef({ provider: "openai", model: "gpt-6.2-sol" })).toEqual({
       provider: "openai",
       access: "api",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
     });
   });
 
-  it.each([
-    "gpt-6.1-terra",
-  ] as const)("resolves %s only with explicit OpenAI subscription access", (model) => {
-    const ref = { provider: "openai", access: "subscription", model } as const;
-    expect(resolveModelRef(ref)).toEqual(ref);
-    expect(parseModelRef(`openai:subscription:${model}`)).toEqual(ref);
-    expect(() => resolveModelRef({ provider: "openai", access: "api", model } as never)).toThrow();
-    expect(() => resolveModelRef({ provider: "openai", model } as never)).toThrow();
-    expect(() => resolveModelRef({ model } as never)).toThrow();
+  it("resolves Terra through the direct API and explicit subscription access", () => {
+    const model = "gpt-6.1-terra";
+    for (const access of ["api", "subscription"] as const) {
+      const ref = { provider: "openai", access, model } as const;
+      expect(resolveModelRef(ref)).toEqual(ref);
+      expect(parseModelRef(`openai:${access}:${model}`)).toEqual(ref);
+    }
+    expect(resolveModelRef({ model })).toEqual({ provider: "openai", access: "api", model });
   });
 
   it("keeps explicit providers authoritative over environment preferences", () => {
@@ -406,11 +430,11 @@ describe("model references", () => {
       model: "glm-5.3",
     });
     expect(
-      resolveModelRef({ provider: "openai", access: "subscription", model: "gpt-6.1-sol" }),
+      resolveModelRef({ provider: "openai", access: "subscription", model: "gpt-6.2-sol" }),
     ).toEqual({
       provider: "openai",
       access: "subscription",
-      model: "gpt-6.1-sol",
+      model: "gpt-6.2-sol",
     });
   });
 
@@ -425,7 +449,7 @@ describe("model references", () => {
   });
 
   it("uses canonical native provider IDs for automatic closed catalogue selection", () => {
-    expect(resolveModelRef({ model: "gpt-6.1-sol" })).toMatchObject({
+    expect(resolveModelRef({ model: "gpt-6.2-sol" })).toMatchObject({
       provider: "openai",
       access: "api",
     });
@@ -477,10 +501,10 @@ describe("model references", () => {
     { provider: "google", access: "subscription", model: "gemini-4-argon" },
     { provider: "fireworks", access: "subscription", model: "glm-5.3" },
     { provider: "vercel", access: "subscription", model: "reflection/beam-free" },
-    { access: "subscription", model: "gpt-6.1-sol" },
+    { access: "subscription", model: "gpt-6.2-sol" },
     { model: "experimental-chatgpt-private-model" },
     { provider: "claude", access: "api", model: "claude-sonnet-5-5" },
-    { provider: "openai", access: "token", model: "gpt-6.1-sol" },
+    { provider: "openai", access: "token", model: "gpt-6.2-sol" },
   ])("rejects unsupported selections without selecting an alternative route: %j", (selection) => {
     expect(() => resolveModelRef(selection as never)).toThrow();
   });
@@ -517,8 +541,8 @@ describe("model references", () => {
       { provider: "vercel", access: "api", model: "reflection/beam-free" },
     ],
     [
-      "openai:subscription:gpt-6.1-sol",
-      { provider: "openai", access: "subscription", model: "gpt-6.1-sol" },
+      "openai:subscription:gpt-6.2-sol",
+      { provider: "openai", access: "subscription", model: "gpt-6.2-sol" },
     ],
     [
       "xai:subscription:grok-build-0.1",
@@ -534,12 +558,12 @@ describe("model references", () => {
 
   it.each([
     "",
-    "gpt-6.1-sol",
-    "openai:gpt-6.1-sol",
-    "openai::gpt-6.1-sol",
+    "gpt-6.2-sol",
+    "openai:gpt-6.2-sol",
+    "openai::gpt-6.2-sol",
     "openai:api:",
-    ":api:gpt-6.1-sol",
-    "openai:token:gpt-6.1-sol",
+    ":api:gpt-6.2-sol",
+    "openai:token:gpt-6.2-sol",
     "grok:api:grok-latest",
     "openai:api:gpt-arbitrary",
   ])("rejects malformed or unsupported string reference %j", (slug) =>
