@@ -9,6 +9,8 @@ let geminiUploadedFiles: any[] = [];
 let geminiStoredFiles = new Map<string, any>();
 let geminiResponseText = "Hello world";
 let geminiThoughtText = "Thinking";
+let geminiModelVersion = "gemini-2.5-pro";
+let geminiVertex = false;
 
 vi.mock("@google-cloud/storage", async () => {
   return await import("./helpers/mock-storage.js");
@@ -18,7 +20,7 @@ vi.mock("../src/google/calls.js", async () => {
   const actual = await vi.importActual("../src/google/calls.js");
   async function* stream() {
     yield {
-      modelVersion: "gemini-2.5-pro",
+      modelVersion: geminiModelVersion,
       usageMetadata: {
         promptTokenCount: 10,
         candidatesTokenCount: 6,
@@ -40,6 +42,9 @@ vi.mock("../src/google/calls.js", async () => {
   }
 
   const fakeClient = {
+    get vertexai() {
+      return geminiVertex;
+    },
     models: {
       generateContentStream: async (request: any) => {
         geminiRequests.push(request);
@@ -96,6 +101,47 @@ describe("streamText (Gemini)", () => {
     geminiStoredFiles = new Map();
     geminiResponseText = "Hello world";
     geminiThoughtText = "Thinking";
+    geminiModelVersion = "gemini-2.5-pro";
+    geminiVertex = false;
+  });
+
+  it("prices text and tool-loop usage with the serving Gemini backend", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-19T00:00:00Z"));
+    try {
+      geminiVertex = true;
+      geminiModelVersion = "gemini-3.5-flash";
+      const { generateText, runToolLoop, tool } = await import("../src/llm.js");
+      const request = { model: "gemini-flash-latest", input: "hi" } as const;
+      const expectedCost = (10 * 1.5 + 8 * 9) / 1_000_000;
+
+      const result = await generateText(request);
+      expect(result.costUsd).toBeCloseTo(expectedCost, 12);
+
+      const loop = await runToolLoop({
+        ...request,
+        tools: { echo: tool({ inputSchema: z.object({}), execute: async () => "ok" }) },
+      });
+      expect(loop.totalCostUsd).toBeCloseTo(expectedCost, 12);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it.each([
+    ["gemini-4-neon", "XHIGH"],
+    ["gemini-4-hydrogen", "XHIGH"],
+    ["gemini-4-carbon", "HIGH"],
+  ] as const)("sends the native thinking level through text calls to %s", async (model, level) => {
+    geminiModelVersion = model;
+    const { generateText } = await import("../src/llm.js");
+
+    await generateText({ model, input: "hi", thinkingLevel: "ultra" });
+
+    expect(geminiRequests[0]).toMatchObject({ model });
+    expect(geminiRequests[0]?.config?.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingLevel: level,
+    });
   });
 
   it("streams response + thought deltas and returns usage/cost", async () => {

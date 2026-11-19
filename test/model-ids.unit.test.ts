@@ -148,7 +148,13 @@ describe("model id lists", () => {
   });
 
   it("recognizes the requested Gemini and Claude routes without allowing arbitrary ids", () => {
-    for (const model of ["gemini-4-argon", "gemini-3.8-flash"]) {
+    for (const model of [
+      "gemini-4-neon",
+      "gemini-4-hydrogen",
+      "gemini-4-carbon",
+      "gemini-4-argon",
+      "gemini-3.8-flash",
+    ]) {
       expect(isGeminiTextModelId(model)).toBe(true);
       expect(isLlmTextModelId(model)).toBe(true);
       expect(isLlmModelId(model)).toBe(true);

@@ -5,18 +5,18 @@ import {
 } from "./catalog.js";
 import { resolveVercelModelId } from "./models.js";
 
-// Default-route USD/token from https://ai-gateway.vercel.sh/v1/models, 2026-10-23.
-// Cost-sorted upstream routing may have different rates: prefer reported usage.cost.
+// Default rates from https://ai-gateway.vercel.sh/v1/models, verified 2026-11-19.
+// Upstream routes and context tiers can have different rates. Prefer reported usage.cost.
 const VERCEL_PRICING: Readonly<Record<string, VercelTokenPricing>> = {
   "deepseek/deepseek-v4.1-flash-1017": {
-    inputRate: 0.075 / 1_000_000,
-    cachedRate: 0.0015 / 1_000_000,
-    outputRate: 0.3 / 1_000_000,
+    inputRate: 0.3 / 1_000_000,
+    cachedRate: 0.007 / 1_000_000,
+    outputRate: 1.2 / 1_000_000,
   },
   "zai/glm-5.3": {
-    inputRate: 1.2 / 1_000_000,
-    cachedRate: 0.2 / 1_000_000,
-    outputRate: 4 / 1_000_000,
+    inputRate: 1.4 / 1_000_000,
+    cachedRate: 0.14 / 1_000_000,
+    outputRate: 4.4 / 1_000_000,
   },
   "moonshotai/kimi-k3": {
     inputRate: 3 / 1_000_000,
@@ -26,7 +26,6 @@ const VERCEL_PRICING: Readonly<Record<string, VercelTokenPricing>> = {
   "moonshotai/kimi-k3.1-pro": {
     inputRate: 2 / 1_000_000,
     cachedRate: 0.2 / 1_000_000,
-    cacheWriteRate: 2 / 1_000_000,
     outputRate: 10 / 1_000_000,
   },
   "minimax/minimax-m3": {

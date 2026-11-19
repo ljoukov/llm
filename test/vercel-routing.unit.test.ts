@@ -324,11 +324,15 @@ describe("Vercel shared-model routing", () => {
     expect((await generateText({ model: "glm-5.3", input: "hello" })).costUsd).toBe(0);
   });
 
-  it("uses Vercel catalog estimates when no charge is reported", async () => {
+  it.each([
+    ["deepseek-v4.1-flash-1017", 0.3, 1.2],
+    ["glm-5.3", 1.4, 4.4],
+  ] as const)("uses Vercel fallback rates for %s when the catalog is offline", async (model, input, output) => {
     delete state.usage.cost;
     const { generateText } = await import("../src/llm.js");
-    const result = await generateText({ model: "glm-5.3", input: "hello" });
-    expect(result.costUsd).toBeCloseTo((1_000 * 1.2 + 20 * 4) / 1_000_000, 12);
+    const result = await generateText({ model, input: "hello" });
+    expect(result.costSource).toBe("estimate");
+    expect(result.costUsd).toBeCloseTo((1_000 * input + 20 * output) / 1_000_000, 12);
   });
 
   it("rejects unknown provider overrides before inference", async () => {

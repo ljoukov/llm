@@ -284,17 +284,23 @@ describe("xAI API and subscription transport", () => {
           { id: "grok-4.7", name: "Grok 4.7", context_window: 500_000 },
           { id: "grok-4.7", name: "Grok 4.7" },
           { id: "grok-future-model", description: "New model", contextWindow: 900_000 },
+          { id: "grok-4.3", name: "Grok 4.3", context_window: 1_000_000 },
           { id: "invalid-model" },
         ],
       }),
     );
     const { discoverXaiModels } = await import("../src/xai/discovery.js");
     const api = await discoverXaiModels("api");
-    expect(api.map((model) => model.id)).toEqual(["grok-4.7", "grok-future-model"]);
+    expect(api.map((model) => model.id)).toEqual(["grok-4.7", "grok-future-model", "grok-4.3"]);
     expect(api[0]?.pricing).toMatchObject({ inputRate: 2 / 1_000_000 });
     expect(api[0]?.contextWindow).toBe(500_000);
     expect(api[1]?.contextWindow).toBe(900_000);
     expect(api[1]?.pricing).toBeUndefined();
+    expect(api[2]?.pricing).toEqual({
+      inputRate: 1.25 / 1_000_000,
+      cachedRate: 0.2 / 1_000_000,
+      outputRate: 2.5 / 1_000_000,
+    });
     const subscription = await discoverXaiModels("subscription");
     expect(subscription.every((model) => model.pricing === undefined)).toBe(true);
   });

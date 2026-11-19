@@ -4,6 +4,7 @@ import { getVercelPricing, resolveVercelPricing } from "../vercel/pricing.js";
 import type { VercelTokenPricing } from "../vercel/catalog.js";
 import { isVercelModelId } from "../vercel/models.js";
 import { getXaiPricing } from "../xai/pricing.js";
+import type { GeminiBackend } from "../google/client.js";
 import { getGeminiImagePricing, getGeminiProPricing } from "../google/pricing.js";
 import { isRemovedServingAlias, type LlmSpeed } from "../model-selection.js";
 import {
@@ -52,6 +53,8 @@ export type EstimateCallCostOptions = {
   /** Select route-specific rates for shared model IDs. */
   readonly provider?: string;
   readonly access?: "api" | "subscription";
+  /** Gemini backend for rate selection. Omit to use Gemini Developer API pricing. */
+  readonly geminiBackend?: GeminiBackend;
   /** Requested serving speed, independent of model identity. */
   readonly speed?: LlmSpeed;
   /** Actual serving speed reported by the provider, when available. */
@@ -102,6 +105,7 @@ export function estimateCallCostUsd({
   imageSize,
   imageQuality,
   provider,
+  geminiBackend,
   speed,
   effectiveSpeed,
   effectiveServiceTier,
@@ -218,7 +222,9 @@ export function estimateCallCostUsd({
     );
   }
 
-  const geminiPricing = resolvePricing(pricingModelIds, getGeminiProPricing);
+  const geminiPricing = resolvePricing(pricingModelIds, (id) =>
+    getGeminiProPricing(id, geminiBackend),
+  );
   if (geminiPricing) {
     if (pricingSpeed !== "standard") return null;
     const useHighTier = promptTokenTotal > geminiPricing.threshold;

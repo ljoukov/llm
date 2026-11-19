@@ -18,6 +18,9 @@ import {
 } from "./integration-env.js";
 
 const newModels = [
+  "gemini-4-neon",
+  "gemini-4-hydrogen",
+  "gemini-4-carbon",
   "gemini-4-argon",
   "gemini-3.8-flash",
   "claude-haiku-5-5",
@@ -50,12 +53,17 @@ if (
 const models = requestedModels as readonly (LlmTextModelRef & { model: NewModel })[];
 assertIntegrationCredentialsForModels(models);
 
-// Independent Standard API price fixtures, USD per million tokens, verified October 22, 2026:
-// https://ai.google.dev/gemini-api/docs/pricing
+// Independent Standard API price fixtures, USD per million tokens, verified November 19, 2026:
+// https://aistudio.google.com/docs/pricing
 // https://platform.claude.com/docs/en/about-claude/pricing
 // Keep these separate from the production pricing resolver to verify costs from live usage.
 function ratesFor(model: NewModel, promptTokens: number) {
   switch (model) {
+    case "gemini-4-neon":
+      return { input: 3, output: 15, cached: 0.15, write5m: 0, write1h: 0 };
+    case "gemini-4-hydrogen":
+      return { input: 1.5, output: 7.5, cached: 0.075, write5m: 0, write1h: 0 };
+    case "gemini-4-carbon":
     case "gemini-4-argon":
       return Date.now() < Date.parse("2026-12-01T00:00:00Z")
         ? { input: 2, output: 10, cached: 0.1, write5m: 0, write1h: 0 }

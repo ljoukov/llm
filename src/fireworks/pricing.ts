@@ -6,8 +6,10 @@ export type FireworksPricing = {
   readonly outputRate: number;
 };
 
-// USD per token, from the direct serverless model catalogue on 2026-10-22.
-// Source: https://docs.fireworks.ai/serverless/pricing
+// Standard direct serverless rates in USD per token, verified 2026-11-19.
+// https://fireworks.ai/models/deepseek-ai/deepseek-v4p1-flash-1017
+// https://fireworks.ai/models/fireworks/glm-5p3
+// https://fireworks.ai/models/fireworks/kimi-k3
 const FIREWORKS_PRICING: Record<FireworksModelId, FireworksPricing> = {
   "deepseek-v4.1-flash-1017": {
     inputRate: 0.3 / 1_000_000,

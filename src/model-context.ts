@@ -111,16 +111,19 @@ const OPENAI_API_MAX_OUTPUT_TOKENS = 128_000;
 
 // Vertex's publisher-model metadata currently omits token limits. Use exact model
 // documentation only when a successful metadata request has no limits. Moving
-// aliases deliberately have no static value. Verified on 2026-11-12:
+// aliases deliberately have no static value. Gemini 4 limits are for one streamed segment.
 // https://aistudio.google.com/docs/models/gemini-3.8-flash
 // https://aistudio.google.com/docs/models/gemini-3.1-pro-preview
 // https://aistudio.google.com/docs/models/gemini-3-flash-preview
 // https://aistudio.google.com/docs/models/gemini-2.5-pro
-// https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-4-argon
+// https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start/get-started-with-gemini-4
 const GEMINI_CATALOG_LIMITS: Readonly<
   Record<string, { limitType: "input" | "context"; maxOutputTokens: number }>
 > = Object.freeze({
   "gemini-4-argon": { limitType: "context", maxOutputTokens: 65_536 },
+  "gemini-4-neon": { limitType: "context", maxOutputTokens: 65_536 },
+  "gemini-4-hydrogen": { limitType: "context", maxOutputTokens: 65_536 },
+  "gemini-4-carbon": { limitType: "context", maxOutputTokens: 65_536 },
   "gemini-3.8-flash": { limitType: "input", maxOutputTokens: 65_536 },
   "gemini-3.1-pro-preview": { limitType: "input", maxOutputTokens: 65_536 },
   "gemini-3-flash-preview": { limitType: "input", maxOutputTokens: 65_536 },

@@ -1017,8 +1017,11 @@ const result = await generateText({
 console.log(result.text);
 ```
 
-The text allowlist includes `gemini-4-argon` and `gemini-3.8-flash`. Both support text streaming,
-structured JSON, function tools, and `low`, `medium`, or `high` thinking (`xhigh`, `max`, and `ultra` map to `high`).
+The Gemini 4 text models are `gemini-4-neon`, `gemini-4-hydrogen`, `gemini-4-carbon`, and `gemini-4-argon`.
+They support text streaming, structured JSON, function tools, and `low`, `medium`, or `high` thinking.
+Neon and Hydrogen also accept `xhigh`. The default thinking policy maps `max` and `ultra` to each model's
+highest supported level. Context resolution uses a unified 1,048,576-token window and up to 65,536 output tokens
+per streamed segment. See the [Gemini 4 model guide](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start/get-started-with-gemini-4).
 
 ### Anthropic Claude API
 
@@ -1080,13 +1083,16 @@ Known models include input, output, cached-input, and supported cache-write rate
 corresponding API rates where available. A model without known prices has an unknown cost; it is never reported as
 free solely because the library has no pricing data.
 
-Standard global API rates checked October 22, 2026 against the official
-[Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) and
-[Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) pages.
+Paid Standard rates checked November 19, 2026 against the [Gemini Developer API pricing](https://aistudio.google.com/docs/pricing)
+and [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) pages.
 Prices below are USD per million tokens. Output rates include billed reasoning tokens.
 
 | Model | Input | Cached input | Output | Cache writes (5m / 1h) |
 | --- | ---: | ---: | ---: | ---: |
+| `gemini-4-neon` | $3 | $0.15 | $15 | — |
+| `gemini-4-hydrogen` | $1.50 | $0.075 | $7.50 | — |
+| `gemini-4-carbon`, through Nov 30, 2026 | $2 | $0.10 | $10 | — |
+| `gemini-4-carbon`, from Dec 1, 2026 | $4 | $0.20 | $20 | — |
 | `gemini-4-argon`, through Nov 30, 2026 | $2 | $0.10 | $10 | — |
 | `gemini-4-argon`, from Dec 1, 2026 | $4 | $0.20 | $20 | — |
 | `gemini-3.8-flash`, through Dec 31, 2026 | $0.75 | $0.075 | $3.75 | — |
@@ -1097,16 +1103,20 @@ Prices below are USD per million tokens. Output rates include billed reasoning t
 | `claude-opus-5-5` | $4 | $0.20 | $20 | $5 / $8 |
 | `claude-fable-5-1` | $10 | $0.25 | $50 | $12.50 / $20 |
 
-The estimator automatically switches Gemini rates at the published UTC dates. Gemini Argon supports implicit caching
+The estimator applies scheduled Gemini rate changes at midnight UTC. Gemini Argon supports implicit caching
 only. Haiku's threshold includes uncached input, cache reads, and cache writes; the higher rates apply to the whole
 request. Claude `usage.promptTokens` includes all three categories, while `usage.responseTokens` already includes
 reasoning, so it is charged once. Cache-write usage is priced when reported; the library does not enable caching
 implicitly. Estimates cover token inference; search/tool charges, cache storage, taxes, and account-specific discounts
 are excluded.
 
-Gemini `latest` aliases use the concrete response model version's rate when known, with the last
-documented alias target as a fallback. Image estimates use reported image tokens when available
-and published output-token counts by image size otherwise.
+Gemini `latest` aliases use the concrete response model version's rate when known, with the last documented alias
+target as a fallback. On the Gemini Developer API, requests to `gemini-2.5-pro` and `gemini-2.5-flash` switch to
+the prices of `gemini-3.8-flash` and `gemini-3.5-flash-lite` respectively on December 1, 2026. See the
+[Gemini release notes](https://aistudio.google.com/docs/changelog#11-02-2026).
+Generation estimates use paid Standard Developer API or global Vertex rates according to the serving backend.
+Google model discovery lists Developer API rates.
+Image estimates use reported image tokens when available and published output-token counts by image size otherwise.
 
 ### Vercel AI Gateway and Fireworks
 
@@ -1126,12 +1136,14 @@ Vercel requests set `providerOptions.gateway.sort` to `"cost"` for cost-sorted u
 Gateway settings, including stored provider credentials (BYOK), can affect the selected upstream and its price.
 `costUsd` uses the Gateway's reported charge when available. For BYOK requests, it also adds any separately
 reported upstream inference cost; that upstream value is an estimate and can differ from your provider contract.
-When reported cost is unavailable, the library uses the public Gateway catalog's default-route token rates,
-which can differ from the selected upstream's rates. Catalog data is cached in RAM; see model discovery and costs below.
+When reported cost is unavailable, the library uses the [public Gateway catalog](https://ai-gateway.vercel.sh/v1/models)'s
+base token rates, which can differ from the selected upstream's rates or long-context tariffs. Catalog data is cached
+in RAM. The library includes fallback rates for selected models.
 
 #### Fireworks pricing
 
-Use the short library model IDs below; they resolve to the exact direct Fireworks model paths. These direct serverless models and pricing were checked on October 22, 2026 against the [Fireworks catalogue](https://app.fireworks.ai/models?type=llm&capability=serverless) and authenticated inference `/models` endpoint. Routers and embedding/reranking models are excluded.
+Use the short library model IDs below to select the direct Fireworks serverless models. Rates checked November 19,
+2026 against the [Fireworks pricing page](https://docs.fireworks.ai/serverless/pricing).
 
 | Library model ID | Fireworks model suffix | Input / cached / output USD per million tokens |
 | --- | --- | --- |
@@ -1188,6 +1200,10 @@ the model name. API and subscription catalogs can expose different models; disco
 models with `listModels({ provider: "xai", access: "subscription" })`. Passing an accepted model name does not grant
 account access to that model. The same streaming and application function-tool loop are used on both routes.
 
+`grok-4.3`, `grok-4.20-multi-agent-0309`, `grok-4.20-0309-reasoning`, and `grok-4.20-0309-non-reasoning`
+share global Standard API rates of $1.25 input, $0.20 cached input, and $2.50 output per million tokens. Those rates double
+for the full request at 200,000 input tokens or more. See [xAI API pricing](https://docs.x.ai/developers/pricing#text-api).
+
 Reasoning levels depend on the model and route. As of November 3, 2026, xAI documents `low`, `medium`, `high`
 (default), and `xhigh` for Grok 4.6/4.7; Grok 4.5 documents only `low`, `medium`, and `high`.
 For Grok 4.6/4.7, use `thinkingLevel: "xhigh"` for the highest documented effort. `max` is not a documented
@@ -1242,19 +1258,20 @@ Experimental prices remain unknown unless a supported `pricingModelId` is suppli
 `"priority"` to the subscription endpoint. Ultrafast sends `"ultrafast"` on either route.
 The reported service tier takes precedence in usage estimates when available.
 
-The table shows standard short-context API rates per million tokens.
+The table shows Standard short-context API rates per million tokens, including cache writes with the default
+30-minute retention.
 
-| Model ID | Input | Cached input | Output |
-| --- | ---: | ---: | ---: |
-| `gpt-6.2-astra` | $8.00 | $0.40 | $40.00 |
-| `gpt-6.2-sol` | $2.00 | $0.10 | $10.00 |
-| `gpt-6.1-terra` | $1.00 | $0.05 | $5.00 |
-| `gpt-6-luna` | $0.10 | $0.01 | $0.50 |
+| Model ID | Input | Cached input | Cache writes | Output |
+| --- | ---: | ---: | ---: | ---: |
+| `gpt-6.2-astra` | $8.00 | $0.40 | $10.00 | $40.00 |
+| `gpt-6.2-sol` | $2.00 | $0.10 | $2.50 | $10.00 |
+| `gpt-6.1-terra` | $1.00 | $0.05 | $1.25 | $5.00 |
+| `gpt-6-luna` | $0.10 | $0.01 | $0.125 | $0.50 |
 
-For GPT-6.2 Astra and Sol, Fast costs 2× Standard at the same context length. Ultrafast costs 3× Standard
-through February 28, 2027, and 6× starting March 1, 2027, Pacific time. Requests with more than 272,000
-input tokens apply 2× input/cache rates and 1.5× output rates for these models. Subscription estimates represent
-equivalent API usage. See [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).
+Fast costs 2× Standard at the same context length. For GPT-6.2 Astra and Sol, Ultrafast costs 3× Standard
+through February 28, 2027, and 6× starting March 1, 2027, Pacific time. Above 272,000 input tokens, the full
+request uses 2× input and cache rates and 1.5× output rates. Subscription estimates represent equivalent API usage.
+See [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).
 
 ## Decisions (System 1)
 

@@ -70,6 +70,7 @@ import {
   getGeminiBackend,
   isGeminiImageModelId,
   isGeminiTextModelId,
+  type GeminiBackend,
   type GeminiImageModelId,
 } from "./google/client.js";
 import {
@@ -4969,8 +4970,10 @@ function toGeminiThinkingLevel(thinkingLevel: LlmThinkingLevel): ThinkingLevel {
       return ThinkingLevel.LOW;
     case "medium":
       return ThinkingLevel.MEDIUM;
-    case "high":
     case "xhigh":
+      // The current SDK forwards this wire value but its enum predates Gemini 4.
+      return "XHIGH" as ThinkingLevel;
+    case "high":
     case "max":
     case "ultra":
       return ThinkingLevel.HIGH;
@@ -5633,6 +5636,7 @@ async function runTextCall(params: {
   let responseRole: LlmRole | undefined;
   let latestUsage: LlmUsageTokens | undefined;
   let reportedCostUsd: number | undefined;
+  let geminiBackend: GeminiBackend | undefined;
   let responseImages = 0;
   let sawResponseDelta = false;
   let sawThoughtDelta = false;
@@ -6079,6 +6083,7 @@ async function runTextCall(params: {
 
         await runGeminiCall(
           async (client) => {
+            geminiBackend = client.vertexai ? "vertex" : "api";
             const stream = await client.models.generateContentStream({
               model: modelForProvider,
               contents: geminiContents,
@@ -6149,6 +6154,7 @@ async function runTextCall(params: {
         effectiveServiceTier: servingMetadata.serviceTier,
         provider: providerInfo.publicProvider,
         access: providerInfo.access,
+        geminiBackend,
         reportedCostUsd,
         modelId: modelVersion,
         pricingModelId:
@@ -9439,13 +9445,14 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
           readonly usageMetadata?: unknown;
           readonly modelVersion?: string;
           readonly finishReason?: string;
+          readonly backend?: GeminiBackend;
         };
 
         const recorded = await persistentModelCall(
           turn,
           { ...stepRequestPayload, config: { ...config, abortSignal: undefined } },
           async () => {
-            const value = await runGeminiCall(
+            const value = await runGeminiCall<GeminiToolLoopResponse>(
               async (client) => {
                 const stream = await client.models.generateContentStream({
                   model: request.model,
@@ -9521,6 +9528,7 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
                   usageMetadata: latestUsageMetadata,
                   modelVersion: resolvedModelVersion ?? request.model,
                   finishReason: resolvedFinishReason,
+                  backend: client.vertexai ? "vertex" : "api",
                 };
               },
               request.model,
@@ -9568,6 +9576,7 @@ async function runToolLoopInternal(selection: LlmToolLoopRequest): Promise<LlmTo
           access: providerInfo.access,
           modelId: modelVersion,
           pricingModelId: request.model,
+          geminiBackend: response.backend ?? getGeminiBackend(),
           tokens: usageTokens,
           responseImages: 0,
         });

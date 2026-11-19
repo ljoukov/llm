@@ -67,6 +67,29 @@ describe("portable thinking levels", () => {
     );
   });
 
+  it.each([
+    ["gemini-4-neon", "xhigh"],
+    ["gemini-4-hydrogen", "xhigh"],
+    ["gemini-4-carbon", "high"],
+  ] as const)("resolves the highest documented effort for %s", (model, effectiveLevel) => {
+    expect(resolveThinkingLevel({ model, thinkingLevel: "ultra" })).toEqual({
+      requestedLevel: "ultra",
+      effectiveLevel,
+      source: "model",
+    });
+    if (effectiveLevel === "xhigh") {
+      expect(
+        resolveThinkingLevel({ model, thinkingLevel: "xhigh", thinkingLevelPolicy: "strict" })
+          ?.effectiveLevel,
+      ).toBe("xhigh");
+    } else {
+      expect(() =>
+        resolveThinkingLevel({ model, thinkingLevel: "xhigh", thinkingLevelPolicy: "strict" }),
+      ).toThrow(/Supported levels: low, medium, high\./);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects known unsupported levels in strict mode, while ultra remains a highest-level preset", () => {
     expect(() =>
       resolveThinkingLevel({

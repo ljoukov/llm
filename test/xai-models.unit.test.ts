@@ -21,13 +21,25 @@ describe("native xAI model names and pricing", () => {
   ])("rejects malformed or ambiguous model name %s", (model) =>
     expect(isXaiModelId(model)).toBe(false));
 
-  it("uses the inclusive 200k long-context threshold", () => {
-    const regular = getXaiPricing("grok-4.7", 199_999);
-    const longContext = getXaiPricing("grok-4.7", 200_000);
-    expect(regular?.inputRate).toBe(2 / 1_000_000);
-    expect(longContext?.inputRate).toBe(4 / 1_000_000);
-    expect(longContext?.cachedRate).toBe(1 / 1_000_000);
-    expect(longContext?.outputRate).toBe(12 / 1_000_000);
+  it.each([
+    ["grok-4.7", [2, 0.5, 6], [4, 1, 12]],
+    ["grok-4.3", [1.25, 0.2, 2.5], [2.5, 0.4, 5]],
+    ["grok-4.20-multi-agent-0309", [1.25, 0.2, 2.5], [2.5, 0.4, 5]],
+    ["grok-4.20-0309-reasoning", [1.25, 0.2, 2.5], [2.5, 0.4, 5]],
+    ["grok-4.20-0309-non-reasoning", [1.25, 0.2, 2.5], [2.5, 0.4, 5]],
+  ] as const)("prices %s at the inclusive 200k threshold", (model, shortRates, longRates) => {
+    const [input, cached, output] = shortRates;
+    const [longInput, longCached, longOutput] = longRates;
+    expect(getXaiPricing(model, 199_999)).toEqual({
+      inputRate: input / 1_000_000,
+      cachedRate: cached / 1_000_000,
+      outputRate: output / 1_000_000,
+    });
+    expect(getXaiPricing(model, 200_000)).toEqual({
+      inputRate: longInput / 1_000_000,
+      cachedRate: longCached / 1_000_000,
+      outputRate: longOutput / 1_000_000,
+    });
   });
 
   it("does not invent a price for an unrecognized model or subscription alias", () => {

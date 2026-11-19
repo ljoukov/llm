@@ -156,6 +156,30 @@ describe("RAM model catalogue", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("lists the new Gemini 4 text models with Standard pricing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
+    const models = await listModels({ provider: "google" });
+
+    for (const [model, input, cached, output] of [
+      ["gemini-4-neon", 3, 0.15, 15],
+      ["gemini-4-hydrogen", 1.5, 0.075, 7.5],
+      ["gemini-4-carbon", 2, 0.1, 10],
+    ] as const) {
+      expect(models.find((entry) => entry.model === model)).toMatchObject({
+        model,
+        type: "language",
+        supportedSpeeds: ["standard"],
+        pricing: {
+          inputRate: input / 1_000_000,
+          cachedRate: cached / 1_000_000,
+          outputRate: output / 1_000_000,
+        },
+      });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("lists native Fireworks decisions separately from its language models", async () => {
     const all = await listModels({ provider: "fireworks" });
     const decisions = await listModels({ provider: "fireworks", capability: "decisions" });

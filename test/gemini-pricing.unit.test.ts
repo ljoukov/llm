@@ -12,6 +12,8 @@ describe("Gemini scheduled Standard pricing", () => {
   it.each([
     ["gemini-4-argon", "2026-11-30T23:59:59.999Z", 2, 10, 0.1],
     ["gemini-4-argon", "2026-12-01T00:00:00.000Z", 4, 20, 0.2],
+    ["gemini-4-carbon", "2026-11-30T23:59:59.999Z", 2, 10, 0.1],
+    ["gemini-4-carbon", "2026-12-01T00:00:00.000Z", 4, 20, 0.2],
     ["gemini-3.8-flash", "2026-12-31T23:59:59.999Z", 0.75, 3.75, 0.075],
     ["gemini-3.8-flash", "2027-01-01T00:00:00.000Z", 1.5, 7.5, 0.15],
     ["gemini-3.6-flash", "2026-12-31T23:59:59.999Z", 0.75, 3.75, 0.075],
@@ -20,7 +22,7 @@ describe("Gemini scheduled Standard pricing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(at));
 
-    expect(getGeminiProPricing(modelId)).toEqual({
+    const expectedPricing = {
       threshold: Number.POSITIVE_INFINITY,
       inputRateLow: input / 1_000_000,
       inputRateHigh: input / 1_000_000,
@@ -28,15 +30,20 @@ describe("Gemini scheduled Standard pricing", () => {
       cachedRateHigh: cached / 1_000_000,
       outputRateLow: output / 1_000_000,
       outputRateHigh: output / 1_000_000,
-    });
+    };
+    expect(getGeminiProPricing(modelId, "api")).toEqual(expectedPricing);
+    expect(getGeminiProPricing(modelId, "vertex")).toEqual(expectedPricing);
   });
 
   it.each([
     ["gemini-4-argon", 2, 10, 0.1],
+    ["gemini-4-carbon", 2, 10, 0.1],
+    ["gemini-4-neon", 3, 15, 0.15],
+    ["gemini-4-hydrogen", 1.5, 7.5, 0.075],
     ["gemini-3.8-flash", 0.75, 3.75, 0.075],
   ] as const)("charges %s for cached input and thinking without a long-context surcharge", (modelId, input, output, cached) => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-22T00:00:00Z"));
+    vi.setSystemTime(new Date("2026-11-19T00:00:00Z"));
 
     expect(
       estimateCallCostUsd({
@@ -50,6 +57,34 @@ describe("Gemini scheduled Standard pricing", () => {
         responseImages: 0,
       }),
     ).toBeCloseTo(0.8 * input + 0.2 * cached + 0.15 * output);
+  });
+
+  it.each([
+    ["gemini-3.5-flash", "2026-10-07T23:59:59.999Z", 1.5, 9, 0.15],
+    ["gemini-3.5-flash", "2026-10-08T00:00:00.000Z", 0.75, 3.75, 0.075],
+    ["gemini-2.5-pro", "2026-11-30T23:59:59.999Z", 1.25, 10, 0.125],
+    ["gemini-2.5-pro", "2026-12-01T00:00:00.000Z", 0.75, 3.75, 0.075],
+    ["gemini-2.5-pro", "2027-01-01T00:00:00.000Z", 1.5, 7.5, 0.15],
+    ["gemini-2.5-flash", "2026-11-30T23:59:59.999Z", 0.3, 2.5, 0.03],
+    ["gemini-2.5-flash", "2026-12-01T00:00:00.000Z", 0.3, 2.5, 0.03],
+  ] as const)("uses the billed Developer API model for %s at %s", (modelId, at, input, output, cached) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(at));
+
+    expect(getGeminiProPricing(modelId, "api")).toMatchObject({
+      inputRateLow: input / 1_000_000,
+      outputRateLow: output / 1_000_000,
+      cachedRateLow: cached / 1_000_000,
+    });
+  });
+
+  it("keeps the distinct global Vertex rates when the Developer API redirects model IDs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-01T00:00:00Z"));
+
+    expect(getGeminiProPricing("gemini-3.5-flash", "vertex")?.outputRateLow).toBe(9 / 1_000_000);
+    expect(getGeminiProPricing("gemini-2.5-pro", "vertex")?.outputRateLow).toBe(10 / 1_000_000);
+    expect(getGeminiProPricing("gemini-2.5-pro", "api")?.threshold).toBe(Number.POSITIVE_INFINITY);
   });
 });
 
@@ -73,23 +108,37 @@ describe("Gemini pricing coverage", () => {
   });
 
   it.each([
+    ["gemini-4-neon", 3, 15, 0.15],
+    ["gemini-4-carbon", 2, 10, 0.1],
+    ["gemini-4-hydrogen", 1.5, 7.5, 0.075],
     ["gemini-3-flash-preview", 0.5, 3, 0.05],
-    ["gemini-3.5-flash", 1.5, 9, 0.15],
-    ["gemini-flash-latest", 1.5, 9, 0.15],
+    ["gemini-3.5-flash", 0.75, 3.75, 0.075],
+    ["gemini-flash-latest", 0.75, 3.75, 0.075],
     ["gemini-3.5-flash-lite", 0.3, 2.5, 0.03],
+    ["gemini-3.1-flash-lite", 0.25, 1.5, 0.025],
+    ["models/gemini-3.1-flash-lite", 0.25, 1.5, 0.025],
     ["gemini-2.5-flash-lite", 0.1, 0.4, 0.01],
     ["gemini-flash-lite-latest", 0.1, 0.4, 0.01],
   ] as const)("prices the distinct text model %s", (modelId, input, output, cached) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-19T00:00:00Z"));
+
     const pricing = getGeminiProPricing(modelId);
     expect(pricing?.inputRateLow).toBe(input / 1_000_000);
     expect(pricing?.outputRateLow).toBe(output / 1_000_000);
     expect(pricing?.cachedRateLow).toBe(cached / 1_000_000);
   });
 
+  it("keeps Gemini 3.1 Flash-Lite Image outside the text pricing table", () => {
+    expect(getGeminiProPricing("gemini-3.1-flash-lite-image")).toBeUndefined();
+  });
+
   it.each([
+    ["gemini-3-pro-image", "1K", 1120, 120],
     ["gemini-3-pro-image-preview", "1K", 1120, 120],
     ["gemini-3-pro-image-preview", "2K", 1120, 120],
     ["gemini-3-pro-image-preview", "4K", 2000, 120],
+    ["gemini-3.1-flash-image", "1K", 1120, 60],
     ["gemini-3.1-flash-image-preview", "512", 747, 60],
     ["gemini-3.1-flash-image-preview", "1K", 1120, 60],
     ["gemini-3.1-flash-image-preview", "2K", 1680, 60],

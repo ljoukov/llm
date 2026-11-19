@@ -43,6 +43,9 @@ function knownModelLevels(provider: string, model: string): readonly NativeLevel
   if (provider === "anthropic" && isAnthropicModelId(model)) return LEVELS;
   if (provider === "google") {
     if (model === "gemini-flash-lite-latest" || model.includes("image")) return [];
+    if (model === "gemini-4-neon" || model === "gemini-4-hydrogen") {
+      return ["low", "medium", "high", "xhigh"];
+    }
     return ["low", "medium", "high"];
   }
   return undefined;

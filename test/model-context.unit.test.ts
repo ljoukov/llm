@@ -202,7 +202,7 @@ describe("model context-window discovery", () => {
     );
   });
 
-  it("uses exact Gemini catalogue limits when Vertex metadata omits them and keeps Argon unified", async () => {
+  it("uses exact Gemini catalogue limits when provider metadata omits them", async () => {
     mocks.googleGet.mockResolvedValue({});
     expect(
       await resolveModelContextWindow({ provider: "google", model: "gemini-3.8-flash" }),
@@ -213,10 +213,18 @@ describe("model context-window discovery", () => {
       source: "catalog",
       limitType: "input",
     });
-    expect(
-      await resolveModelContextWindow({ provider: "google", model: "gemini-4-argon" }),
-    ).toMatchObject({
+  });
+
+  it.each([
+    "gemini-4-argon",
+    "gemini-4-neon",
+    "gemini-4-hydrogen",
+    "gemini-4-carbon",
+  ] as const)("uses a unified context window for %s", async (model) => {
+    mocks.googleGet.mockResolvedValue({});
+    expect(await resolveModelContextWindow({ provider: "google", model })).toMatchObject({
       contextWindowTokens: 1_048_576,
+      maxInputTokens: undefined,
       maxOutputTokens: 65_536,
       source: "catalog",
       limitType: "context",

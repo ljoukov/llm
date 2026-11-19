@@ -222,6 +222,8 @@ describe("estimateCallCostUsd", () => {
   });
 
   it("estimates Gemini Pro costs (known model, low tier)", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T00:00:00Z"));
     const cost = estimateCallCostUsd({
       modelId: "gemini-2.5-pro",
       tokens: {
@@ -240,9 +242,11 @@ describe("estimateCallCostUsd", () => {
   });
 
   it("estimates distinct Gemini Flash model costs", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-19T00:00:00Z"));
     const modelCosts = [
       ["gemini-2.5-flash", 0.001246],
-      ["gemini-flash-latest", 0.00483],
+      ["gemini-flash-latest", 0.002115],
       ["gemini-3-flash-preview", 0.00161],
     ] as const;
     for (const [modelId, expectedCost] of modelCosts) {
@@ -263,7 +267,7 @@ describe("estimateCallCostUsd", () => {
 
   it("estimates Gemini Flash Lite costs", () => {
     const cost = estimateCallCostUsd({
-      modelId: "gemini-flash-lite-latest",
+      modelId: "gemini-2.5-flash-lite",
       tokens: {
         promptTokens: 1000,
         cachedTokens: 200,
@@ -277,6 +281,20 @@ describe("estimateCallCostUsd", () => {
     // cached: 200 * (0.01/1M) = 0.000002
     // output: 400 * (0.40/1M) = 0.00016
     expect(cost).toBeCloseTo(0.000242, 8);
+  });
+
+  it("applies the scheduled Gemini 2.5 Pro redirect only to Developer API estimates", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-01T00:00:00Z"));
+    const options = {
+      modelId: "gemini-2.5-pro",
+      provider: "google",
+      tokens: { promptTokens: 1_000, cachedTokens: 200, responseTokens: 1_000 },
+      responseImages: 0,
+    };
+
+    expect(estimateCallCostUsd(options)).toBeCloseTo(0.004365, 12);
+    expect(estimateCallCostUsd({ ...options, geminiBackend: "vertex" })).toBeCloseTo(0.011025, 12);
   });
 
   it("estimates Gemini 3.1 Pro preview costs", () => {

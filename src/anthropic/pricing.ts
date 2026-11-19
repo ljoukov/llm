@@ -9,7 +9,7 @@ export type AnthropicPricing = {
   readonly outputRate: number;
 };
 
-// Official standard, global Claude API pricing snapshot, 2026-10-22 (USD/token):
+// Official standard, global Claude API pricing, verified November 19, 2026 (USD/token):
 // https://platform.claude.com/docs/en/about-claude/pricing
 // Haiku's prompt-length threshold includes normal input, cache reads, and cache writes.
 const ANTHROPIC_PRICING: Readonly<Record<AnthropicModelId, AnthropicPricing>> = {
@@ -63,8 +63,7 @@ export function getAnthropicPricing(
   }
   if (speed !== "standard") {
     if (speed !== "fast" || modelId !== "claude-opus-5-5") return undefined;
-    // Official fast-mode snapshot, 2026-10-29: $8/$40 input/output per MTok;
-    // prompt-caching multipliers apply on top of these fast rates.
+    // Fast mode doubles the standard token rates, including prompt caching.
     // https://platform.claude.com/docs/en/build-with-claude/fast-mode#pricing
     const standard = ANTHROPIC_PRICING[modelId];
     return {

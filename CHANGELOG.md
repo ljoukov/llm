@@ -1,5 +1,14 @@
 # Changelog
 
+## 16.1.0 — 2026-11-19
+
+- Add Gemini 4 Neon, Hydrogen, and Carbon text models, with documented context limits and `xhigh`
+  thinking for Neon and Hydrogen.
+- Update Gemini cost estimates for Developer API billing redirects, the serving backend, and stable
+  image response IDs. Apply Carbon's scheduled rate change on December 1, 2026.
+- Add xAI rates for Grok 4.3 and three Grok 4.20 variants. Refresh Vercel AI Gateway fallback rates
+  for DeepSeek V4.1 Flash 1017, GLM 5.3, and Kimi K3.1 Pro.
+
 ## 16.0.0 — 2026-11-19
 
 - Replace the OpenAI API and ChatGPT subscription text allowlists with `gpt-6.2-astra`,
